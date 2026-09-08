@@ -1,0 +1,583 @@
+{
+  "users": [
+    {
+      "id": "usr-admin-1",
+      "name": "Dr. Charlie S. Marzan",
+      "email": "cmarzan@dmmmsu.edu.ph",
+      "role": "admin",
+      "avatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
+      "department": "College of Computer Science",
+      "title": "Dean & Professor IV"
+    },
+    {
+      "id": "usr-fac-1",
+      "name": "Prof. Arnel V. Zabala",
+      "email": "azabala@dmmmsu.edu.ph",
+      "role": "faculty",
+      "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80",
+      "department": "Department of Computer Science",
+      "title": "Associate Professor I"
+    },
+    {
+      "id": "usr-staff-1",
+      "name": "Maria L. Santos",
+      "email": "msantos.staff@dmmmsu.edu.ph",
+      "role": "staff",
+      "avatar": "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80",
+      "department": "Office of the College Registrar",
+      "title": "Registrar Aide II (Likha Sync)"
+    },
+    {
+      "id": "usr-stud-1",
+      "name": "Jayvee G. Reyes",
+      "email": "jreyes.2021@dmmmsu.edu.ph",
+      "role": "student",
+      "avatar": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80",
+      "studentId": "2021-SLUC-0492",
+      "department": "BS Computer Science",
+      "title": "4th Year Student (Thesis Track)"
+    },
+    {
+      "id": "usr-stud-2",
+      "name": "Camille D. Flores",
+      "email": "cflores.2021@dmmmsu.edu.ph",
+      "role": "student",
+      "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80",
+      "studentId": "2021-SLUC-0518",
+      "department": "BS Computer Science",
+      "title": "4th Year Student"
+    }
+  ],
+  "courses": [
+    {
+      "id": "crs-cmsc131",
+      "code": "CMSC 131",
+      "title": "Web Engineering & Frameworks",
+      "section": "BSCS 4-1",
+      "term": "1st Sem AY 2026-2027",
+      "instructorId": "usr-fac-1",
+      "instructorName": "Prof. Arnel V. Zabala",
+      "published": true,
+      "color": "#065f46",
+      "enrolledCount": 38,
+      "credits": 3,
+      "chedComplianceCode": "CHED CMO 25 s. 2015 - Sec 8.2"
+    },
+    {
+      "id": "crs-cmsc150",
+      "code": "CMSC 150",
+      "title": "Automata Theory & Formal Languages",
+      "section": "BSCS 4-1",
+      "term": "1st Sem AY 2026-2027",
+      "instructorId": "usr-fac-1",
+      "instructorName": "Prof. Arnel V. Zabala",
+      "published": true,
+      "color": "#991b1b",
+      "enrolledCount": 34,
+      "credits": 3,
+      "chedComplianceCode": "CHED CMO 25 s. 2015 - Sec 8.1"
+    },
+    {
+      "id": "crs-cmsc170",
+      "code": "CMSC 170",
+      "title": "Introduction to Artificial Intelligence",
+      "section": "BSCS 4-2",
+      "term": "1st Sem AY 2026-2027",
+      "instructorId": "usr-fac-1",
+      "instructorName": "Prof. Arnel V. Zabala",
+      "published": true,
+      "color": "#1e3a8a",
+      "enrolledCount": 40,
+      "credits": 3,
+      "chedComplianceCode": "CHED CMO 25 s. 2015 - Sec 9.4"
+    },
+    {
+      "id": "crs-cmsc190",
+      "code": "CMSC 190",
+      "title": "Special Problem / Capstone Project 1",
+      "section": "BSCS 4-1",
+      "term": "1st Sem AY 2026-2027",
+      "instructorId": "usr-admin-1",
+      "instructorName": "Dr. Charlie S. Marzan",
+      "published": false,
+      "color": "#b45309",
+      "enrolledCount": 22,
+      "credits": 3,
+      "chedComplianceCode": "CHED CMO 25 s. 2015 - Sec 11.0"
+    }
+  ],
+  "modules": [
+    {
+      "id": "mod-131-1",
+      "courseId": "crs-cmsc131",
+      "title": "Unit 1: Modern Single Page Application Architecture & State Synchronization",
+      "order": 1,
+      "published": true,
+      "items": [
+        {
+          "id": "item-131-11",
+          "title": "Lecture Notes: React 18 Concurrent Rendering & State Models",
+          "type": "page",
+          "published": true,
+          "required": true,
+          "completionCondition": "view",
+          "content": "### CHED CMO 25 Module Learning Outcome 1\nThis module covers modern SPA architecture patterns, client-side state management, LocalStorage persistence layers, and React 18 hooks architecture.\n\nKey Concepts:\n1. Virtual DOM reconciliation algorithm\n2. Pure functional state reducers\n3. LocalStorage reactive sync hooks\n4. RBAC route guarding",
+          "completed": true
+        },
+        {
+          "id": "item-131-12",
+          "title": "Laboratory Milestone 1: GABAY LMS Prototype Architecture",
+          "type": "assignment",
+          "published": true,
+          "required": true,
+          "completionCondition": "submit",
+          "assignmentId": "asg-131-1",
+          "completed": true
+        },
+        {
+          "id": "item-131-13",
+          "title": "Self-Check Diagnostic Quiz: React Context & Hooks",
+          "type": "quiz",
+          "published": true,
+          "required": true,
+          "completionCondition": "min_score",
+          "minScore": 80,
+          "quizId": "quiz-131-1",
+          "completed": true
+        }
+      ]
+    },
+    {
+      "id": "mod-131-2",
+      "courseId": "crs-cmsc131",
+      "title": "Unit 2: Institutional Design Systems & Accessibility Standards",
+      "order": 2,
+      "published": true,
+      "items": [
+        {
+          "id": "item-131-21",
+          "title": "CHED CMO 25 Design Guidelines for Academic Systems",
+          "type": "page",
+          "published": true,
+          "required": true,
+          "completionCondition": "view",
+          "content": "Academic management systems require high-contrast color palettes, tabular data readability, WCAG 2.1 AA compliance, and zero superfluous decorative elements.",
+          "completed": false
+        },
+        {
+          "id": "item-131-22",
+          "title": "Laboratory Milestone 2: SpeedGrader Split-Screen UI Integration",
+          "type": "assignment",
+          "published": true,
+          "required": true,
+          "completionCondition": "submit",
+          "assignmentId": "asg-131-2",
+          "completed": false
+        }
+      ]
+    },
+    {
+      "id": "mod-150-1",
+      "courseId": "crs-cmsc150",
+      "title": "Unit 1: Deterministic & Nondeterministic Finite Automata (DFA/NFA)",
+      "order": 1,
+      "published": true,
+      "items": [
+        {
+          "id": "item-150-11",
+          "title": "Reading: Formal Definition of 5-tuple Finite State Automata",
+          "type": "page",
+          "published": true,
+          "required": true,
+          "completionCondition": "view",
+          "content": "A Deterministic Finite Automaton (DFA) is defined as a 5-tuple M = (Q, Σ, δ, q0, F).",
+          "completed": true
+        },
+        {
+          "id": "item-150-12",
+          "title": "Quiz 1: DFA State Transition Tables",
+          "type": "quiz",
+          "published": true,
+          "required": true,
+          "completionCondition": "submit",
+          "quizId": "quiz-150-1",
+          "completed": false
+        }
+      ]
+    }
+  ],
+  "assignments": [
+    {
+      "id": "asg-131-1",
+      "courseId": "crs-cmsc131",
+      "title": "Lab 1: Full-Stack SPA Architecture & Persistence",
+      "instructions": "Implement a client-side React 18 application simulating the GABAY LMS Module. Synchronize state with `localStorage` and ensure strict RBAC access guards.",
+      "pointsPossible": 100,
+      "dueDate": "2026-09-15T23:59:00",
+      "submissionTypes": ["file", "online_text"],
+      "published": true,
+      "category": "Laboratory",
+      "weight": 30,
+      "rubric": [
+        {
+          "id": "rub-1",
+          "title": "Architecture & State Sync",
+          "description": "Clean modular component structure and local JSON sync",
+          "points": 40,
+          "ratings": [
+            { "points": 40, "description": "Exemplary React 18 state management with localStorage sync" },
+            { "points": 30, "description": "Minor sync glitches or redundant state mutations" },
+            { "points": 15, "description": "Partial implementation, state does not persist" }
+          ]
+        },
+        {
+          "id": "rub-2",
+          "title": "Visual Design & Dark Mode",
+          "description": "Adherence to institutional design guidelines and dark theme contrast",
+          "points": 30,
+          "ratings": [
+            { "points": 30, "description": "High contrast academic styling, zero AI slop, perfect dark mode" },
+            { "points": 20, "description": "Acceptable styling with minor contrast or alignment issues" },
+            { "points": 10, "description": "Generic or unstyled components" }
+          ]
+        },
+        {
+          "id": "rub-3",
+          "title": "Role-Based Access Control (RBAC)",
+          "description": "Correct permission enforcement for Dean, Faculty, Staff, Student",
+          "points": 30,
+          "ratings": [
+            { "points": 30, "description": "Strict enforcement of access rules with header switcher" },
+            { "points": 20, "description": "Minor leakage of faculty controls to students" },
+            { "points": 0, "description": "No RBAC controls implemented" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "asg-131-2",
+      "courseId": "crs-cmsc131",
+      "title": "Lab 2: SpeedGrader & Gradebook What-If Calculator",
+      "instructions": "Build the SpeedGrader split-screen evaluation layout and implement student 'What-If' grade calculation engine.",
+      "pointsPossible": 100,
+      "dueDate": "2026-09-22T23:59:00",
+      "submissionTypes": ["online_text"],
+      "published": true,
+      "category": "Laboratory",
+      "weight": 30,
+      "rubric": [
+        {
+          "id": "rub-4",
+          "title": "SpeedGrader Functionality",
+          "description": "Document preview, rubric breakdown, and direct score entry",
+          "points": 50,
+          "ratings": [
+            { "points": 50, "description": "Fully functional dual-pane evaluation tool" },
+            { "points": 30, "description": "Basic grading input without rubric sync" }
+          ]
+        },
+        {
+          "id": "rub-5",
+          "title": "What-If Grade Calculator",
+          "description": "Interactive score simulation sliders for students",
+          "points": 50,
+          "ratings": [
+            { "points": 50, "description": "Accurate weighted category calculation with instant update" },
+            { "points": 25, "description": "Non-reactive calculation" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "asg-131-exam",
+      "courseId": "crs-cmsc131",
+      "title": "Midterm Examination: Web Architecture & CHED Standards",
+      "instructions": "Comprehensive written and practical examination on web engineering design principles.",
+      "pointsPossible": 100,
+      "dueDate": "2026-10-10T17:00:00",
+      "submissionTypes": ["file"],
+      "published": true,
+      "category": "Exams",
+      "weight": 40,
+      "rubric": []
+    },
+    {
+      "id": "asg-150-1",
+      "courseId": "crs-cmsc150",
+      "title": "Problem Set 1: NFA to DFA Conversion (Subset Construction Algorithm)",
+      "instructions": "Given the 5-tuple NFA specifications, construct the equivalent DFA transition tables and state diagrams.",
+      "pointsPossible": 50,
+      "dueDate": "2026-09-18T23:59:00",
+      "submissionTypes": ["file"],
+      "published": true,
+      "category": "Homework",
+      "weight": 40,
+      "rubric": []
+    }
+  ],
+  "submissions": [
+    {
+      "id": "sub-131-1-jayvee",
+      "assignmentId": "asg-131-1",
+      "courseId": "crs-cmsc131",
+      "studentId": "usr-stud-1",
+      "studentName": "Jayvee G. Reyes",
+      "studentAvatar": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80",
+      "submittedAt": "2026-09-14T14:22:10",
+      "submissionType": "file",
+      "fileUrl": "https://github.com/dmmmsu-sluc/cmsc131-gabaysystem-prototype.pdf",
+      "fileName": "CMSC131_Lab1_JayveeReyes_2021-SLUC-0492.pdf",
+      "content": "Respected Prof. Zabala,\n\nI have completed Laboratory Milestone 1 for GABAY LMS. The prototype implements:\n1. React 18 + Vite with Tailwind CSS dark/light theme persistence.\n2. Role-Based Access Control (RBAC) with instantaneous header switcher.\n3. LocalStorage persistence for submissions, messages, and grades.\n\nLink to repository: https://github.com/dmmmsu-sluc/gabay-lms-prototype",
+      "grade": 96,
+      "gradedAt": "2026-09-15T09:10:00",
+      "gradedBy": "Prof. Arnel V. Zabala",
+      "status": "graded",
+      "rubricScores": {
+        "rub-1": 40,
+        "rub-2": 28,
+        "rub-3": 28
+      },
+      "comments": [
+        {
+          "id": "comm-1",
+          "authorId": "usr-fac-1",
+          "authorName": "Prof. Arnel V. Zabala",
+          "authorRole": "faculty",
+          "createdAt": "2026-09-15T09:11:30",
+          "text": "Excellent compliance with CHED CMO 25 UI standards! High density data table is well designed. Clean monospace formatting for student IDs."
+        },
+        {
+          "id": "comm-2",
+          "authorId": "usr-stud-1",
+          "authorName": "Jayvee G. Reyes",
+          "authorRole": "student",
+          "createdAt": "2026-09-15T10:05:12",
+          "text": "Thank you Prof. Zabala! I will address the minor contrast padding issue in Milestone 2."
+        }
+      ]
+    },
+    {
+      "id": "sub-131-1-camille",
+      "assignmentId": "asg-131-1",
+      "courseId": "crs-cmsc131",
+      "studentId": "usr-stud-2",
+      "studentName": "Camille D. Flores",
+      "studentAvatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80",
+      "submittedAt": "2026-09-15T21:40:00",
+      "submissionType": "online_text",
+      "content": "Submitted GABAY LMS Module design specification. Includes client state sync and responsive sidebar navigation.",
+      "fileName": "CMSC131_Lab1_CamilleFlores.docx",
+      "status": "submitted",
+      "rubricScores": {},
+      "comments": []
+    }
+  ],
+  "quizzes": [
+    {
+      "id": "quiz-131-1",
+      "courseId": "crs-cmsc131",
+      "title": "Self-Check Diagnostic Quiz: React Context & Hooks Architecture",
+      "instructions": "Answer the following multiple-choice questions. Time limit is 15 minutes. Passing score is 80%.",
+      "timeLimitMinutes": 15,
+      "published": true,
+      "questions": [
+        {
+          "id": "q1",
+          "text": "Which React hook is recommended for synchronizing non-React external storage such as localStorage with component state?",
+          "type": "multiple_choice",
+          "options": ["useEffect / useSyncExternalStore", "useMemo", "useCallback", "useImperativeHandle"],
+          "correctAnswer": "useEffect / useSyncExternalStore",
+          "points": 10
+        },
+        {
+          "id": "q2",
+          "text": "According to the GABAY Visual Design System guidelines, neon violet radial blur background glows are strictly discouraged.",
+          "type": "true_false",
+          "options": ["True", "False"],
+          "correctAnswer": "True",
+          "points": 10
+        },
+        {
+          "id": "q3",
+          "text": "What is the primary role restriction for Non-Teaching Staff (Registrar Aide) in GABAY LMS?",
+          "type": "multiple_choice",
+          "options": [
+            "Strictly blocked from viewing individual student assignment grades and quiz submissions",
+            "Can alter instructor gradebooks directly",
+            "Cannot view course rosters",
+            "Full access to student SpeedGrader evaluations"
+          ],
+          "correctAnswer": "Strictly blocked from viewing individual student assignment grades and quiz submissions",
+          "points": 10
+        }
+      ]
+    },
+    {
+      "id": "quiz-150-1",
+      "courseId": "crs-cmsc150",
+      "title": "Quiz 1: DFA State Transition Tables",
+      "instructions": "Evaluates understanding of deterministic finite state machine transition functions.",
+      "timeLimitMinutes": 20,
+      "published": true,
+      "questions": [
+        {
+          "id": "q150-1",
+          "text": "In a DFA 5-tuple M = (Q, Σ, δ, q0, F), what does δ represent?",
+          "type": "multiple_choice",
+          "options": ["Transition function Q × Σ → Q", "Set of final states", "Alphabet set", "Initial state"],
+          "correctAnswer": "Transition function Q × Σ → Q",
+          "points": 10
+        }
+      ]
+    }
+  ],
+  "calendarEvents": [
+    {
+      "id": "evt-1",
+      "title": "Lab 1 Submission Deadline (CMSC 131)",
+      "date": "2026-09-15",
+      "time": "11:59 PM",
+      "courseId": "crs-cmsc131",
+      "courseCode": "CMSC 131",
+      "type": "assignment",
+      "description": "Full-Stack SPA Architecture & Persistence submission window closes."
+    },
+    {
+      "id": "evt-2",
+      "title": "CHED CMO 25 Curriculum Review Milestone",
+      "date": "2026-09-18",
+      "time": "09:00 AM",
+      "type": "milestone",
+      "description": "College Academic Council review of course syllabi and outcomes."
+    },
+    {
+      "id": "evt-3",
+      "title": "Lab 2 Submission Deadline (CMSC 131)",
+      "date": "2026-09-22",
+      "time": "11:59 PM",
+      "courseId": "crs-cmsc131",
+      "courseCode": "CMSC 131",
+      "type": "assignment",
+      "description": "SpeedGrader & What-If calculator submission deadline."
+    }
+  ],
+  "advisingSlots": [
+    {
+      "id": "adv-1",
+      "instructorId": "usr-fac-1",
+      "instructorName": "Prof. Arnel V. Zabala",
+      "date": "2026-09-16",
+      "timeSlot": "09:00 AM - 09:30 AM",
+      "location": "CS Faculty Office / Zoom Link",
+      "status": "available"
+    },
+    {
+      "id": "adv-2",
+      "instructorId": "usr-fac-1",
+      "instructorName": "Prof. Arnel V. Zabala",
+      "date": "2026-09-16",
+      "timeSlot": "10:00 AM - 10:30 AM",
+      "location": "CS Faculty Office",
+      "status": "booked",
+      "bookedByStudentId": "usr-stud-1",
+      "bookedByStudentName": "Jayvee G. Reyes",
+      "notes": "Thesis topic consultation on AI-Assisted Assessment."
+    },
+    {
+      "id": "adv-3",
+      "instructorId": "usr-admin-1",
+      "instructorName": "Dr. Charlie S. Marzan",
+      "date": "2026-09-17",
+      "timeSlot": "02:00 PM - 02:30 PM",
+      "location": "Dean's Office (SLUC Admin Building)",
+      "status": "available"
+    }
+  ],
+  "messages": [
+    {
+      "id": "msg-1",
+      "senderId": "usr-fac-1",
+      "senderName": "Prof. Arnel V. Zabala",
+      "senderRole": "faculty",
+      "recipientId": "usr-stud-1",
+      "recipientName": "Jayvee G. Reyes",
+      "recipientRole": "student",
+      "courseId": "crs-cmsc131",
+      "courseCode": "CMSC 131",
+      "subject": "SpeedGrader Feedback for Lab 1",
+      "body": "Good day Jayvee,\nYour submission for Lab 1 has been graded in SpeedGrader. Excellent work on the dark theme contrast and student ID monospace formatting.\nBest regards,\nProf. Zabala",
+      "timestamp": "2026-09-15T09:12:00",
+      "read": true
+    },
+    {
+      "id": "msg-2",
+      "senderId": "usr-stud-1",
+      "senderName": "Jayvee G. Reyes",
+      "senderRole": "student",
+      "recipientId": "usr-fac-1",
+      "recipientName": "Prof. Arnel V. Zabala",
+      "recipientRole": "faculty",
+      "courseId": "crs-cmsc131",
+      "courseCode": "CMSC 131",
+      "subject": "Clarification on Lab 2 What-If Calculation",
+      "body": "Good day Prof. Zabala,\nShould the What-If calculator automatically normalize non-graded assignments to 100% or exclude them from the weighted average until set?\nThank you!",
+      "timestamp": "2026-09-15T11:45:00",
+      "read": false
+    }
+  ],
+  "historyLogs": [
+    {
+      "id": "hist-1",
+      "path": "/lms/dashboard",
+      "title": "LMS Dashboard Overview",
+      "timestamp": "2026-09-15 08:30 AM"
+    },
+    {
+      "id": "hist-2",
+      "path": "/lms/courses/crs-cmsc131/modules",
+      "title": "CMSC 131 > Modules",
+      "timestamp": "2026-09-15 09:05 AM"
+    },
+    {
+      "id": "hist-3",
+      "path": "/lms/courses/crs-cmsc131/gradebook",
+      "title": "CMSC 131 > SpeedGrader & Gradebook",
+      "timestamp": "2026-09-15 09:10 AM"
+    }
+  ],
+  "commonsTemplates": [
+    {
+      "id": "com-1",
+      "title": "CHED CMO 25 s. 2015 Compliant BSCS Course Syllabus Template",
+      "category": "Syllabus Shell",
+      "description": "Standardized outcome-based syllabus structure for Computer Science core subjects in DMMMSU-SLUC.",
+      "author": "College Academic Quality Assurance Office",
+      "downloads": 142,
+      "rating": 4.9,
+      "tags": ["CHED", "Syllabus", "Outcome-Based", "BSCS"],
+      "chedAlignment": "CMO 25 s. 2015 - Section 8"
+    },
+    {
+      "id": "com-2",
+      "title": "Web Engineering Lab Manual & Automated Grading Rubric",
+      "category": "Lab Module",
+      "description": "Complete laboratory exercise set with attached multi-criterion SpeedGrader rubrics.",
+      "author": "Prof. Arnel V. Zabala",
+      "downloads": 89,
+      "rating": 4.8,
+      "tags": ["Web Engineering", "React", "Rubric", "SpeedGrader"],
+      "chedAlignment": "CMO 25 s. 2015 - Section 8.2"
+    },
+    {
+      "id": "com-3",
+      "title": "Capstone Project Defense Assessment Matrix & Rubric",
+      "category": "Assessment Rubric",
+      "description": "Standardized panel defense rating sheet aligned with Likha ERP capstone tracking.",
+      "author": "Dr. Charlie S. Marzan",
+      "downloads": 210,
+      "rating": 5.0,
+      "tags": ["Capstone", "Thesis", "Rubric", "Evaluation"],
+      "chedAlignment": "CMO 25 s. 2015 - Section 11.0"
+    }
+  ]
+}
