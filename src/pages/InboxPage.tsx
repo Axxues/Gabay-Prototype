@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { useLMS } from '../context/LMSContext';
-import { Inbox as InboxIcon, Plus } from 'lucide-react';
+import { Inbox as InboxIcon, Plus, X } from 'lucide-react';
+import { AnimatedModal } from '../components/common/ModalPortal';
 
 export const InboxPage: React.FC = () => {
-  const { activeRole, activeUser, db, sendMessage } = useLMS();
+  const { activeRole, activeUser, db, sendMessage, showAlert } = useLMS();
 
   // All messages where user is sender or recipient
   const userMessages = db.messages.filter(
@@ -32,7 +33,7 @@ export const InboxPage: React.FC = () => {
   const handleSendNewMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (!recipientId || !subject.trim() || !body.trim()) {
-      alert("Please complete all message fields.");
+      showAlert("Please complete all message fields.");
       return;
     }
 
@@ -40,7 +41,11 @@ export const InboxPage: React.FC = () => {
     setShowComposeModal(false);
     setSubject('');
     setBody('');
-    alert("Message sent via GABAY Messaging Network!");
+    showAlert({
+      title: "Message Sent",
+      message: "Your message has been delivered.",
+      type: "success"
+    });
   };
 
   const handleMassMessageUnsubmitted = () => {
@@ -54,20 +59,24 @@ export const InboxPage: React.FC = () => {
         "crs-cmsc131"
       );
     });
-    alert(`Mass message sent to ${unsubmittedStudents.length} students with pending submissions!`);
+    showAlert({
+      title: "Reminders Sent",
+      message: `Mass message sent to ${unsubmittedStudents.length} students with pending submissions.`,
+      type: "success"
+    });
   };
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
+    <div className="space-y-6">
       {/* Header Toolbar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-zinc-200 dark:border-zinc-800 gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-border gap-4">
         <div>
-          <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-100 flex items-center space-x-2">
-            <InboxIcon className="w-5 h-5 text-pink-700 dark:text-pink-400" />
-            <span>Institutional Inbox & Conversations</span>
+          <h1 className="text-xl font-bold text-foreground flex items-center space-x-2">
+            <InboxIcon className="w-5 h-5 text-primary" />
+            <span>Inbox</span>
           </h1>
-          <p className="text-xs text-zinc-500 font-mono">
-            Role-Guarded Academic Messaging Engine
+          <p className="text-xs text-muted-foreground">
+            Messages and announcements.
           </p>
         </div>
 
@@ -75,7 +84,7 @@ export const InboxPage: React.FC = () => {
           {activeRole === 'faculty' && (
             <button
               onClick={handleMassMessageUnsubmitted}
-              className="px-3 py-1.5 text-xs font-semibold bg-zinc-800 hover:bg-zinc-900 text-white rounded transition-colors"
+              className="px-3 py-1.5 text-xs font-semibold bg-muted hover:bg-muted/80 text-foreground border border-border rounded-xl transition-colors cursor-pointer"
             >
               Mass Message Unsubmitted Students
             </button>
@@ -86,7 +95,7 @@ export const InboxPage: React.FC = () => {
               if (allowedRecipients.length > 0) setRecipientId(allowedRecipients[0].id);
               setShowComposeModal(true);
             }}
-            className="px-4 py-1.5 text-xs font-semibold bg-pink-700 hover:bg-pink-800 text-white rounded transition-colors flex items-center space-x-1.5 shadow-xs"
+            className="px-4 py-2 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all flex items-center space-x-1.5 shadow-subtle cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Compose Message</span>
@@ -95,11 +104,11 @@ export const InboxPage: React.FC = () => {
       </div>
 
       {/* Two-Column Master Detail Client */}
-      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg overflow-hidden grid grid-cols-1 md:grid-cols-3 min-h-[500px] shadow-2xs">
+      <div className="bg-card border border-border rounded-2xl overflow-hidden grid grid-cols-1 md:grid-cols-3 min-h-[500px] shadow-subtle">
         {/* Left Column: Messages List */}
-        <div className="border-r border-zinc-200 dark:border-zinc-800 divide-y divide-zinc-200 dark:divide-zinc-800 overflow-y-auto">
+        <div className="border-r border-border divide-y divide-border overflow-y-auto custom-scrollbar">
           {userMessages.length === 0 ? (
-            <div className="p-8 text-center text-xs text-zinc-500">
+            <div className="p-8 text-center text-xs text-muted-foreground">
               No conversations found.
             </div>
           ) : (
@@ -111,22 +120,22 @@ export const InboxPage: React.FC = () => {
                   onClick={() => setSelectedMessage(msg)}
                   className={`p-4 cursor-pointer transition-colors space-y-1 text-xs ${
                     isSelected
-                      ? 'bg-pink-50/50 dark:bg-pink-950/20 border-l-2 border-pink-700'
-                      : 'hover:bg-zinc-50 dark:hover:bg-zinc-950'
+                      ? 'bg-primary/10 border-l-2 border-primary'
+                      : 'hover:bg-muted/40'
                   }`}
                 >
                   <div className="flex justify-between items-center">
-                    <span className="font-bold text-zinc-900 dark:text-zinc-100">
+                    <span className="font-bold text-foreground">
                       {msg.senderId === activeUser.id ? `To: ${msg.recipientName}` : msg.senderName}
                     </span>
-                    <span className="text-[10px] font-mono text-zinc-400">
+                    <span className="text-[10px] font-sans text-muted-foreground">
                       {new Date(msg.timestamp).toLocaleDateString()}
                     </span>
                   </div>
-                  <div className="font-semibold text-zinc-800 dark:text-zinc-200 truncate">
+                  <div className="font-semibold text-foreground truncate">
                     {msg.subject}
                   </div>
-                  <p className="text-[11px] text-zinc-500 truncate">
+                  <p className="text-[11px] text-muted-foreground truncate">
                     {msg.body}
                   </p>
                 </div>
@@ -144,11 +153,11 @@ export const InboxPage: React.FC = () => {
                   <h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">
                     {selectedMessage.subject}
                   </h2>
-                  <span className="text-xs font-mono text-zinc-500">
+                  <span className="text-xs font-sans text-zinc-500">
                     {new Date(selectedMessage.timestamp).toLocaleString()}
                   </span>
                 </div>
-                <div className="flex items-center space-x-2 text-xs text-zinc-600 dark:text-zinc-400 font-mono">
+                <div className="flex items-center space-x-2 text-xs text-zinc-600 dark:text-zinc-400 font-sans">
                   <span>From: <strong className="text-zinc-900 dark:text-zinc-100">{selectedMessage.senderName}</strong> ({selectedMessage.senderRole})</span>
                   <span>•</span>
                   <span>To: <strong className="text-zinc-900 dark:text-zinc-100">{selectedMessage.recipientName}</strong></span>
@@ -168,18 +177,25 @@ export const InboxPage: React.FC = () => {
       </div>
 
       {/* Compose Message Modal */}
-      {showComposeModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-backdrop animate-fade-in"
-          onClick={() => setShowComposeModal(false)}
-        >
-          <div
-            className="w-full max-w-lg bg-card border border-border rounded-2xl p-6 space-y-4 shadow-elevated animate-scale-in"
-            onClick={e => e.stopPropagation()}
-          >
-            <h3 className="font-bold text-base text-foreground">
-              Compose GABAY Academic Message
-            </h3>
+      <AnimatedModal
+        isOpen={showComposeModal}
+        onClose={() => setShowComposeModal(false)}
+        panelClassName="w-full max-w-lg bg-card border border-border rounded-2xl p-6 space-y-4 shadow-elevated"
+      >
+        {({ startClose }) => (
+          <>
+            <div className="flex items-center justify-between pb-2 border-b border-border">
+              <h3 className="font-bold text-base text-foreground">
+                Compose GABAY Academic Message
+              </h3>
+              <button
+                type="button"
+                onClick={startClose}
+                className="p-1 text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
             <form onSubmit={handleSendNewMessage} className="space-y-3 text-xs">
               <div>
@@ -189,7 +205,7 @@ export const InboxPage: React.FC = () => {
                 <select
                   value={recipientId}
                   onChange={e => setRecipientId(e.target.value)}
-                  className="w-full p-2 bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-700 rounded font-mono"
+                  className="w-full p-2.5 bg-background border border-border hover:border-primary/40 focus:border-primary focus:ring-2 focus:ring-primary/20 rounded-xl text-foreground text-xs font-sans font-medium outline-none shadow-subtle cursor-pointer transition-all"
                 >
                   {allowedRecipients.map(u => (
                     <option key={u.id} value={u.id}>
@@ -213,7 +229,7 @@ export const InboxPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="block font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                <label className="block font-semibold text-foreground mb-1">
                   Message Body:
                 </label>
                 <textarea
@@ -221,29 +237,29 @@ export const InboxPage: React.FC = () => {
                   value={body}
                   onChange={e => setBody(e.target.value)}
                   placeholder="Type your message text here..."
-                  className="w-full p-2 bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-700 rounded font-sans"
+                  className="w-full p-2.5 bg-background border border-border rounded-xl text-foreground font-sans outline-none"
                 />
               </div>
 
               <div className="pt-2 flex justify-end space-x-2">
                 <button
                   type="button"
-                  onClick={() => setShowComposeModal(false)}
-                  className="px-4 py-2 font-semibold text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded"
+                  onClick={startClose}
+                  className="px-4 py-2 font-semibold text-muted-foreground hover:bg-muted rounded-xl cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 font-semibold bg-pink-700 hover:bg-pink-800 text-white rounded shadow-sm"
+                  className="px-4 py-2 font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl shadow-subtle cursor-pointer"
                 >
                   Send Message
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </AnimatedModal>
     </div>
   );
 };

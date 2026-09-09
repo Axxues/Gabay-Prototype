@@ -10,19 +10,23 @@ import {
   ChevronRight,
   Plus,
   Trash2,
-  X
+  X,
+  ArrowLeft
 } from 'lucide-react';
+import { AnimatedModal } from '../components/common/ModalPortal';
 
 interface AssignmentsViewProps {
   courseId: string;
   selectedAssignmentId: string | null;
   onSelectAssignment: (asgId: string | null) => void;
+  onBackToModules?: () => void;
 }
 
 export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
   courseId,
   selectedAssignmentId,
-  onSelectAssignment
+  onSelectAssignment,
+  onBackToModules
 }) => {
   const {
     activeRole,
@@ -31,7 +35,9 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
     submitAssignment,
     createAssignment,
     deleteAssignment,
-    openSpeedGrader
+    openSpeedGrader,
+    showAlert,
+    showConfirm
   } = useLMS();
 
   const courseAssignments = db.assignments.filter(a => a.courseId === courseId);
@@ -61,11 +67,11 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
     if (!selectedAssignment) return;
 
     if (submissionType === 'online_text' && !textContent.trim()) {
-      alert("Please enter submission text content.");
+      showAlert("Please enter submission text content.");
       return;
     }
     if (submissionType === 'file' && !simulatedFileName) {
-      alert("Please choose a file or use the simulated file dropzone.");
+      showAlert("Please choose a file or use the simulated file dropzone.");
       return;
     }
 
@@ -78,14 +84,18 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
         simulatedFileName || 'CMSC131_Lab_Submission.pdf'
       );
       setIsSubmitting(false);
-      alert("Assignment submitted successfully to GABAY LMS!");
+      showAlert({
+        title: "Assignment Submitted",
+        message: "Your submission has been recorded successfully.",
+        type: "success"
+      });
     }, 600);
   };
 
   const handleCreateAssignment = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim()) {
-      alert("Please provide an assignment title.");
+      showAlert("Please provide an assignment title.");
       return;
     }
 
@@ -109,30 +119,44 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
   };
 
   const handleDelete = (asgId: string) => {
-    if (confirm("Are you sure you want to delete this assignment and all associated student submissions?")) {
-      deleteAssignment(asgId);
-      onSelectAssignment(null);
-    }
+    showConfirm(
+      "Are you sure you want to delete this assignment and all associated student submissions?",
+      () => {
+        deleteAssignment(asgId);
+        onSelectAssignment(null);
+      },
+      "Delete Assignment"
+    );
   };
 
   // If no assignment selected, render assignment list
   if (!selectedAssignment) {
     return (
       <div className="space-y-6 animate-fade-in">
+        {onBackToModules && (
+          <button
+            type="button"
+            onClick={onBackToModules}
+            className="text-xs font-bold text-muted-foreground hover:text-foreground transition-colors flex items-center space-x-1.5 cursor-pointer -mb-2"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Back to Modules</span>
+          </button>
+        )}
         <div className="flex items-center justify-between pb-3 border-b border-border">
           <div>
             <h2 className="text-xl font-bold tracking-tight text-foreground">
-              Course Assignments & Milestones
+              Assignments
             </h2>
-            <p className="text-xs text-muted-foreground font-mono">
-              Outcome-Based laboratory exercises, problem sets & submissions
+            <p className="text-xs text-muted-foreground">
+              Course assignments and laboratory tasks.
             </p>
           </div>
 
           {(activeRole === 'faculty' || activeRole === 'admin') && (
             <button
               onClick={() => setIsCreateModalOpen(true)}
-              className="px-3.5 py-2 text-xs font-bold bg-pink-700 hover:bg-pink-800 active:scale-[0.98] text-white rounded-xl transition-all shadow-subtle flex items-center space-x-1.5 cursor-pointer"
+              className="px-3.5 py-2 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all shadow-subtle flex items-center space-x-1.5 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>+ Create Assignment</span>
@@ -155,17 +179,17 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
                 <div
                   key={asg.id}
                   onClick={() => onSelectAssignment(asg.id)}
-                  className="group p-4 bg-card border border-border rounded-xl hover:border-pink-600/40 cursor-pointer card-hover shadow-soft transition-all flex items-center justify-between"
+                  className="group p-4 bg-card border border-border rounded-xl hover:border-primary/40 cursor-pointer card-hover shadow-soft transition-all flex items-center justify-between"
                 >
                   <div className="flex items-start space-x-3.5">
-                    <div className="p-2.5 bg-muted rounded-xl text-pink-700 dark:text-pink-400 shrink-0 mt-0.5 border border-border">
+                    <div className="p-2.5 bg-muted rounded-xl text-primary shrink-0 mt-0.5 border border-border">
                       <FileCheck2 className="w-5 h-5" />
                     </div>
                     <div>
-                      <h3 className="font-bold text-sm text-foreground group-hover:text-pink-700 dark:group-hover:text-pink-400 transition-colors">
+                      <h3 className="font-bold text-sm text-foreground group-hover:text-primary transition-colors">
                         {asg.title}
                       </h3>
-                      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground mt-1 font-mono">
+                      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground mt-1 font-sans">
                         <span className="px-2 py-0.5 rounded bg-muted text-[10px] font-bold text-foreground">
                           {asg.category} ({asg.weight}%)
                         </span>
@@ -180,22 +204,22 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
                   <div className="flex items-center space-x-3 shrink-0">
                     {studentSub ? (
                       studentSub.status === 'graded' ? (
-                        <span className="px-2.5 py-1 text-xs font-mono font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 rounded-lg border border-emerald-500/20 flex items-center space-x-1">
+                        <span className="px-2.5 py-1 text-xs font-sans font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 rounded-lg border border-emerald-500/20 flex items-center space-x-1">
                           <CheckCircle2 className="w-3.5 h-3.5" />
                           <span>Graded: {studentSub.grade}/{asg.pointsPossible}</span>
                         </span>
                       ) : (
-                        <span className="px-2.5 py-1 text-xs font-mono font-bold bg-blue-500/10 text-blue-700 dark:text-blue-400 rounded-lg border border-blue-500/20 flex items-center space-x-1">
+                        <span className="px-2.5 py-1 text-xs font-sans font-bold bg-blue-500/10 text-blue-700 dark:text-blue-400 rounded-lg border border-blue-500/20 flex items-center space-x-1">
                           <Clock className="w-3.5 h-3.5" />
                           <span>Submitted</span>
                         </span>
                       )
                     ) : (
-                      <span className="px-2.5 py-1 text-xs font-mono font-bold bg-muted text-muted-foreground rounded-lg border border-border">
+                      <span className="px-2.5 py-1 text-xs font-sans font-bold bg-muted text-muted-foreground rounded-lg border border-border">
                         Not Submitted
                       </span>
                     )}
-                    <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-pink-700 dark:group-hover:text-pink-400 transition-colors" />
+                    <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
                   </div>
                 </div>
               );
@@ -204,30 +228,26 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
         </div>
 
         {/* Modal: Create Assignment */}
-        {isCreateModalOpen && (
-          <div className="fixed inset-0 z-50 overflow-hidden flex items-center justify-center p-4">
-            <div
-              className="fixed inset-0 overlay-backdrop animate-fade-in cursor-pointer"
-              onClick={() => setIsCreateModalOpen(false)}
-            />
-
-            <div
-              className="w-full max-w-lg bg-card border border-border rounded-2xl shadow-elevated overflow-hidden z-10 flex flex-col max-h-[90vh] animate-scale-in"
-              onClick={e => e.stopPropagation()}
-            >
+        <AnimatedModal
+          isOpen={isCreateModalOpen}
+          onClose={() => setIsCreateModalOpen(false)}
+          panelClassName="w-full max-w-lg bg-card border border-border rounded-2xl shadow-elevated overflow-hidden z-10 flex flex-col max-h-[90vh]"
+        >
+          {({ startClose }) => (
+            <>
               {/* Header */}
               <div className="px-6 py-4 border-b border-border bg-muted/40 flex items-center justify-between">
                 <div className="flex items-center space-x-2">
-                  <div className="p-2 rounded-lg bg-pink-500/10 text-pink-700 dark:text-pink-400 border border-pink-500/20">
+                  <div className="p-2 rounded-lg bg-primary/10 text-primary border border-primary/20">
                     <Plus className="w-4 h-4" />
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-foreground">Create New Assignment</h3>
-                    <p className="text-[10px] font-mono text-muted-foreground">OBE Course Assessment Milestone</p>
+                    <p className="text-[10px] font-sans text-muted-foreground">OBE Course Assessment Milestone</p>
                   </div>
                 </div>
                 <button
-                  onClick={() => setIsCreateModalOpen(false)}
+                  onClick={startClose}
                   className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
                 >
                   <X className="w-4 h-4" />
@@ -244,7 +264,7 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
                     value={newTitle}
                     onChange={e => setNewTitle(e.target.value)}
                     placeholder="e.g. Lab Exercise 4: React State Architecture"
-                    className="w-full p-2.5 bg-background border border-border rounded-xl text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-pink-600/40 focus:border-pink-600 font-sans"
+                    className="w-full p-2.5 bg-background border border-border rounded-xl text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/40 focus:border-primary font-sans outline-none"
                   />
                 </div>
 
@@ -254,7 +274,7 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
                     <select
                       value={newCategory}
                       onChange={e => setNewCategory(e.target.value)}
-                      className="w-full p-2.5 bg-background border border-border rounded-xl text-foreground"
+                      className="w-full p-2.5 bg-background border border-border hover:border-primary/40 focus:border-primary focus:ring-2 focus:ring-primary/20 rounded-xl text-foreground text-xs font-sans font-medium outline-none shadow-subtle cursor-pointer transition-all"
                     >
                       <option value="Laboratory">Laboratory Exercise</option>
                       <option value="Homework">Problem Set / Homework</option>
@@ -270,7 +290,7 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
                       min={1}
                       value={newPoints}
                       onChange={e => setNewPoints(Number(e.target.value))}
-                      className="w-full p-2.5 bg-background border border-border rounded-xl text-foreground font-mono"
+                      className="w-full p-2.5 bg-background border border-border rounded-xl text-foreground font-sans outline-none"
                     />
                   </div>
                 </div>
@@ -284,7 +304,7 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
                       max={100}
                       value={newWeight}
                       onChange={e => setNewWeight(Number(e.target.value))}
-                      className="w-full p-2.5 bg-background border border-border rounded-xl text-foreground font-mono"
+                      className="w-full p-2.5 bg-background border border-border rounded-xl text-foreground font-sans outline-none"
                     />
                   </div>
 
@@ -294,7 +314,7 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
                       type="datetime-local"
                       value={newDueDate}
                       onChange={e => setNewDueDate(e.target.value)}
-                      className="w-full p-2.5 bg-background border border-border rounded-xl text-foreground font-mono"
+                      className="w-full p-2.5 bg-background border border-border rounded-xl text-foreground font-sans outline-none"
                     />
                   </div>
                 </div>
@@ -306,29 +326,29 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
                     value={newInstructions}
                     onChange={e => setNewInstructions(e.target.value)}
                     placeholder="Describe laboratory objectives, submission format, and rubric expectations..."
-                    className="w-full p-2.5 bg-background border border-border rounded-xl text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-pink-600/40 focus:border-pink-600 font-sans"
+                    className="w-full p-2.5 bg-background border border-border rounded-xl text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/40 focus:border-primary font-sans outline-none"
                   />
                 </div>
 
                 <div className="pt-3 border-t border-border flex items-center justify-end space-x-2">
                   <button
                     type="button"
-                    onClick={() => setIsCreateModalOpen(false)}
+                    onClick={startClose}
                     className="px-4 py-2 text-xs font-bold text-muted-foreground hover:bg-muted rounded-xl transition-colors cursor-pointer"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 text-xs font-bold bg-pink-700 hover:bg-pink-800 active:scale-[0.98] text-white rounded-xl shadow-card transition-all cursor-pointer"
+                    className="px-4 py-2 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl shadow-subtle transition-all cursor-pointer"
                   >
                     Publish Assignment
                   </button>
                 </div>
               </form>
-            </div>
-          </div>
-        )}
+            </>
+          )}
+        </AnimatedModal>
       </div>
     );
   }
@@ -338,10 +358,18 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
     <div className="space-y-6 max-w-5xl animate-fade-in">
       <div className="flex items-center justify-between">
         <button
-          onClick={() => onSelectAssignment(null)}
-          className="text-xs font-bold text-muted-foreground hover:text-foreground transition-colors flex items-center space-x-1 cursor-pointer"
+          type="button"
+          onClick={() => {
+            if (onBackToModules) {
+              onBackToModules();
+            } else {
+              onSelectAssignment(null);
+            }
+          }}
+          className="text-xs font-bold text-muted-foreground hover:text-foreground transition-colors flex items-center space-x-1.5 cursor-pointer"
         >
-          <span>← Back to Assignments List</span>
+          <ArrowLeft className="w-3.5 h-3.5" />
+          <span>{onBackToModules ? 'Back to Modules' : 'Back to Assignments List'}</span>
         </button>
 
         {(activeRole === 'faculty' || activeRole === 'admin') && (
@@ -350,7 +378,7 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
               onClick={() => {
                 const sub = db.submissions.find(s => s.assignmentId === selectedAssignment.id);
                 if (sub) openSpeedGrader(sub.id);
-                else alert("No student submissions yet for this assignment.");
+                else showAlert("No student submissions yet for this assignment.");
               }}
               className="px-3 py-1.5 text-xs font-bold bg-muted hover:bg-muted/80 text-foreground border border-border rounded-xl transition-colors cursor-pointer"
             >
@@ -372,10 +400,10 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
         <div className="flex justify-between items-start">
           <div>
             <div className="flex items-center space-x-2">
-              <span className="px-2.5 py-0.5 text-[10px] font-mono font-bold uppercase bg-pink-500/10 text-pink-700 dark:text-pink-400 rounded-md border border-pink-500/20">
+              <span className="px-2.5 py-0.5 text-[10px] font-sans font-bold uppercase bg-primary/10 text-primary rounded-md border border-primary/20">
                 {selectedAssignment.category}
               </span>
-              <span className="text-xs font-mono text-muted-foreground">
+              <span className="text-xs font-sans text-muted-foreground">
                 Weight: {selectedAssignment.weight}% of Final Grade
               </span>
             </div>
@@ -385,15 +413,15 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
           </div>
 
           <div className="text-right">
-            <div className="text-2xl font-extrabold font-mono text-foreground">
+            <div className="text-2xl font-extrabold font-sans text-foreground">
               {selectedAssignment.pointsPossible}
             </div>
-            <div className="text-[10px] font-mono text-muted-foreground uppercase">Points Possible</div>
+            <div className="text-[10px] font-sans text-muted-foreground uppercase">Points Possible</div>
           </div>
         </div>
 
         {/* Due Date & Submission Type */}
-        <div className="flex flex-wrap gap-4 py-3 border-y border-border text-xs font-mono text-muted-foreground">
+        <div className="flex flex-wrap gap-4 py-3 border-y border-border text-xs font-sans text-muted-foreground">
           <div>
             <span className="font-bold text-foreground">Due Date: </span>
             <span>{new Date(selectedAssignment.dueDate).toLocaleString()}</span>
@@ -428,12 +456,12 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
               <div key={criterion.id} className="p-3.5 bg-muted/40 rounded-xl border border-border space-y-2">
                 <div className="flex justify-between items-start">
                   <span className="font-bold text-foreground text-xs">{criterion.title}</span>
-                  <span className="font-mono text-pink-700 dark:text-pink-400 font-bold text-xs">{criterion.points} pts</span>
+                  <span className="font-sans text-primary font-bold text-xs">{criterion.points} pts</span>
                 </div>
                 <p className="text-[11px] text-muted-foreground leading-relaxed">{criterion.description}</p>
                 <div className="flex gap-1.5 pt-1">
                   {criterion.ratings.map(r => (
-                    <div key={r.points} className="p-1.5 bg-card border border-border rounded-lg text-[10px] font-mono flex-1 text-center">
+                    <div key={r.points} className="p-1.5 bg-card border border-border rounded-lg text-[10px] font-sans flex-1 text-center">
                       <div className="font-bold text-foreground">{r.points} pts</div>
                       <div className="text-muted-foreground truncate">{r.description}</div>
                     </div>
@@ -452,16 +480,16 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
             <span>Your Submission Status</span>
             {currentSubmission ? (
               currentSubmission.status === 'graded' ? (
-                <span className="px-3 py-1 text-xs font-mono font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 rounded-lg border border-emerald-500/20">
+                <span className="px-3 py-1 text-xs font-sans font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 rounded-lg border border-emerald-500/20">
                   Evaluated: {currentSubmission.grade} / {selectedAssignment.pointsPossible} pts
                 </span>
               ) : (
-                <span className="px-3 py-1 text-xs font-mono font-bold bg-blue-500/10 text-blue-700 dark:text-blue-400 rounded-lg border border-blue-500/20">
+                <span className="px-3 py-1 text-xs font-sans font-bold bg-blue-500/10 text-blue-700 dark:text-blue-400 rounded-lg border border-blue-500/20 flex items-center space-x-1">
                   Submitted • Pending Evaluation
                 </span>
               )
             ) : (
-              <span className="px-3 py-1 text-xs font-mono font-bold bg-amber-500/10 text-amber-700 dark:text-amber-400 rounded-lg border border-amber-500/20">
+              <span className="px-3 py-1 text-xs font-sans font-bold bg-amber-500/10 text-amber-700 dark:text-amber-400 rounded-lg border border-amber-500/20">
                 Awaiting Submission
               </span>
             )}
@@ -475,7 +503,7 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
                 onClick={() => setSubmissionType('online_text')}
                 className={`px-3 py-1.5 rounded-lg font-bold transition-colors cursor-pointer ${
                   submissionType === 'online_text'
-                    ? 'bg-pink-700 text-white shadow-soft'
+                    ? 'bg-primary text-primary-foreground shadow-subtle'
                     : 'bg-muted text-muted-foreground hover:text-foreground'
                 }`}
               >
@@ -486,7 +514,7 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
                 onClick={() => setSubmissionType('file')}
                 className={`px-3 py-1.5 rounded-lg font-bold transition-colors cursor-pointer ${
                   submissionType === 'file'
-                    ? 'bg-pink-700 text-white shadow-soft'
+                    ? 'bg-primary text-primary-foreground shadow-subtle'
                     : 'bg-muted text-muted-foreground hover:text-foreground'
                 }`}
               >
@@ -504,7 +532,7 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
                   value={textContent}
                   onChange={e => setTextContent(e.target.value)}
                   placeholder="Paste your source code, laboratory answers, or Git repository URL here..."
-                  className="w-full p-3 rounded-xl border border-border bg-background font-mono text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-pink-600/40 focus:border-pink-600 text-xs"
+                  className="w-full p-3 rounded-xl border border-border bg-background font-sans text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/40 focus:border-primary text-xs outline-none"
                 />
               </div>
             ) : (
@@ -522,9 +550,9 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
                     value={simulatedFileName}
                     onChange={e => setSimulatedFileName(e.target.value)}
                     placeholder="e.g. CMSC131_Lab4_JayveeReyes_2021-SLUC-0492.pdf"
-                    className="max-w-md mx-auto p-2.5 border border-border rounded-xl font-mono text-center w-full bg-background text-xs"
+                    className="max-w-md mx-auto p-2.5 border border-border rounded-xl font-sans text-center w-full bg-background text-xs outline-none"
                   />
-                  <div className="text-[10px] text-muted-foreground font-mono">
+                  <div className="text-[10px] text-muted-foreground font-sans">
                     Allowed types: PDF, DOCX, ZIP (Max 25MB)
                   </div>
                 </div>
@@ -535,7 +563,7 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="px-5 py-2.5 text-xs font-bold bg-pink-700 hover:bg-pink-800 active:scale-[0.98] text-white rounded-xl transition-all shadow-card flex items-center space-x-2 cursor-pointer disabled:opacity-50"
+                className="px-5 py-2.5 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all shadow-primary-sm flex items-center space-x-2 cursor-pointer disabled:opacity-50"
               >
                 <Send className="w-3.5 h-3.5" />
                 <span>{currentSubmission ? 'Resubmit Assignment' : 'Submit Assignment to GABAY'}</span>

@@ -12,47 +12,47 @@ interface RoleGuardProps {
 export const RoleGuard: React.FC<RoleGuardProps> = ({
   allowedRoles,
   children,
-  fallbackMessage = "Access Restricted: This feature or tool is reserved for authorized faculty and academic administrators under DMMMSU institutional policy."
+  fallbackMessage = "Access Restricted: This feature or tool is reserved for authorized faculty and academic administrators."
 }) => {
   const { activeRole, setIsRoleModalOpen } = useLMS();
 
   if (!allowedRoles.includes(activeRole)) {
     return (
-      <div className="p-8 max-w-3xl mx-auto my-12 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-sm">
+      <div className="p-8 max-w-3xl mx-auto my-12 bg-card border border-border rounded-2xl shadow-subtle">
         <div className="flex items-start space-x-4">
-          <div className="p-3 bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-400 rounded-lg shrink-0">
+          <div className="p-3 bg-primary/10 text-primary border border-primary/20 rounded-xl shrink-0 shadow-soft">
             <ShieldAlert className="w-8 h-8" />
           </div>
           <div className="space-y-3">
             <div>
-              <span className="px-2 py-0.5 text-xs font-mono font-bold uppercase tracking-wider bg-pink-100 dark:bg-pink-950 text-pink-800 dark:text-pink-300 rounded border border-pink-200 dark:border-pink-800">
+              <span className="px-2.5 py-1 text-xs font-sans font-bold uppercase tracking-wider bg-primary/10 text-primary rounded-lg border border-primary/20">
                 HTTP 403 / RBAC RESTRICTION
               </span>
-              <h2 className="text-xl font-bold text-zinc-900 dark:text-zinc-100 mt-2">
+              <h2 className="text-xl font-extrabold text-foreground mt-2">
                 Access Restricted
               </h2>
             </div>
 
-            <p className="text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed">
+            <p className="text-sm text-muted-foreground leading-relaxed">
               {fallbackMessage}
             </p>
 
-            <div className="p-3 bg-zinc-50 dark:bg-zinc-950 rounded border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-500 dark:text-zinc-400 space-y-1">
-              <div>Current Role: <span className="font-bold text-zinc-800 dark:text-zinc-200 uppercase">{activeRole}</span></div>
-              <div>Required Roles: <span className="font-bold text-zinc-800 dark:text-zinc-200 uppercase">{allowedRoles.join(', ')}</span></div>
-              <div>Compliance Guard: <span className="text-zinc-700 dark:text-zinc-300">RA 10173 Philippine Data Privacy Act & CHED CMO 25 s. 2015</span></div>
+            <div className="p-3.5 bg-muted/30 rounded-xl border border-border text-xs font-sans text-muted-foreground space-y-1">
+              <div>Current Role: <span className="font-bold text-foreground uppercase">{activeRole}</span></div>
+              <div>Required Roles: <span className="font-bold text-foreground uppercase">{allowedRoles.join(', ')}</span></div>
+              <div>Compliance Guard: <span className="text-foreground">RA 10173 Philippine Data Privacy Act & CHED CMO 25 s. 2015</span></div>
             </div>
 
             <div className="pt-2 flex items-center space-x-3">
               <button
                 onClick={() => setIsRoleModalOpen(true)}
-                className="px-4 py-2 text-xs font-semibold bg-pink-700 hover:bg-pink-800 text-white rounded transition-colors shadow-sm"
+                className="px-4 py-2 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all shadow-primary-sm active:scale-[0.98] cursor-pointer"
               >
                 Switch Role to Test
               </button>
               <button
                 onClick={() => window.history.back()}
-                className="inline-flex items-center space-x-1.5 px-4 py-2 text-xs font-semibold border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                className="inline-flex items-center space-x-1.5 px-4 py-2 text-xs font-bold border border-border text-foreground rounded-xl hover:bg-muted transition-colors cursor-pointer"
               >
                 <ArrowLeft className="w-4 h-4" />
                 <span>Return Back</span>

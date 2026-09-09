@@ -40,17 +40,6 @@
       "studentId": "2021-SLUC-0492",
       "department": "BS Computer Science",
       "title": "4th Year Student (Thesis Track)"
-    },
-    {
-      "id": "usr-stud-2",
-      "name": "Student 2",
-      "email": "student2@dmmmsu.edu.ph",
-      "role": "student",
-      "password": "gabay2026",
-      "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80",
-      "studentId": "2021-SLUC-0518",
-      "department": "BS Computer Science",
-      "title": "4th Year Student"
     }
   ],
   "courses": [
@@ -64,6 +53,7 @@
       "instructorName": "Faculty 1",
       "published": true,
       "color": "#065f46",
+      "image": "https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=800&auto=format&fit=crop&q=80",
       "enrolledCount": 38,
       "credits": 3,
       "chedComplianceCode": "CHED CMO 25 s. 2015 - Sec 8.2"
@@ -78,6 +68,7 @@
       "instructorName": "Faculty 1",
       "published": true,
       "color": "#be185d",
+      "image": "https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=800&auto=format&fit=crop&q=80",
       "enrolledCount": 34,
       "credits": 3,
       "chedComplianceCode": "CHED CMO 25 s. 2015 - Sec 8.1"
@@ -92,6 +83,7 @@
       "instructorName": "Faculty 1",
       "published": true,
       "color": "#1e3a8a",
+      "image": "https://images.unsplash.com/photo-1620712943543-bcc4688e7485?w=800&auto=format&fit=crop&q=80",
       "enrolledCount": 40,
       "credits": 3,
       "chedComplianceCode": "CHED CMO 25 s. 2015 - Sec 9.4"
@@ -106,6 +98,7 @@
       "instructorName": "Dean 1",
       "published": false,
       "color": "#b45309",
+      "image": "https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=800&auto=format&fit=crop&q=80",
       "enrolledCount": 22,
       "credits": 3,
       "chedComplianceCode": "CHED CMO 25 s. 2015 - Sec 11.0"
@@ -150,6 +143,47 @@
           "quizId": "quiz-131-1",
           "completed": true
         }
+      ],
+      "comments": [
+        {
+          "id": "mcom-131-1",
+          "moduleId": "mod-131-1",
+          "authorId": "usr-stud-1",
+          "authorName": "Student 1",
+          "authorAvatar": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80",
+          "authorRole": "student",
+          "content": "For the React 18 persistence milestone, do we also need to store advising slots or just assignments and submissions?",
+          "createdAt": "2026-09-08T10:30:00Z",
+          "likes": 2,
+          "likedBy": ["usr-fac-1"],
+          "isEdited": true,
+          "editedAt": "2026-09-08T10:45:00Z"
+        },
+        {
+          "id": "mcom-131-2",
+          "moduleId": "mod-131-1",
+          "authorId": "usr-fac-1",
+          "authorName": "Faculty 1",
+          "authorAvatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80",
+          "authorRole": "faculty",
+          "content": "Focus primarily on the module items, assignments, and speedgrader state. Advising slots can remain in memory or synchronize as optional.",
+          "createdAt": "2026-09-08T11:15:00Z",
+          "likes": 4,
+          "likedBy": ["usr-stud-1"]
+        },
+        {
+          "id": "mcom-131-del",
+          "moduleId": "mod-131-1",
+          "authorId": "usr-stud-1",
+          "authorName": "Student 1",
+          "authorAvatar": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80",
+          "authorRole": "student",
+          "content": "This comment was deleted by the author.",
+          "createdAt": "2026-09-08T09:10:00Z",
+          "likes": 0,
+          "isDeleted": true,
+          "deletedAt": "2026-09-08T09:25:00Z"
+        }
       ]
     },
     {
@@ -167,6 +201,9 @@
           "required": true,
           "completionCondition": "view",
           "content": "Academic management systems require high-contrast color palettes, tabular data readability, WCAG 2.1 AA compliance, and zero superfluous decorative elements.",
+          "fileName": "CHED-CMO-25-Series-2015-Standards.pdf",
+          "fileSize": "2.4 MB",
+          "fileType": "pdf",
           "completed": false
         },
         {
@@ -178,6 +215,20 @@
           "completionCondition": "submit",
           "assignmentId": "asg-131-2",
           "completed": false
+        }
+      ],
+      "comments": [
+        {
+          "id": "mcom-131-3",
+          "moduleId": "mod-131-2",
+          "authorId": "usr-fac-1",
+          "authorName": "Faculty 1",
+          "authorAvatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80",
+          "authorRole": "faculty",
+          "content": "Please review the attached CHED CMO 25 guidelines PDF carefully before starting Milestone 2.",
+          "createdAt": "2026-09-08T14:00:00Z",
+          "likes": 3,
+          "likedBy": ["usr-stu-1"]
         }
       ]
     },
@@ -360,21 +411,6 @@
           "text": "Thank you Faculty 1! I will address the minor contrast padding issue in Milestone 2."
         }
       ]
-    },
-    {
-      "id": "sub-131-1-camille",
-      "assignmentId": "asg-131-1",
-      "courseId": "crs-cmsc131",
-      "studentId": "usr-stud-2",
-      "studentName": "Student 2",
-      "studentAvatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80",
-      "submittedAt": "2026-09-15T21:40:00",
-      "submissionType": "online_text",
-      "content": "Submitted GABAY LMS Module design specification. Includes client state sync and responsive sidebar navigation.",
-      "fileName": "CMSC131_Lab1_CamilleFlores.docx",
-      "status": "submitted",
-      "rubricScores": {},
-      "comments": []
     }
   ],
   "quizzes": [
@@ -583,6 +619,272 @@
       "rating": 5.0,
       "tags": ["Capstone", "Thesis", "Rubric", "Evaluation"],
       "chedAlignment": "CMO 25 s. 2015 - Section 11.0"
+    }
+  ],
+  "announcements": [
+    {
+      "id": "ann-131-1",
+      "courseId": "crs-cmsc131",
+      "title": "Welcome to CMSC 131: Web Engineering & Frameworks (AY 2026-2027)",
+      "content": "Welcome class! Please review our syllabus and install Node.js (v20+), Git, and VS Code. Our first lab session will focus on single-page architecture and reactive state stores. Feel free to leave any questions below.",
+      "authorId": "usr-fac-1",
+      "authorName": "Faculty 1",
+      "authorAvatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80",
+      "authorRole": "faculty",
+      "createdAt": "2026-09-02T08:30:00Z",
+      "sectionRestriction": "All Sections",
+      "allowComments": true,
+      "usersMustPostBeforeReplies": false,
+      "allowLiking": true,
+      "likes": 12,
+      "likedBy": ["usr-stud-1"],
+      "pinned": true,
+      "attachments": [
+        { "name": "CMSC131_Course_Orientation.pdf", "size": "1.8 MB" }
+      ],
+      "readBy": ["usr-fac-1", "usr-stud-1"],
+      "replies": [
+        {
+          "id": "rep-ann-1",
+          "announcementId": "ann-131-1",
+          "authorId": "usr-stud-1",
+          "authorName": "Student 1",
+          "authorAvatar": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80",
+          "authorRole": "student",
+          "content": "Good morning Professor! Will we be allowed to use TypeScript for all our milestone submissions?",
+          "createdAt": "2026-09-02T09:15:00Z",
+          "likes": 3,
+          "likedBy": ["usr-fac-1"]
+        },
+        {
+          "id": "rep-ann-2",
+          "announcementId": "ann-131-1",
+          "authorId": "usr-fac-1",
+          "authorName": "Faculty 1",
+          "authorAvatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80",
+          "authorRole": "faculty",
+          "content": "Yes! TypeScript is strongly recommended and will earn additional clean-code bonus points in the rubrics.",
+          "createdAt": "2026-09-02T09:40:00Z",
+          "likes": 5,
+          "likedBy": ["usr-stud-1"]
+        }
+      ]
+    },
+    {
+      "id": "ann-131-2",
+      "courseId": "crs-cmsc131",
+      "title": "Reminder: Midterm Project Teams & Topic Declarations",
+      "content": "Please finalize your capstone project partners by this Friday 11:59 PM. Each group must have 3 to 4 members. Ensure your team leads post your selected project scope in the Discussions board.",
+      "authorId": "usr-fac-1",
+      "authorName": "Faculty 1",
+      "authorAvatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80",
+      "authorRole": "faculty",
+      "createdAt": "2026-09-07T14:00:00Z",
+      "sectionRestriction": "BSCS 4-1",
+      "allowComments": true,
+      "usersMustPostBeforeReplies": false,
+      "allowLiking": true,
+      "likes": 7,
+      "likedBy": [],
+      "pinned": false,
+      "readBy": ["usr-fac-1"],
+      "replies": []
+    }
+  ],
+  "discussions": [
+    {
+      "id": "disc-131-1",
+      "courseId": "crs-cmsc131",
+      "title": "Discussion 1: Client-Side vs Server-Side Rendering (SSR) in Modern SPAs",
+      "prompt": "Evaluate the trade-offs between Client-Side Rendering (CSR), Server-Side Rendering (SSR), and Static Site Generation (SSG). Which architecture would you recommend for an institutional LMS like GABAY that integrates with Likha ERP and requires real-time offline sync? Justify your choice with at least two architectural considerations (TTFB, caching, SEO, or security).",
+      "authorId": "usr-fac-1",
+      "authorName": "Faculty 1",
+      "authorAvatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80",
+      "authorRole": "faculty",
+      "createdAt": "2026-09-03T10:00:00Z",
+      "isGraded": true,
+      "pointsPossible": 25,
+      "dueDate": "2026-09-18T23:59:00Z",
+      "pinned": true,
+      "locked": false,
+      "usersMustPostBeforeReplies": true,
+      "groupAssignment": "All Students",
+      "replies": [
+        {
+          "id": "drep-1",
+          "discussionId": "disc-131-1",
+          "authorId": "usr-stud-1",
+          "authorName": "Student 1",
+          "authorAvatar": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80",
+          "authorRole": "student",
+          "content": "For GABAY LMS, a hybrid approach (SSR with client-side hydration) offers the best balance. Initial page loads benefit from pre-rendered shells with zero blank screen time, while authenticated state synchronization with Likha ERP can operate over client-side WebSocket/REST workers with local indexedDB offline caching.",
+          "createdAt": "2026-09-04T15:30:00Z",
+          "likes": 4,
+          "likedBy": ["usr-fac-1"]
+        },
+        {
+          "id": "drep-2",
+          "discussionId": "disc-131-1",
+          "parentId": "drep-1",
+          "authorId": "usr-fac-1",
+          "authorName": "Faculty 1",
+          "authorAvatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80",
+          "authorRole": "faculty",
+          "content": "Excellent synthesis! How would you mitigate the cold-start latency when serverless functions hydrate the session tokens?",
+          "createdAt": "2026-09-05T09:10:00Z",
+          "likes": 2,
+          "likedBy": ["usr-stud-1"]
+        }
+      ]
+    },
+    {
+      "id": "disc-131-2",
+      "courseId": "crs-cmsc131",
+      "title": "Open Q&A: Vite Build Optimizations & TailwindCSS V4 Integration",
+      "prompt": "Use this open thread to ask questions, share configuration recipes, and troubleshoot local development issues with Vite plugins, PostCSS, or TailwindCSS classes.",
+      "authorId": "usr-fac-1",
+      "authorName": "Faculty 1",
+      "authorAvatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80",
+      "authorRole": "faculty",
+      "createdAt": "2026-09-06T11:00:00Z",
+      "isGraded": false,
+      "pinned": false,
+      "locked": false,
+      "usersMustPostBeforeReplies": false,
+      "groupAssignment": "All Students",
+      "replies": []
+    }
+  ],
+  "courseFolders": [
+    {
+      "id": "fld-131-lectures",
+      "courseId": "crs-cmsc131",
+      "name": "01 Lecture Slides & Handouts",
+      "parentId": null,
+      "updatedAt": "2026-09-05T10:00:00Z"
+    },
+    {
+      "id": "fld-131-labs",
+      "courseId": "crs-cmsc131",
+      "name": "02 Lab Manuals & Code Templates",
+      "parentId": null,
+      "updatedAt": "2026-09-06T14:30:00Z"
+    },
+    {
+      "id": "fld-131-syllabus",
+      "courseId": "crs-cmsc131",
+      "name": "03 Syllabus & Policies",
+      "parentId": null,
+      "updatedAt": "2026-09-01T08:00:00Z"
+    }
+  ],
+  "courseFiles": [
+    {
+      "id": "file-131-1",
+      "courseId": "crs-cmsc131",
+      "folderId": "fld-131-syllabus",
+      "name": "CMSC131_Official_Syllabus_AY2026.pdf",
+      "size": 2480000,
+      "formattedSize": "2.4 MB",
+      "type": "pdf",
+      "visibility": "published",
+      "updatedAt": "2026-09-01T08:15:00Z",
+      "uploadedBy": "usr-fac-1",
+      "uploadedByName": "Faculty 1",
+      "content": "%PDF-1.7 GABAY Syllabus Specification\nCourse: CMSC 131 Web Engineering & Frameworks\nTerm: 1st Sem AY 2026-2027\nInstructor: Associate Professor I\nCredits: 3 Units Lecture + Lab\nCompliance: CHED CMO 25 s. 2015 Section 8.2"
+    },
+    {
+      "id": "file-131-2",
+      "courseId": "crs-cmsc131",
+      "folderId": "fld-131-lectures",
+      "name": "Lecture_01_Modern_SPA_Architecture.pdf",
+      "size": 5320000,
+      "formattedSize": "5.1 MB",
+      "type": "pdf",
+      "visibility": "published",
+      "updatedAt": "2026-09-05T10:30:00Z",
+      "uploadedBy": "usr-fac-1",
+      "uploadedByName": "Faculty 1",
+      "content": "%PDF-1.7 Lecture 01 Slides\nSingle Page Applications (SPA)\n- Reactive Component Graphs\n- Virtual DOM Diffing Algorithms\n- Unidirectional Data Flow & State Machines"
+    },
+    {
+      "id": "file-131-3",
+      "courseId": "crs-cmsc131",
+      "folderId": "fld-131-labs",
+      "name": "Lab_01_FullStack_React_Vite.pdf",
+      "size": 1840000,
+      "formattedSize": "1.8 MB",
+      "type": "pdf",
+      "visibility": "published",
+      "updatedAt": "2026-09-06T14:45:00Z",
+      "uploadedBy": "usr-fac-1",
+      "uploadedByName": "Faculty 1",
+      "content": "%PDF-1.7 Lab 01 Instructions\nGoal: Construct a reactive dashboard using TypeScript, Vite, and TailwindCSS.\nDeliverable: ZIP file containing src/ directory and README.md with setup guide."
+    },
+    {
+      "id": "file-131-4",
+      "courseId": "crs-cmsc131",
+      "folderId": "fld-131-labs",
+      "name": "starter_boilerplate_v1.0.zip",
+      "size": 12840000,
+      "formattedSize": "12.2 MB",
+      "type": "archive",
+      "visibility": "published",
+      "updatedAt": "2026-09-06T15:00:00Z",
+      "uploadedBy": "usr-fac-1",
+      "uploadedByName": "Faculty 1"
+    },
+    {
+      "id": "file-131-5",
+      "courseId": "crs-cmsc131",
+      "folderId": null,
+      "name": "Midterm_Exam_Draft_Questions.docx",
+      "size": 420000,
+      "formattedSize": "420 KB",
+      "type": "document",
+      "visibility": "unpublished",
+      "updatedAt": "2026-09-08T11:20:00Z",
+      "uploadedBy": "usr-fac-1",
+      "uploadedByName": "Faculty 1"
+    },
+    {
+      "id": "file-131-6",
+      "courseId": "crs-cmsc131",
+      "folderId": null,
+      "name": "Midterm_Solution_Key_Restricted.pdf",
+      "size": 890000,
+      "formattedSize": "890 KB",
+      "type": "pdf",
+      "visibility": "restricted",
+      "updatedAt": "2026-09-08T16:00:00Z",
+      "uploadedBy": "usr-fac-1",
+      "uploadedByName": "Faculty 1"
+    },
+    {
+      "id": "file-user-stud-1",
+      "courseId": "user-usr-stud-1",
+      "folderId": null,
+      "name": "Student1_Lab1_Submission_Archive.zip",
+      "size": 3140000,
+      "formattedSize": "3.0 MB",
+      "type": "archive",
+      "visibility": "published",
+      "updatedAt": "2026-09-07T21:40:00Z",
+      "uploadedBy": "usr-stud-1",
+      "uploadedByName": "Student 1"
+    },
+    {
+      "id": "file-user-stud-2",
+      "courseId": "user-usr-stud-1",
+      "folderId": null,
+      "name": "Thesis_Chapter1_Draft_Final.docx",
+      "size": 1120000,
+      "formattedSize": "1.1 MB",
+      "type": "document",
+      "visibility": "published",
+      "updatedAt": "2026-09-08T09:10:00Z",
+      "uploadedBy": "usr-stud-1",
+      "uploadedByName": "Student 1"
     }
   ]
 }

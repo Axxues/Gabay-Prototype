@@ -14,7 +14,7 @@ interface FacultyGradebookProps {
 }
 
 export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) => {
-  const { db, gradeSubmission, openSpeedGrader } = useLMS();
+  const { db, gradeSubmission, openSpeedGrader, showAlert } = useLMS();
 
   const course = db.courses.find(c => c.id === courseId);
   const courseAssignments = db.assignments.filter(a => a.courseId === courseId);
@@ -42,7 +42,11 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) 
   };
 
   const handleExportCSV = () => {
-    alert("Exporting official GABAY Gradebook CSV file for Likha ERP sync...");
+    showAlert({
+      title: "Export Gradebook",
+      message: "Exporting official Gradebook CSV file...",
+      type: "info"
+    });
   };
 
   return (
@@ -51,10 +55,10 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-border gap-4">
         <div>
           <h2 className="heading-3 text-foreground flex items-center space-x-2">
-            <FileSpreadsheet className="w-5 h-5 text-pink-700 dark:text-pink-400" />
-            <span>Faculty Gradebook Matrix</span>
+            <FileSpreadsheet className="w-5 h-5 text-primary" />
+            <span>Gradebook</span>
           </h2>
-          <p className="text-xs text-muted-foreground font-mono">
+          <p className="text-xs text-muted-foreground font-sans">
             {course?.code} ({course?.section}) • High-Density Assessment Grid
           </p>
         </div>
@@ -62,7 +66,7 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) 
         <div className="flex items-center space-x-3">
           <button
             onClick={() => setPostingPolicy(prev => (prev === 'manual' ? 'automatic' : 'manual'))}
-            className="px-3.5 py-2 rounded-xl border border-border text-xs font-mono font-bold flex items-center space-x-2 transition-all bg-card text-foreground hover:bg-muted shadow-soft active:scale-[0.98]"
+            className="px-3.5 py-2 rounded-xl border border-border text-xs font-sans font-bold flex items-center space-x-2 transition-all bg-card text-foreground hover:bg-muted shadow-soft active:scale-[0.98]"
           >
             {postingPolicy === 'manual' ? (
               <>
@@ -79,7 +83,7 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) 
 
           <button
             onClick={handleExportCSV}
-            className="px-4 py-2 text-xs font-bold bg-pink-700 hover:bg-pink-800 text-white rounded-xl transition-all flex items-center space-x-1.5 shadow-subtle active:scale-[0.98]"
+            className="px-4 py-2 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all flex items-center space-x-1.5 shadow-primary-sm active:scale-[0.98]"
           >
             <Download className="w-3.5 h-3.5" />
             <span>Export CSV</span>
@@ -96,7 +100,7 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) 
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             placeholder="Search student by name or ID (e.g. 2021-SLUC)..."
-            className="w-full pl-9 pr-4 py-2.5 bg-card border border-border rounded-xl text-xs font-mono text-foreground focus:outline-hidden focus:ring-2 focus:ring-pink-600/30 shadow-subtle"
+            className="w-full pl-9 pr-4 py-2.5 bg-card border border-border rounded-xl text-xs font-sans text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/30 shadow-subtle"
           />
         </div>
       </div>
@@ -106,7 +110,7 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
-              <tr className="border-b border-border bg-muted/50 font-mono text-muted-foreground">
+              <tr className="border-b border-border bg-muted/50 font-sans text-muted-foreground">
                 <th className="p-3.5 border-r border-border min-w-[220px]">
                   Student Roster Name & ID
                 </th>
@@ -120,7 +124,7 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) 
                     </div>
                   </th>
                 ))}
-                <th className="p-3.5 text-center min-w-[130px] font-bold text-pink-700 dark:text-pink-400">
+                <th className="p-3.5 text-center min-w-[130px] font-bold text-primary">
                   Calculated Total %
                 </th>
               </tr>
@@ -137,7 +141,7 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) 
                         <img src={student.avatar} alt={student.name} className="w-7 h-7 rounded-full object-cover border border-border shadow-soft" />
                         <div>
                           <div>{student.name}</div>
-                          <div className="text-[10px] font-mono text-muted-foreground">{student.studentId || '2021-SLUC-0492'}</div>
+                          <div className="text-[10px] font-sans text-muted-foreground">{student.studentId || '2021-SLUC-0492'}</div>
                         </div>
                       </div>
                     </td>
@@ -162,13 +166,13 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) 
                               value={sub?.grade ?? ''}
                               onChange={e => handleScoreEdit(sub?.id, e.target.value)}
                               placeholder="-"
-                              className="w-16 p-2 bg-background border border-border rounded-lg text-center font-mono text-xs font-bold text-foreground focus:outline-hidden focus:ring-2 focus:ring-pink-600/30 shadow-soft"
+                              className="w-16 p-2 bg-background border border-border rounded-lg text-center font-sans text-xs font-bold text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/30 shadow-soft"
                             />
                             {sub && (
                               <button
                                 title="Open SpeedGrader for this submission"
                                 onClick={() => openSpeedGrader(sub.id)}
-                                className="p-1 text-muted-foreground hover:text-pink-600 transition-colors"
+                                className="p-1 text-muted-foreground hover:text-primary transition-colors"
                               >
                                 <Award className="w-3.5 h-3.5" />
                               </button>
@@ -178,7 +182,7 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) 
                       );
                     })}
 
-                    <td className="p-3.5 text-center font-mono font-extrabold text-sm text-emerald-600 dark:text-emerald-400">
+                    <td className="p-3.5 text-center font-sans font-extrabold text-sm text-emerald-600 dark:text-emerald-400">
                       {totalPossible > 0
                         ? `${Math.round((totalEarned / totalPossible) * 100)}%`
                         : 'N/A'}

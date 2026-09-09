@@ -5,6 +5,7 @@ import type {
   Course,
   Module,
   ModuleItem,
+  ModuleComment,
   Assignment,
   Quiz,
   MockDatabase,
@@ -12,9 +13,17 @@ import type {
   Submission,
   Message,
   AdvisingSlot,
-  HistoryLog
+  HistoryLog,
+  Announcement,
+  AnnouncementReply,
+  Discussion,
+  DiscussionReply,
+  CourseFile,
+  CourseFolder
 } from '../types/lms';
 import initialMockData from '../data/mockData.json';
+import { AlertModal, type AlertModalOptions } from '../components/common/AlertModal';
+import type { OfficialSyllabusData } from '../data/syllabusData';
 
 interface LMSContextType {
   theme: 'dark' | 'light';
@@ -48,6 +57,11 @@ interface LMSContextType {
   isUserProfileModalOpen: boolean;
   setIsUserProfileModalOpen: (open: boolean) => void;
 
+  // Alert & Confirmation Modal
+  showAlert: (options: string | AlertModalOptions, title?: string) => void;
+  showConfirm: (message: string, onConfirm: () => void, title?: string) => void;
+  closeAlert: () => void;
+
   // Real CRUD & Interactive Actions
   createCourse: (course: Partial<Course>) => Course;
   createAssignment: (asg: Partial<Assignment>) => Assignment;
@@ -58,6 +72,7 @@ interface LMSContextType {
   recordQuizSubmission: (quizId: string, studentId: string, score: number, answers: Record<string, string>) => void;
   enrollPerson: (person: Partial<User>, courseId?: string) => void;
   updateSyllabus: (courseId: string, updates: Partial<Course>) => void;
+  updateCourseSyllabus: (courseId: string, syllabus: OfficialSyllabusData) => void;
   importCommonsTemplate: (templateId: string, targetCourseId: string) => { success: boolean; message: string };
 
   gradeSubmission: (
@@ -74,16 +89,47 @@ interface LMSContextType {
   ) => void;
   toggleModulePublish: (moduleId: string) => void;
   toggleItemCompletion: (moduleId: string, itemId: string) => void;
+  addModuleComment: (moduleId: string, content: string) => void;
+  editModuleComment: (moduleId: string, commentId: string, newContent: string) => void;
+  deleteModuleComment: (moduleId: string, commentId: string) => void;
+  toggleLikeModuleComment: (moduleId: string, commentId: string) => void;
   sendMessage: (recipientId: string, subject: string, body: string, courseId?: string) => void;
   bookAdvisingSlot: (slotId: string) => void;
   createAdvisingSlot: (date: string, timeSlot: string, location: string) => void;
   addCalendarEvent: (event: Omit<CalendarEvent, 'id'>) => void;
+  updateCalendarEvent: (id: string, updates: Partial<CalendarEvent>) => void;
+  deleteCalendarEvent: (id: string) => void;
+
+  // Announcements CRUD
+  createAnnouncement: (data: Partial<Announcement>) => Announcement;
+  deleteAnnouncement: (id: string) => void;
+  togglePinAnnouncement: (id: string) => void;
+  toggleLikeAnnouncement: (id: string) => void;
+  addAnnouncementReply: (announcementId: string, content: string) => void;
+  markAnnouncementRead: (id: string) => void;
+
+  // Discussions CRUD
+  createDiscussion: (data: Partial<Discussion>) => Discussion;
+  deleteDiscussion: (id: string) => void;
+  togglePinDiscussion: (id: string) => void;
+  toggleLockDiscussion: (id: string) => void;
+  addDiscussionReply: (discussionId: string, content: string, parentId?: string, attachment?: { name: string; url?: string }) => void;
+  toggleLikeDiscussionReply: (discussionId: string, replyId: string) => void;
+
+  // Course Files & Folders CRUD
+  createCourseFolder: (courseId: string, name: string, parentId?: string | null) => CourseFolder;
+  uploadCourseFile: (fileData: Partial<CourseFile>) => CourseFile;
+  deleteCourseFile: (fileId: string) => void;
+  deleteCourseFolder: (folderId: string) => void;
+  updateFileVisibility: (fileId: string, visibility: 'published' | 'unpublished' | 'restricted') => void;
+  renameCourseFile: (fileId: string, newName: string) => void;
+
   logHistory: (path: string, title: string) => void;
   clearHistory: () => void;
   resetData: () => void;
 }
 
-const STORAGE_KEY_DB = 'gabay_lms_db_v1';
+const STORAGE_KEY_DB = 'gabay_lms_db_v3';
 const STORAGE_KEY_THEME = 'gabay_theme_v1';
 const STORAGE_KEY_SESSION = 'gabay_auth_session_v1';
 
@@ -115,8 +161,54 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (saved) {
       try {
         const parsed = JSON.parse(saved) as MockDatabase;
-        // Keep demo users aligned with latest names
-        parsed.users = initialMockData.users as unknown as User[];
+        // Merge saved users with initialMockData users to ensure base accounts exist and enrolled users persist
+        const existingUserMap = new Map((parsed.users || []).map(u => [u.id, u]));
+        initialMockData.users.forEach(u => {
+          if (!existingUserMap.has(u.id)) {
+            existingUserMap.set(u.id, u as unknown as User);
+          }
+        });
+        parsed.users = Array.from(existingUserMap.values());
+        parsed.submissions = parsed.submissions || [];
+
+        // Ensure announcements, discussions, files fall back to initialMockData if empty
+        const initialMock = initialMockData as unknown as MockDatabase;
+        if (!parsed.announcements || parsed.announcements.length === 0) {
+          parsed.announcements = initialMock.announcements || [];
+        }
+        if (!parsed.discussions || parsed.discussions.length === 0) {
+          parsed.discussions = initialMock.discussions || [];
+        }
+        if (!parsed.courseFiles || parsed.courseFiles.length === 0) {
+          parsed.courseFiles = initialMock.courseFiles || [];
+        }
+        if (!parsed.courseFolders || parsed.courseFolders.length === 0) {
+          parsed.courseFolders = initialMock.courseFolders || [];
+        }
+
+        // Sync sample item attachment and comments if missing in local cache
+        if (parsed.modules && parsed.modules.length > 0) {
+          const mod1 = parsed.modules.find(m => m.id === 'mod-131-1');
+          if (mod1 && (!mod1.comments || mod1.comments.length === 0)) {
+            const initialMod1 = (initialMock.modules || []).find(m => m.id === 'mod-131-1');
+            if (initialMod1?.comments) mod1.comments = initialMod1.comments;
+          }
+
+          const mod2 = parsed.modules.find(m => m.id === 'mod-131-2');
+          if (mod2) {
+            const itm = mod2.items.find(i => i.id === 'item-131-21');
+            if (itm && !itm.fileName) {
+              itm.fileName = 'CHED-CMO-25-Series-2015-Standards.pdf';
+              itm.fileSize = '2.4 MB';
+              itm.fileType = 'pdf';
+            }
+            if (!mod2.comments || mod2.comments.length === 0) {
+              const initialMod2 = (initialMock.modules || []).find(m => m.id === 'mod-131-2');
+              if (initialMod2?.comments) mod2.comments = initialMod2.comments;
+            }
+          }
+        }
+
         return parsed;
       } catch (e) {
         console.error('Failed to parse saved LMS db', e);
@@ -167,7 +259,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!matchedUser) {
       return { 
         success: false, 
-        message: 'No account found with this institutional email or ID.' 
+        message: 'No account found with this email or ID.' 
       };
     }
 
@@ -208,6 +300,39 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isHelpDrawerOpen, setIsHelpDrawerOpen] = useState(false);
   const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
   const [isUserProfileModalOpen, setIsUserProfileModalOpen] = useState(false);
+
+  // Alert & Confirmation Modal state
+  const [alertOptions, setAlertOptions] = useState<AlertModalOptions | null>(null);
+  const [isAlertOpen, setIsAlertOpen] = useState(false);
+
+  const showAlert = (options: string | AlertModalOptions, title?: string) => {
+    if (typeof options === 'string') {
+      setAlertOptions({
+        title: title || 'Notice',
+        message: options,
+        type: 'info'
+      });
+    } else {
+      setAlertOptions(options);
+    }
+    setIsAlertOpen(true);
+  };
+
+  const showConfirm = (message: string, onConfirm: () => void, title?: string) => {
+    setAlertOptions({
+      title: title || 'Confirmation',
+      message,
+      type: 'confirm',
+      confirmText: 'Confirm',
+      cancelText: 'Cancel',
+      onConfirm
+    });
+    setIsAlertOpen(true);
+  };
+
+  const closeAlert = () => {
+    setIsAlertOpen(false);
+  };
 
   // SpeedGrader
   const [activeSpeedGraderSubmissionId, setActiveSpeedGraderSubmissionId] = useState<string | null>(null);
@@ -250,13 +375,14 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       title: courseData.title || 'Advanced Computer Science Topics',
       section: courseData.section || 'BSCS 4-1',
       term: courseData.term || '1st Sem AY 2026-2027',
-      instructorId: courseData.instructorId || activeUser.id,
-      instructorName: courseData.instructorName || activeUser.name,
+      instructorId: activeUser.id,
+      instructorName: activeUser.name,
       published: courseData.published ?? true,
-      color: courseData.color || '#be185d',
+      color: courseData.color !== undefined ? courseData.color : '',
       enrolledCount: courseData.enrolledCount || 1,
       credits: courseData.credits || 3,
-      chedComplianceCode: courseData.chedComplianceCode || 'CMO-25-2015'
+      chedComplianceCode: courseData.chedComplianceCode || 'CMO-25-2015',
+      image: courseData.image || ''
     };
 
     setDb(prev => ({
@@ -366,6 +492,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       content: itemData.content || 'Content guidelines aligned with course syllabus objectives.',
       assignmentId: itemData.assignmentId,
       quizId: itemData.quizId,
+      fileUrl: itemData.fileUrl,
+      fileName: itemData.fileName,
+      fileSize: itemData.fileSize,
+      fileType: itemData.fileType,
       completed: false
     };
 
@@ -468,7 +598,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       avatar: person.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
       studentId: person.studentId || (person.role === 'student' ? `2026-SLUC-${Math.floor(1000 + Math.random() * 9000)}` : undefined),
       department: person.department || 'BS Computer Science',
-      title: person.title || (person.role === 'student' ? 'Enrolled Student' : 'Instructor')
+      title: person.title || (person.role === 'student' ? 'Enrolled Student' : 'Instructor'),
+      enrolledCourseIds: person.enrolledCourseIds || (targetCourseId ? [targetCourseId] : [])
     };
 
     setDb(prev => {
@@ -491,6 +622,13 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setDb(prev => ({
       ...prev,
       courses: prev.courses.map(c => (c.id === courseId ? { ...c, ...updates } : c))
+    }));
+  };
+
+  const updateCourseSyllabus = (courseId: string, syllabus: OfficialSyllabusData) => {
+    setDb(prev => ({
+      ...prev,
+      courses: prev.courses.map(c => (c.id === courseId ? { ...c, syllabus } : c))
     }));
   };
 
@@ -620,6 +758,118 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   };
 
+  const addModuleComment = (moduleId: string, content: string) => {
+    if (!content.trim()) return;
+    const newComment: ModuleComment = {
+      id: `mcom-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      moduleId,
+      authorId: activeUser.id,
+      authorName: activeUser.name,
+      authorAvatar: activeUser.avatar,
+      authorRole: activeRole,
+      content: content.trim(),
+      createdAt: new Date().toISOString(),
+      likes: 0,
+      likedBy: []
+    };
+
+    setDb(prev => ({
+      ...prev,
+      modules: prev.modules.map(mod => {
+        if (mod.id === moduleId) {
+          return {
+            ...mod,
+            comments: [...(mod.comments || []), newComment]
+          };
+        }
+        return mod;
+      })
+    }));
+  };
+
+  const editModuleComment = (moduleId: string, commentId: string, newContent: string) => {
+    if (!newContent.trim()) return;
+    setDb(prev => ({
+      ...prev,
+      modules: prev.modules.map(mod => {
+        if (mod.id === moduleId) {
+          return {
+            ...mod,
+            comments: (mod.comments || []).map(c => {
+              if (c.id === commentId) {
+                // Authority check: only author can edit
+                if (c.authorId !== activeUser.id) return c;
+                return {
+                  ...c,
+                  content: newContent.trim(),
+                  isEdited: true,
+                  editedAt: new Date().toISOString()
+                };
+              }
+              return c;
+            })
+          };
+        }
+        return mod;
+      })
+    }));
+  };
+
+  const deleteModuleComment = (moduleId: string, commentId: string) => {
+    setDb(prev => ({
+      ...prev,
+      modules: prev.modules.map(mod => {
+        if (mod.id === moduleId) {
+          return {
+            ...mod,
+            comments: (mod.comments || []).map(c => {
+              if (c.id === commentId) {
+                // Authority check: only author can delete
+                if (c.authorId !== activeUser.id) return c;
+                return {
+                  ...c,
+                  isDeleted: true,
+                  deletedAt: new Date().toISOString(),
+                  content: 'This comment has been deleted by the author.'
+                };
+              }
+              return c;
+            })
+          };
+        }
+        return mod;
+      })
+    }));
+  };
+
+  const toggleLikeModuleComment = (moduleId: string, commentId: string) => {
+    setDb(prev => ({
+      ...prev,
+      modules: prev.modules.map(mod => {
+        if (mod.id === moduleId) {
+          return {
+            ...mod,
+            comments: (mod.comments || []).map(c => {
+              if (c.id === commentId) {
+                const likedBy = c.likedBy || [];
+                const alreadyLiked = likedBy.includes(activeUser.id);
+                return {
+                  ...c,
+                  likes: alreadyLiked ? Math.max(0, (c.likes || 1) - 1) : (c.likes || 0) + 1,
+                  likedBy: alreadyLiked
+                    ? likedBy.filter(id => id !== activeUser.id)
+                    : [...likedBy, activeUser.id]
+                };
+              }
+              return c;
+            })
+          };
+        }
+        return mod;
+      })
+    }));
+  };
+
   const sendMessage = (recipientId: string, subject: string, body: string, courseId?: string) => {
     const recipient = db.users.find(u => u.id === recipientId);
     if (!recipient) return;
@@ -690,6 +940,316 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   };
 
+  const updateCalendarEvent = (id: string, updates: Partial<CalendarEvent>) => {
+    setDb(prev => ({
+      ...prev,
+      calendarEvents: prev.calendarEvents.map(evt =>
+        evt.id === id ? { ...evt, ...updates } : evt
+      )
+    }));
+  };
+
+  const deleteCalendarEvent = (id: string) => {
+    setDb(prev => ({
+      ...prev,
+      calendarEvents: prev.calendarEvents.filter(evt => evt.id !== id)
+    }));
+  };
+
+  // ==========================================
+  // ANNOUNCEMENTS CRUD
+  // ==========================================
+
+  const createAnnouncement = (data: Partial<Announcement>): Announcement => {
+    const newAnn: Announcement = {
+      id: `ann-${Date.now().toString(36)}`,
+      courseId: data.courseId || activeCourseId || 'crs-cmsc131',
+      title: data.title || 'Untitled Announcement',
+      content: data.content || '',
+      authorId: activeUser.id,
+      authorName: activeUser.name,
+      authorAvatar: activeUser.avatar,
+      authorRole: activeRole,
+      createdAt: new Date().toISOString(),
+      sectionRestriction: data.sectionRestriction || 'All Sections',
+      delayedUntil: data.delayedUntil,
+      allowComments: data.allowComments ?? true,
+      usersMustPostBeforeReplies: data.usersMustPostBeforeReplies ?? false,
+      allowLiking: data.allowLiking ?? true,
+      likes: 0,
+      likedBy: [],
+      pinned: data.pinned ?? false,
+      attachments: data.attachments || [],
+      replies: [],
+      readBy: [activeUser.id]
+    };
+
+    setDb(prev => ({
+      ...prev,
+      announcements: [newAnn, ...(prev.announcements || [])]
+    }));
+    return newAnn;
+  };
+
+  const deleteAnnouncement = (id: string) => {
+    setDb(prev => ({
+      ...prev,
+      announcements: (prev.announcements || []).filter(a => a.id !== id)
+    }));
+  };
+
+  const togglePinAnnouncement = (id: string) => {
+    setDb(prev => ({
+      ...prev,
+      announcements: (prev.announcements || []).map(a =>
+        a.id === id ? { ...a, pinned: !a.pinned } : a
+      )
+    }));
+  };
+
+  const toggleLikeAnnouncement = (id: string) => {
+    setDb(prev => ({
+      ...prev,
+      announcements: (prev.announcements || []).map(a => {
+        if (a.id !== id) return a;
+        const liked = (a.likedBy || []).includes(activeUser.id);
+        const newLikedBy = liked
+          ? (a.likedBy || []).filter(uid => uid !== activeUser.id)
+          : [...(a.likedBy || []), activeUser.id];
+        return {
+          ...a,
+          likedBy: newLikedBy,
+          likes: newLikedBy.length
+        };
+      })
+    }));
+  };
+
+  const addAnnouncementReply = (announcementId: string, content: string) => {
+    const newReply: AnnouncementReply = {
+      id: `rep-${Date.now().toString(36)}`,
+      announcementId,
+      authorId: activeUser.id,
+      authorName: activeUser.name,
+      authorAvatar: activeUser.avatar,
+      authorRole: activeRole,
+      content,
+      createdAt: new Date().toISOString(),
+      likes: 0,
+      likedBy: []
+    };
+
+    setDb(prev => ({
+      ...prev,
+      announcements: (prev.announcements || []).map(a =>
+        a.id === announcementId
+          ? { ...a, replies: [...a.replies, newReply] }
+          : a
+      )
+    }));
+  };
+
+  const markAnnouncementRead = (id: string) => {
+    setDb(prev => ({
+      ...prev,
+      announcements: (prev.announcements || []).map(a => {
+        if (a.id !== id) return a;
+        const readBy = a.readBy || [];
+        if (readBy.includes(activeUser.id)) return a;
+        return { ...a, readBy: [...readBy, activeUser.id] };
+      })
+    }));
+  };
+
+  // ==========================================
+  // DISCUSSIONS CRUD
+  // ==========================================
+
+  const createDiscussion = (data: Partial<Discussion>): Discussion => {
+    const newDisc: Discussion = {
+      id: `disc-${Date.now().toString(36)}`,
+      courseId: data.courseId || activeCourseId || 'crs-cmsc131',
+      title: data.title || 'Untitled Discussion Topic',
+      prompt: data.prompt || '',
+      authorId: activeUser.id,
+      authorName: activeUser.name,
+      authorAvatar: activeUser.avatar,
+      authorRole: activeRole,
+      createdAt: new Date().toISOString(),
+      isGraded: data.isGraded ?? false,
+      pointsPossible: data.pointsPossible,
+      dueDate: data.dueDate,
+      pinned: data.pinned ?? false,
+      locked: data.locked ?? false,
+      usersMustPostBeforeReplies: data.usersMustPostBeforeReplies ?? false,
+      groupAssignment: data.groupAssignment || 'All Students',
+      replies: []
+    };
+
+    setDb(prev => ({
+      ...prev,
+      discussions: [newDisc, ...(prev.discussions || [])]
+    }));
+    return newDisc;
+  };
+
+  const deleteDiscussion = (id: string) => {
+    setDb(prev => ({
+      ...prev,
+      discussions: (prev.discussions || []).filter(d => d.id !== id)
+    }));
+  };
+
+  const togglePinDiscussion = (id: string) => {
+    setDb(prev => ({
+      ...prev,
+      discussions: (prev.discussions || []).map(d =>
+        d.id === id ? { ...d, pinned: !d.pinned } : d
+      )
+    }));
+  };
+
+  const toggleLockDiscussion = (id: string) => {
+    setDb(prev => ({
+      ...prev,
+      discussions: (prev.discussions || []).map(d =>
+        d.id === id ? { ...d, locked: !d.locked } : d
+      )
+    }));
+  };
+
+  const addDiscussionReply = (
+    discussionId: string,
+    content: string,
+    parentId?: string,
+    attachment?: { name: string; url?: string }
+  ) => {
+    const newReply: DiscussionReply = {
+      id: `drep-${Date.now().toString(36)}`,
+      discussionId,
+      parentId,
+      authorId: activeUser.id,
+      authorName: activeUser.name,
+      authorAvatar: activeUser.avatar,
+      authorRole: activeRole,
+      content,
+      createdAt: new Date().toISOString(),
+      likes: 0,
+      likedBy: [],
+      attachments: attachment ? [attachment] : []
+    };
+
+    setDb(prev => ({
+      ...prev,
+      discussions: (prev.discussions || []).map(d =>
+        d.id === discussionId
+          ? { ...d, replies: [...d.replies, newReply] }
+          : d
+      )
+    }));
+  };
+
+  const toggleLikeDiscussionReply = (discussionId: string, replyId: string) => {
+    setDb(prev => ({
+      ...prev,
+      discussions: (prev.discussions || []).map(d => {
+        if (d.id !== discussionId) return d;
+        return {
+          ...d,
+          replies: d.replies.map(r => {
+            if (r.id !== replyId) return r;
+            const liked = (r.likedBy || []).includes(activeUser.id);
+            const newLikedBy = liked
+              ? (r.likedBy || []).filter(uid => uid !== activeUser.id)
+              : [...(r.likedBy || []), activeUser.id];
+            return {
+              ...r,
+              likedBy: newLikedBy,
+              likes: newLikedBy.length
+            };
+          })
+        };
+      })
+    }));
+  };
+
+  // ==========================================
+  // COURSE FILES & FOLDERS CRUD
+  // ==========================================
+
+  const createCourseFolder = (courseId: string, name: string, parentId?: string | null): CourseFolder => {
+    const newFolder: CourseFolder = {
+      id: `fld-${Date.now().toString(36)}`,
+      courseId,
+      name,
+      parentId: parentId || null,
+      updatedAt: new Date().toISOString()
+    };
+    setDb(prev => ({
+      ...prev,
+      courseFolders: [...(prev.courseFolders || []), newFolder]
+    }));
+    return newFolder;
+  };
+
+  const uploadCourseFile = (fileData: Partial<CourseFile>): CourseFile => {
+    const size = fileData.size || 1024 * 512;
+    const formattedSize = fileData.formattedSize || (size > 1048576 ? `${(size / 1048576).toFixed(1)} MB` : `${Math.round(size / 1024)} KB`);
+    const newFile: CourseFile = {
+      id: `file-${Date.now().toString(36)}`,
+      courseId: fileData.courseId || activeCourseId || 'crs-cmsc131',
+      folderId: fileData.folderId || null,
+      name: fileData.name || 'uploaded_asset.pdf',
+      size,
+      formattedSize,
+      type: fileData.type || 'document',
+      visibility: fileData.visibility || 'published',
+      updatedAt: new Date().toISOString(),
+      uploadedBy: activeUser.id,
+      uploadedByName: activeUser.name,
+      content: fileData.content || '',
+      url: fileData.url
+    };
+    setDb(prev => ({
+      ...prev,
+      courseFiles: [...(prev.courseFiles || []), newFile]
+    }));
+    return newFile;
+  };
+
+  const deleteCourseFile = (fileId: string) => {
+    setDb(prev => ({
+      ...prev,
+      courseFiles: (prev.courseFiles || []).filter(f => f.id !== fileId)
+    }));
+  };
+
+  const deleteCourseFolder = (folderId: string) => {
+    setDb(prev => ({
+      ...prev,
+      courseFolders: (prev.courseFolders || []).filter(f => f.id !== folderId && f.parentId !== folderId),
+      courseFiles: (prev.courseFiles || []).filter(f => f.folderId !== folderId)
+    }));
+  };
+
+  const updateFileVisibility = (fileId: string, visibility: 'published' | 'unpublished' | 'restricted') => {
+    setDb(prev => ({
+      ...prev,
+      courseFiles: (prev.courseFiles || []).map(f =>
+        f.id === fileId ? { ...f, visibility } : f
+      )
+    }));
+  };
+
+  const renameCourseFile = (fileId: string, newName: string) => {
+    setDb(prev => ({
+      ...prev,
+      courseFiles: (prev.courseFiles || []).map(f =>
+        f.id === fileId ? { ...f, name: newName, updatedAt: new Date().toISOString() } : f
+      )
+    }));
+  };
+
   const clearHistory = () => {
     setDb(prev => ({
       ...prev,
@@ -730,6 +1290,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsRoleModalOpen,
         isUserProfileModalOpen,
         setIsUserProfileModalOpen,
+        showAlert,
+        showConfirm,
+        closeAlert,
         createCourse,
         createAssignment,
         deleteAssignment,
@@ -739,21 +1302,51 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         recordQuizSubmission,
         enrollPerson,
         updateSyllabus,
+        updateCourseSyllabus,
         importCommonsTemplate,
         gradeSubmission,
         submitAssignment,
         toggleModulePublish,
         toggleItemCompletion,
+        addModuleComment,
+        editModuleComment,
+        deleteModuleComment,
+        toggleLikeModuleComment,
         sendMessage,
         bookAdvisingSlot,
         createAdvisingSlot,
         addCalendarEvent,
+        updateCalendarEvent,
+        deleteCalendarEvent,
+        createAnnouncement,
+        deleteAnnouncement,
+        togglePinAnnouncement,
+        toggleLikeAnnouncement,
+        addAnnouncementReply,
+        markAnnouncementRead,
+        createDiscussion,
+        deleteDiscussion,
+        togglePinDiscussion,
+        toggleLockDiscussion,
+        addDiscussionReply,
+        toggleLikeDiscussionReply,
+        createCourseFolder,
+        uploadCourseFile,
+        deleteCourseFile,
+        deleteCourseFolder,
+        updateFileVisibility,
+        renameCourseFile,
         logHistory,
         clearHistory,
         resetData
       }}
     >
       {children}
+      <AlertModal
+        isOpen={isAlertOpen}
+        options={alertOptions}
+        onClose={closeAlert}
+      />
     </LMSContext.Provider>
   );
 };

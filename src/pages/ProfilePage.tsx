@@ -7,6 +7,7 @@ import {
   GraduationCap,
   Mail,
   Layers,
+  Folder,
   LogOut,
   ArrowLeft,
   Calendar,
@@ -16,9 +17,9 @@ import {
   Sliders,
   ExternalLink,
   Edit3,
-  Save,
-  KeyRound
+  Save
 } from 'lucide-react';
+import { FilesView } from './FilesView';
 
 interface ProfilePageProps {
   onNavigateCourse?: (courseId: string, subTab?: string) => void;
@@ -29,20 +30,20 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
   onNavigateCourse,
   onNavigateTab
 }) => {
-  const { activeUser, activeRole, db, logout } = useLMS();
+  const { activeUser, activeRole, db, logout, showConfirm } = useLMS();
 
   // Active tab within the profile page
-  const [profileTab, setProfileTab] = useState<'overview' | 'courses' | 'preferences' | 'security'>('overview');
+  const [profileTab, setProfileTab] = useState<'overview' | 'courses' | 'files' | 'preferences' | 'security'>('overview');
 
   // Interactive bio editing state
   const [isEditingBio, setIsEditingBio] = useState(false);
   const [bioText, setBioText] = useState(
     activeRole === 'admin'
-      ? 'Overseeing academic programs, faculty curriculum development, and CHED CMO 25 s. 2015 outcome-based education compliance for the College of Computer Science.'
+      ? 'Overseeing academic programs and curriculum development for the College of Computer Science.'
       : activeRole === 'faculty'
-      ? 'Specializing in Theoretical Computer Science, Automata Theory, and High-Performance Distributed Computing Systems at DMMMSU-SLUC.'
+      ? 'Specializing in Theoretical Computer Science, Automata Theory, and High-Performance Distributed Computing Systems.'
       : activeRole === 'staff'
-      ? 'Managing student academic records, section allocations, and Likha ERP registrar synchronization.'
+      ? 'Managing student academic records and section allocations.'
       : 'Undergraduate student in BS Computer Science, specialized in Systems Software and Intelligent Distributed Applications.'
   );
   const [saveAlert, setSaveAlert] = useState(false);
@@ -58,7 +59,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
   const roleBadges: Record<string, { label: string; style: string; icon: React.ReactNode }> = {
     admin: {
       label: 'DEAN / ACADEMIC ADMIN',
-      style: 'bg-pink-500/10 text-pink-700 dark:text-pink-400 border-pink-500/20',
+      style: 'bg-primary/10 text-primary border-primary/20',
       icon: <Building className="w-4 h-4" />
     },
     faculty: {
@@ -94,7 +95,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6 animate-fade-in pb-16 select-none">
-      {/* Top Back Nav & Quick Action Bar */}
+      {/* Top Action Bar */}
       <div className="flex items-center justify-between">
         <button
           onClick={() => onNavigateTab && onNavigateTab('dashboard')}
@@ -105,38 +106,32 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
         </button>
 
         <div className="flex items-center space-x-3">
-          <span className="hidden sm:inline-flex px-3 py-1 rounded-lg bg-pink-500/10 border border-pink-500/20 text-xs font-mono font-bold text-pink-700 dark:text-pink-400">
-            DMMMSU-SLUC Single Sign-On Active
-          </span>
           <button
             onClick={() => {
-              if (confirm("Are you sure you want to sign out of your GABAY LMS session?")) {
+              showConfirm("Are you sure you want to sign out of your GABAY LMS session?", () => {
                 logout();
-              }
+              }, "Sign Out");
             }}
-            className="inline-flex items-center space-x-1.5 text-xs font-bold bg-pink-700 hover:bg-pink-800 active:scale-[0.98] text-white px-3.5 py-2 rounded-xl transition-all shadow-card cursor-pointer"
+            className="inline-flex items-center space-x-1.5 text-xs font-bold bg-destructive hover:bg-destructive/90 active:scale-[0.98] text-destructive-foreground px-3.5 py-2 rounded-xl transition-all shadow-subtle cursor-pointer"
           >
             <LogOut className="w-3.5 h-3.5" />
-            <span>Sign Out Session</span>
+            <span>Sign Out</span>
           </button>
         </div>
       </div>
 
       {/* Main Cover Banner & Profile Card */}
       <div className="bg-card border border-border rounded-2xl shadow-elevated overflow-hidden">
-        {/* Institutional Cover Gradient */}
-        <div className="h-44 bg-gradient-to-r from-pink-900 via-rose-900 to-zinc-950 relative p-6 flex flex-col justify-between">
+        {/* Profile Cover Gradient */}
+        <div className="h-36 bg-gradient-to-r from-primary/90 via-primary to-zinc-900 relative p-6 flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="px-3 py-1 text-[11px] font-mono font-bold uppercase bg-black/40 text-white rounded-lg backdrop-blur-md border border-white/10 shadow-soft">
-              Official Institutional Identity Record • AY 2026-2027
+            <span className="px-3 py-1 text-[11px] font-sans font-bold uppercase bg-black/40 text-white rounded-lg backdrop-blur-md border border-white/10 shadow-soft">
+              Profile
             </span>
             <div className="flex items-center space-x-2">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-xs font-mono font-bold text-white/90">Online</span>
+              <span className="text-xs font-sans font-bold text-white/90">Online</span>
             </div>
-          </div>
-          <div className="text-[11px] font-mono text-white/70">
-            DMMMSU South La Union Campus • College of Computer Science
           </div>
         </div>
 
@@ -153,14 +148,14 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                 <h1 className="text-2xl font-extrabold tracking-tight text-foreground">
                   {currentUser.name}
                 </h1>
-                <p className="text-xs text-muted-foreground font-mono mt-0.5">
+                <p className="text-xs text-muted-foreground font-sans mt-0.5">
                   {currentUser.title} • {currentUser.department}
                 </p>
               </div>
             </div>
 
             <div className="flex items-center space-x-2 mb-2">
-              <div className={`px-3.5 py-1.5 text-xs font-mono font-bold rounded-xl border flex items-center space-x-2 shadow-soft ${badge.style}`}>
+              <div className={`px-3.5 py-1.5 text-xs font-sans font-bold rounded-xl border flex items-center space-x-2 shadow-soft ${badge.style}`}>
                 {badge.icon}
                 <span>{badge.label}</span>
               </div>
@@ -173,55 +168,67 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
               onClick={() => setProfileTab('overview')}
               className={`px-4 py-2.5 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center space-x-2 ${
                 profileTab === 'overview'
-                  ? 'border-pink-600 text-pink-700 dark:text-pink-400 font-extrabold'
+                  ? 'border-primary text-primary font-extrabold'
                   : 'border-transparent text-muted-foreground hover:text-foreground'
               }`}
             >
               <UserCheck className="w-4 h-4" />
-              <span>Academic Overview</span>
+              <span>Overview</span>
             </button>
 
             <button
               onClick={() => setProfileTab('courses')}
               className={`px-4 py-2.5 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center space-x-2 ${
                 profileTab === 'courses'
-                  ? 'border-pink-600 text-pink-700 dark:text-pink-400 font-extrabold'
+                  ? 'border-primary text-primary font-extrabold'
                   : 'border-transparent text-muted-foreground hover:text-foreground'
               }`}
             >
               <Layers className="w-4 h-4" />
-              <span>Course Shell Attachments ({userCourses.length})</span>
+              <span>Courses ({userCourses.length})</span>
+            </button>
+
+            <button
+              onClick={() => setProfileTab('files')}
+              className={`px-4 py-2.5 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center space-x-2 ${
+                profileTab === 'files'
+                  ? 'border-primary text-primary font-extrabold'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Folder className="w-4 h-4" />
+              <span>Personal Files</span>
             </button>
 
             <button
               onClick={() => setProfileTab('preferences')}
               className={`px-4 py-2.5 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center space-x-2 ${
                 profileTab === 'preferences'
-                  ? 'border-pink-600 text-pink-700 dark:text-pink-400 font-extrabold'
+                  ? 'border-primary text-primary font-extrabold'
                   : 'border-transparent text-muted-foreground hover:text-foreground'
               }`}
             >
               <Sliders className="w-4 h-4" />
-              <span>LMS Preferences</span>
+              <span>Preferences</span>
             </button>
 
             <button
               onClick={() => setProfileTab('security')}
               className={`px-4 py-2.5 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center space-x-2 ${
                 profileTab === 'security'
-                  ? 'border-pink-600 text-pink-700 dark:text-pink-400 font-extrabold'
+                  ? 'border-primary text-primary font-extrabold'
                   : 'border-transparent text-muted-foreground hover:text-foreground'
               }`}
             >
               <Lock className="w-4 h-4" />
-              <span>Security & Sessions</span>
+              <span>Security</span>
             </button>
           </div>
         </div>
       </div>
 
       {saveAlert && (
-        <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center space-x-2 text-xs font-mono font-bold text-emerald-700 dark:text-emerald-400 animate-fade-in shadow-soft">
+        <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center space-x-2 text-xs font-sans font-bold text-emerald-700 dark:text-emerald-400 animate-fade-in shadow-soft">
           <CheckCircle2 className="w-4 h-4 shrink-0" />
           <span>Profile changes updated and saved to GABAY session database!</span>
         </div>
@@ -235,32 +242,32 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
             {/* Identity Grid */}
             <div className="bg-card border border-border rounded-2xl p-6 shadow-subtle space-y-4">
               <h3 className="font-bold text-sm text-foreground uppercase tracking-wider text-[11px]">
-                Institutional Identity & Contact Information
+                Identity & Contact Information
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                 <div className="p-3.5 bg-muted/40 rounded-xl border border-border space-y-1">
                   <div className="flex items-center space-x-2 text-muted-foreground font-medium">
-                    <Mail className="w-3.5 h-3.5 text-pink-700 dark:text-pink-400" />
-                    <span>Institutional Email</span>
+                    <Mail className="w-3.5 h-3.5 text-primary" />
+                    <span>Email Address</span>
                   </div>
-                  <div className="font-mono text-foreground font-bold truncate">
+                  <div className="font-sans text-foreground font-bold truncate">
                     {currentUser.email}
                   </div>
                 </div>
 
                 <div className="p-3.5 bg-muted/40 rounded-xl border border-border space-y-1">
                   <div className="flex items-center space-x-2 text-muted-foreground font-medium">
-                    <GraduationCap className="w-3.5 h-3.5 text-pink-700 dark:text-pink-400" />
+                    <GraduationCap className="w-3.5 h-3.5 text-primary" />
                     <span>Official ID Number</span>
                   </div>
-                  <div className="font-mono text-foreground font-bold">
+                  <div className="font-sans text-foreground font-bold">
                     {currentUser.studentId || '2026-FAC-0012'}
                   </div>
                 </div>
 
                 <div className="p-3.5 bg-muted/40 rounded-xl border border-border space-y-1">
                   <div className="flex items-center space-x-2 text-muted-foreground font-medium">
-                    <Building className="w-3.5 h-3.5 text-pink-700 dark:text-pink-400" />
+                    <Building className="w-3.5 h-3.5 text-primary" />
                     <span>Campus Location</span>
                   </div>
                   <div className="font-sans text-foreground font-bold">
@@ -270,10 +277,10 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
 
                 <div className="p-3.5 bg-muted/40 rounded-xl border border-border space-y-1">
                   <div className="flex items-center space-x-2 text-muted-foreground font-medium">
-                    <Calendar className="w-3.5 h-3.5 text-pink-700 dark:text-pink-400" />
+                    <Calendar className="w-3.5 h-3.5 text-primary" />
                     <span>Academic Term</span>
                   </div>
-                  <div className="font-mono text-foreground font-bold">
+                  <div className="font-sans text-foreground font-bold">
                     1st Semester AY 2026-2027
                   </div>
                 </div>
@@ -289,7 +296,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                 {!isEditingBio && (
                   <button
                     onClick={() => setIsEditingBio(true)}
-                    className="inline-flex items-center space-x-1.5 text-xs font-bold text-pink-700 dark:text-pink-400 hover:underline cursor-pointer"
+                    className="inline-flex items-center space-x-1.5 text-xs font-bold text-primary hover:underline cursor-pointer"
                   >
                     <Edit3 className="w-3.5 h-3.5" />
                     <span>Edit Bio</span>
@@ -303,7 +310,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                     rows={4}
                     value={bioText}
                     onChange={e => setBioText(e.target.value)}
-                    className="w-full p-3.5 bg-background border border-border focus:ring-2 focus:ring-pink-600/30 rounded-xl text-xs text-foreground leading-relaxed shadow-inner font-sans"
+                    className="w-full p-3.5 bg-background border border-border focus:ring-2 focus:ring-primary/30 rounded-xl text-xs text-foreground leading-relaxed shadow-inner font-sans outline-none"
                   />
                   <div className="flex items-center justify-end space-x-2">
                     <button
@@ -315,7 +322,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                     </button>
                     <button
                       type="submit"
-                      className="px-4 py-1.5 text-xs font-bold bg-pink-700 hover:bg-pink-800 text-white rounded-xl transition-all shadow-subtle flex items-center space-x-1.5 cursor-pointer"
+                      className="px-4 py-1.5 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all shadow-subtle flex items-center space-x-1.5 cursor-pointer"
                     >
                       <Save className="w-3.5 h-3.5" />
                       <span>Save Bio</span>
@@ -330,52 +337,15 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
             </div>
           </div>
 
-          {/* Right Column: Institutional Verification & Compliance */}
+          {/* Right Column: Session & Account Information */}
           <div className="space-y-6">
-            <div className="bg-card border border-border rounded-2xl p-6 shadow-subtle space-y-4">
-              <h3 className="font-bold text-sm text-foreground uppercase tracking-wider text-[11px]">
-                Institutional Credentials
-              </h3>
-
-              <div className="space-y-3 text-xs">
-                <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl space-y-1">
-                  <div className="flex items-center space-x-2 font-bold text-emerald-700 dark:text-emerald-400">
-                    <CheckCircle2 className="w-4 h-4 shrink-0" />
-                    <span>CHED CMO 25 s. 2015 OBE</span>
-                  </div>
-                  <p className="text-[11px] text-muted-foreground leading-relaxed">
-                    Faculty syllabus mapping and outcome-based assessments verified.
-                  </p>
-                </div>
-
-                <div className="p-3 bg-pink-500/10 border border-pink-500/20 rounded-xl space-y-1">
-                  <div className="flex items-center space-x-2 font-bold text-pink-700 dark:text-pink-400">
-                    <ShieldCheck className="w-4 h-4 shrink-0" />
-                    <span>RA 10173 Data Privacy Guard</span>
-                  </div>
-                  <p className="text-[11px] text-muted-foreground leading-relaxed">
-                    Personal Identifiable Information (PII) encrypted with role-based access control.
-                  </p>
-                </div>
-
-                <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl space-y-1">
-                  <div className="flex items-center space-x-2 font-bold text-blue-700 dark:text-blue-400">
-                    <KeyRound className="w-4 h-4 shrink-0" />
-                    <span>Likha ERP Gateway v2.4</span>
-                  </div>
-                  <p className="text-[11px] text-muted-foreground leading-relaxed">
-                    Synchronized enrollment roster with real-time gradebook validation.
-                  </p>
-                </div>
-              </div>
-            </div>
 
             {/* Quick Session Stats */}
             <div className="bg-card border border-border rounded-2xl p-6 shadow-subtle space-y-3">
               <h3 className="font-bold text-sm text-foreground uppercase tracking-wider text-[11px]">
                 Active Session Summary
               </h3>
-              <div className="text-xs font-mono space-y-2 text-muted-foreground">
+              <div className="text-xs font-sans space-y-2 text-muted-foreground">
                 <div className="flex justify-between py-1 border-b border-border/60">
                   <span>Session Status:</span>
                   <span className="text-emerald-600 font-bold">Active</span>
@@ -405,7 +375,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
             <h3 className="font-bold text-sm text-foreground uppercase tracking-wider text-[11px]">
               Active Course Shells & Curriculum Allocations ({userCourses.length})
             </h3>
-            <span className="text-xs font-mono text-muted-foreground">
+            <span className="text-xs font-sans text-muted-foreground">
               Semester 1 • Academic Year 2026-2027
             </span>
           </div>
@@ -420,10 +390,10 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                   <div className="flex items-center space-x-3">
                     <span
                       className="w-3.5 h-3.5 rounded-full shrink-0 shadow-soft"
-                      style={{ backgroundColor: course.color }}
+                      style={{ backgroundColor: course.color || '#64748b' }}
                     />
                     <div>
-                      <div className="font-mono font-extrabold text-pink-700 dark:text-pink-400 text-sm">
+                      <div className="font-sans font-extrabold text-primary text-sm">
                         {course.code}
                       </div>
                       <h4 className="font-bold text-foreground text-xs mt-0.5">
@@ -431,12 +401,12 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                       </h4>
                     </div>
                   </div>
-                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-muted text-foreground border border-border">
+                  <span className="text-[10px] font-sans font-bold px-2 py-0.5 rounded-md bg-muted text-foreground border border-border">
                     {course.credits} Units
                   </span>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 text-[11px] font-mono text-muted-foreground pt-2 border-t border-border/60">
+                <div className="grid grid-cols-2 gap-2 text-[11px] font-sans text-muted-foreground pt-2 border-t border-border/60">
                   <div>
                     <span className="text-muted-foreground/60 block">Section:</span>
                     <span className="text-foreground font-bold">{course.section}</span>
@@ -449,7 +419,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
 
                 <button
                   onClick={() => onNavigateCourse && onNavigateCourse(course.id, 'modules')}
-                  className="w-full py-2.5 px-3 bg-muted/60 hover:bg-pink-700 hover:text-white rounded-xl text-xs font-bold text-foreground transition-all flex items-center justify-center space-x-1.5 shadow-soft cursor-pointer active:scale-[0.98] group"
+                  className="w-full py-2.5 px-3 bg-muted/60 hover:bg-primary hover:text-primary-foreground rounded-xl text-xs font-bold text-foreground transition-all flex items-center justify-center space-x-1.5 shadow-subtle cursor-pointer active:scale-[0.98] group"
                 >
                   <span>Enter Course Shell</span>
                   <ExternalLink className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
@@ -457,6 +427,13 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Tab: Personal Files */}
+      {profileTab === 'files' && (
+        <div className="animate-fade-in bg-card border border-border rounded-2xl p-6 shadow-subtle">
+          <FilesView courseId="personal" />
         </div>
       )}
 
@@ -475,7 +452,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
           <div className="space-y-4 text-xs">
             <div className="flex items-center justify-between p-4 bg-muted/30 rounded-xl border border-border">
               <div className="flex items-start space-x-3">
-                <Bell className="w-4 h-4 text-pink-700 dark:text-pink-400 shrink-0 mt-0.5" />
+                <Bell className="w-4 h-4 text-primary shrink-0 mt-0.5" />
                 <div>
                   <div className="font-bold text-foreground">Instant Email Notifications</div>
                   <p className="text-[11px] text-muted-foreground leading-relaxed mt-0.5">
@@ -487,13 +464,13 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                 type="checkbox"
                 checked={emailNotifications}
                 onChange={e => setEmailNotifications(e.target.checked)}
-                className="w-4 h-4 accent-pink-600 rounded cursor-pointer"
+                className="w-4 h-4 accent-primary rounded cursor-pointer"
               />
             </div>
 
             <div className="flex items-center justify-between p-4 bg-muted/30 rounded-xl border border-border">
               <div className="flex items-start space-x-3">
-                <Sliders className="w-4 h-4 text-pink-700 dark:text-pink-400 shrink-0 mt-0.5" />
+                <Sliders className="w-4 h-4 text-primary shrink-0 mt-0.5" />
                 <div>
                   <div className="font-bold text-foreground">SpeedGrader & Submission Alerts</div>
                   <p className="text-[11px] text-muted-foreground leading-relaxed mt-0.5">
@@ -505,13 +482,13 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                 type="checkbox"
                 checked={speedGraderAlerts}
                 onChange={e => setSpeedGraderAlerts(e.target.checked)}
-                className="w-4 h-4 accent-pink-600 rounded cursor-pointer"
+                className="w-4 h-4 accent-primary rounded cursor-pointer"
               />
             </div>
 
             <div className="flex items-center justify-between p-4 bg-muted/30 rounded-xl border border-border">
               <div className="flex items-start space-x-3">
-                <Calendar className="w-4 h-4 text-pink-700 dark:text-pink-400 shrink-0 mt-0.5" />
+                <Calendar className="w-4 h-4 text-primary shrink-0 mt-0.5" />
                 <div>
                   <div className="font-bold text-foreground">Weekly Academic Activity Digest</div>
                   <p className="text-[11px] text-muted-foreground leading-relaxed mt-0.5">
@@ -523,7 +500,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                 type="checkbox"
                 checked={weeklyDigest}
                 onChange={e => setWeeklyDigest(e.target.checked)}
-                className="w-4 h-4 accent-pink-600 rounded cursor-pointer"
+                className="w-4 h-4 accent-primary rounded cursor-pointer"
               />
             </div>
           </div>
@@ -534,7 +511,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                 setSaveAlert(true);
                 setTimeout(() => setSaveAlert(false), 3000);
               }}
-              className="px-5 py-2 text-xs font-bold bg-pink-700 hover:bg-pink-800 text-white rounded-xl shadow-card transition-all active:scale-[0.98] cursor-pointer"
+              className="px-5 py-2 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl shadow-primary-sm transition-all active:scale-[0.98] cursor-pointer"
             >
               Update Notification Settings
             </button>
@@ -550,7 +527,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
               Security & Active Session Gateway
             </h3>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Review active login endpoints and manage institutional two-factor authentication.
+              Review active login endpoints and manage two-factor authentication.
             </p>
           </div>
 
@@ -562,7 +539,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                   <span>Two-Factor Authentication (2FA)</span>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <span className={`px-2 py-0.5 text-[10px] font-mono font-bold rounded border ${
+                  <span className={`px-2 py-0.5 text-[10px] font-sans font-bold rounded border ${
                     twoFactorAuth
                       ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
                       : 'bg-muted text-muted-foreground border-border'
@@ -573,18 +550,18 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                     type="checkbox"
                     checked={twoFactorAuth}
                     onChange={e => setTwoFactorAuth(e.target.checked)}
-                    className="w-4 h-4 accent-pink-600 rounded cursor-pointer"
+                    className="w-4 h-4 accent-primary rounded cursor-pointer"
                   />
                 </div>
               </div>
               <p className="text-[11px] text-muted-foreground leading-relaxed">
-                Institutional single sign-on requires hardware token or registered authenticator code for all faculty and administrative access.
+                Single sign-on requires hardware token or registered authenticator code for all faculty and administrative access.
               </p>
             </div>
 
             <div className="p-4 bg-muted/30 rounded-xl border border-border space-y-2">
               <div className="font-bold text-foreground">Current Active Browser Session</div>
-              <div className="font-mono text-[11px] text-muted-foreground space-y-1">
+              <div className="font-sans text-[11px] text-muted-foreground space-y-1">
                 <div>Client Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)</div>
                 <div>IP Address: 192.168.1.42 (DMMMSU-SLUC Gateway)</div>
                 <div>Session Authenticated: {new Date().toLocaleDateString()} at {new Date().toLocaleTimeString()}</div>
@@ -593,14 +570,14 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
           </div>
 
           <div className="pt-2 flex justify-between items-center">
-            <span className="text-[11px] font-mono text-muted-foreground">
+            <span className="text-[11px] font-sans text-muted-foreground">
               Last password change: 14 days ago
             </span>
             <button
               onClick={() => {
-                if (confirm("Sign out and revoke this session?")) {
+                showConfirm("Are you sure you want to sign out and revoke this session?", () => {
                   logout();
-                }
+                }, "Terminate Session");
               }}
               className="px-4 py-2 text-xs font-bold bg-card border border-border hover:bg-muted text-foreground rounded-xl transition-all shadow-subtle cursor-pointer active:scale-[0.98]"
             >

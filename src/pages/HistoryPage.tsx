@@ -11,8 +11,7 @@ import {
   Calendar,
   Inbox,
   LayoutDashboard,
-  Shield,
-  Layers
+  Shield
 } from 'lucide-react';
 
 interface HistoryPageProps {
@@ -24,7 +23,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
   onNavigateCourse,
   onNavigateTab
 }) => {
-  const { db, clearHistory, setActiveCourseId } = useLMS();
+  const { db, clearHistory, setActiveCourseId, showConfirm } = useLMS();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'courses' | 'lms'>('all');
 
@@ -45,9 +44,13 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
   });
 
   const handleClearHistory = () => {
-    if (confirm("Are you sure you want to clear your current session navigation history?")) {
-      clearHistory();
-    }
+    showConfirm(
+      "Are you sure you want to clear your current navigation history?",
+      () => {
+        clearHistory();
+      },
+      "Clear History"
+    );
   };
 
   const handleOpenLog = (path: string) => {
@@ -75,21 +78,19 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
     if (path.includes('/dashboard')) onNavigateTab && onNavigateTab('dashboard');
     else if (path.includes('/calendar')) onNavigateTab && onNavigateTab('calendar');
     else if (path.includes('/inbox')) onNavigateTab && onNavigateTab('inbox');
-    else if (path.includes('/commons')) onNavigateTab && onNavigateTab('commons');
     else if (path.includes('/profile')) onNavigateTab && onNavigateTab('profile');
     else if (onNavigateTab) onNavigateTab('dashboard');
   };
 
   const getLogIcon = (path: string) => {
-    if (path.includes('/courses/')) return <BookOpen className="w-4 h-4 text-pink-700 dark:text-pink-400" />;
+    if (path.includes('/courses/')) return <BookOpen className="w-4 h-4 text-primary" />;
     if (path.includes('/calendar')) return <Calendar className="w-4 h-4 text-blue-600 dark:text-blue-400" />;
     if (path.includes('/inbox')) return <Inbox className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />;
-    if (path.includes('/commons')) return <Layers className="w-4 h-4 text-amber-600 dark:text-amber-400" />;
-    return <LayoutDashboard className="w-4 h-4 text-pink-700 dark:text-pink-400" />;
+    return <LayoutDashboard className="w-4 h-4 text-primary" />;
   };
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-6 animate-fade-in pb-16 select-none">
+    <div className="space-y-6">
       {/* Top Header & Breadcrumb Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center space-x-3">
@@ -102,15 +103,15 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
           </button>
           <div>
             <div className="flex items-center space-x-2">
-              <div className="p-1.5 rounded-lg bg-pink-500/10 text-pink-700 dark:text-pink-400 border border-pink-500/20">
+              <div className="p-1.5 rounded-lg bg-primary/10 text-primary border border-primary/20">
                 <History className="w-4 h-4" />
               </div>
               <h1 className="text-xl font-extrabold text-foreground tracking-tight">
-                Session Navigation Trail & Audit Logs
+                History
               </h1>
             </div>
-            <p className="text-xs text-muted-foreground font-mono mt-0.5">
-              Comprehensive real-time chronological audit trail of views accessed in this browser session.
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Pages and courses you recently visited.
             </p>
           </div>
         </div>
@@ -121,7 +122,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
             className="inline-flex items-center space-x-1.5 px-3.5 py-2 text-xs font-bold bg-card border border-border hover:border-red-500/30 hover:bg-red-500/10 text-muted-foreground hover:text-red-700 dark:hover:text-red-400 rounded-xl transition-all shadow-subtle cursor-pointer active:scale-[0.98]"
           >
             <Trash2 className="w-3.5 h-3.5" />
-            <span>Clear Audit Log</span>
+            <span>Clear History</span>
           </button>
         )}
       </div>
@@ -129,33 +130,33 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
       {/* Metrics Row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div className="p-4 bg-card border border-border rounded-2xl shadow-subtle space-y-1">
-          <span className="text-[11px] font-mono text-muted-foreground uppercase">Total Events</span>
-          <div className="text-2xl font-extrabold font-mono text-pink-700 dark:text-pink-400">
+          <span className="text-[11px] font-sans text-muted-foreground uppercase">Total Events</span>
+          <div className="text-2xl font-extrabold font-sans text-primary">
             {historyLogs.length}
           </div>
           <p className="text-[10px] text-muted-foreground">Recorded this session</p>
         </div>
 
         <div className="p-4 bg-card border border-border rounded-2xl shadow-subtle space-y-1">
-          <span className="text-[11px] font-mono text-muted-foreground uppercase">Course Shells</span>
-          <div className="text-2xl font-extrabold font-mono text-foreground">
+          <span className="text-[11px] font-sans text-muted-foreground uppercase">Course Shells</span>
+          <div className="text-2xl font-extrabold font-sans text-foreground">
             {historyLogs.filter(l => l.path.includes('/courses/')).length}
           </div>
           <p className="text-[10px] text-muted-foreground">Subject page transitions</p>
         </div>
 
         <div className="p-4 bg-card border border-border rounded-2xl shadow-subtle space-y-1">
-          <span className="text-[11px] font-mono text-muted-foreground uppercase">Session State</span>
-          <div className="text-2xl font-extrabold font-mono text-emerald-600">
+          <span className="text-[11px] font-sans text-muted-foreground uppercase">Session State</span>
+          <div className="text-2xl font-extrabold font-sans text-emerald-600">
             Active
           </div>
           <p className="text-[10px] text-muted-foreground">DMMMSU-SLUC SSO</p>
         </div>
 
         <div className="p-4 bg-card border border-border rounded-2xl shadow-subtle space-y-1">
-          <span className="text-[11px] font-mono text-muted-foreground uppercase">Security Guard</span>
-          <div className="text-xs font-mono font-bold text-foreground mt-1.5 flex items-center space-x-1">
-            <Shield className="w-3.5 h-3.5 text-pink-600" />
+          <span className="text-[11px] font-sans text-muted-foreground uppercase">Security Guard</span>
+          <div className="text-xs font-sans font-bold text-foreground mt-1.5 flex items-center space-x-1">
+            <Shield className="w-3.5 h-3.5 text-primary" />
             <span>RA 10173 Audit</span>
           </div>
           <p className="text-[10px] text-muted-foreground">Encrypted memory store</p>
@@ -171,7 +172,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             placeholder="Search navigation logs by title, path, or timestamp..."
-            className="w-full pl-9 pr-4 py-2 bg-background border border-border rounded-xl text-xs font-mono text-foreground focus:outline-hidden focus:ring-2 focus:ring-pink-600/30 shadow-inner"
+            className="w-full pl-9 pr-4 py-2 bg-background border border-border rounded-xl text-xs font-sans text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/30 shadow-inner outline-none"
           />
         </div>
 
@@ -180,7 +181,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
             onClick={() => setFilterType('all')}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
               filterType === 'all'
-                ? 'bg-pink-700 text-white shadow-soft'
+                ? 'bg-primary text-primary-foreground shadow-subtle'
                 : 'bg-muted/50 hover:bg-muted text-muted-foreground'
             }`}
           >
@@ -190,7 +191,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
             onClick={() => setFilterType('courses')}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
               filterType === 'courses'
-                ? 'bg-pink-700 text-white shadow-soft'
+                ? 'bg-primary text-primary-foreground shadow-subtle'
                 : 'bg-muted/50 hover:bg-muted text-muted-foreground'
             }`}
           >
@@ -200,7 +201,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
             onClick={() => setFilterType('lms')}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
               filterType === 'lms'
-                ? 'bg-pink-700 text-white shadow-soft'
+                ? 'bg-primary text-primary-foreground shadow-subtle'
                 : 'bg-muted/50 hover:bg-muted text-muted-foreground'
             }`}
           >
@@ -226,37 +227,37 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
             <div
               key={log.id || index}
               onClick={() => handleOpenLog(log.path)}
-              className="p-4 bg-card border border-border hover:border-pink-500/40 rounded-2xl shadow-subtle hover:shadow-lifted card-hover transition-all flex items-center justify-between gap-4 cursor-pointer group"
+              className="p-4 bg-card border border-border hover:border-primary/40 rounded-2xl shadow-subtle hover:shadow-lifted card-hover transition-all flex items-center justify-between gap-4 cursor-pointer group"
             >
               <div className="flex items-center space-x-3.5 min-w-0">
-                <div className="p-2.5 bg-muted/60 rounded-xl border border-border shrink-0 group-hover:bg-pink-500/10 transition-colors">
+                <div className="p-2.5 bg-muted/60 rounded-xl border border-border shrink-0 group-hover:bg-primary/10 transition-colors">
                   {getLogIcon(log.path)}
                 </div>
                 <div className="min-w-0">
                   <div className="flex items-center space-x-2">
-                    <h4 className="font-bold text-xs text-foreground group-hover:text-pink-700 dark:group-hover:text-pink-400 transition-colors truncate">
+                    <h4 className="font-bold text-xs text-foreground group-hover:text-primary transition-colors truncate">
                       {log.title}
                     </h4>
                     {log.path.includes('/courses/') && (
-                      <span className="px-2 py-0.5 text-[9px] font-mono font-bold uppercase rounded bg-pink-500/10 text-pink-700 dark:text-pink-400 border border-pink-500/20 shrink-0">
+                      <span className="px-2 py-0.5 text-[9px] font-sans font-bold uppercase rounded bg-primary/10 text-primary border border-primary/20 shrink-0">
                         Course
                       </span>
                     )}
                   </div>
-                  <p className="text-[11px] font-mono text-muted-foreground truncate mt-0.5">
+                  <p className="text-[11px] font-sans text-muted-foreground truncate mt-0.5">
                     {log.path}
                   </p>
                 </div>
               </div>
 
               <div className="flex items-center space-x-4 shrink-0">
-                <div className="flex items-center space-x-1 text-[11px] font-mono text-muted-foreground">
+                <div className="flex items-center space-x-1 text-[11px] font-sans text-muted-foreground">
                   <Clock className="w-3.5 h-3.5 text-muted-foreground/70" />
                   <span>{log.timestamp}</span>
                 </div>
                 <button
                   type="button"
-                  className="p-2 rounded-xl bg-muted/60 group-hover:bg-pink-700 group-hover:text-white text-muted-foreground transition-all shadow-soft shrink-0 cursor-pointer"
+                  className="p-2 rounded-xl bg-muted/60 group-hover:bg-primary group-hover:text-primary-foreground text-muted-foreground transition-all shadow-soft shrink-0 cursor-pointer"
                   title="Navigate back to this view"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />

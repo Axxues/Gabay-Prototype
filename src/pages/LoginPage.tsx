@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
-  const { login, theme, toggleTheme } = useLMS();
+  const { login, theme, toggleTheme, showAlert } = useLMS();
 
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -58,52 +58,52 @@ export const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-background text-foreground relative overflow-hidden select-none font-sans p-4">
+    <div className="min-h-screen w-full flex items-center justify-center bg-muted dark:bg-background text-foreground relative overflow-hidden select-none font-sans p-4">
       {/* Subtle Background Glows */}
-      <div className="absolute -top-32 -left-32 w-80 h-80 bg-pink-600/15 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute -bottom-32 -right-32 w-80 h-80 bg-rose-900/15 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute -top-32 -left-32 w-96 h-96 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute -bottom-32 -right-32 w-96 h-96 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
 
       {/* Floating Theme Button */}
       <div className="absolute top-5 right-5 z-20">
         <button
           onClick={toggleTheme}
-          className="p-2 rounded-xl border border-border bg-card/70 hover:bg-muted text-foreground transition-all shadow-soft cursor-pointer backdrop-blur-md"
+          className="h-9 w-9 flex items-center justify-center rounded-xl border border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground transition-all shadow-subtle cursor-pointer"
           title="Toggle theme"
         >
           {theme === 'dark' ? (
-            <Moon className="w-4 h-4 text-amber-400" />
+            <Sun className="w-4 h-4 text-amber-400" />
           ) : (
-            <Sun className="w-4 h-4 text-amber-500" />
+            <Moon className="w-4 h-4 text-amber-500" />
           )}
         </button>
       </div>
 
-      {/* Clean Login Card */}
+      {/* Cellwego Glass Login Card */}
       <div className="w-full max-w-sm bg-card border border-border rounded-2xl p-7 shadow-elevated space-y-6 z-10 animate-scale-in">
         {/* Simple Brand Header */}
         <div className="text-center space-y-2">
-          <div className="w-11 h-11 mx-auto rounded-xl bg-gradient-to-br from-pink-600 to-rose-800 text-white flex items-center justify-center font-extrabold text-xl shadow-card">
+          <div className="w-12 h-12 mx-auto rounded-xl bg-primary text-primary-foreground flex items-center justify-center font-extrabold text-xl shadow-primary-sm">
             G
           </div>
           <div>
-            <h1 className="text-xl font-extrabold tracking-tight text-foreground">
+            <h1 className="text-xl font-extrabold tracking-tight text-foreground font-sans">
               GABAY LMS
             </h1>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Sign in to your account
+              Sign in to your academic portal
             </p>
           </div>
         </div>
 
         {/* Error Alert */}
         {errorMessage && (
-          <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl flex items-start space-x-2 text-xs text-red-600 dark:text-red-400 animate-fade-in">
+          <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-xl flex items-start space-x-2 text-xs text-destructive animate-fade-in">
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
             <span>{errorMessage}</span>
           </div>
         )}
 
-        {/* Simple Form */}
+        {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1">
             <label className="text-xs font-semibold text-foreground">
@@ -119,7 +119,7 @@ export const LoginPage: React.FC = () => {
                   if (errorMessage) setErrorMessage('');
                 }}
                 placeholder="name@dmmmsu.edu.ph"
-                className="w-full pl-9 pr-3 py-2.5 bg-background border border-border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-pink-600/30 focus:border-pink-600 transition-all font-sans"
+                className="w-full pl-9 pr-3 py-2.5 bg-background border border-border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all font-sans"
                 disabled={isLoading}
               />
             </div>
@@ -128,16 +128,27 @@ export const LoginPage: React.FC = () => {
           <div className="space-y-1">
             <div className="flex items-center justify-between">
               <label className="text-xs font-semibold text-foreground">Password</label>
-              <a
-                href="#forgot"
-                onClick={(e) => {
-                  e.preventDefault();
-                  alert("Please contact the ICT administrator to reset your password.");
+              <button
+                type="button"
+                onClick={() => {
+                  showAlert({
+                    title: "Reset Password",
+                    message: (
+                      <div className="space-y-2">
+                        <p>To reset your account password, please contact the chairperson or visit dean's office.</p>
+                        <div className="p-2.5 bg-muted rounded-xl text-xs font-sans text-foreground select-text">
+                          Email: it.support@dmmmsu.edu.ph
+                        </div>
+                      </div>
+                    ),
+                    type: "info",
+                    confirmText: "Understood"
+                  });
                 }}
-                className="text-[11px] text-pink-600 dark:text-pink-400 hover:underline"
+                className="text-[11px] text-primary hover:underline cursor-pointer font-medium"
               >
                 Forgot?
-              </a>
+              </button>
             </div>
             <div className="relative">
               <Lock className="w-4 h-4 text-muted-foreground absolute left-3 top-3" />
@@ -149,7 +160,7 @@ export const LoginPage: React.FC = () => {
                   if (errorMessage) setErrorMessage('');
                 }}
                 placeholder="••••••••"
-                className="w-full pl-9 pr-10 py-2.5 bg-background border border-border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-pink-600/30 focus:border-pink-600 transition-all font-mono"
+                className="w-full pl-9 pr-10 py-2.5 bg-background border border-border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all font-sans"
                 disabled={isLoading}
               />
               <button
@@ -168,7 +179,7 @@ export const LoginPage: React.FC = () => {
                 type="checkbox"
                 checked={rememberMe}
                 onChange={e => setRememberMe(e.target.checked)}
-                className="rounded border-border accent-pink-600"
+                className="rounded border-border accent-primary"
               />
               <span>Remember me</span>
             </label>
@@ -177,7 +188,7 @@ export const LoginPage: React.FC = () => {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full py-2.5 bg-pink-700 hover:bg-pink-800 active:scale-[0.99] text-white rounded-xl text-xs font-bold transition-all shadow-card flex items-center justify-center cursor-pointer disabled:opacity-50"
+            className="w-full py-2.5 bg-primary hover:bg-primary/90 active:scale-[0.99] text-primary-foreground rounded-xl text-xs font-bold transition-all shadow-primary-sm flex items-center justify-center cursor-pointer disabled:opacity-50"
           >
             {isLoading ? (
               <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -189,35 +200,35 @@ export const LoginPage: React.FC = () => {
 
         {/* Clean Demo Accounts */}
         <div className="pt-3 border-t border-border space-y-2">
-          <span className="text-[10px] uppercase font-bold text-muted-foreground block text-center tracking-wider">
+          <span className="text-[10px] uppercase font-bold text-muted-foreground block text-center tracking-wider font-sans">
             Quick Demo Login
           </span>
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
               onClick={() => handleQuickLogin('dean1@dmmmsu.edu.ph')}
-              className="py-1.5 px-2 bg-muted/50 hover:bg-pink-500/15 hover:border-pink-500/30 border border-border rounded-lg text-xs font-semibold text-foreground transition-all text-center cursor-pointer"
+              className="py-1.5 px-2 bg-muted/50 hover:bg-primary/10 hover:border-primary/30 border border-border rounded-lg text-xs font-semibold text-foreground transition-all text-center cursor-pointer"
             >
               Dean 1
             </button>
             <button
               type="button"
               onClick={() => handleQuickLogin('faculty1@dmmmsu.edu.ph')}
-              className="py-1.5 px-2 bg-muted/50 hover:bg-pink-500/15 hover:border-pink-500/30 border border-border rounded-lg text-xs font-semibold text-foreground transition-all text-center cursor-pointer"
+              className="py-1.5 px-2 bg-muted/50 hover:bg-primary/10 hover:border-primary/30 border border-border rounded-lg text-xs font-semibold text-foreground transition-all text-center cursor-pointer"
             >
               Faculty 1
             </button>
             <button
               type="button"
               onClick={() => handleQuickLogin('staff1@dmmmsu.edu.ph')}
-              className="py-1.5 px-2 bg-muted/50 hover:bg-pink-500/15 hover:border-pink-500/30 border border-border rounded-lg text-xs font-semibold text-foreground transition-all text-center cursor-pointer"
+              className="py-1.5 px-2 bg-muted/50 hover:bg-primary/10 hover:border-primary/30 border border-border rounded-lg text-xs font-semibold text-foreground transition-all text-center cursor-pointer"
             >
               Staff 1
             </button>
             <button
               type="button"
               onClick={() => handleQuickLogin('student1@dmmmsu.edu.ph')}
-              className="py-1.5 px-2 bg-muted/50 hover:bg-pink-500/15 hover:border-pink-500/30 border border-border rounded-lg text-xs font-semibold text-foreground transition-all text-center cursor-pointer"
+              className="py-1.5 px-2 bg-muted/50 hover:bg-primary/10 hover:border-primary/30 border border-border rounded-lg text-xs font-semibold text-foreground transition-all text-center cursor-pointer"
             >
               Student 1
             </button>

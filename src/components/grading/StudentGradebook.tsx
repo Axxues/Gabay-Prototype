@@ -59,10 +59,10 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         {/* Official Grade Card */}
         <div className="p-5 bg-card border border-border rounded-xl shadow-subtle space-y-1.5">
-          <div className="text-xs font-mono font-bold text-muted-foreground uppercase tracking-wider">
+          <div className="text-xs font-sans font-bold text-muted-foreground uppercase tracking-wider">
             Official Course Grade
           </div>
-          <div className="text-3xl font-extrabold font-mono text-emerald-600 dark:text-emerald-400">
+          <div className="text-3xl font-extrabold font-sans text-emerald-600 dark:text-emerald-400">
             {actualPercentage}%
           </div>
           <div className="text-[11px] text-muted-foreground">
@@ -76,7 +76,7 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
             ? 'bg-amber-500/10 border-amber-500/30 shadow-lifted'
             : 'bg-card border-border shadow-subtle'
         }`}>
-          <div className="flex justify-between items-center text-xs font-mono uppercase tracking-wider text-amber-700 dark:text-amber-300">
+          <div className="flex justify-between items-center text-xs font-sans uppercase tracking-wider text-amber-700 dark:text-amber-300">
             <span className="font-bold">"What-If" Simulated Grade</span>
             {isWhatIfActive && (
               <span className="text-[9px] px-2 py-0.5 bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded-md font-bold border border-amber-500/30">
@@ -84,7 +84,7 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
               </span>
             )}
           </div>
-          <div className="text-3xl font-extrabold font-mono text-amber-600 dark:text-amber-400">
+          <div className="text-3xl font-extrabold font-sans text-amber-600 dark:text-amber-400">
             {whatIfPercentage}%
           </div>
           <div className="text-[11px] text-muted-foreground">
@@ -95,7 +95,7 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
         {/* Reset Control Card */}
         <div className="p-5 bg-muted/40 border border-border rounded-xl flex flex-col justify-between space-y-3">
           <div className="flex items-center space-x-2 text-xs font-bold text-foreground">
-            <Sliders className="w-4 h-4 text-pink-600 dark:text-pink-400" />
+            <Sliders className="w-4 h-4 text-primary" />
             <span>What-If Score Calculator</span>
           </div>
           <p className="text-[11px] text-muted-foreground leading-relaxed">
@@ -118,7 +118,7 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
           <span className="font-bold text-foreground uppercase tracking-wider">
             Assignment Grade Breakdown & Calculator
           </span>
-          <span className="font-mono text-muted-foreground font-semibold">
+          <span className="font-sans text-muted-foreground font-semibold">
             {course?.code} Gradebook
           </span>
         </div>
@@ -126,7 +126,7 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
-              <tr className="border-b border-border bg-muted/30 font-mono text-muted-foreground">
+              <tr className="border-b border-border bg-muted/30 font-sans text-muted-foreground">
                 <th className="p-3.5">Name</th>
                 <th className="p-3.5">Category</th>
                 <th className="p-3.5">Due Date</th>
@@ -147,14 +147,14 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
                     <td className="p-3.5 font-bold text-foreground">
                       {asg.title}
                     </td>
-                    <td className="p-3.5 font-mono text-muted-foreground">
+                    <td className="p-3.5 font-sans text-muted-foreground">
                       {asg.category} ({asg.weight}%)
                     </td>
-                    <td className="p-3.5 font-mono text-muted-foreground">
+                    <td className="p-3.5 font-sans text-muted-foreground">
                       {new Date(asg.dueDate).toLocaleDateString()}
                     </td>
 
-                    <td className="p-3.5 text-center font-mono font-extrabold">
+                    <td className="p-3.5 text-center font-sans font-extrabold">
                       {actualGrade !== undefined ? (
                         <span className="text-emerald-600 dark:text-emerald-400">
                           {actualGrade} / {asg.pointsPossible}
@@ -172,7 +172,7 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
                           max={asg.pointsPossible}
                           value={simulatedGrade}
                           onChange={e => handleWhatIfChange(asg.id, Number(e.target.value))}
-                          className="w-28 accent-pink-600 cursor-pointer"
+                          className="w-28 accent-primary cursor-pointer"
                         />
                         <input
                           type="number"
@@ -180,9 +180,9 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
                           max={asg.pointsPossible}
                           value={simulatedGrade}
                           onChange={e => handleWhatIfChange(asg.id, Number(e.target.value))}
-                          className="w-14 p-1.5 bg-background border border-border rounded-lg text-center font-mono text-xs font-extrabold text-amber-600 dark:text-amber-400 shadow-soft"
+                          className="w-14 p-1.5 bg-background border border-border rounded-lg text-center font-sans text-xs font-extrabold text-amber-600 dark:text-amber-400 shadow-soft"
                         />
-                        <span className="font-mono text-muted-foreground text-[10px]">/ {asg.pointsPossible}</span>
+                        <span className="font-sans text-muted-foreground text-[10px]">/ {asg.pointsPossible}</span>
                       </div>
                     </td>
                   </tr>

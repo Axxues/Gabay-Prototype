@@ -10,7 +10,10 @@ export interface User {
   department: string;
   title: string;
   password?: string;
+  enrolledCourseIds?: string[];
 }
+
+import type { OfficialSyllabusData } from '../data/syllabusData';
 
 export interface Course {
   id: string;
@@ -21,10 +24,12 @@ export interface Course {
   instructorId: string;
   instructorName: string;
   published: boolean;
-  color: string;
+  color?: string;
   enrolledCount: number;
-  credits: number;
-  chedComplianceCode: string;
+  credits?: number;
+  chedComplianceCode?: string;
+  image?: string;
+  syllabus?: OfficialSyllabusData;
 }
 
 export interface ModuleItem {
@@ -39,7 +44,27 @@ export interface ModuleItem {
   assignmentId?: string;
   quizId?: string;
   fileUrl?: string;
+  fileName?: string;
+  fileSize?: string;
+  fileType?: string;
   completed?: boolean;
+}
+
+export interface ModuleComment {
+  id: string;
+  moduleId: string;
+  authorId: string;
+  authorName: string;
+  authorAvatar: string;
+  authorRole: UserRole;
+  content: string;
+  createdAt: string;
+  likes?: number;
+  likedBy?: string[];
+  isEdited?: boolean;
+  editedAt?: string;
+  isDeleted?: boolean;
+  deletedAt?: string;
 }
 
 export interface Module {
@@ -50,6 +75,7 @@ export interface Module {
   published: boolean;
   prerequisiteModuleId?: string;
   items: ModuleItem[];
+  comments?: ModuleComment[];
 }
 
 export interface RubricRating {
@@ -134,8 +160,13 @@ export interface CalendarEvent {
   time: string;
   courseId?: string;
   courseCode?: string;
-  type: 'assignment' | 'milestone' | 'advising';
+  type: 'assignment' | 'milestone' | 'advising' | 'lecture' | 'exam' | 'event';
   description: string;
+  startAt?: string;
+  endAt?: string;
+  isAllDay?: boolean;
+  colorHex?: string;
+  location?: string;
 }
 
 export interface AdvisingSlot {
@@ -186,6 +217,101 @@ export interface CommonsTemplate {
   chedAlignment: string;
 }
 
+export interface AnnouncementReply {
+  id: string;
+  announcementId: string;
+  authorId: string;
+  authorName: string;
+  authorAvatar: string;
+  authorRole: UserRole;
+  content: string;
+  createdAt: string;
+  likes: number;
+  likedBy?: string[];
+}
+
+export interface Announcement {
+  id: string;
+  courseId: string; // or 'all' for institutional announcements
+  title: string;
+  content: string;
+  authorId: string;
+  authorName: string;
+  authorAvatar: string;
+  authorRole: UserRole;
+  createdAt: string;
+  delayedUntil?: string; // scheduled release date
+  sectionRestriction?: string; // 'All Sections' | 'BSCS 4-1' etc.
+  allowComments: boolean;
+  usersMustPostBeforeReplies?: boolean;
+  allowLiking?: boolean;
+  likes: number;
+  likedBy?: string[];
+  pinned: boolean;
+  attachments?: { name: string; size: string; url?: string }[];
+  replies: AnnouncementReply[];
+  readBy?: string[];
+}
+
+export interface DiscussionReply {
+  id: string;
+  discussionId: string;
+  parentId?: string; // for nested/threaded replies
+  authorId: string;
+  authorName: string;
+  authorAvatar: string;
+  authorRole: UserRole;
+  content: string;
+  createdAt: string;
+  likes: number;
+  likedBy?: string[];
+  attachments?: { name: string; url?: string }[];
+}
+
+export interface Discussion {
+  id: string;
+  courseId: string;
+  title: string;
+  prompt: string;
+  authorId: string;
+  authorName: string;
+  authorAvatar: string;
+  authorRole: UserRole;
+  createdAt: string;
+  isGraded: boolean;
+  pointsPossible?: number;
+  dueDate?: string;
+  pinned: boolean;
+  locked: boolean;
+  usersMustPostBeforeReplies: boolean;
+  groupAssignment?: string;
+  replies: DiscussionReply[];
+}
+
+export interface CourseFile {
+  id: string;
+  courseId: string; // or 'user-<id>' for personal storage
+  folderId?: string | null;
+  name: string;
+  size: number;
+  formattedSize: string;
+  type: 'pdf' | 'document' | 'slide' | 'code' | 'archive' | 'image';
+  visibility: 'published' | 'unpublished' | 'restricted';
+  updatedAt: string;
+  uploadedBy: string;
+  uploadedByName: string;
+  content?: string; // for built-in previewer
+  url?: string;
+}
+
+export interface CourseFolder {
+  id: string;
+  courseId: string;
+  parentId?: string | null;
+  name: string;
+  updatedAt: string;
+}
+
 export interface MockDatabase {
   users: User[];
   courses: Course[];
@@ -198,4 +324,8 @@ export interface MockDatabase {
   messages: Message[];
   historyLogs: HistoryLog[];
   commonsTemplates: CommonsTemplate[];
+  announcements?: Announcement[];
+  discussions?: Discussion[];
+  courseFiles?: CourseFile[];
+  courseFolders?: CourseFolder[];
 }

@@ -23,7 +23,7 @@ interface HelpPageProps {
 }
 
 export const HelpPage: React.FC<HelpPageProps> = ({ onNavigateTab }) => {
-  const { resetData } = useLMS();
+  const { resetData, showAlert, showConfirm } = useLMS();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFaqId, setActiveFaqId] = useState<number | null>(null);
   const [resetAlert, setResetAlert] = useState(false);
@@ -63,11 +63,15 @@ export const HelpPage: React.FC<HelpPageProps> = ({ onNavigateTab }) => {
   );
 
   const handleReset = () => {
-    if (confirm("Reset prototype data back to the initial seed state? This will clear any newly created course shells, mock submissions, or custom local entries.")) {
-      resetData();
-      setResetAlert(true);
-      setTimeout(() => setResetAlert(false), 4000);
-    }
+    showConfirm(
+      "Reset prototype data back to the initial seed state? This will clear any newly created courses, submissions, or custom entries.",
+      () => {
+        resetData();
+        setResetAlert(true);
+        setTimeout(() => setResetAlert(false), 4000);
+      },
+      "Reset Database"
+    );
   };
 
   return (
@@ -84,26 +88,26 @@ export const HelpPage: React.FC<HelpPageProps> = ({ onNavigateTab }) => {
           </button>
           <div>
             <div className="flex items-center space-x-2">
-              <div className="p-1.5 rounded-lg bg-pink-500/10 text-pink-700 dark:text-pink-400 border border-pink-500/20">
+              <div className="p-1.5 rounded-lg bg-primary/10 text-primary border border-primary/20">
                 <HelpCircle className="w-4 h-4" />
               </div>
               <h1 className="text-xl font-extrabold text-foreground tracking-tight">
-                Institutional Help Center & Academic Resources
+                Help & Support
               </h1>
             </div>
-            <p className="text-xs text-muted-foreground font-mono mt-0.5">
-              Documentation, accreditation manuals, ICT ticketing desk, and institutional compliance standards.
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Frequently asked questions and guides.
             </p>
           </div>
         </div>
 
-        <span className="px-3 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs font-mono font-bold text-emerald-700 dark:text-emerald-400 self-start sm:self-auto shadow-soft">
+        <span className="px-3 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs font-sans font-bold text-emerald-700 dark:text-emerald-400 self-start sm:self-auto shadow-soft">
           All Services Operational
         </span>
       </div>
 
       {resetAlert && (
-        <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center space-x-2 text-xs font-mono font-bold text-emerald-700 dark:text-emerald-400 animate-fade-in shadow-soft">
+        <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center space-x-2 text-xs font-sans font-bold text-emerald-700 dark:text-emerald-400 animate-fade-in shadow-soft">
           <CheckCircle2 className="w-4 h-4 shrink-0" />
           <span>GABAY prototype seed database has been successfully reset to initial factory state!</span>
         </div>
@@ -118,7 +122,7 @@ export const HelpPage: React.FC<HelpPageProps> = ({ onNavigateTab }) => {
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             placeholder="Search guides, policies, or frequently asked questions..."
-            className="w-full pl-10 pr-4 py-2.5 bg-background border border-border rounded-xl text-xs font-sans text-foreground focus:outline-hidden focus:ring-2 focus:ring-pink-600/30 shadow-inner"
+            className="w-full pl-10 pr-4 py-2.5 bg-background border border-border rounded-xl text-xs font-sans text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/30 shadow-inner"
           />
         </div>
       </div>
@@ -128,7 +132,7 @@ export const HelpPage: React.FC<HelpPageProps> = ({ onNavigateTab }) => {
         {/* Card 1: Official Documentation */}
         <div className="p-6 bg-card border border-border rounded-2xl shadow-subtle space-y-4">
           <div className="flex items-center space-x-2">
-            <BookOpen className="w-4 h-4 text-pink-700 dark:text-pink-400" />
+            <BookOpen className="w-4 h-4 text-primary" />
             <h2 className="font-bold text-sm text-foreground uppercase tracking-wider text-[11px]">
               DMMMSU-SLUC Academic User Manuals
             </h2>
@@ -142,66 +146,78 @@ export const HelpPage: React.FC<HelpPageProps> = ({ onNavigateTab }) => {
               href="#faculty-manual"
               onClick={e => {
                 e.preventDefault();
-                alert("Downloading GABAY Faculty Guide v2.4 (PDF)...");
+                showAlert({
+                  title: "Documentation",
+                  message: "Downloading GABAY Faculty Guide v2.4 (PDF)...",
+                  type: "info"
+                });
               }}
               className="p-3.5 rounded-xl border border-border bg-muted/30 hover:bg-muted/60 flex items-center justify-between transition-all group card-hover"
             >
               <div className="flex items-center space-x-3">
-                <FileText className="w-4 h-4 text-pink-700 dark:text-pink-400" />
+                <FileText className="w-4 h-4 text-primary" />
                 <div>
-                  <h4 className="font-bold text-xs text-foreground group-hover:text-pink-700 dark:group-hover:text-pink-400 transition-colors">
+                  <h4 className="font-bold text-xs text-foreground group-hover:text-primary transition-colors">
                     Faculty LMS Authoring & SpeedGrader Guide
                   </h4>
-                  <p className="text-[10px] font-mono text-muted-foreground mt-0.5">
+                  <p className="text-[10px] font-sans text-muted-foreground mt-0.5">
                     Covers rubrics, gradebook calculations, and OBE matrix mapping
                   </p>
                 </div>
               </div>
-              <ExternalLink className="w-4 h-4 text-muted-foreground group-hover:text-pink-700 dark:group-hover:text-pink-400 transition-colors" />
+              <ExternalLink className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
             </a>
 
             <a
               href="#student-manual"
               onClick={e => {
                 e.preventDefault();
-                alert("Downloading GABAY Student Guide v2.4 (PDF)...");
+                showAlert({
+                  title: "Documentation",
+                  message: "Downloading GABAY Student Guide v2.4 (PDF)...",
+                  type: "info"
+                });
               }}
               className="p-3.5 rounded-xl border border-border bg-muted/30 hover:bg-muted/60 flex items-center justify-between transition-all group card-hover"
             >
               <div className="flex items-center space-x-3">
                 <Award className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                 <div>
-                  <h4 className="font-bold text-xs text-foreground group-hover:text-pink-700 dark:group-hover:text-pink-400 transition-colors">
+                  <h4 className="font-bold text-xs text-foreground group-hover:text-primary transition-colors">
                     Student Orientation & What-If Calculator Manual
                   </h4>
-                  <p className="text-[10px] font-mono text-muted-foreground mt-0.5">
+                  <p className="text-[10px] font-sans text-muted-foreground mt-0.5">
                     Assignment submissions, quiz taking, and grade projections
                   </p>
                 </div>
               </div>
-              <ExternalLink className="w-4 h-4 text-muted-foreground group-hover:text-pink-700 dark:group-hover:text-pink-400 transition-colors" />
+              <ExternalLink className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
             </a>
 
             <a
               href="#ched-matrix"
               onClick={e => {
                 e.preventDefault();
-                alert("Opening CHED CMO 25 s. 2015 Accreditation Framework Document...");
+                showAlert({
+                  title: "Documentation",
+                  message: "Opening CHED CMO 25 s. 2015 Accreditation Framework Document...",
+                  type: "info"
+                });
               }}
               className="p-3.5 rounded-xl border border-border bg-muted/30 hover:bg-muted/60 flex items-center justify-between transition-all group card-hover"
             >
               <div className="flex items-center space-x-3">
                 <Layers className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                 <div>
-                  <h4 className="font-bold text-xs text-foreground group-hover:text-pink-700 dark:group-hover:text-pink-400 transition-colors">
+                  <h4 className="font-bold text-xs text-foreground group-hover:text-primary transition-colors">
                     CHED CMO 25 s. 2015 Curriculum Matrix
                   </h4>
-                  <p className="text-[10px] font-mono text-muted-foreground mt-0.5">
+                  <p className="text-[10px] font-sans text-muted-foreground mt-0.5">
                     Outcome-Based Education BS Computer Science syllabus specs
                   </p>
                 </div>
               </div>
-              <ExternalLink className="w-4 h-4 text-muted-foreground group-hover:text-pink-700 dark:group-hover:text-pink-400 transition-colors" />
+              <ExternalLink className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
             </a>
           </div>
         </div>
@@ -215,16 +231,16 @@ export const HelpPage: React.FC<HelpPageProps> = ({ onNavigateTab }) => {
             </h2>
           </div>
           <p className="text-xs text-muted-foreground leading-relaxed">
-            Direct institutional contact channels for account authentication, password recovery, or LMS system troubleshooting.
+            Direct support contact channels for account authentication, password recovery, or LMS system troubleshooting.
           </p>
 
           <div className="space-y-3 pt-2 text-xs">
             <div className="p-3.5 bg-muted/30 rounded-xl border border-border space-y-1">
               <div className="flex items-center space-x-2 text-muted-foreground">
-                <Mail className="w-3.5 h-3.5 text-pink-700 dark:text-pink-400" />
+                <Mail className="w-3.5 h-3.5 text-primary" />
                 <span className="font-bold text-foreground">ICT Services Email Support</span>
               </div>
-              <p className="font-mono text-foreground font-semibold text-[11px] pl-5.5">
+              <p className="font-sans text-foreground font-semibold text-[11px] pl-5.5">
                 it.support@dmmmsu.edu.ph
               </p>
             </div>
@@ -234,7 +250,7 @@ export const HelpPage: React.FC<HelpPageProps> = ({ onNavigateTab }) => {
                 <Phone className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                 <span className="font-bold text-foreground">Campus Helpdesk Hotline</span>
               </div>
-              <p className="font-mono text-foreground font-semibold text-[11px] pl-5.5">
+              <p className="font-sans text-foreground font-semibold text-[11px] pl-5.5">
                 +63 (072) 710-0492 / Local Ext. 402
               </p>
             </div>
@@ -256,7 +272,7 @@ export const HelpPage: React.FC<HelpPageProps> = ({ onNavigateTab }) => {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="p-5 bg-card border border-border rounded-2xl shadow-subtle space-y-2">
           <div className="flex items-center space-x-2 font-bold text-sm text-foreground">
-            <FileText className="w-4 h-4 text-pink-700 dark:text-pink-400" />
+            <FileText className="w-4 h-4 text-primary" />
             <span>CHED CMO 25 s. 2015 Compliance Guard</span>
           </div>
           <p className="text-xs text-muted-foreground leading-relaxed">
@@ -324,7 +340,7 @@ export const HelpPage: React.FC<HelpPageProps> = ({ onNavigateTab }) => {
         </div>
         <button
           onClick={handleReset}
-          className="inline-flex items-center space-x-2 px-4 py-2.5 text-xs font-bold bg-pink-700 hover:bg-pink-800 text-white rounded-xl transition-all shadow-subtle active:scale-[0.98] cursor-pointer shrink-0"
+          className="inline-flex items-center space-x-2 px-4 py-2.5 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all shadow-primary-sm active:scale-[0.98] cursor-pointer shrink-0"
         >
           <RefreshCw className="w-3.5 h-3.5" />
           <span>Reset Mock Database</span>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLMS } from '../../context/LMSContext';
 import { X, ChevronLeft, ChevronRight, Award, MessageSquare, FileText, CheckCircle2 } from 'lucide-react';
+import { ModalPortal, useModalAnimate } from '../common/ModalPortal';
 
 export const SpeedGraderModal: React.FC = () => {
   const {
@@ -9,6 +10,21 @@ export const SpeedGraderModal: React.FC = () => {
     db,
     gradeSubmission
   } = useLMS();
+
+  const { isClosing, startClose } = useModalAnimate(closeSpeedGrader, 200);
+
+  useEffect(() => {
+    if (!activeSpeedGraderSubmissionId) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        startClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeSpeedGraderSubmissionId, startClose]);
 
   if (!activeSpeedGraderSubmissionId) return null;
 
@@ -54,16 +70,19 @@ export const SpeedGraderModal: React.FC = () => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden overlay-backdrop flex flex-col animate-fade-in">
+    <ModalPortal>
+      <div className={`fixed inset-0 z-[100] overflow-hidden overlay-backdrop flex flex-col ${
+        isClosing ? 'animate-fade-out' : 'animate-fade-in'
+      }`}>
       {/* SpeedGrader Top Header - Cellwego Glass style */}
       <header className="h-14 bg-card/90 backdrop-blur-xl border-b border-border px-6 flex items-center justify-between text-foreground shrink-0 select-none shadow-subtle">
         <div className="flex items-center space-x-3">
-          <div className="px-2.5 py-1 text-xs font-mono font-bold bg-pink-500/10 text-pink-700 dark:text-pink-400 rounded-lg border border-pink-500/20">
+          <div className="px-2.5 py-1 text-xs font-sans font-bold bg-primary/10 text-primary rounded-lg border border-primary/20">
             SpeedGrader™ Workspace
           </div>
           <span className="text-muted-foreground/60">|</span>
           <span className="font-bold text-sm text-foreground">{assignment?.title}</span>
-          <span className="text-xs font-mono text-muted-foreground">({course?.code})</span>
+          <span className="text-xs font-sans text-muted-foreground">({course?.code})</span>
         </div>
 
         {/* Student Navigator */}
@@ -81,7 +100,7 @@ export const SpeedGraderModal: React.FC = () => {
             <ChevronLeft className="w-4 h-4" />
           </button>
 
-          <div className="text-center font-mono text-xs">
+          <div className="text-center font-sans text-xs">
             <span className="font-bold text-foreground">{currentSubmission.studentName}</span>
             <span className="text-muted-foreground ml-2">({currentIndex + 1} of {assignmentSubmissions.length})</span>
           </div>
@@ -100,8 +119,8 @@ export const SpeedGraderModal: React.FC = () => {
           </button>
 
           <button
-            onClick={closeSpeedGrader}
-            className="p-1.5 text-muted-foreground hover:text-foreground rounded-lg bg-card hover:bg-muted border border-border ml-4 transition-colors shadow-soft"
+            onClick={() => startClose()}
+            className="p-1.5 text-muted-foreground hover:text-foreground rounded-lg bg-card hover:bg-muted border border-border ml-4 transition-colors shadow-soft cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -114,10 +133,10 @@ export const SpeedGraderModal: React.FC = () => {
         <div className="flex-1 bg-background p-6 overflow-y-auto flex flex-col space-y-4">
           <div className="p-4 bg-card border border-border rounded-xl flex items-center justify-between text-xs text-foreground shadow-subtle">
             <div className="flex items-center space-x-3">
-              <FileText className="w-5 h-5 text-pink-600 dark:text-pink-400" />
+              <FileText className="w-5 h-5 text-primary" />
               <div>
                 <div className="font-bold text-foreground">{currentSubmission.fileName || 'Submission Document'}</div>
-                <div className="font-mono text-[11px] text-muted-foreground">
+                <div className="font-sans text-[11px] text-muted-foreground">
                   Submitted: {new Date(currentSubmission.submittedAt).toLocaleString()}
                 </div>
               </div>
@@ -126,14 +145,14 @@ export const SpeedGraderModal: React.FC = () => {
               href={currentSubmission.fileUrl}
               target="_blank"
               rel="noreferrer"
-              className="px-3.5 py-1.5 bg-muted hover:bg-muted/80 text-foreground rounded-lg text-xs font-bold font-mono border border-border transition-colors"
+              className="px-3.5 py-1.5 bg-muted hover:bg-muted/80 text-foreground rounded-lg text-xs font-bold font-sans border border-border transition-colors"
             >
               Download PDF Preview
             </a>
           </div>
 
           {/* Render Document Box */}
-          <div className="flex-1 bg-card border border-border rounded-xl p-6 font-mono text-xs text-foreground leading-relaxed overflow-y-auto whitespace-pre-line shadow-inner">
+          <div className="flex-1 bg-card border border-border rounded-xl p-6 font-sans text-xs text-foreground leading-relaxed overflow-y-auto whitespace-pre-line shadow-inner">
             <div className="text-muted-foreground pb-2 mb-4 border-b border-border flex justify-between items-center text-[10px]">
               <span>GABAY DOCVIEWER ENGINE v2.4 • STUDENT PAYLOAD RENDERER</span>
               <span>{currentSubmission.studentName} ({currentSubmission.studentId || '2021-SLUC-0492'})</span>
@@ -157,7 +176,7 @@ export const SpeedGraderModal: React.FC = () => {
                 <span className="font-bold text-foreground uppercase tracking-wider text-[11px]">
                   Assessment Score:
                 </span>
-                <span className="font-mono text-muted-foreground">
+                <span className="font-sans text-muted-foreground">
                   out of {assignment?.pointsPossible || 100} pts
                 </span>
               </div>
@@ -167,7 +186,7 @@ export const SpeedGraderModal: React.FC = () => {
                 max={assignment?.pointsPossible || 100}
                 value={gradeInput}
                 onChange={e => setGradeInput(Number(e.target.value))}
-                className="w-full p-2.5 bg-card border border-border rounded-xl font-mono text-xl font-extrabold text-pink-700 dark:text-pink-400 focus:outline-hidden focus:ring-2 focus:ring-pink-600/30 text-center shadow-subtle"
+                className="w-full p-2.5 bg-card border border-border rounded-xl font-sans text-xl font-extrabold text-primary focus:outline-hidden focus:ring-2 focus:ring-primary/30 text-center shadow-subtle"
               />
             </div>
 
@@ -184,7 +203,7 @@ export const SpeedGraderModal: React.FC = () => {
                     <div key={r.id} className="p-3.5 bg-muted/30 border border-border rounded-xl space-y-2">
                       <div className="flex justify-between font-bold text-foreground">
                         <span>{r.title}</span>
-                        <span className="font-mono text-emerald-600 dark:text-emerald-400">
+                        <span className="font-sans text-emerald-600 dark:text-emerald-400">
                           {rubricScores[r.id] ?? 0} / {r.points} pts
                         </span>
                       </div>
@@ -202,7 +221,7 @@ export const SpeedGraderModal: React.FC = () => {
                                 : 'bg-card text-muted-foreground border-border hover:border-border/80'
                             }`}
                           >
-                            <div className="flex justify-between font-mono">
+                            <div className="flex justify-between font-sans">
                               <span>{rating.description}</span>
                               <span className="ml-1">{rating.points} pts</span>
                             </div>
@@ -222,9 +241,11 @@ export const SpeedGraderModal: React.FC = () => {
                 <span>Assignment Feedback Comments</span>
               </div>
 
-              {currentSubmission.comments.map(c => (
+              {[...currentSubmission.comments]
+                .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                .map(c => (
                 <div key={c.id} className="p-3 bg-muted/40 border border-border rounded-xl space-y-1">
-                  <div className="flex justify-between text-[10px] font-mono text-muted-foreground">
+                  <div className="flex justify-between text-[10px] font-sans text-muted-foreground">
                     <span className="font-bold text-foreground">{c.authorName}</span>
                     <span>{new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                   </div>
@@ -237,7 +258,7 @@ export const SpeedGraderModal: React.FC = () => {
                 value={newComment}
                 onChange={e => setNewComment(e.target.value)}
                 placeholder="Add private evaluation comment for student..."
-                className="w-full p-3 bg-card border border-border rounded-xl font-sans text-xs text-foreground focus:outline-hidden focus:ring-2 focus:ring-pink-600/30 shadow-subtle"
+                className="w-full p-3 bg-card border border-border rounded-xl font-sans text-xs text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/30 shadow-subtle"
               />
             </div>
 
@@ -245,13 +266,13 @@ export const SpeedGraderModal: React.FC = () => {
             <div className="space-y-2">
               <button
                 type="submit"
-                className="w-full py-3 text-xs font-bold bg-pink-700 hover:bg-pink-800 text-white rounded-xl transition-all shadow-card flex items-center justify-center space-x-2 active:scale-[0.98]"
+                className="w-full py-3 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all shadow-primary-sm flex items-center justify-center space-x-2 active:scale-[0.98]"
               >
                 <CheckCircle2 className="w-4 h-4" />
                 <span>Submit Final Grade & Feedback</span>
               </button>
               {isSaved && (
-                <div className="text-center font-mono text-[11px] text-emerald-600 dark:text-emerald-400 font-bold animate-pulse">
+                <div className="text-center font-sans text-[11px] text-emerald-600 dark:text-emerald-400 font-bold animate-pulse">
                   Grade and rubric updated in GABAY database!
                 </div>
               )}
@@ -260,5 +281,6 @@ export const SpeedGraderModal: React.FC = () => {
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 };

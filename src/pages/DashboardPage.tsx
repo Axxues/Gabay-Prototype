@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useLMS } from '../context/LMSContext';
 import {
   BookOpen,
@@ -7,25 +7,21 @@ import {
   FileSpreadsheet,
   Award,
   ArrowRight,
-  ShieldCheck,
   Plus,
-  X
+  Megaphone,
+  Folder
 } from 'lucide-react';
 
 interface DashboardPageProps {
   onNavigateCourse: (courseId: string, subTab?: string) => void;
+  onNavigateTab: (tab: string) => void;
 }
 
-export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateCourse }) => {
-  const { activeRole, activeUser, db, openSpeedGrader, createCourse } = useLMS();
-
-  const [isCreateCourseOpen, setIsCreateCourseOpen] = useState(false);
-  const [courseCode, setCourseCode] = useState('');
-  const [courseTitle, setCourseTitle] = useState('');
-  const [courseSection, setCourseSection] = useState('BSCS 4-1');
-  const [courseCredits, setCourseCredits] = useState(3);
-  const [courseColor, setCourseColor] = useState('#be185d');
-  const [instructorId, setInstructorId] = useState('usr-fac-1');
+export const DashboardPage: React.FC<DashboardPageProps> = ({
+  onNavigateCourse,
+  onNavigateTab
+}) => {
+  const { activeRole, activeUser, db, openSpeedGrader } = useLMS();
 
   // Filter courses based on user role
   const userCourses = db.courses.filter(c => {
@@ -34,115 +30,96 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateCourse }
     return true;
   });
 
-  const handleCreateCourse = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!courseCode.trim() || !courseTitle.trim()) return;
-
-    const inst = db.users.find(u => u.id === instructorId);
-    const newCourse = createCourse({
-      code: courseCode.trim().toUpperCase(),
-      title: courseTitle.trim(),
-      section: courseSection.trim(),
-      credits: Number(courseCredits) || 3,
-      color: courseColor,
-      instructorId: inst?.id || activeUser.id,
-      instructorName: inst?.name || activeUser.name,
-      term: '1st Sem AY 2026-2027',
-      published: true
-    });
-
-    setIsCreateCourseOpen(false);
-    setCourseCode('');
-    setCourseTitle('');
-    onNavigateCourse(newCourse.id, 'modules');
-  };
-
   const unsubmittedList = db.submissions.filter(s => s.status === 'submitted');
   const studentAssignments = db.assignments.filter(a => a.published);
+  const hasRightSidebar = activeRole === 'student' || activeRole === 'faculty';
+
+  // Dynamic Instructor Name Resolution
+  const getCourseInstructorName = (course: (typeof db.courses)[0]) => {
+    if (activeRole === 'faculty' && (course.instructorId === activeUser.id || !course.instructorId)) {
+      return activeUser.name;
+    }
+    const instructor = db.users.find(u => u.id === course.instructorId);
+    if (instructor) return instructor.name;
+    return course.instructorName || activeUser.name;
+  };
+
+  // Dynamic Enrolled Students Count Resolution
+  const getCourseStudentCount = (course: (typeof db.courses)[0]) => {
+    const matchingStudents = db.users.filter(u =>
+      u.role === 'student' &&
+      (!u.enrolledCourseIds || u.enrolledCourseIds.includes(course.id))
+    );
+    return Math.max(matchingStudents.length, course.enrolledCount || 0);
+  };
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto animate-fade-in">
-      {/* Cellwego Hero Banner */}
-      <div className="p-6 rounded-2xl bg-gradient-to-r from-pink-950 via-zinc-900 to-zinc-950 text-white border border-pink-900/30 shadow-elevated relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div className="space-y-2 relative z-10">
-          <div className="flex items-center space-x-2">
-            <span className="px-2.5 py-0.5 text-[10px] font-mono font-bold uppercase tracking-wider bg-pink-500/20 text-pink-300 rounded-md border border-pink-500/30">
-              DMMMSU-SLUC CCS LMS
-            </span>
-            <span className="text-xs text-zinc-400 font-mono">1st Sem AY 2026-2027</span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white font-sans">
-            Welcome back, {activeUser.name}
-          </h1>
-          <p className="text-xs sm:text-sm text-zinc-400 max-w-2xl leading-relaxed">
-            {activeRole === 'student' && "Track your enrolled subjects, pending laboratory submissions, and SpeedGrader evaluation feedback."}
-            {activeRole === 'faculty' && "Manage your course modules, grade student submissions via SpeedGrader, and configure advising office hours."}
-            {activeRole === 'admin' && "Audit CHED CMO 25 s. 2015 outcome compliance, college-wide gradebook readiness, and department metrics."}
-            {activeRole === 'staff' && "Verify Likha ERP student enrollment numbers and track instructor grade submission timestamps."}
-          </p>
-        </div>
-
-        <div className="flex items-center space-x-3 shrink-0 relative z-10">
-          <div className="p-3 rounded-xl bg-white/5 backdrop-blur-md border border-white/10 text-right">
-            <div className="text-[10px] font-bold text-zinc-400 uppercase font-mono tracking-wider">Active Role</div>
-            <div className="text-sm font-extrabold text-pink-400 capitalize font-mono">{activeRole} Scope</div>
-          </div>
-        </div>
-      </div>
-
+    <div className="space-y-8">
       {/* Main Grid Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className={hasRightSidebar ? "grid grid-cols-1 lg:grid-cols-3 gap-6" : "space-y-6"}>
         {/* Left Pane: Enrolled Course Cards */}
-        <div className="lg:col-span-2 space-y-4">
+        <div className={hasRightSidebar ? "lg:col-span-2 space-y-4" : "space-y-4"}>
           <div className="flex items-center justify-between">
             <h2 className="heading-3 text-foreground flex items-center space-x-2">
-              <BookOpen className="w-5 h-5 text-pink-700 dark:text-pink-400" />
-              <span>Enrolled Subject Shells</span>
+              <BookOpen className="w-5 h-5 text-primary" />
+              <span>My Courses</span>
             </h2>
             <div className="flex items-center space-x-2">
               {(activeRole === 'admin' || activeRole === 'faculty') && (
                 <button
-                  onClick={() => setIsCreateCourseOpen(true)}
-                  className="px-3 py-1.5 text-xs font-bold bg-pink-700 hover:bg-pink-800 active:scale-[0.98] text-white rounded-xl transition-all shadow-subtle flex items-center space-x-1.5 cursor-pointer"
+                  type="button"
+                  onClick={() => onNavigateTab('create-course')}
+                  className="px-3.5 py-2 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all shadow-primary-sm flex items-center space-x-1.5 cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>+ Create Course Shell</span>
+                  <span>Create Course</span>
                 </button>
               )}
-              <span className="text-xs font-mono text-muted-foreground bg-muted px-2.5 py-1 rounded-md border border-border">
-                {userCourses.length} Enrolled Courses
+              <span className="text-xs font-sans text-muted-foreground bg-muted px-2.5 py-1 rounded-md border border-border">
+                {userCourses.length} Courses
               </span>
             </div>
           </div>
 
-          {/* Course Cards Grid - Cellwego InteractiveCard styling */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {/* Course Cards Grid */}
+          <div className={`grid gap-5 ${hasRightSidebar ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1 md:grid-cols-2 lg:grid-cols-3"}`}>
             {userCourses.map(course => (
               <div
                 key={course.id}
-                className="group bg-card text-card-foreground border border-border rounded-xl overflow-hidden card-hover shadow-subtle flex flex-col justify-between"
+                onClick={() => onNavigateCourse(course.id, 'modules')}
+                className="group bg-card text-card-foreground border border-border rounded-xl overflow-hidden card-hover shadow-subtle flex flex-col justify-between cursor-pointer"
               >
                 <div>
                   {/* Card Color Header */}
                   <div
                     className="h-24 p-4 flex flex-col justify-between relative overflow-hidden"
-                    style={{ backgroundColor: course.color }}
+                    style={{ backgroundColor: course.color || undefined }}
                   >
+                    {course.image ? (
+                      <>
+                        <img
+                          src={course.image}
+                          alt={course.title}
+                          className={`absolute inset-0 w-full h-full object-cover ${
+                            course.color ? 'opacity-50 mix-blend-overlay' : 'opacity-85'
+                          } group-hover:scale-105 transition-transform duration-500 pointer-events-none`}
+                        />
+                        {!course.color && (
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/35 to-black/20 pointer-events-none" />
+                        )}
+                      </>
+                    ) : (
+                      !course.color && (
+                        <div className="absolute inset-0 bg-gradient-to-br from-slate-700 to-slate-900 dark:from-slate-800 dark:to-slate-950 pointer-events-none" />
+                      )
+                    )}
+
                     <div className="flex items-center justify-between text-white relative z-10">
-                      <span className="px-2.5 py-0.5 text-[10px] font-mono font-bold bg-black/50 backdrop-blur-md rounded-md">
+                      <span className="px-2.5 py-0.5 text-[10px] font-sans font-bold bg-black/40 backdrop-blur-md rounded-md border border-white/10">
                         {course.code} • {course.section}
                       </span>
-                      {course.published ? (
-                        <span className="px-2 py-0.5 text-[10px] font-mono font-bold bg-emerald-950/80 text-emerald-300 rounded-md border border-emerald-700/50">
-                          PUBLISHED
-                        </span>
-                      ) : (
-                        <span className="px-2 py-0.5 text-[10px] font-mono font-bold bg-zinc-950/80 text-zinc-400 rounded-md border border-zinc-700">
-                          DRAFT
-                        </span>
-                      )}
                     </div>
-                    <h3 className="font-bold text-white text-base leading-tight drop-shadow-sm truncate relative z-10">
+                    <h3 className="font-bold text-white text-base leading-tight truncate relative z-10">
                       {course.title}
                     </h3>
                   </div>
@@ -152,36 +129,47 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateCourse }
                     <div className="text-xs space-y-1.5">
                       <div className="flex justify-between text-muted-foreground">
                         <span>Instructor:</span>
-                        <span className="font-bold text-foreground">{course.instructorName}</span>
+                        <span className="font-bold text-foreground">{getCourseInstructorName(course)}</span>
                       </div>
-                      <div className="flex justify-between text-muted-foreground font-mono text-[11px]">
+                      <div className="flex justify-between text-muted-foreground font-sans text-[11px]">
                         <span>Enrollment:</span>
-                        <span className="text-foreground">{course.enrolledCount} Students</span>
-                      </div>
-                      <div className="flex justify-between text-muted-foreground font-mono text-[11px]">
-                        <span>Compliance:</span>
-                        <span className="text-pink-700 dark:text-pink-400 truncate max-w-[180px] font-semibold">{course.chedComplianceCode}</span>
+                        <span className="text-foreground font-semibold">
+                          {getCourseStudentCount(course)} {getCourseStudentCount(course) === 1 ? 'Student' : 'Students'}
+                        </span>
                       </div>
                     </div>
                   </div>
                 </div>
 
                 {/* Card Footer */}
-                <div className="px-5 py-3 bg-muted/40 border-t border-border flex items-center justify-between text-xs">
-                  <button
-                    onClick={() => onNavigateCourse(course.id, 'modules')}
-                    className="font-bold text-foreground hover:text-pink-700 dark:hover:text-pink-400 transition-colors flex items-center space-x-1.5"
-                  >
+                <div className="px-5 py-2.5 bg-muted/40 border-t border-border flex items-center justify-between text-xs group-hover:bg-muted/60 transition-colors">
+                  <span className="font-bold text-foreground group-hover:text-primary transition-colors flex items-center space-x-1.5">
                     <span>View Modules</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
+                    <ArrowRight className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
+                  </span>
 
-                  <button
-                    onClick={() => onNavigateCourse(course.id, 'grades')}
-                    className="font-mono text-xs font-semibold text-muted-foreground hover:text-foreground"
+                  {/* Quick Action Icons */}
+                  <div
+                    className="flex items-center space-x-1"
+                    onClick={e => e.stopPropagation()}
                   >
-                    Gradebook →
-                  </button>
+                    <button
+                      type="button"
+                      title="Announcements"
+                      onClick={() => onNavigateCourse(course.id, 'announcements')}
+                      className="p-1.5 text-muted-foreground hover:text-primary hover:bg-card rounded-lg transition-colors cursor-pointer"
+                    >
+                      <Megaphone className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      title="Course Files"
+                      onClick={() => onNavigateCourse(course.id, 'files')}
+                      className="p-1.5 text-muted-foreground hover:text-primary hover:bg-card rounded-lg transition-colors cursor-pointer"
+                    >
+                      <Folder className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -189,8 +177,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateCourse }
         </div>
 
         {/* Right Sidebar Widgets */}
-        <div className="space-y-6">
-          {/* STUDENT WIDGETS */}
+        {hasRightSidebar && (
+          <div className="space-y-6">
+            {/* STUDENT WIDGETS */}
           {activeRole === 'student' && (
             <>
               {/* To-Do List Card */}
@@ -198,9 +187,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateCourse }
                 <div className="flex items-center justify-between border-b border-border pb-3">
                   <h3 className="font-bold text-sm text-foreground flex items-center space-x-2">
                     <Clock className="w-4 h-4 text-amber-500" />
-                    <span>To-Do Submission Queue</span>
+                    <span>To-Do List</span>
                   </h3>
-                  <span className="text-[11px] font-mono font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-md border border-amber-500/20">
+                  <span className="text-[11px] font-sans font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-md border border-amber-500/20">
                     {studentAssignments.length} Pending
                   </span>
                 </div>
@@ -212,23 +201,23 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateCourse }
                       <div
                         key={asg.id}
                         onClick={() => onNavigateCourse(asg.courseId, 'assignments')}
-                        className="p-3.5 bg-muted/50 rounded-xl border border-border hover:border-pink-500/40 cursor-pointer transition-all space-y-1.5 shadow-soft"
+                        className="p-3.5 bg-muted/50 rounded-xl border border-border hover:border-primary/40 cursor-pointer transition-all space-y-1.5 shadow-soft"
                       >
                         <div className="flex items-start justify-between">
                           <h4 className="text-xs font-bold text-foreground leading-tight">
                             {asg.title}
                           </h4>
                           {sub ? (
-                            <span className="px-2 py-0.5 text-[9px] font-mono font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 rounded-md border border-emerald-500/20">
+                            <span className="px-2 py-0.5 text-[9px] font-sans font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 rounded-md border border-emerald-500/20">
                               SUBMITTED
                             </span>
                           ) : (
-                            <span className="px-2 py-0.5 text-[9px] font-mono font-bold bg-amber-500/10 text-amber-700 dark:text-amber-400 rounded-md border border-amber-500/20">
+                            <span className="px-2 py-0.5 text-[9px] font-sans font-bold bg-amber-500/10 text-amber-700 dark:text-amber-400 rounded-md border border-amber-500/20">
                               DUE SOON
                             </span>
                           )}
                         </div>
-                        <div className="flex justify-between items-center text-[10px] font-mono text-muted-foreground">
+                        <div className="flex justify-between items-center text-[10px] font-sans text-muted-foreground">
                           <span>{asg.category} • {asg.pointsPossible} pts</span>
                           <span>Due {new Date(asg.dueDate).toLocaleDateString()}</span>
                         </div>
@@ -243,20 +232,20 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateCourse }
                 <div className="flex items-center justify-between border-b border-border pb-3">
                   <h3 className="font-bold text-sm text-foreground flex items-center space-x-2">
                     <Award className="w-4 h-4 text-emerald-500" />
-                    <span>SpeedGrader Feedback Alerts</span>
+                    <span>Recent Feedback</span>
                   </h3>
                 </div>
 
                 <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl space-y-2">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-bold text-emerald-800 dark:text-emerald-300">Lab 1: Full-Stack SPA</span>
-                    <span className="font-mono font-extrabold text-emerald-700 dark:text-emerald-400 text-sm">96/100</span>
+                    <span className="font-sans font-extrabold text-emerald-700 dark:text-emerald-400 text-sm">96/100</span>
                   </div>
                   <p className="text-xs text-muted-foreground italic leading-relaxed">
-                    "Excellent compliance with CHED CMO 25 UI standards! High density data table is well designed."
+                    "Great work on the lab assignment! Code is clean and well structured."
                   </p>
-                  <div className="text-[10px] font-mono text-muted-foreground pt-1 border-t border-emerald-500/20">
-                    Graded by Faculty 1
+                  <div className="text-[10px] font-sans text-muted-foreground pt-1 border-t border-emerald-500/20">
+                    Graded by {db.users.find(u => u.role === 'faculty')?.name || activeUser.name}
                   </div>
                 </div>
               </div>
@@ -268,10 +257,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateCourse }
             <div className="bg-card border border-border rounded-xl p-5 space-y-4 shadow-subtle">
               <div className="flex items-center justify-between border-b border-border pb-3">
                 <h3 className="font-bold text-sm text-foreground flex items-center space-x-2">
-                  <AlertCircle className="w-4 h-4 text-pink-600 dark:text-pink-400" />
-                  <span>Needs Grading Queue</span>
+                  <AlertCircle className="w-4 h-4 text-primary" />
+                  <span>To Grade</span>
                 </h3>
-                <span className="px-2.5 py-0.5 text-xs font-mono font-bold bg-pink-500/10 text-pink-700 dark:text-pink-400 rounded-md border border-pink-500/20">
+                <span className="px-2.5 py-0.5 text-xs font-sans font-bold bg-primary/10 text-primary rounded-md border border-primary/20">
                   {unsubmittedList.length} Items
                 </span>
               </div>
@@ -293,14 +282,15 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateCourse }
                             {asg?.title}
                           </p>
                         </div>
-                        <span className="text-[10px] font-mono text-muted-foreground">
+                        <span className="text-[10px] font-sans text-muted-foreground">
                           {new Date(sub.submittedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
 
                       <button
+                        type="button"
                         onClick={() => openSpeedGrader(sub.id)}
-                        className="w-full py-2 px-3 text-xs font-bold bg-pink-700 hover:bg-pink-800 text-white rounded-lg transition-all shadow-subtle flex items-center justify-center space-x-1.5 active:scale-[0.98]"
+                        className="w-full py-2 px-3 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-all shadow-subtle flex items-center justify-center space-x-1.5 active:scale-[0.98] cursor-pointer"
                       >
                         <FileSpreadsheet className="w-3.5 h-3.5" />
                         <span>Launch SpeedGrader</span>
@@ -311,168 +301,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateCourse }
               </div>
             </div>
           )}
-
-          {/* ADMIN / STAFF WIDGETS */}
-          {(activeRole === 'admin' || activeRole === 'staff') && (
-            <div className="bg-card border border-border rounded-xl p-5 space-y-4 shadow-subtle">
-              <div className="border-b border-border pb-3">
-                <h3 className="font-bold text-sm text-foreground flex items-center space-x-2">
-                  <ShieldCheck className="w-4 h-4 text-emerald-500" />
-                  <span>College Compliance & Audit</span>
-                </h3>
-              </div>
-
-              <div className="space-y-3 text-xs">
-                <div className="p-3.5 bg-muted/40 rounded-xl border border-border space-y-1.5">
-                  <div className="flex justify-between font-mono">
-                    <span className="text-muted-foreground">CHED CMO 25 Syllabus:</span>
-                    <span className="font-bold text-emerald-700 dark:text-emerald-400">100% Compliant</span>
-                  </div>
-                  <div className="w-full bg-muted h-2 rounded-full overflow-hidden">
-                    <div className="bg-emerald-600 h-full w-full"></div>
-                  </div>
-                </div>
-
-                <div className="p-3.5 bg-muted/40 rounded-xl border border-border space-y-1">
-                  <div className="flex justify-between font-mono">
-                    <span className="text-muted-foreground">Likha ERP Roster Sync:</span>
-                    <span className="font-bold text-blue-600 dark:text-blue-400">Synced Today 06:00 AM</span>
-                  </div>
-                </div>
-
-                <div className="p-3.5 bg-muted/40 rounded-xl border border-border space-y-1">
-                  <div className="flex justify-between font-mono">
-                    <span className="text-muted-foreground">Gradebook Finalized Count:</span>
-                    <span className="font-bold text-amber-600 dark:text-amber-400">3 / 4 Courses Finalized</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Modal: Create Course Shell */}
-      {isCreateCourseOpen && (
-        <div className="fixed inset-0 z-50 overflow-hidden flex items-center justify-center p-4">
-          <div
-            className="fixed inset-0 overlay-backdrop animate-fade-in cursor-pointer"
-            onClick={() => setIsCreateCourseOpen(false)}
-          />
-
-          <div
-            className="w-full max-w-md bg-card border border-border rounded-2xl shadow-elevated p-6 space-y-4 z-10 animate-scale-in"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex justify-between items-center pb-2 border-b border-border">
-              <div className="flex items-center space-x-2">
-                <div className="p-1.5 rounded-lg bg-pink-500/10 text-pink-700 dark:text-pink-400">
-                  <Plus className="w-4 h-4" />
-                </div>
-                <h3 className="font-bold text-sm text-foreground">Create Course Shell</h3>
-              </div>
-              <button
-                onClick={() => setIsCreateCourseOpen(false)}
-                className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateCourse} className="space-y-3.5 text-xs">
-              <div className="grid grid-cols-3 gap-2">
-                <div className="col-span-1">
-                  <label className="block font-bold text-foreground mb-1">Code *</label>
-                  <input
-                    type="text"
-                    required
-                    value={courseCode}
-                    onChange={e => setCourseCode(e.target.value)}
-                    placeholder="CMSC 180"
-                    className="w-full p-2.5 bg-background border border-border rounded-xl text-foreground font-mono font-bold"
-                  />
-                </div>
-                <div className="col-span-2">
-                  <label className="block font-bold text-foreground mb-1">Section *</label>
-                  <input
-                    type="text"
-                    required
-                    value={courseSection}
-                    onChange={e => setCourseSection(e.target.value)}
-                    placeholder="BSCS 4-1"
-                    className="w-full p-2.5 bg-background border border-border rounded-xl text-foreground font-mono"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-bold text-foreground mb-1">Course Title *</label>
-                <input
-                  type="text"
-                  required
-                  value={courseTitle}
-                  onChange={e => setCourseTitle(e.target.value)}
-                  placeholder="e.g. Artificial Intelligence & Expert Systems"
-                  className="w-full p-2.5 bg-background border border-border rounded-xl text-foreground"
-                />
-              </div>
-
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <label className="block font-bold text-foreground mb-1">Credits</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={6}
-                    value={courseCredits}
-                    onChange={e => setCourseCredits(Number(e.target.value))}
-                    className="w-full p-2.5 bg-background border border-border rounded-xl text-foreground font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-foreground mb-1">Card Color</label>
-                  <input
-                    type="color"
-                    value={courseColor}
-                    onChange={e => setCourseColor(e.target.value)}
-                    className="w-full h-10 p-1 bg-background border border-border rounded-xl cursor-pointer"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-foreground mb-1">Instructor</label>
-                  <select
-                    value={instructorId}
-                    onChange={e => setInstructorId(e.target.value)}
-                    className="w-full p-2.5 bg-background border border-border rounded-xl text-foreground text-xs"
-                  >
-                    {db.users.filter(u => u.role === 'faculty' || u.role === 'admin').map(u => (
-                      <option key={u.id} value={u.id}>
-                        {u.name.split(' ')[0]}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="pt-2 flex justify-end space-x-2">
-                <button
-                  type="button"
-                  onClick={() => setIsCreateCourseOpen(false)}
-                  className="px-4 py-2 font-bold text-muted-foreground hover:bg-muted rounded-xl cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 font-bold bg-pink-700 hover:bg-pink-800 active:scale-[0.98] text-white rounded-xl shadow-card cursor-pointer"
-                >
-                  Create Shell
-                </button>
-              </div>
-            </form>
-          </div>
         </div>
       )}
     </div>
+  </div>
   );
 };
