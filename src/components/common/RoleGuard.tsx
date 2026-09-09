@@ -20,12 +20,12 @@ export const RoleGuard: React.FC<RoleGuardProps> = ({
     return (
       <div className="p-8 max-w-3xl mx-auto my-12 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-sm">
         <div className="flex items-start space-x-4">
-          <div className="p-3 bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-400 rounded-lg shrink-0">
+          <div className="p-3 bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-400 rounded-lg shrink-0">
             <ShieldAlert className="w-8 h-8" />
           </div>
           <div className="space-y-3">
             <div>
-              <span className="px-2 py-0.5 text-xs font-mono font-bold uppercase tracking-wider bg-red-100 dark:bg-red-950 text-red-800 dark:text-red-300 rounded border border-red-200 dark:border-red-800">
+              <span className="px-2 py-0.5 text-xs font-mono font-bold uppercase tracking-wider bg-pink-100 dark:bg-pink-950 text-pink-800 dark:text-pink-300 rounded border border-pink-200 dark:border-pink-800">
                 HTTP 403 / RBAC RESTRICTION
               </span>
               <h2 className="text-xl font-bold text-zinc-900 dark:text-zinc-100 mt-2">
@@ -46,7 +46,7 @@ export const RoleGuard: React.FC<RoleGuardProps> = ({
             <div className="pt-2 flex items-center space-x-3">
               <button
                 onClick={() => setIsRoleModalOpen(true)}
-                className="px-4 py-2 text-xs font-semibold bg-red-800 hover:bg-red-900 text-white rounded transition-colors shadow-sm"
+                className="px-4 py-2 text-xs font-semibold bg-pink-700 hover:bg-pink-800 text-white rounded transition-colors shadow-sm"
               >
                 Switch Role to Test
               </button>

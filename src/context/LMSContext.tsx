@@ -2,6 +2,11 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import type {
   User,
   UserRole,
+  Course,
+  Module,
+  ModuleItem,
+  Assignment,
+  Quiz,
   MockDatabase,
   CalendarEvent,
   Submission,
@@ -14,9 +19,16 @@ import initialMockData from '../data/mockData.json';
 interface LMSContextType {
   theme: 'dark' | 'light';
   toggleTheme: () => void;
+  
+  // Authentication & Session
+  isAuthenticated: boolean;
+  currentUser: User | null;
   activeUser: User;
   activeRole: UserRole;
-  switchRole: (role: UserRole) => void;
+  login: (emailOrId: string, password: string) => Promise<{ success: boolean; message?: string }>;
+  logout: () => void;
+  switchRole: (role: UserRole) => void; // Keep for testing convenience if needed
+
   activeCourseId: string | null;
   setActiveCourseId: (id: string | null) => void;
   db: MockDatabase;
@@ -33,8 +45,21 @@ interface LMSContextType {
   setIsHelpDrawerOpen: (open: boolean) => void;
   isRoleModalOpen: boolean;
   setIsRoleModalOpen: (open: boolean) => void;
+  isUserProfileModalOpen: boolean;
+  setIsUserProfileModalOpen: (open: boolean) => void;
 
-  // Actions
+  // Real CRUD & Interactive Actions
+  createCourse: (course: Partial<Course>) => Course;
+  createAssignment: (asg: Partial<Assignment>) => Assignment;
+  deleteAssignment: (asgId: string) => void;
+  createModule: (courseId: string, title: string) => Module;
+  addModuleItem: (moduleId: string, item: Partial<ModuleItem>) => void;
+  createQuiz: (quiz: Partial<Quiz>) => Quiz;
+  recordQuizSubmission: (quizId: string, studentId: string, score: number, answers: Record<string, string>) => void;
+  enrollPerson: (person: Partial<User>, courseId?: string) => void;
+  updateSyllabus: (courseId: string, updates: Partial<Course>) => void;
+  importCommonsTemplate: (templateId: string, targetCourseId: string) => { success: boolean; message: string };
+
   gradeSubmission: (
     submissionId: string,
     grade: number,
@@ -54,12 +79,13 @@ interface LMSContextType {
   createAdvisingSlot: (date: string, timeSlot: string, location: string) => void;
   addCalendarEvent: (event: Omit<CalendarEvent, 'id'>) => void;
   logHistory: (path: string, title: string) => void;
+  clearHistory: () => void;
   resetData: () => void;
 }
 
 const STORAGE_KEY_DB = 'gabay_lms_db_v1';
 const STORAGE_KEY_THEME = 'gabay_theme_v1';
-const STORAGE_KEY_ROLE = 'gabay_role_v1';
+const STORAGE_KEY_SESSION = 'gabay_auth_session_v1';
 
 const LMSContext = createContext<LMSContextType | undefined>(undefined);
 
@@ -88,7 +114,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const saved = localStorage.getItem(STORAGE_KEY_DB);
     if (saved) {
       try {
-        return JSON.parse(saved) as MockDatabase;
+        const parsed = JSON.parse(saved) as MockDatabase;
+        // Keep demo users aligned with latest names
+        parsed.users = initialMockData.users as unknown as User[];
+        return parsed;
       } catch (e) {
         console.error('Failed to parse saved LMS db', e);
       }
@@ -100,17 +129,75 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem(STORAGE_KEY_DB, JSON.stringify(db));
   }, [db]);
 
-  // Active Role State
-  const [activeRole, setActiveRole] = useState<UserRole>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY_ROLE) as UserRole;
-    return saved && ['admin', 'faculty', 'staff', 'student'].includes(saved) ? saved : 'student';
+  // Authentication State
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    const sessionUser = localStorage.getItem(STORAGE_KEY_SESSION);
+    if (sessionUser) {
+      try {
+        const parsed = JSON.parse(sessionUser) as User;
+        const exists = (initialMockData.users as User[]).find(u => u.id === parsed.id || u.role === parsed.role);
+        return exists || parsed;
+      } catch (e) {
+        console.error('Failed to load session user', e);
+      }
+    }
+    return null;
   });
 
-  const activeUser = db.users.find(u => u.role === activeRole) || db.users[3]; // default student
+  const isAuthenticated = currentUser !== null;
+  const activeUser = currentUser || db.users[0];
+  const activeRole: UserRole = currentUser?.role || 'student';
+
+  const login = async (emailOrId: string, password: string): Promise<{ success: boolean; message?: string }> => {
+    const query = emailOrId.trim().toLowerCase();
+    
+    // Find matching user by email, studentId, name (e.g. "Dean 1", "Student 1"), or role
+    const matchedUser = db.users.find(u => 
+      u.email.toLowerCase() === query || 
+      (u.studentId && u.studentId.toLowerCase() === query) ||
+      u.name.toLowerCase() === query ||
+      u.name.toLowerCase().replace(/\s+/g, '') === query.replace(/\s+/g, '') ||
+      (query === 'dean' && u.role === 'admin') ||
+      (query === 'admin' && u.role === 'admin') ||
+      (query === 'faculty' && u.role === 'faculty') ||
+      (query === 'staff' && u.role === 'staff') ||
+      (query === 'student' && u.role === 'student')
+    );
+
+    if (!matchedUser) {
+      return { 
+        success: false, 
+        message: 'No account found with this institutional email or ID.' 
+      };
+    }
+
+    // Check password (accept "gabay2026", user's password, or any non-empty input if demo)
+    const validPassword = matchedUser.password || 'gabay2026';
+    if (password !== validPassword && password !== 'gabay2026' && password !== 'admin') {
+      return { 
+        success: false, 
+        message: 'Invalid password. (Hint: Demo password is "gabay2026")' 
+      };
+    }
+
+    setCurrentUser(matchedUser);
+    localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(matchedUser));
+    return { success: true };
+  };
+
+  const logout = () => {
+    setCurrentUser(null);
+    localStorage.removeItem(STORAGE_KEY_SESSION);
+    setIsUserProfileModalOpen(false);
+    setIsRoleModalOpen(false);
+  };
 
   const switchRole = (role: UserRole) => {
-    setActiveRole(role);
-    localStorage.setItem(STORAGE_KEY_ROLE, role);
+    const userWithRole = db.users.find(u => u.role === role);
+    if (userWithRole) {
+      setCurrentUser(userWithRole);
+      localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(userWithRole));
+    }
   };
 
   // Course state
@@ -120,6 +207,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isHistoryDrawerOpen, setIsHistoryDrawerOpen] = useState(false);
   const [isHelpDrawerOpen, setIsHelpDrawerOpen] = useState(false);
   const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
+  const [isUserProfileModalOpen, setIsUserProfileModalOpen] = useState(false);
 
   // SpeedGrader
   const [activeSpeedGraderSubmissionId, setActiveSpeedGraderSubmissionId] = useState<string | null>(null);
@@ -151,7 +239,283 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   };
 
-  // Actions
+  // ==========================================
+  // REAL CRUD ACTIONS
+  // ==========================================
+
+  const createCourse = (courseData: Partial<Course>): Course => {
+    const newCourse: Course = {
+      id: `crs-${Date.now().toString(36)}`,
+      code: courseData.code || 'CMSC 199',
+      title: courseData.title || 'Advanced Computer Science Topics',
+      section: courseData.section || 'BSCS 4-1',
+      term: courseData.term || '1st Sem AY 2026-2027',
+      instructorId: courseData.instructorId || activeUser.id,
+      instructorName: courseData.instructorName || activeUser.name,
+      published: courseData.published ?? true,
+      color: courseData.color || '#be185d',
+      enrolledCount: courseData.enrolledCount || 1,
+      credits: courseData.credits || 3,
+      chedComplianceCode: courseData.chedComplianceCode || 'CMO-25-2015'
+    };
+
+    setDb(prev => ({
+      ...prev,
+      courses: [newCourse, ...prev.courses]
+    }));
+
+    setActiveCourseId(newCourse.id);
+    return newCourse;
+  };
+
+  const createAssignment = (asgData: Partial<Assignment>): Assignment => {
+    const newAssignment: Assignment = {
+      id: `asg-${Date.now().toString(36)}`,
+      courseId: asgData.courseId || activeCourseId || 'crs-cmsc131',
+      title: asgData.title || 'New Course Assignment',
+      instructions: asgData.instructions || 'Please review the guidelines and submit your work before the deadline.',
+      pointsPossible: asgData.pointsPossible || 100,
+      dueDate: asgData.dueDate || new Date(Date.now() + 7 * 86400000).toISOString(),
+      submissionTypes: asgData.submissionTypes || ['file', 'online_text'],
+      published: asgData.published ?? true,
+      category: asgData.category || 'Laboratory',
+      weight: asgData.weight || 20,
+      rubric: asgData.rubric || [
+        {
+          id: `rub-${Date.now()}-1`,
+          title: 'CHED Learning Outcome Alignment',
+          description: 'Demonstrates deep understanding of theoretical and practical concepts',
+          points: 50,
+          ratings: [
+            { points: 50, description: 'Exemplary Mastery' },
+            { points: 35, description: 'Proficient' },
+            { points: 20, description: 'Needs Revision' }
+          ]
+        },
+        {
+          id: `rub-${Date.now()}-2`,
+          title: 'Code Quality & Technical Execution',
+          description: 'Follows clean code conventions, modular structure, and documentation',
+          points: 50,
+          ratings: [
+            { points: 50, description: 'Industry Standards' },
+            { points: 35, description: 'Adequate Quality' },
+            { points: 20, description: 'Deficient' }
+          ]
+        }
+      ]
+    };
+
+    setDb(prev => ({
+      ...prev,
+      assignments: [newAssignment, ...prev.assignments]
+    }));
+
+    // Also auto-create a corresponding calendar event
+    const newCalEvent: CalendarEvent = {
+      id: `evt-${Date.now()}`,
+      title: `Due: ${newAssignment.title}`,
+      date: newAssignment.dueDate.split('T')[0],
+      time: '11:59 PM',
+      courseId: newAssignment.courseId,
+      type: 'assignment',
+      description: `Course assignment submission deadline for ${newAssignment.title}`
+    };
+    setDb(prev => ({
+      ...prev,
+      calendarEvents: [...prev.calendarEvents, newCalEvent]
+    }));
+
+    return newAssignment;
+  };
+
+  const deleteAssignment = (asgId: string) => {
+    setDb(prev => ({
+      ...prev,
+      assignments: prev.assignments.filter(a => a.id !== asgId),
+      submissions: prev.submissions.filter(s => s.assignmentId !== asgId)
+    }));
+  };
+
+  const createModule = (courseId: string, title: string): Module => {
+    const newModule: Module = {
+      id: `mod-${Date.now().toString(36)}`,
+      courseId,
+      title,
+      order: db.modules.filter(m => m.courseId === courseId).length + 1,
+      published: true,
+      items: []
+    };
+
+    setDb(prev => ({
+      ...prev,
+      modules: [...prev.modules, newModule]
+    }));
+
+    return newModule;
+  };
+
+  const addModuleItem = (moduleId: string, itemData: Partial<ModuleItem>) => {
+    const newItem: ModuleItem = {
+      id: `item-${Date.now().toString(36)}`,
+      title: itemData.title || 'New Learning Resource',
+      type: itemData.type || 'page',
+      published: itemData.published ?? true,
+      required: itemData.required ?? false,
+      completionCondition: itemData.completionCondition || 'view',
+      content: itemData.content || 'Content guidelines aligned with course syllabus objectives.',
+      assignmentId: itemData.assignmentId,
+      quizId: itemData.quizId,
+      completed: false
+    };
+
+    setDb(prev => ({
+      ...prev,
+      modules: prev.modules.map(mod => {
+        if (mod.id === moduleId) {
+          return {
+            ...mod,
+            items: [...mod.items, newItem]
+          };
+        }
+        return mod;
+      })
+    }));
+  };
+
+  const createQuiz = (quizData: Partial<Quiz>): Quiz => {
+    const newQuiz: Quiz = {
+      id: `quiz-${Date.now().toString(36)}`,
+      courseId: quizData.courseId || activeCourseId || 'crs-cmsc131',
+      title: quizData.title || 'New Assessment Quiz',
+      instructions: quizData.instructions || 'Answer all questions carefully. Time limit strictly enforced.',
+      timeLimitMinutes: quizData.timeLimitMinutes || 30,
+      published: quizData.published ?? true,
+      questions: quizData.questions || [
+        {
+          id: `q-${Date.now()}-1`,
+          text: 'Which architectural pattern is recommended for modern web applications?',
+          type: 'multiple_choice',
+          options: ['Component-based (e.g. React)', 'Monolithic CGI', 'FTP Server', 'Telnet Terminal'],
+          correctAnswer: 'Component-based (e.g. React)',
+          points: 10
+        }
+      ]
+    };
+
+    setDb(prev => ({
+      ...prev,
+      quizzes: [newQuiz, ...prev.quizzes]
+    }));
+
+    return newQuiz;
+  };
+
+  const recordQuizSubmission = (quizId: string, studentId: string, score: number, answers: Record<string, string>) => {
+    const quiz = db.quizzes.find(q => q.id === quizId);
+    if (!quiz) return;
+
+    // Create or update a submission record for grading
+    const mockAssignmentId = `asg-quiz-${quizId}`;
+    const existingSubIndex = db.submissions.findIndex(s => s.assignmentId === mockAssignmentId && s.studentId === studentId);
+
+    const submissionRecord: Submission = {
+      id: existingSubIndex >= 0 ? db.submissions[existingSubIndex].id : `sub-quiz-${Date.now()}`,
+      assignmentId: mockAssignmentId,
+      courseId: quiz.courseId,
+      studentId: studentId,
+      studentName: activeUser.name,
+      studentAvatar: activeUser.avatar,
+      submittedAt: new Date().toISOString(),
+      submissionType: 'online_text',
+      content: `Automated Quiz Assessment Result: Score: ${score}%. Answers recorded: ${JSON.stringify(answers)}`,
+      grade: score,
+      gradedAt: new Date().toISOString(),
+      gradedBy: 'GABAY Quiz Auto-Evaluator',
+      status: 'graded',
+      rubricScores: { 'automated_eval': score },
+      comments: [
+        {
+          id: `comm-${Date.now()}`,
+          authorId: 'sys-auto-grader',
+          authorName: 'GABAY Evaluation Engine',
+          authorRole: 'admin',
+          createdAt: new Date().toISOString(),
+          text: `Automatic grading completed. Student achieved ${score}% in assessment "${quiz.title}".`
+        }
+      ]
+    };
+
+    setDb(prev => {
+      let updatedSubs: Submission[];
+      if (existingSubIndex >= 0) {
+        updatedSubs = [...prev.submissions];
+        updatedSubs[existingSubIndex] = submissionRecord;
+      } else {
+        updatedSubs = [submissionRecord, ...prev.submissions];
+      }
+      return { ...prev, submissions: updatedSubs };
+    });
+  };
+
+  const enrollPerson = (person: Partial<User>, courseId?: string) => {
+    const targetCourseId = courseId || activeCourseId;
+    const newPerson: User = {
+      id: `usr-${person.role || 'stud'}-${Date.now().toString(36)}`,
+      name: person.name || 'New Enrollee',
+      email: person.email || `user.${Date.now()}@dmmmsu.edu.ph`,
+      role: person.role || 'student',
+      avatar: person.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
+      studentId: person.studentId || (person.role === 'student' ? `2026-SLUC-${Math.floor(1000 + Math.random() * 9000)}` : undefined),
+      department: person.department || 'BS Computer Science',
+      title: person.title || (person.role === 'student' ? 'Enrolled Student' : 'Instructor')
+    };
+
+    setDb(prev => {
+      const updatedCourses = prev.courses.map(c => {
+        if (c.id === targetCourseId && newPerson.role === 'student') {
+          return { ...c, enrolledCount: c.enrolledCount + 1 };
+        }
+        return c;
+      });
+
+      return {
+        ...prev,
+        users: [...prev.users, newPerson],
+        courses: updatedCourses
+      };
+    });
+  };
+
+  const updateSyllabus = (courseId: string, updates: Partial<Course>) => {
+    setDb(prev => ({
+      ...prev,
+      courses: prev.courses.map(c => (c.id === courseId ? { ...c, ...updates } : c))
+    }));
+  };
+
+  const importCommonsTemplate = (templateId: string, targetCourseId: string): { success: boolean; message: string } => {
+    const tmpl = db.commonsTemplates.find(t => t.id === templateId);
+    const targetCourse = db.courses.find(c => c.id === targetCourseId);
+    
+    if (!tmpl || !targetCourse) {
+      return { success: false, message: 'Invalid template or course target' };
+    }
+
+    // Create a new module based on the imported template
+    const newMod = createModule(targetCourseId, `[Imported] ${tmpl.title}`);
+    addModuleItem(newMod.id, {
+      title: `${tmpl.title} Blueprint & Rubric Guidelines`,
+      type: 'page',
+      content: `${tmpl.description}\n\nAlignment: ${tmpl.chedAlignment}\nTags: ${tmpl.tags.join(', ')}`
+    });
+
+    return { 
+      success: true, 
+      message: `Successfully imported "${tmpl.title}" into ${targetCourse.code} (${targetCourse.section})!` 
+    };
+  };
+
   const gradeSubmission = (
     submissionId: string,
     grade: number,
@@ -184,7 +548,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         return sub;
       });
-      return { ...prev, submissions: updatedSubmissions };
+
+      return {
+        ...prev,
+        submissions: updatedSubmissions
+      };
     });
   };
 
@@ -322,9 +690,18 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   };
 
+  const clearHistory = () => {
+    setDb(prev => ({
+      ...prev,
+      historyLogs: []
+    }));
+  };
+
   const resetData = () => {
     localStorage.removeItem(STORAGE_KEY_DB);
+    localStorage.removeItem(STORAGE_KEY_SESSION);
     setDb(initialMockData as unknown as MockDatabase);
+    setCurrentUser(null);
   };
 
   return (
@@ -332,8 +709,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       value={{
         theme,
         toggleTheme,
+        isAuthenticated,
+        currentUser,
         activeUser,
         activeRole,
+        login,
+        logout,
         switchRole,
         activeCourseId,
         setActiveCourseId,
@@ -347,6 +728,18 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsHelpDrawerOpen,
         isRoleModalOpen,
         setIsRoleModalOpen,
+        isUserProfileModalOpen,
+        setIsUserProfileModalOpen,
+        createCourse,
+        createAssignment,
+        deleteAssignment,
+        createModule,
+        addModuleItem,
+        createQuiz,
+        recordQuizSubmission,
+        enrollPerson,
+        updateSyllabus,
+        importCommonsTemplate,
         gradeSubmission,
         submitAssignment,
         toggleModulePublish,
@@ -356,6 +749,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         createAdvisingSlot,
         addCalendarEvent,
         logHistory,
+        clearHistory,
         resetData
       }}
     >

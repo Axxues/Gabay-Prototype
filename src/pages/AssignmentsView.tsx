@@ -7,7 +7,10 @@ import {
   Upload,
   Award,
   Send,
-  ChevronRight
+  ChevronRight,
+  Plus,
+  Trash2,
+  X
 } from 'lucide-react';
 
 interface AssignmentsViewProps {
@@ -21,7 +24,15 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
   selectedAssignmentId,
   onSelectAssignment
 }) => {
-  const { activeRole, activeUser, db, submitAssignment, openSpeedGrader } = useLMS();
+  const {
+    activeRole,
+    activeUser,
+    db,
+    submitAssignment,
+    createAssignment,
+    deleteAssignment,
+    openSpeedGrader
+  } = useLMS();
 
   const courseAssignments = db.assignments.filter(a => a.courseId === courseId);
   const selectedAssignment = db.assignments.find(a => a.id === selectedAssignmentId);
@@ -31,6 +42,15 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
   const [textContent, setTextContent] = useState('');
   const [simulatedFileName, setSimulatedFileName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Create Assignment Modal State
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+  const [newInstructions, setNewInstructions] = useState('');
+  const [newCategory, setNewCategory] = useState('Laboratory');
+  const [newPoints, setNewPoints] = useState(100);
+  const [newWeight, setNewWeight] = useState(20);
+  const [newDueDate, setNewDueDate] = useState('');
 
   const currentSubmission = selectedAssignment
     ? db.submissions.find(s => s.assignmentId === selectedAssignment.id && s.studentId === activeUser.id)
@@ -62,265 +82,450 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
     }, 600);
   };
 
+  const handleCreateAssignment = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTitle.trim()) {
+      alert("Please provide an assignment title.");
+      return;
+    }
+
+    const created = createAssignment({
+      courseId,
+      title: newTitle.trim(),
+      instructions: newInstructions.trim() || 'Complete the assignment guidelines aligned with course syllabus objectives.',
+      category: newCategory,
+      pointsPossible: Number(newPoints) || 100,
+      weight: Number(newWeight) || 20,
+      dueDate: newDueDate || new Date(Date.now() + 7 * 86400000).toISOString(),
+      submissionTypes: ['file', 'online_text'],
+      published: true
+    });
+
+    setIsCreateModalOpen(false);
+    setNewTitle('');
+    setNewInstructions('');
+    setNewDueDate('');
+    onSelectAssignment(created.id);
+  };
+
+  const handleDelete = (asgId: string) => {
+    if (confirm("Are you sure you want to delete this assignment and all associated student submissions?")) {
+      deleteAssignment(asgId);
+      onSelectAssignment(null);
+    }
+  };
+
   // If no assignment selected, render assignment list
   if (!selectedAssignment) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between pb-3 border-b border-zinc-200 dark:border-zinc-800">
+      <div className="space-y-6 animate-fade-in">
+        <div className="flex items-center justify-between pb-3 border-b border-border">
           <div>
-            <h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">
+            <h2 className="text-xl font-bold tracking-tight text-foreground">
               Course Assignments & Milestones
             </h2>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400">
-              Laboratory exercises, problem sets, and practical examinations
+            <p className="text-xs text-muted-foreground font-mono">
+              Outcome-Based laboratory exercises, problem sets & submissions
             </p>
           </div>
+
+          {(activeRole === 'faculty' || activeRole === 'admin') && (
+            <button
+              onClick={() => setIsCreateModalOpen(true)}
+              className="px-3.5 py-2 text-xs font-bold bg-pink-700 hover:bg-pink-800 active:scale-[0.98] text-white rounded-xl transition-all shadow-subtle flex items-center space-x-1.5 cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>+ Create Assignment</span>
+            </button>
+          )}
         </div>
 
         <div className="space-y-3">
-          {courseAssignments.map(asg => {
-            const studentSub = db.submissions.find(
-              s => s.assignmentId === asg.id && s.studentId === activeUser.id
-            );
+          {courseAssignments.length === 0 ? (
+            <div className="p-8 text-center bg-card rounded-xl border border-border text-xs text-muted-foreground">
+              No assignments published for this course yet.
+            </div>
+          ) : (
+            courseAssignments.map(asg => {
+              const studentSub = db.submissions.find(
+                s => s.assignmentId === asg.id && s.studentId === activeUser.id
+              );
 
-            return (
-              <div
-                key={asg.id}
-                onClick={() => onSelectAssignment(asg.id)}
-                className="group p-4 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg hover:border-red-700/60 dark:hover:border-red-600/60 cursor-pointer transition-all shadow-2xs flex items-center justify-between"
-              >
-                <div className="flex items-start space-x-3.5">
-                  <div className="p-2.5 bg-zinc-100 dark:bg-zinc-800 rounded-md text-red-700 dark:text-red-400 shrink-0 mt-0.5">
-                    <FileCheck2 className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-sm text-zinc-900 dark:text-zinc-100 group-hover:text-red-700 dark:group-hover:text-red-400 transition-colors">
-                      {asg.title}
-                    </h3>
-                    <div className="flex items-center space-x-3 text-xs text-zinc-500 dark:text-zinc-400 mt-1 font-mono">
-                      <span>Category: {asg.category} ({asg.weight}%)</span>
-                      <span>•</span>
-                      <span>Due: {new Date(asg.dueDate).toLocaleString()}</span>
-                      <span>•</span>
-                      <span className="font-bold text-zinc-800 dark:text-zinc-200">{asg.pointsPossible} pts</span>
+              return (
+                <div
+                  key={asg.id}
+                  onClick={() => onSelectAssignment(asg.id)}
+                  className="group p-4 bg-card border border-border rounded-xl hover:border-pink-600/40 cursor-pointer card-hover shadow-soft transition-all flex items-center justify-between"
+                >
+                  <div className="flex items-start space-x-3.5">
+                    <div className="p-2.5 bg-muted rounded-xl text-pink-700 dark:text-pink-400 shrink-0 mt-0.5 border border-border">
+                      <FileCheck2 className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-sm text-foreground group-hover:text-pink-700 dark:group-hover:text-pink-400 transition-colors">
+                        {asg.title}
+                      </h3>
+                      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground mt-1 font-mono">
+                        <span className="px-2 py-0.5 rounded bg-muted text-[10px] font-bold text-foreground">
+                          {asg.category} ({asg.weight}%)
+                        </span>
+                        <span>•</span>
+                        <span>Due: {new Date(asg.dueDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                        <span>•</span>
+                        <span className="font-bold text-foreground">{asg.pointsPossible} pts</span>
+                      </div>
                     </div>
                   </div>
+
+                  <div className="flex items-center space-x-3 shrink-0">
+                    {studentSub ? (
+                      studentSub.status === 'graded' ? (
+                        <span className="px-2.5 py-1 text-xs font-mono font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 rounded-lg border border-emerald-500/20 flex items-center space-x-1">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Graded: {studentSub.grade}/{asg.pointsPossible}</span>
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-1 text-xs font-mono font-bold bg-blue-500/10 text-blue-700 dark:text-blue-400 rounded-lg border border-blue-500/20 flex items-center space-x-1">
+                          <Clock className="w-3.5 h-3.5" />
+                          <span>Submitted</span>
+                        </span>
+                      )
+                    ) : (
+                      <span className="px-2.5 py-1 text-xs font-mono font-bold bg-muted text-muted-foreground rounded-lg border border-border">
+                        Not Submitted
+                      </span>
+                    )}
+                    <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-pink-700 dark:group-hover:text-pink-400 transition-colors" />
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Modal: Create Assignment */}
+        {isCreateModalOpen && (
+          <div className="fixed inset-0 z-50 overflow-hidden flex items-center justify-center p-4">
+            <div
+              className="fixed inset-0 overlay-backdrop animate-fade-in cursor-pointer"
+              onClick={() => setIsCreateModalOpen(false)}
+            />
+
+            <div
+              className="w-full max-w-lg bg-card border border-border rounded-2xl shadow-elevated overflow-hidden z-10 flex flex-col max-h-[90vh] animate-scale-in"
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="px-6 py-4 border-b border-border bg-muted/40 flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <div className="p-2 rounded-lg bg-pink-500/10 text-pink-700 dark:text-pink-400 border border-pink-500/20">
+                    <Plus className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-foreground">Create New Assignment</h3>
+                    <p className="text-[10px] font-mono text-muted-foreground">OBE Course Assessment Milestone</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsCreateModalOpen(false)}
+                  className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Form */}
+              <form onSubmit={handleCreateAssignment} className="p-6 overflow-y-auto space-y-4 text-xs">
+                <div>
+                  <label className="block font-bold text-foreground mb-1">Assignment Title *</label>
+                  <input
+                    type="text"
+                    required
+                    value={newTitle}
+                    onChange={e => setNewTitle(e.target.value)}
+                    placeholder="e.g. Lab Exercise 4: React State Architecture"
+                    className="w-full p-2.5 bg-background border border-border rounded-xl text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-pink-600/40 focus:border-pink-600 font-sans"
+                  />
                 </div>
 
-                <div className="flex items-center space-x-3 shrink-0">
-                  {studentSub ? (
-                    studentSub.status === 'graded' ? (
-                      <span className="px-2.5 py-1 text-xs font-mono font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 rounded border border-emerald-300 dark:border-emerald-800 flex items-center space-x-1">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        <span>Graded: {studentSub.grade}/{asg.pointsPossible}</span>
-                      </span>
-                    ) : (
-                      <span className="px-2.5 py-1 text-xs font-mono font-bold bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 rounded border border-blue-300 dark:border-blue-800 flex items-center space-x-1">
-                        <Clock className="w-3.5 h-3.5" />
-                        <span>Submitted</span>
-                      </span>
-                    )
-                  ) : (
-                    <span className="px-2.5 py-1 text-xs font-mono font-bold bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 rounded border border-zinc-300 dark:border-zinc-700">
-                      Not Submitted
-                    </span>
-                  )}
-                  <ChevronRight className="w-4 h-4 text-zinc-400 group-hover:text-red-700 dark:group-hover:text-red-400 transition-colors" />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-foreground mb-1">Category</label>
+                    <select
+                      value={newCategory}
+                      onChange={e => setNewCategory(e.target.value)}
+                      className="w-full p-2.5 bg-background border border-border rounded-xl text-foreground"
+                    >
+                      <option value="Laboratory">Laboratory Exercise</option>
+                      <option value="Homework">Problem Set / Homework</option>
+                      <option value="Exams">Major Examination</option>
+                      <option value="Project">Capstone / Term Project</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-foreground mb-1">Total Points Possible</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={newPoints}
+                      onChange={e => setNewPoints(Number(e.target.value))}
+                      className="w-full p-2.5 bg-background border border-border rounded-xl text-foreground font-mono"
+                    />
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-foreground mb-1">Grading Weight (%)</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={newWeight}
+                      onChange={e => setNewWeight(Number(e.target.value))}
+                      className="w-full p-2.5 bg-background border border-border rounded-xl text-foreground font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-foreground mb-1">Due Date</label>
+                    <input
+                      type="datetime-local"
+                      value={newDueDate}
+                      onChange={e => setNewDueDate(e.target.value)}
+                      className="w-full p-2.5 bg-background border border-border rounded-xl text-foreground font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-foreground mb-1">Instructions & Guidelines</label>
+                  <textarea
+                    rows={3}
+                    value={newInstructions}
+                    onChange={e => setNewInstructions(e.target.value)}
+                    placeholder="Describe laboratory objectives, submission format, and rubric expectations..."
+                    className="w-full p-2.5 bg-background border border-border rounded-xl text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-pink-600/40 focus:border-pink-600 font-sans"
+                  />
+                </div>
+
+                <div className="pt-3 border-t border-border flex items-center justify-end space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsCreateModalOpen(false)}
+                    className="px-4 py-2 text-xs font-bold text-muted-foreground hover:bg-muted rounded-xl transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 text-xs font-bold bg-pink-700 hover:bg-pink-800 active:scale-[0.98] text-white rounded-xl shadow-card transition-all cursor-pointer"
+                  >
+                    Publish Assignment
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
 
   // Render Detailed Assignment & Submission Workspace
   return (
-    <div className="space-y-6 max-w-5xl">
-      {/* Back Button */}
-      <button
-        onClick={() => onSelectAssignment(null)}
-        className="text-xs font-semibold text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 flex items-center space-x-1"
-      >
-        <span>← Back to All Assignments</span>
-      </button>
+    <div className="space-y-6 max-w-5xl animate-fade-in">
+      <div className="flex items-center justify-between">
+        <button
+          onClick={() => onSelectAssignment(null)}
+          className="text-xs font-bold text-muted-foreground hover:text-foreground transition-colors flex items-center space-x-1 cursor-pointer"
+        >
+          <span>← Back to Assignments List</span>
+        </button>
 
-      {/* Assignment Header Card */}
-      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-6 space-y-4 shadow-2xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-zinc-200 dark:border-zinc-800 pb-4 gap-4">
-          <div>
-            <span className="px-2.5 py-0.5 text-[10px] font-mono font-bold uppercase bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded border border-zinc-300 dark:border-zinc-700">
-              {selectedAssignment.category} • {selectedAssignment.pointsPossible} Points
-            </span>
-            <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-100 mt-2">
-              {selectedAssignment.title}
-            </h1>
-            <p className="text-xs font-mono text-zinc-500 mt-1">
-              Due Date: {new Date(selectedAssignment.dueDate).toLocaleString()}
-            </p>
-          </div>
-
-          {/* SpeedGrader Button for Faculty */}
-          {(activeRole === 'faculty' || activeRole === 'admin') && (
-            <div className="shrink-0">
-              {db.submissions.filter(s => s.assignmentId === selectedAssignment.id).length > 0 ? (
-                <button
-                  onClick={() => {
-                    const firstSub = db.submissions.find(s => s.assignmentId === selectedAssignment.id);
-                    if (firstSub) openSpeedGrader(firstSub.id);
-                  }}
-                  className="px-4 py-2 text-xs font-semibold bg-red-800 hover:bg-red-900 text-white rounded transition-colors flex items-center space-x-2 shadow-sm"
-                >
-                  <Award className="w-4 h-4" />
-                  <span>Launch SpeedGrader Workspace</span>
-                </button>
-              ) : (
-                <span className="text-xs text-zinc-500 font-mono">No submissions to grade yet</span>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Instructions */}
-        <div className="space-y-2 text-xs text-zinc-700 dark:text-zinc-300">
-          <h3 className="font-bold text-zinc-900 dark:text-zinc-100 uppercase tracking-wider text-[11px]">
-            Instructions & Requirements:
-          </h3>
-          <p className="leading-relaxed whitespace-pre-line bg-zinc-50 dark:bg-zinc-950 p-4 rounded border border-zinc-200 dark:border-zinc-800">
-            {selectedAssignment.instructions}
-          </p>
-        </div>
-
-        {/* Rubric Matrix Preview */}
-        {selectedAssignment.rubric.length > 0 && (
-          <div className="space-y-3 pt-2">
-            <h3 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">
-              CHED SpeedGrader Rubric Criteria:
-            </h3>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 font-mono text-zinc-500">
-                    <th className="p-2.5">Criterion</th>
-                    <th className="p-2.5">Description</th>
-                    <th className="p-2.5 text-right">Max Points</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
-                  {selectedAssignment.rubric.map(r => (
-                    <tr key={r.id}>
-                      <td className="p-2.5 font-bold text-zinc-900 dark:text-zinc-100">{r.title}</td>
-                      <td className="p-2.5 text-zinc-600 dark:text-zinc-400">{r.description}</td>
-                      <td className="p-2.5 text-right font-mono font-bold text-red-700 dark:text-red-400">{r.points} pts</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+        {(activeRole === 'faculty' || activeRole === 'admin') && (
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => {
+                const sub = db.submissions.find(s => s.assignmentId === selectedAssignment.id);
+                if (sub) openSpeedGrader(sub.id);
+                else alert("No student submissions yet for this assignment.");
+              }}
+              className="px-3 py-1.5 text-xs font-bold bg-muted hover:bg-muted/80 text-foreground border border-border rounded-xl transition-colors cursor-pointer"
+            >
+              Inspect in SpeedGrader
+            </button>
+            <button
+              onClick={() => handleDelete(selectedAssignment.id)}
+              className="p-1.5 text-red-600 hover:bg-red-500/10 rounded-xl border border-red-500/20 transition-colors cursor-pointer"
+              title="Delete Assignment"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
           </div>
         )}
       </div>
 
-      {/* STUDENT SUBMISSION WORKSPACE */}
-      {activeRole === 'student' && (
-        <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-6 space-y-4 shadow-2xs">
-          <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 pb-3">
-            <h3 className="font-bold text-base text-zinc-900 dark:text-zinc-100 flex items-center space-x-2">
-              <Upload className="w-5 h-5 text-red-700 dark:text-red-400" />
-              <span>Student Submission Terminal</span>
-            </h3>
-            {currentSubmission && (
-              <span className={`px-2.5 py-0.5 text-xs font-mono font-bold rounded ${
-                currentSubmission.status === 'graded'
-                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                  : 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
-              }`}>
-                {currentSubmission.status === 'graded' ? `GRADED (${currentSubmission.grade}/${selectedAssignment.pointsPossible})` : 'SUBMITTED'}
+      {/* Assignment Header Card */}
+      <div className="bg-card border border-border rounded-2xl p-6 shadow-subtle space-y-4">
+        <div className="flex justify-between items-start">
+          <div>
+            <div className="flex items-center space-x-2">
+              <span className="px-2.5 py-0.5 text-[10px] font-mono font-bold uppercase bg-pink-500/10 text-pink-700 dark:text-pink-400 rounded-md border border-pink-500/20">
+                {selectedAssignment.category}
               </span>
-            )}
+              <span className="text-xs font-mono text-muted-foreground">
+                Weight: {selectedAssignment.weight}% of Final Grade
+              </span>
+            </div>
+            <h1 className="text-2xl font-extrabold tracking-tight text-foreground mt-2">
+              {selectedAssignment.title}
+            </h1>
           </div>
 
-          {/* Existing Grade & Comment Breakdown */}
-          {currentSubmission && currentSubmission.status === 'graded' && (
-            <div className="p-4 bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/60 rounded-lg space-y-2 text-xs">
-              <div className="flex justify-between items-center">
-                <span className="font-bold text-emerald-900 dark:text-emerald-300 text-sm">
-                  Evaluated Score: {currentSubmission.grade} / {selectedAssignment.pointsPossible}
-                </span>
-                <span className="font-mono text-[10px] text-zinc-500">
-                  {currentSubmission.gradedBy} on {new Date(currentSubmission.gradedAt || '').toLocaleString()}
-                </span>
-              </div>
-              {currentSubmission.comments.map(c => (
-                <div key={c.id} className="p-2.5 bg-white dark:bg-zinc-900 rounded border border-emerald-200 dark:border-emerald-900/40">
-                  <div className="font-bold text-zinc-900 dark:text-zinc-100">{c.authorName} ({c.authorRole}):</div>
-                  <p className="text-zinc-700 dark:text-zinc-300 mt-0.5 italic">"{c.text}"</p>
-                </div>
-              ))}
+          <div className="text-right">
+            <div className="text-2xl font-extrabold font-mono text-foreground">
+              {selectedAssignment.pointsPossible}
             </div>
-          )}
+            <div className="text-[10px] font-mono text-muted-foreground uppercase">Points Possible</div>
+          </div>
+        </div>
+
+        {/* Due Date & Submission Type */}
+        <div className="flex flex-wrap gap-4 py-3 border-y border-border text-xs font-mono text-muted-foreground">
+          <div>
+            <span className="font-bold text-foreground">Due Date: </span>
+            <span>{new Date(selectedAssignment.dueDate).toLocaleString()}</span>
+          </div>
+          <div>
+            <span className="font-bold text-foreground">Submissions Allowed: </span>
+            <span>File Upload, Text Entry</span>
+          </div>
+          <div>
+            <span className="font-bold text-foreground">Available to: </span>
+            <span>All Enrolled Students</span>
+          </div>
+        </div>
+
+        {/* Assignment Instructions */}
+        <div className="text-xs text-foreground/90 leading-relaxed space-y-3">
+          <h4 className="font-bold uppercase tracking-wider text-[11px] text-foreground">
+            Assessment Guidelines & Objectives
+          </h4>
+          <p className="whitespace-pre-line">{selectedAssignment.instructions}</p>
+        </div>
+
+        {/* Rubric Criteria Summary */}
+        <div className="pt-4 border-t border-border space-y-3">
+          <h4 className="font-bold uppercase tracking-wider text-[11px] text-foreground flex items-center space-x-1.5">
+            <Award className="w-4 h-4 text-amber-500" />
+            <span>CHED OBE Evaluation Rubric Matrix</span>
+          </h4>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {selectedAssignment.rubric.map(criterion => (
+              <div key={criterion.id} className="p-3.5 bg-muted/40 rounded-xl border border-border space-y-2">
+                <div className="flex justify-between items-start">
+                  <span className="font-bold text-foreground text-xs">{criterion.title}</span>
+                  <span className="font-mono text-pink-700 dark:text-pink-400 font-bold text-xs">{criterion.points} pts</span>
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">{criterion.description}</p>
+                <div className="flex gap-1.5 pt-1">
+                  {criterion.ratings.map(r => (
+                    <div key={r.points} className="p-1.5 bg-card border border-border rounded-lg text-[10px] font-mono flex-1 text-center">
+                      <div className="font-bold text-foreground">{r.points} pts</div>
+                      <div className="text-muted-foreground truncate">{r.description}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Submission Status Section (For Students) */}
+      {activeRole === 'student' && (
+        <div className="bg-card border border-border rounded-2xl p-6 shadow-subtle space-y-4">
+          <h3 className="font-bold text-base text-foreground flex items-center justify-between">
+            <span>Your Submission Status</span>
+            {currentSubmission ? (
+              currentSubmission.status === 'graded' ? (
+                <span className="px-3 py-1 text-xs font-mono font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 rounded-lg border border-emerald-500/20">
+                  Evaluated: {currentSubmission.grade} / {selectedAssignment.pointsPossible} pts
+                </span>
+              ) : (
+                <span className="px-3 py-1 text-xs font-mono font-bold bg-blue-500/10 text-blue-700 dark:text-blue-400 rounded-lg border border-blue-500/20">
+                  Submitted • Pending Evaluation
+                </span>
+              )
+            ) : (
+              <span className="px-3 py-1 text-xs font-mono font-bold bg-amber-500/10 text-amber-700 dark:text-amber-400 rounded-lg border border-amber-500/20">
+                Awaiting Submission
+              </span>
+            )}
+          </h3>
 
           {/* Submission Form */}
           <form onSubmit={handleSubmit} className="space-y-4 text-xs">
-            {/* Type selector tabs */}
-            <div className="flex space-x-2 border-b border-zinc-200 dark:border-zinc-800 pb-2">
+            <div className="flex space-x-2 border-b border-border pb-2">
               <button
                 type="button"
                 onClick={() => setSubmissionType('online_text')}
-                className={`px-3 py-1.5 rounded font-semibold transition-colors ${
+                className={`px-3 py-1.5 rounded-lg font-bold transition-colors cursor-pointer ${
                   submissionType === 'online_text'
-                    ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
-                    : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                    ? 'bg-pink-700 text-white shadow-soft'
+                    : 'bg-muted text-muted-foreground hover:text-foreground'
                 }`}
               >
-                Text Entry Simulator
+                Text Entry / Repository URL
               </button>
               <button
                 type="button"
                 onClick={() => setSubmissionType('file')}
-                className={`px-3 py-1.5 rounded font-semibold transition-colors ${
+                className={`px-3 py-1.5 rounded-lg font-bold transition-colors cursor-pointer ${
                   submissionType === 'file'
-                    ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
-                    : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                    ? 'bg-pink-700 text-white shadow-soft'
+                    : 'bg-muted text-muted-foreground hover:text-foreground'
                 }`}
               >
-                File Upload Dropzone
+                File Upload (.PDF / .ZIP)
               </button>
             </div>
 
             {submissionType === 'online_text' ? (
               <div className="space-y-2">
-                <label className="block font-semibold text-zinc-900 dark:text-zinc-100">
-                  Online Text Submission:
+                <label className="block font-bold text-foreground">
+                  Online Text Content & Code Submissions:
                 </label>
                 <textarea
                   rows={5}
                   value={textContent}
                   onChange={e => setTextContent(e.target.value)}
-                  placeholder="Paste your source code, laboratory answers, or repository URLs here..."
-                  className="w-full p-3 rounded border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 font-mono text-zinc-900 dark:text-zinc-100 focus:outline-hidden focus:ring-1 focus:ring-red-600"
+                  placeholder="Paste your source code, laboratory answers, or Git repository URL here..."
+                  className="w-full p-3 rounded-xl border border-border bg-background font-mono text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-pink-600/40 focus:border-pink-600 text-xs"
                 />
               </div>
             ) : (
               <div className="space-y-2">
-                <label className="block font-semibold text-zinc-900 dark:text-zinc-100">
+                <label className="block font-bold text-foreground">
                   File Attachment Dropzone:
                 </label>
-                <div className="border-2 border-dashed border-zinc-300 dark:border-zinc-700 rounded-lg p-6 text-center space-y-2 bg-zinc-50 dark:bg-zinc-950">
-                  <Upload className="w-8 h-8 text-zinc-400 mx-auto" />
-                  <p className="text-zinc-600 dark:text-zinc-400 font-medium">
-                    Drag and drop your PDF / ZIP document here or click to select
+                <div className="border-2 border-dashed border-border rounded-2xl p-6 text-center space-y-2 bg-muted/20">
+                  <Upload className="w-8 h-8 text-muted-foreground mx-auto" />
+                  <p className="text-foreground font-semibold">
+                    Simulate file upload for GABAY evaluation
                   </p>
                   <input
                     type="text"
                     value={simulatedFileName}
                     onChange={e => setSimulatedFileName(e.target.value)}
-                    placeholder="e.g. CMSC131_Lab1_JayveeReyes_2021-SLUC-0492.pdf"
-                    className="max-w-md mx-auto p-2 border border-zinc-300 dark:border-zinc-700 rounded font-mono text-center w-full bg-white dark:bg-zinc-900"
+                    placeholder="e.g. CMSC131_Lab4_JayveeReyes_2021-SLUC-0492.pdf"
+                    className="max-w-md mx-auto p-2.5 border border-border rounded-xl font-mono text-center w-full bg-background text-xs"
                   />
-                  <div className="text-[10px] text-zinc-500 font-mono">
-                    Supported extensions: .pdf, .docx, .zip, .tar.gz (Max 25MB)
+                  <div className="text-[10px] text-muted-foreground font-mono">
+                    Allowed types: PDF, DOCX, ZIP (Max 25MB)
                   </div>
                 </div>
               </div>
@@ -330,7 +535,7 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="px-5 py-2 text-xs font-semibold bg-red-800 hover:bg-red-900 text-white rounded transition-colors flex items-center space-x-2 shadow-sm"
+                className="px-5 py-2.5 text-xs font-bold bg-pink-700 hover:bg-pink-800 active:scale-[0.98] text-white rounded-xl transition-all shadow-card flex items-center space-x-2 cursor-pointer disabled:opacity-50"
               >
                 <Send className="w-3.5 h-3.5" />
                 <span>{currentSubmission ? 'Resubmit Assignment' : 'Submit Assignment to GABAY'}</span>

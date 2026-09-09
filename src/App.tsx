@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useLMS } from './context/LMSContext';
+import { useLMS, LMSProvider } from './context/LMSContext';
 import { GlobalSidebar } from './components/layout/GlobalSidebar';
 import { TopNavbar } from './components/layout/TopNavbar';
 import { DashboardPage } from './pages/DashboardPage';
@@ -7,15 +7,20 @@ import { CoursesPage } from './pages/CoursesPage';
 import { CalendarPage } from './pages/CalendarPage';
 import { InboxPage } from './pages/InboxPage';
 import { CommonsPage } from './pages/CommonsPage';
+import { LoginPage } from './pages/LoginPage';
+import { ProfilePage } from './pages/ProfilePage';
+import { HistoryPage } from './pages/HistoryPage';
+import { HelpPage } from './pages/HelpPage';
 import { SpeedGraderModal } from './components/grading/SpeedGraderModal';
-import { RoleSwitcherModal } from './components/common/RoleSwitcherModal';
-import { HistoryDrawer } from './components/common/HistoryDrawer';
-import { HelpDrawer } from './components/common/HelpDrawer';
 
 export const AppContent: React.FC = () => {
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
   const [courseSubTab, setCourseSubTab] = useState<string>('modules');
-  const { setActiveCourseId, logHistory } = useLMS();
+  const { activeCourseId, setActiveCourseId, logHistory, isAuthenticated } = useLMS();
+
+  if (!isAuthenticated) {
+    return <LoginPage />;
+  }
 
   const handleNavigateTab = (tab: string) => {
     setCurrentTab(tab);
@@ -30,23 +35,35 @@ export const AppContent: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-zinc-100 dark:bg-zinc-950 font-sans">
+    <div className="flex h-screen w-full overflow-hidden bg-background font-sans">
       {/* Global GABAY Left Sidebar */}
       <GlobalSidebar
         currentTab={currentTab}
         setCurrentTab={handleNavigateTab}
+        onNavigateCourse={handleNavigateCourse}
+        courseSubTab={courseSubTab}
+        setCourseSubTab={(tab) => {
+          setCourseSubTab(tab);
+          logHistory(`/lms/courses/${activeCourseId}/${tab}`, `LMS > Course > ${tab}`);
+        }}
       />
 
       {/* Main Content Workspace Area */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         {/* Top Navbar */}
         <TopNavbar
           currentTab={currentTab}
           courseTab={currentTab === 'courses' ? courseSubTab : undefined}
+          onNavigateCourse={handleNavigateCourse}
+          onSelectCourseTab={(tab) => {
+            setCourseSubTab(tab);
+            logHistory(`/lms/courses/${activeCourseId}/${tab}`, `LMS > Course > ${tab}`);
+          }}
+          onNavigateTab={handleNavigateTab}
         />
 
         {/* Dynamic Page Views */}
-        <div className="flex-1 overflow-y-auto">
+        <div className={`flex-1 min-h-0 ${currentTab === 'courses' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
           {currentTab === 'dashboard' && (
             <DashboardPage onNavigateCourse={handleNavigateCourse} />
           )}
@@ -60,14 +77,39 @@ export const AppContent: React.FC = () => {
           {currentTab === 'inbox' && <InboxPage />}
 
           {currentTab === 'commons' && <CommonsPage />}
+
+          {currentTab === 'profile' && (
+            <ProfilePage
+              onNavigateCourse={handleNavigateCourse}
+              onNavigateTab={handleNavigateTab}
+            />
+          )}
+
+          {currentTab === 'history' && (
+            <HistoryPage
+              onNavigateCourse={handleNavigateCourse}
+              onNavigateTab={handleNavigateTab}
+            />
+          )}
+
+          {currentTab === 'help' && (
+            <HelpPage onNavigateTab={handleNavigateTab} />
+          )}
         </div>
       </div>
 
-      {/* Global Modals & Drawers */}
+      {/* Global Modals */}
       <SpeedGraderModal />
-      <RoleSwitcherModal />
-      <HistoryDrawer />
-      <HelpDrawer />
     </div>
   );
 };
+
+export const App: React.FC = () => {
+  return (
+    <LMSProvider>
+      <AppContent />
+    </LMSProvider>
+  );
+};
+
+export default App;

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useLMS } from '../context/LMSContext';
 import {
   BookOpen,
@@ -7,7 +7,9 @@ import {
   FileSpreadsheet,
   Award,
   ArrowRight,
-  ShieldCheck
+  ShieldCheck,
+  Plus,
+  X
 } from 'lucide-react';
 
 interface DashboardPageProps {
@@ -15,36 +17,64 @@ interface DashboardPageProps {
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateCourse }) => {
-  const { activeRole, activeUser, db, openSpeedGrader } = useLMS();
+  const { activeRole, activeUser, db, openSpeedGrader, createCourse } = useLMS();
+
+  const [isCreateCourseOpen, setIsCreateCourseOpen] = useState(false);
+  const [courseCode, setCourseCode] = useState('');
+  const [courseTitle, setCourseTitle] = useState('');
+  const [courseSection, setCourseSection] = useState('BSCS 4-1');
+  const [courseCredits, setCourseCredits] = useState(3);
+  const [courseColor, setCourseColor] = useState('#be185d');
+  const [instructorId, setInstructorId] = useState('usr-fac-1');
 
   // Filter courses based on user role
   const userCourses = db.courses.filter(c => {
-    if (activeRole === 'student') return true; // enrolled in courses
+    if (activeRole === 'student') return true;
     if (activeRole === 'faculty') return c.instructorId === activeUser.id;
-    return true; // admin/staff see all
+    return true;
   });
 
-  // Needs Grading queue for Faculty
-  const unsubmittedList = db.submissions.filter(s => s.status === 'submitted');
+  const handleCreateCourse = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!courseCode.trim() || !courseTitle.trim()) return;
 
-  // To-do list for Student
+    const inst = db.users.find(u => u.id === instructorId);
+    const newCourse = createCourse({
+      code: courseCode.trim().toUpperCase(),
+      title: courseTitle.trim(),
+      section: courseSection.trim(),
+      credits: Number(courseCredits) || 3,
+      color: courseColor,
+      instructorId: inst?.id || activeUser.id,
+      instructorName: inst?.name || activeUser.name,
+      term: '1st Sem AY 2026-2027',
+      published: true
+    });
+
+    setIsCreateCourseOpen(false);
+    setCourseCode('');
+    setCourseTitle('');
+    onNavigateCourse(newCourse.id, 'modules');
+  };
+
+  const unsubmittedList = db.submissions.filter(s => s.status === 'submitted');
   const studentAssignments = db.assignments.filter(a => a.published);
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
-      {/* Header Banner */}
-      <div className="p-6 rounded-lg bg-zinc-900 text-white border border-zinc-800 shadow-sm relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="space-y-1 relative z-10">
+    <div className="p-6 space-y-6 max-w-7xl mx-auto animate-fade-in">
+      {/* Cellwego Hero Banner */}
+      <div className="p-6 rounded-2xl bg-gradient-to-r from-pink-950 via-zinc-900 to-zinc-950 text-white border border-pink-900/30 shadow-elevated relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div className="space-y-2 relative z-10">
           <div className="flex items-center space-x-2">
-            <span className="px-2 py-0.5 text-[10px] font-mono font-bold uppercase tracking-wider bg-red-900 text-red-200 rounded border border-red-700">
+            <span className="px-2.5 py-0.5 text-[10px] font-mono font-bold uppercase tracking-wider bg-pink-500/20 text-pink-300 rounded-md border border-pink-500/30">
               DMMMSU-SLUC CCS LMS
             </span>
             <span className="text-xs text-zinc-400 font-mono">1st Sem AY 2026-2027</span>
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white font-sans">
             Welcome back, {activeUser.name}
           </h1>
-          <p className="text-xs text-zinc-400 max-w-2xl">
+          <p className="text-xs sm:text-sm text-zinc-400 max-w-2xl leading-relaxed">
             {activeRole === 'student' && "Track your enrolled subjects, pending laboratory submissions, and SpeedGrader evaluation feedback."}
             {activeRole === 'faculty' && "Manage your course modules, grade student submissions via SpeedGrader, and configure advising office hours."}
             {activeRole === 'admin' && "Audit CHED CMO 25 s. 2015 outcome compliance, college-wide gradebook readiness, and department metrics."}
@@ -53,82 +83,94 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateCourse }
         </div>
 
         <div className="flex items-center space-x-3 shrink-0 relative z-10">
-          <div className="text-right hidden sm:block">
-            <div className="text-xs font-semibold text-zinc-300 uppercase font-mono">Role Scope</div>
-            <div className="text-sm font-bold text-red-400 capitalize">{activeRole} Level</div>
+          <div className="p-3 rounded-xl bg-white/5 backdrop-blur-md border border-white/10 text-right">
+            <div className="text-[10px] font-bold text-zinc-400 uppercase font-mono tracking-wider">Active Role</div>
+            <div className="text-sm font-extrabold text-pink-400 capitalize font-mono">{activeRole} Scope</div>
           </div>
         </div>
       </div>
 
-      {/* ROLE 1 & 2: STUDENT & FACULTY COURSE CARDS GRID */}
+      {/* Main Grid Section */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main Left Pane: Course Cards */}
+        {/* Left Pane: Enrolled Course Cards */}
         <div className="lg:col-span-2 space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center space-x-2">
-              <BookOpen className="w-5 h-5 text-red-700 dark:text-red-500" />
+            <h2 className="heading-3 text-foreground flex items-center space-x-2">
+              <BookOpen className="w-5 h-5 text-pink-700 dark:text-pink-400" />
               <span>Enrolled Subject Shells</span>
             </h2>
-            <span className="text-xs font-mono text-zinc-500">
-              Showing {userCourses.length} Courses
-            </span>
+            <div className="flex items-center space-x-2">
+              {(activeRole === 'admin' || activeRole === 'faculty') && (
+                <button
+                  onClick={() => setIsCreateCourseOpen(true)}
+                  className="px-3 py-1.5 text-xs font-bold bg-pink-700 hover:bg-pink-800 active:scale-[0.98] text-white rounded-xl transition-all shadow-subtle flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>+ Create Course Shell</span>
+                </button>
+              )}
+              <span className="text-xs font-mono text-muted-foreground bg-muted px-2.5 py-1 rounded-md border border-border">
+                {userCourses.length} Enrolled Courses
+              </span>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Course Cards Grid - Cellwego InteractiveCard styling */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {userCourses.map(course => (
               <div
                 key={course.id}
-                className="group bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg overflow-hidden hover:border-zinc-400 dark:hover:border-zinc-600 transition-all duration-150 shadow-xs flex flex-col justify-between"
+                className="group bg-card text-card-foreground border border-border rounded-xl overflow-hidden card-hover shadow-subtle flex flex-col justify-between"
               >
                 <div>
-                  {/* Card Banner Header */}
+                  {/* Card Color Header */}
                   <div
                     className="h-24 p-4 flex flex-col justify-between relative overflow-hidden"
                     style={{ backgroundColor: course.color }}
                   >
                     <div className="flex items-center justify-between text-white relative z-10">
-                      <span className="px-2 py-0.5 text-[10px] font-mono font-bold bg-black/40 backdrop-blur-xs rounded">
+                      <span className="px-2.5 py-0.5 text-[10px] font-mono font-bold bg-black/50 backdrop-blur-md rounded-md">
                         {course.code} • {course.section}
                       </span>
                       {course.published ? (
-                        <span className="px-2 py-0.5 text-[10px] font-mono font-bold bg-emerald-950/80 text-emerald-300 rounded border border-emerald-700/50">
+                        <span className="px-2 py-0.5 text-[10px] font-mono font-bold bg-emerald-950/80 text-emerald-300 rounded-md border border-emerald-700/50">
                           PUBLISHED
                         </span>
                       ) : (
-                        <span className="px-2 py-0.5 text-[10px] font-mono font-bold bg-zinc-950/80 text-zinc-400 rounded border border-zinc-700">
+                        <span className="px-2 py-0.5 text-[10px] font-mono font-bold bg-zinc-950/80 text-zinc-400 rounded-md border border-zinc-700">
                           DRAFT
                         </span>
                       )}
                     </div>
-                    <h3 className="font-bold text-white text-base leading-tight drop-shadow-xs truncate relative z-10">
+                    <h3 className="font-bold text-white text-base leading-tight drop-shadow-sm truncate relative z-10">
                       {course.title}
                     </h3>
                   </div>
 
                   {/* Card Body */}
-                  <div className="p-4 space-y-3">
-                    <div className="text-xs space-y-1">
-                      <div className="flex justify-between text-zinc-600 dark:text-zinc-400">
+                  <div className="p-5 space-y-3">
+                    <div className="text-xs space-y-1.5">
+                      <div className="flex justify-between text-muted-foreground">
                         <span>Instructor:</span>
-                        <span className="font-semibold text-zinc-900 dark:text-zinc-200">{course.instructorName}</span>
+                        <span className="font-bold text-foreground">{course.instructorName}</span>
                       </div>
-                      <div className="flex justify-between text-zinc-600 dark:text-zinc-400 font-mono text-[11px]">
+                      <div className="flex justify-between text-muted-foreground font-mono text-[11px]">
                         <span>Enrollment:</span>
-                        <span>{course.enrolledCount} Students</span>
+                        <span className="text-foreground">{course.enrolledCount} Students</span>
                       </div>
-                      <div className="flex justify-between text-zinc-600 dark:text-zinc-400 font-mono text-[11px]">
+                      <div className="flex justify-between text-muted-foreground font-mono text-[11px]">
                         <span>Compliance:</span>
-                        <span className="text-red-700 dark:text-red-400 truncate max-w-[180px]">{course.chedComplianceCode}</span>
+                        <span className="text-pink-700 dark:text-pink-400 truncate max-w-[180px] font-semibold">{course.chedComplianceCode}</span>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Quick Buttons Footer */}
-                <div className="px-4 py-3 bg-zinc-50 dark:bg-zinc-950/50 border-t border-zinc-200 dark:border-zinc-800 flex items-center justify-between text-xs">
+                {/* Card Footer */}
+                <div className="px-5 py-3 bg-muted/40 border-t border-border flex items-center justify-between text-xs">
                   <button
                     onClick={() => onNavigateCourse(course.id, 'modules')}
-                    className="font-semibold text-zinc-700 dark:text-zinc-300 hover:text-red-700 dark:hover:text-red-400 transition-colors flex items-center space-x-1"
+                    className="font-bold text-foreground hover:text-pink-700 dark:hover:text-pink-400 transition-colors flex items-center space-x-1.5"
                   >
                     <span>View Modules</span>
                     <ArrowRight className="w-3.5 h-3.5" />
@@ -136,7 +178,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateCourse }
 
                   <button
                     onClick={() => onNavigateCourse(course.id, 'grades')}
-                    className="font-mono text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+                    className="font-mono text-xs font-semibold text-muted-foreground hover:text-foreground"
                   >
                     Gradebook →
                   </button>
@@ -146,19 +188,21 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateCourse }
           </div>
         </div>
 
-        {/* Right Sidebar Widget Pane */}
+        {/* Right Sidebar Widgets */}
         <div className="space-y-6">
-          {/* STUDENT DASHBOARD SPECIFIC WIDGETS */}
+          {/* STUDENT WIDGETS */}
           {activeRole === 'student' && (
             <>
-              {/* To-Do List */}
-              <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 space-y-3">
-                <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 pb-2">
-                  <h3 className="font-bold text-sm text-zinc-900 dark:text-zinc-100 flex items-center space-x-2">
-                    <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+              {/* To-Do List Card */}
+              <div className="bg-card border border-border rounded-xl p-5 space-y-4 shadow-subtle">
+                <div className="flex items-center justify-between border-b border-border pb-3">
+                  <h3 className="font-bold text-sm text-foreground flex items-center space-x-2">
+                    <Clock className="w-4 h-4 text-amber-500" />
                     <span>To-Do Submission Queue</span>
                   </h3>
-                  <span className="text-[11px] font-mono text-zinc-500">{studentAssignments.length} Pending</span>
+                  <span className="text-[11px] font-mono font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-md border border-amber-500/20">
+                    {studentAssignments.length} Pending
+                  </span>
                 </div>
 
                 <div className="space-y-2.5">
@@ -168,23 +212,23 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateCourse }
                       <div
                         key={asg.id}
                         onClick={() => onNavigateCourse(asg.courseId, 'assignments')}
-                        className="p-3 bg-zinc-50 dark:bg-zinc-950 rounded border border-zinc-200 dark:border-zinc-800 hover:border-red-700/50 cursor-pointer transition-all space-y-1"
+                        className="p-3.5 bg-muted/50 rounded-xl border border-border hover:border-pink-500/40 cursor-pointer transition-all space-y-1.5 shadow-soft"
                       >
                         <div className="flex items-start justify-between">
-                          <h4 className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 leading-tight">
+                          <h4 className="text-xs font-bold text-foreground leading-tight">
                             {asg.title}
                           </h4>
                           {sub ? (
-                            <span className="px-1.5 py-0.2 text-[9px] font-mono font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 rounded">
+                            <span className="px-2 py-0.5 text-[9px] font-mono font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 rounded-md border border-emerald-500/20">
                               SUBMITTED
                             </span>
                           ) : (
-                            <span className="px-1.5 py-0.2 text-[9px] font-mono font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 rounded">
+                            <span className="px-2 py-0.5 text-[9px] font-mono font-bold bg-amber-500/10 text-amber-700 dark:text-amber-400 rounded-md border border-amber-500/20">
                               DUE SOON
                             </span>
                           )}
                         </div>
-                        <div className="flex justify-between items-center text-[10px] font-mono text-zinc-500">
+                        <div className="flex justify-between items-center text-[10px] font-mono text-muted-foreground">
                           <span>{asg.category} • {asg.pointsPossible} pts</span>
                           <span>Due {new Date(asg.dueDate).toLocaleDateString()}</span>
                         </div>
@@ -194,69 +238,69 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateCourse }
                 </div>
               </div>
 
-              {/* Recent SpeedGrader Feedback */}
-              <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 space-y-3">
-                <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 pb-2">
-                  <h3 className="font-bold text-sm text-zinc-900 dark:text-zinc-100 flex items-center space-x-2">
-                    <Award className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                    <span>Recent Feedback Alerts</span>
+              {/* Feedback Alerts Card */}
+              <div className="bg-card border border-border rounded-xl p-5 space-y-4 shadow-subtle">
+                <div className="flex items-center justify-between border-b border-border pb-3">
+                  <h3 className="font-bold text-sm text-foreground flex items-center space-x-2">
+                    <Award className="w-4 h-4 text-emerald-500" />
+                    <span>SpeedGrader Feedback Alerts</span>
                   </h3>
                 </div>
 
-                <div className="p-3 bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/60 rounded space-y-1.5">
+                <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl space-y-2">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="font-bold text-emerald-900 dark:text-emerald-300">Lab 1: Full-Stack SPA</span>
-                    <span className="font-mono font-bold text-emerald-800 dark:text-emerald-400 text-sm">96/100</span>
+                    <span className="font-bold text-emerald-800 dark:text-emerald-300">Lab 1: Full-Stack SPA</span>
+                    <span className="font-mono font-extrabold text-emerald-700 dark:text-emerald-400 text-sm">96/100</span>
                   </div>
-                  <p className="text-[11px] text-zinc-600 dark:text-zinc-400 italic">
+                  <p className="text-xs text-muted-foreground italic leading-relaxed">
                     "Excellent compliance with CHED CMO 25 UI standards! High density data table is well designed."
                   </p>
-                  <div className="text-[10px] font-mono text-zinc-500">
-                    Graded by Prof. Arnel V. Zabala
+                  <div className="text-[10px] font-mono text-muted-foreground pt-1 border-t border-emerald-500/20">
+                    Graded by Faculty 1
                   </div>
                 </div>
               </div>
             </>
           )}
 
-          {/* FACULTY DASHBOARD SPECIFIC WIDGETS */}
+          {/* FACULTY WIDGETS */}
           {activeRole === 'faculty' && (
-            <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 space-y-3">
-              <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 pb-2">
-                <h3 className="font-bold text-sm text-zinc-900 dark:text-zinc-100 flex items-center space-x-2">
-                  <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
+            <div className="bg-card border border-border rounded-xl p-5 space-y-4 shadow-subtle">
+              <div className="flex items-center justify-between border-b border-border pb-3">
+                <h3 className="font-bold text-sm text-foreground flex items-center space-x-2">
+                  <AlertCircle className="w-4 h-4 text-pink-600 dark:text-pink-400" />
                   <span>Needs Grading Queue</span>
                 </h3>
-                <span className="px-2 py-0.5 text-xs font-mono font-bold bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300 rounded">
+                <span className="px-2.5 py-0.5 text-xs font-mono font-bold bg-pink-500/10 text-pink-700 dark:text-pink-400 rounded-md border border-pink-500/20">
                   {unsubmittedList.length} Items
                 </span>
               </div>
 
-              <div className="space-y-2.5">
+              <div className="space-y-3">
                 {unsubmittedList.map(sub => {
                   const asg = db.assignments.find(a => a.id === sub.assignmentId);
                   return (
                     <div
                       key={sub.id}
-                      className="p-3 bg-zinc-50 dark:bg-zinc-950 rounded border border-zinc-200 dark:border-zinc-800 space-y-2"
+                      className="p-3.5 bg-muted/40 rounded-xl border border-border space-y-2.5 shadow-soft"
                     >
                       <div className="flex items-start justify-between">
                         <div>
-                          <h4 className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
+                          <h4 className="text-xs font-bold text-foreground">
                             {sub.studentName}
                           </h4>
-                          <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                          <p className="text-[11px] text-muted-foreground">
                             {asg?.title}
                           </p>
                         </div>
-                        <span className="text-[10px] font-mono text-zinc-500">
+                        <span className="text-[10px] font-mono text-muted-foreground">
                           {new Date(sub.submittedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
 
                       <button
                         onClick={() => openSpeedGrader(sub.id)}
-                        className="w-full py-1.5 px-3 text-xs font-semibold bg-red-800 hover:bg-red-900 text-white rounded transition-colors flex items-center justify-center space-x-1.5"
+                        className="w-full py-2 px-3 text-xs font-bold bg-pink-700 hover:bg-pink-800 text-white rounded-lg transition-all shadow-subtle flex items-center justify-center space-x-1.5 active:scale-[0.98]"
                       >
                         <FileSpreadsheet className="w-3.5 h-3.5" />
                         <span>Launch SpeedGrader</span>
@@ -268,37 +312,37 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateCourse }
             </div>
           )}
 
-          {/* ADMIN / STAFF DASHBOARD SPECIFIC WIDGETS */}
+          {/* ADMIN / STAFF WIDGETS */}
           {(activeRole === 'admin' || activeRole === 'staff') && (
-            <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 space-y-4">
-              <div className="border-b border-zinc-200 dark:border-zinc-800 pb-2">
-                <h3 className="font-bold text-sm text-zinc-900 dark:text-zinc-100 flex items-center space-x-2">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            <div className="bg-card border border-border rounded-xl p-5 space-y-4 shadow-subtle">
+              <div className="border-b border-border pb-3">
+                <h3 className="font-bold text-sm text-foreground flex items-center space-x-2">
+                  <ShieldCheck className="w-4 h-4 text-emerald-500" />
                   <span>College Compliance & Audit</span>
                 </h3>
               </div>
 
               <div className="space-y-3 text-xs">
-                <div className="p-3 bg-zinc-50 dark:bg-zinc-950 rounded border border-zinc-200 dark:border-zinc-800 space-y-1">
+                <div className="p-3.5 bg-muted/40 rounded-xl border border-border space-y-1.5">
                   <div className="flex justify-between font-mono">
-                    <span className="text-zinc-600 dark:text-zinc-400">CHED CMO 25 Syllabus Rate:</span>
+                    <span className="text-muted-foreground">CHED CMO 25 Syllabus:</span>
                     <span className="font-bold text-emerald-700 dark:text-emerald-400">100% Compliant</span>
                   </div>
-                  <div className="w-full bg-zinc-200 dark:bg-zinc-800 h-2 rounded-full overflow-hidden">
+                  <div className="w-full bg-muted h-2 rounded-full overflow-hidden">
                     <div className="bg-emerald-600 h-full w-full"></div>
                   </div>
                 </div>
 
-                <div className="p-3 bg-zinc-50 dark:bg-zinc-950 rounded border border-zinc-200 dark:border-zinc-800 space-y-1">
+                <div className="p-3.5 bg-muted/40 rounded-xl border border-border space-y-1">
                   <div className="flex justify-between font-mono">
-                    <span className="text-zinc-600 dark:text-zinc-400">Likha ERP Roster Sync:</span>
+                    <span className="text-muted-foreground">Likha ERP Roster Sync:</span>
                     <span className="font-bold text-blue-600 dark:text-blue-400">Synced Today 06:00 AM</span>
                   </div>
                 </div>
 
-                <div className="p-3 bg-zinc-50 dark:bg-zinc-950 rounded border border-zinc-200 dark:border-zinc-800 space-y-1">
+                <div className="p-3.5 bg-muted/40 rounded-xl border border-border space-y-1">
                   <div className="flex justify-between font-mono">
-                    <span className="text-zinc-600 dark:text-zinc-400">Gradebook Finalized Count:</span>
+                    <span className="text-muted-foreground">Gradebook Finalized Count:</span>
                     <span className="font-bold text-amber-600 dark:text-amber-400">3 / 4 Courses Finalized</span>
                   </div>
                 </div>
@@ -307,6 +351,128 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateCourse }
           )}
         </div>
       </div>
+
+      {/* Modal: Create Course Shell */}
+      {isCreateCourseOpen && (
+        <div className="fixed inset-0 z-50 overflow-hidden flex items-center justify-center p-4">
+          <div
+            className="fixed inset-0 overlay-backdrop animate-fade-in cursor-pointer"
+            onClick={() => setIsCreateCourseOpen(false)}
+          />
+
+          <div
+            className="w-full max-w-md bg-card border border-border rounded-2xl shadow-elevated p-6 space-y-4 z-10 animate-scale-in"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center pb-2 border-b border-border">
+              <div className="flex items-center space-x-2">
+                <div className="p-1.5 rounded-lg bg-pink-500/10 text-pink-700 dark:text-pink-400">
+                  <Plus className="w-4 h-4" />
+                </div>
+                <h3 className="font-bold text-sm text-foreground">Create Course Shell</h3>
+              </div>
+              <button
+                onClick={() => setIsCreateCourseOpen(false)}
+                className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateCourse} className="space-y-3.5 text-xs">
+              <div className="grid grid-cols-3 gap-2">
+                <div className="col-span-1">
+                  <label className="block font-bold text-foreground mb-1">Code *</label>
+                  <input
+                    type="text"
+                    required
+                    value={courseCode}
+                    onChange={e => setCourseCode(e.target.value)}
+                    placeholder="CMSC 180"
+                    className="w-full p-2.5 bg-background border border-border rounded-xl text-foreground font-mono font-bold"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block font-bold text-foreground mb-1">Section *</label>
+                  <input
+                    type="text"
+                    required
+                    value={courseSection}
+                    onChange={e => setCourseSection(e.target.value)}
+                    placeholder="BSCS 4-1"
+                    className="w-full p-2.5 bg-background border border-border rounded-xl text-foreground font-mono"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-foreground mb-1">Course Title *</label>
+                <input
+                  type="text"
+                  required
+                  value={courseTitle}
+                  onChange={e => setCourseTitle(e.target.value)}
+                  placeholder="e.g. Artificial Intelligence & Expert Systems"
+                  className="w-full p-2.5 bg-background border border-border rounded-xl text-foreground"
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block font-bold text-foreground mb-1">Credits</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={6}
+                    value={courseCredits}
+                    onChange={e => setCourseCredits(Number(e.target.value))}
+                    className="w-full p-2.5 bg-background border border-border rounded-xl text-foreground font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-foreground mb-1">Card Color</label>
+                  <input
+                    type="color"
+                    value={courseColor}
+                    onChange={e => setCourseColor(e.target.value)}
+                    className="w-full h-10 p-1 bg-background border border-border rounded-xl cursor-pointer"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-foreground mb-1">Instructor</label>
+                  <select
+                    value={instructorId}
+                    onChange={e => setInstructorId(e.target.value)}
+                    className="w-full p-2.5 bg-background border border-border rounded-xl text-foreground text-xs"
+                  >
+                    {db.users.filter(u => u.role === 'faculty' || u.role === 'admin').map(u => (
+                      <option key={u.id} value={u.id}>
+                        {u.name.split(' ')[0]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="pt-2 flex justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setIsCreateCourseOpen(false)}
+                  className="px-4 py-2 font-bold text-muted-foreground hover:bg-muted rounded-xl cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 font-bold bg-pink-700 hover:bg-pink-800 active:scale-[0.98] text-white rounded-xl shadow-card cursor-pointer"
+                >
+                  Create Shell
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

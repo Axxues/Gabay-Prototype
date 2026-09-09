@@ -9,6 +9,7 @@ export interface User {
   studentId?: string;
   department: string;
   title: string;
+  password?: string;
 }
 
 export interface Course {
@@ -73,7 +74,7 @@ export interface Assignment {
   dueDate: string;
   submissionTypes: ('file' | 'online_text')[];
   published: boolean;
-  category: 'Homework' | 'Laboratory' | 'Exams';
+  category: string;
   weight: number; // percentage (e.g. 20 for 20%)
   rubric: RubricCriterion[];
 }

@@ -1,0 +1,229 @@
+import React, { useState } from 'react';
+import { useLMS } from '../context/LMSContext';
+import {
+  Lock,
+  Mail,
+  Eye,
+  EyeOff,
+  Sun,
+  Moon,
+  AlertCircle
+} from 'lucide-react';
+
+export const LoginPage: React.FC = () => {
+  const { login, theme, toggleTheme } = useLMS();
+
+  const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage('');
+
+    if (!identifier.trim()) {
+      setErrorMessage('Please enter your email or ID.');
+      return;
+    }
+    if (!password) {
+      setErrorMessage('Please enter your password.');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const res = await login(identifier, password);
+      if (!res.success) {
+        setErrorMessage(res.message || 'Invalid credentials. Please try again.');
+      }
+    } catch {
+      setErrorMessage('An unexpected error occurred. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleQuickLogin = (email: string) => {
+    setIdentifier(email);
+    setPassword('gabay2026');
+    setErrorMessage('');
+    setIsLoading(true);
+    setTimeout(async () => {
+      await login(email, 'gabay2026');
+      setIsLoading(false);
+    }, 200);
+  };
+
+  return (
+    <div className="min-h-screen w-full flex items-center justify-center bg-background text-foreground relative overflow-hidden select-none font-sans p-4">
+      {/* Subtle Background Glows */}
+      <div className="absolute -top-32 -left-32 w-80 h-80 bg-pink-600/15 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute -bottom-32 -right-32 w-80 h-80 bg-rose-900/15 rounded-full blur-3xl pointer-events-none" />
+
+      {/* Floating Theme Button */}
+      <div className="absolute top-5 right-5 z-20">
+        <button
+          onClick={toggleTheme}
+          className="p-2 rounded-xl border border-border bg-card/70 hover:bg-muted text-foreground transition-all shadow-soft cursor-pointer backdrop-blur-md"
+          title="Toggle theme"
+        >
+          {theme === 'dark' ? (
+            <Moon className="w-4 h-4 text-amber-400" />
+          ) : (
+            <Sun className="w-4 h-4 text-amber-500" />
+          )}
+        </button>
+      </div>
+
+      {/* Clean Login Card */}
+      <div className="w-full max-w-sm bg-card border border-border rounded-2xl p-7 shadow-elevated space-y-6 z-10 animate-scale-in">
+        {/* Simple Brand Header */}
+        <div className="text-center space-y-2">
+          <div className="w-11 h-11 mx-auto rounded-xl bg-gradient-to-br from-pink-600 to-rose-800 text-white flex items-center justify-center font-extrabold text-xl shadow-card">
+            G
+          </div>
+          <div>
+            <h1 className="text-xl font-extrabold tracking-tight text-foreground">
+              GABAY LMS
+            </h1>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Sign in to your account
+            </p>
+          </div>
+        </div>
+
+        {/* Error Alert */}
+        {errorMessage && (
+          <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl flex items-start space-x-2 text-xs text-red-600 dark:text-red-400 animate-fade-in">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+            <span>{errorMessage}</span>
+          </div>
+        )}
+
+        {/* Simple Form */}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-foreground">
+              Email or ID
+            </label>
+            <div className="relative">
+              <Mail className="w-4 h-4 text-muted-foreground absolute left-3 top-3" />
+              <input
+                type="text"
+                value={identifier}
+                onChange={e => {
+                  setIdentifier(e.target.value);
+                  if (errorMessage) setErrorMessage('');
+                }}
+                placeholder="name@dmmmsu.edu.ph"
+                className="w-full pl-9 pr-3 py-2.5 bg-background border border-border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-pink-600/30 focus:border-pink-600 transition-all font-sans"
+                disabled={isLoading}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-foreground">Password</label>
+              <a
+                href="#forgot"
+                onClick={(e) => {
+                  e.preventDefault();
+                  alert("Please contact the ICT administrator to reset your password.");
+                }}
+                className="text-[11px] text-pink-600 dark:text-pink-400 hover:underline"
+              >
+                Forgot?
+              </a>
+            </div>
+            <div className="relative">
+              <Lock className="w-4 h-4 text-muted-foreground absolute left-3 top-3" />
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={e => {
+                  setPassword(e.target.value);
+                  if (errorMessage) setErrorMessage('');
+                }}
+                placeholder="••••••••"
+                className="w-full pl-9 pr-10 py-2.5 bg-background border border-border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-pink-600/30 focus:border-pink-600 transition-all font-mono"
+                disabled={isLoading}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-3 text-muted-foreground hover:text-foreground cursor-pointer"
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center text-xs">
+            <label className="flex items-center space-x-2 cursor-pointer text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={e => setRememberMe(e.target.checked)}
+                className="rounded border-border accent-pink-600"
+              />
+              <span>Remember me</span>
+            </label>
+          </div>
+
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="w-full py-2.5 bg-pink-700 hover:bg-pink-800 active:scale-[0.99] text-white rounded-xl text-xs font-bold transition-all shadow-card flex items-center justify-center cursor-pointer disabled:opacity-50"
+          >
+            {isLoading ? (
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              <span>Sign In</span>
+            )}
+          </button>
+        </form>
+
+        {/* Clean Demo Accounts */}
+        <div className="pt-3 border-t border-border space-y-2">
+          <span className="text-[10px] uppercase font-bold text-muted-foreground block text-center tracking-wider">
+            Quick Demo Login
+          </span>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => handleQuickLogin('dean1@dmmmsu.edu.ph')}
+              className="py-1.5 px-2 bg-muted/50 hover:bg-pink-500/15 hover:border-pink-500/30 border border-border rounded-lg text-xs font-semibold text-foreground transition-all text-center cursor-pointer"
+            >
+              Dean 1
+            </button>
+            <button
+              type="button"
+              onClick={() => handleQuickLogin('faculty1@dmmmsu.edu.ph')}
+              className="py-1.5 px-2 bg-muted/50 hover:bg-pink-500/15 hover:border-pink-500/30 border border-border rounded-lg text-xs font-semibold text-foreground transition-all text-center cursor-pointer"
+            >
+              Faculty 1
+            </button>
+            <button
+              type="button"
+              onClick={() => handleQuickLogin('staff1@dmmmsu.edu.ph')}
+              className="py-1.5 px-2 bg-muted/50 hover:bg-pink-500/15 hover:border-pink-500/30 border border-border rounded-lg text-xs font-semibold text-foreground transition-all text-center cursor-pointer"
+            >
+              Staff 1
+            </button>
+            <button
+              type="button"
+              onClick={() => handleQuickLogin('student1@dmmmsu.edu.ph')}
+              className="py-1.5 px-2 bg-muted/50 hover:bg-pink-500/15 hover:border-pink-500/30 border border-border rounded-lg text-xs font-semibold text-foreground transition-all text-center cursor-pointer"
+            >
+              Student 1
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};

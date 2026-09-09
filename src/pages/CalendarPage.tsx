@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useLMS } from '../context/LMSContext';
 import {
   Calendar as CalendarIcon,
@@ -9,13 +9,27 @@ import {
   Filter,
   MapPin,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  ChevronDown,
+  Check
 } from 'lucide-react';
 
 export const CalendarPage: React.FC = () => {
   const { activeRole, db, bookAdvisingSlot, createAdvisingSlot } = useLMS();
 
   const [selectedCourseFilter, setSelectedCourseFilter] = useState<string>('all');
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const filterRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (filterRef.current && !filterRef.current.contains(event.target as Node)) {
+        setIsFilterOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Advising slot creation modal for Faculty
   const [showSlotModal, setShowSlotModal] = useState(false);
@@ -41,7 +55,7 @@ export const CalendarPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-zinc-200 dark:border-zinc-800 gap-4">
         <div>
           <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-100 flex items-center space-x-2">
-            <CalendarIcon className="w-5 h-5 text-red-700 dark:text-red-400" />
+            <CalendarIcon className="w-5 h-5 text-pink-700 dark:text-pink-400" />
             <span>Institutional Academic Calendar & Advising Scheduler</span>
           </h1>
           <p className="text-xs text-zinc-500 font-mono">
@@ -51,26 +65,78 @@ export const CalendarPage: React.FC = () => {
 
         {/* Filter & Scheduler Controls */}
         <div className="flex items-center space-x-3">
-          <div className="flex items-center space-x-2">
-            <Filter className="w-3.5 h-3.5 text-zinc-400" />
-            <select
-              value={selectedCourseFilter}
-              onChange={e => setSelectedCourseFilter(e.target.value)}
-              className="p-1.5 bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded text-xs font-mono text-zinc-900 dark:text-zinc-100"
+          <div className="relative" ref={filterRef}>
+            <button
+              type="button"
+              onClick={() => setIsFilterOpen(!isFilterOpen)}
+              className="px-3 py-1.5 bg-card border border-border hover:border-pink-500/40 rounded-xl text-xs font-mono font-medium text-foreground flex items-center space-x-2 shadow-subtle transition-all cursor-pointer"
             >
-              <option value="all">All Courses & Milestones</option>
-              {db.courses.map(c => (
-                <option key={c.id} value={c.id}>
-                  {c.code} ({c.section})
-                </option>
-              ))}
-            </select>
+              <Filter className="w-3.5 h-3.5 text-pink-700 dark:text-pink-400 shrink-0" />
+              <span>
+                {selectedCourseFilter === 'all'
+                  ? 'All Courses & Milestones'
+                  : db.courses.find(c => c.id === selectedCourseFilter)?.code || selectedCourseFilter}
+              </span>
+              <ChevronDown
+                className={`w-3.5 h-3.5 text-muted-foreground transition-transform duration-200 ease-out ${
+                  isFilterOpen ? 'rotate-180' : 'rotate-0'
+                }`}
+              />
+            </button>
+
+            {isFilterOpen && (
+              <div className="absolute left-0 mt-1 w-56 bg-card border border-border rounded-xl shadow-elevated p-1.5 space-y-0.5 z-50 animate-dropdown">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedCourseFilter('all');
+                    setIsFilterOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-mono transition-colors text-left cursor-pointer ${
+                    selectedCourseFilter === 'all'
+                      ? 'bg-pink-500/15 text-pink-700 dark:text-pink-300 font-bold border border-pink-500/30'
+                      : 'text-foreground hover:bg-muted'
+                  }`}
+                >
+                  <span>All Courses & Milestones</span>
+                  {selectedCourseFilter === 'all' && <Check className="w-3.5 h-3.5 text-pink-600 dark:text-pink-400 shrink-0 ml-1" />}
+                </button>
+
+                {db.courses.map(c => {
+                  const isSelected = selectedCourseFilter === c.id;
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedCourseFilter(c.id);
+                        setIsFilterOpen(false);
+                      }}
+                      className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-mono transition-colors text-left cursor-pointer ${
+                        isSelected
+                          ? 'bg-pink-500/15 text-pink-700 dark:text-pink-300 font-bold border border-pink-500/30'
+                          : 'text-foreground hover:bg-muted'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-2 truncate">
+                        <span
+                          className="w-2 h-2 rounded-full shrink-0"
+                          style={{ backgroundColor: c.color }}
+                        />
+                        <span className="truncate">{c.code} ({c.section})</span>
+                      </div>
+                      {isSelected && <Check className="w-3.5 h-3.5 text-pink-600 dark:text-pink-400 shrink-0 ml-1" />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {activeRole === 'faculty' && (
             <button
               onClick={() => setShowSlotModal(true)}
-              className="px-3 py-1.5 text-xs font-semibold bg-red-800 hover:bg-red-900 text-white rounded transition-colors flex items-center space-x-1 shadow-xs"
+              className="px-3 py-1.5 text-xs font-semibold bg-pink-700 hover:bg-pink-800 text-white rounded transition-colors flex items-center space-x-1 shadow-xs"
             >
               <Plus className="w-4 h-4" />
               <span>Scheduler: + Advising Slot</span>
@@ -115,7 +181,7 @@ export const CalendarPage: React.FC = () => {
                   key={dayNum}
                   className={`min-h-[70px] p-1.5 border rounded text-left flex flex-col justify-between transition-colors ${
                     dayNum === 15 || dayNum === 16
-                      ? 'border-red-500/50 bg-red-50/20 dark:bg-red-950/10'
+                      ? 'border-pink-500/50 bg-pink-50/20 dark:bg-pink-950/10'
                       : 'border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900'
                   }`}
                 >
@@ -129,7 +195,7 @@ export const CalendarPage: React.FC = () => {
                         title={evt.description}
                         className={`p-1 rounded text-[9px] font-mono leading-tight truncate font-bold ${
                           evt.type === 'assignment'
-                            ? 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300 border border-red-200 dark:border-red-800'
+                            ? 'bg-pink-100 text-pink-800 dark:bg-pink-950 dark:text-pink-300 border border-pink-200 dark:border-pink-800'
                             : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
                         }`}
                       >
@@ -212,9 +278,15 @@ export const CalendarPage: React.FC = () => {
 
       {/* Scheduler Modal for Faculty */}
       {showSlotModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="w-full max-w-md bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-6 space-y-4 shadow-xl">
-            <h3 className="font-bold text-base text-zinc-900 dark:text-zinc-100">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-backdrop animate-fade-in"
+          onClick={() => setShowSlotModal(false)}
+        >
+          <div
+            className="w-full max-w-md bg-card border border-border rounded-2xl p-6 space-y-4 shadow-elevated animate-scale-in"
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 className="font-bold text-base text-foreground">
               Create Faculty Advising Office Hours Slot
             </h3>
 
@@ -261,7 +333,7 @@ export const CalendarPage: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 font-semibold bg-red-800 hover:bg-red-900 text-white rounded"
+                  className="px-4 py-2 font-semibold bg-pink-700 hover:bg-pink-800 text-white rounded"
                 >
                   Create Office Hours Slot
                 </button>

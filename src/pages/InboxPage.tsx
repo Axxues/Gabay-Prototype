@@ -63,7 +63,7 @@ export const InboxPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-zinc-200 dark:border-zinc-800 gap-4">
         <div>
           <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-100 flex items-center space-x-2">
-            <InboxIcon className="w-5 h-5 text-red-700 dark:text-red-400" />
+            <InboxIcon className="w-5 h-5 text-pink-700 dark:text-pink-400" />
             <span>Institutional Inbox & Conversations</span>
           </h1>
           <p className="text-xs text-zinc-500 font-mono">
@@ -86,7 +86,7 @@ export const InboxPage: React.FC = () => {
               if (allowedRecipients.length > 0) setRecipientId(allowedRecipients[0].id);
               setShowComposeModal(true);
             }}
-            className="px-4 py-1.5 text-xs font-semibold bg-red-800 hover:bg-red-900 text-white rounded transition-colors flex items-center space-x-1.5 shadow-xs"
+            className="px-4 py-1.5 text-xs font-semibold bg-pink-700 hover:bg-pink-800 text-white rounded transition-colors flex items-center space-x-1.5 shadow-xs"
           >
             <Plus className="w-4 h-4" />
             <span>Compose Message</span>
@@ -111,7 +111,7 @@ export const InboxPage: React.FC = () => {
                   onClick={() => setSelectedMessage(msg)}
                   className={`p-4 cursor-pointer transition-colors space-y-1 text-xs ${
                     isSelected
-                      ? 'bg-red-50/50 dark:bg-red-950/20 border-l-2 border-red-700'
+                      ? 'bg-pink-50/50 dark:bg-pink-950/20 border-l-2 border-pink-700'
                       : 'hover:bg-zinc-50 dark:hover:bg-zinc-950'
                   }`}
                 >
@@ -169,9 +169,15 @@ export const InboxPage: React.FC = () => {
 
       {/* Compose Message Modal */}
       {showComposeModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="w-full max-w-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-6 space-y-4 shadow-xl">
-            <h3 className="font-bold text-base text-zinc-900 dark:text-zinc-100">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-backdrop animate-fade-in"
+          onClick={() => setShowComposeModal(false)}
+        >
+          <div
+            className="w-full max-w-lg bg-card border border-border rounded-2xl p-6 space-y-4 shadow-elevated animate-scale-in"
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 className="font-bold text-base text-foreground">
               Compose GABAY Academic Message
             </h3>
 
@@ -229,7 +235,7 @@ export const InboxPage: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 font-semibold bg-red-800 hover:bg-red-900 text-white rounded shadow-sm"
+                  className="px-4 py-2 font-semibold bg-pink-700 hover:bg-pink-800 text-white rounded shadow-sm"
                 >
                   Send Message
                 </button>

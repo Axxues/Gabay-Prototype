@@ -1,40 +1,86 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useLMS } from '../../context/LMSContext';
 import { History, X, Clock, ExternalLink } from 'lucide-react';
 
 export const HistoryDrawer: React.FC = () => {
   const { isHistoryDrawerOpen, setIsHistoryDrawerOpen, db, setActiveCourseId } = useLMS();
+  const drawerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isHistoryDrawerOpen) return;
+
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      if (drawerRef.current && !drawerRef.current.contains(event.target as Node)) {
+        setIsHistoryDrawerOpen(false);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsHistoryDrawerOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('touchstart', handlePointerDown);
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isHistoryDrawerOpen, setIsHistoryDrawerOpen]);
 
   if (!isHistoryDrawerOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden bg-black/40 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="absolute inset-y-0 right-0 max-w-full flex pl-10">
-        <div className="w-screen max-w-md bg-white dark:bg-zinc-900 border-l border-zinc-200 dark:border-zinc-800 shadow-2xl flex flex-col">
+    <div className="fixed inset-0 z-50 overflow-hidden">
+      {/* 1. Backdrop Overlay: Click anywhere outside closes the drawer */}
+      <div
+        className="fixed inset-0 overlay-backdrop animate-fade-in cursor-pointer"
+        onClick={() => setIsHistoryDrawerOpen(false)}
+        aria-label="Close history drawer"
+      />
+
+      {/* 2. Slide-over Panel Container */}
+      <div className="fixed inset-y-0 right-0 flex max-w-full pl-10 pointer-events-none">
+        <div
+          ref={drawerRef}
+          className="w-screen max-w-md bg-card border-l border-border shadow-elevated flex flex-col h-full animate-slide-in-right pointer-events-auto"
+          onClick={e => e.stopPropagation()}
+        >
           {/* Header */}
-          <div className="px-6 py-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between bg-zinc-50 dark:bg-zinc-950/50">
-            <div className="flex items-center space-x-2">
-              <History className="w-5 h-5 text-red-700 dark:text-red-400" />
-              <h2 className="font-bold text-zinc-900 dark:text-zinc-100">
-                Session Navigation Trail
-              </h2>
+          <div className="px-6 py-4 border-b border-border flex items-center justify-between bg-muted/40 backdrop-blur-md">
+            <div className="flex items-center space-x-2.5">
+              <div className="p-2 rounded-lg bg-pink-500/10 text-pink-700 dark:text-pink-400 border border-pink-500/20">
+                <History className="w-4 h-4" />
+              </div>
+              <div>
+                <h2 className="font-bold text-sm text-foreground">
+                  Session Navigation Trail
+                </h2>
+                <p className="text-[10px] font-mono text-muted-foreground">
+                  Audit logs for current session
+                </p>
+              </div>
             </div>
             <button
               onClick={() => setIsHistoryDrawerOpen(false)}
-              className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 rounded transition-colors"
+              className="p-1.5 text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
 
-          {/* List */}
+          {/* List Content */}
           <div className="p-6 overflow-y-auto flex-1 space-y-3">
-            <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
+            <p className="text-xs text-muted-foreground mb-4 font-medium">
               Recently visited GABAY LMS views in your current browser session:
             </p>
 
             {db.historyLogs.length === 0 ? (
-              <div className="text-center py-8 text-xs text-zinc-500">
+              <div className="text-center py-12 text-xs text-muted-foreground">
                 No recent navigation logs recorded.
               </div>
             ) : (
@@ -48,20 +94,20 @@ export const HistoryDrawer: React.FC = () => {
                     }
                     setIsHistoryDrawerOpen(false);
                   }}
-                  className="group p-3 bg-zinc-50 dark:bg-zinc-950/60 border border-zinc-200 dark:border-zinc-800 rounded-lg hover:border-red-700/50 dark:hover:border-red-600/50 cursor-pointer transition-all"
+                  className="group p-3.5 bg-card border border-border rounded-xl hover:border-pink-500/40 cursor-pointer card-hover shadow-soft transition-all"
                 >
                   <div className="flex items-start justify-between">
                     <div>
-                      <h4 className="text-xs font-bold text-zinc-900 dark:text-zinc-100 group-hover:text-red-700 dark:group-hover:text-red-400 transition-colors">
+                      <h4 className="text-xs font-bold text-foreground group-hover:text-pink-700 dark:group-hover:text-pink-400 transition-colors">
                         {log.title}
                       </h4>
-                      <p className="text-[11px] font-mono text-zinc-500 dark:text-zinc-400 mt-0.5">
+                      <p className="text-[11px] font-mono text-muted-foreground mt-0.5">
                         {log.path}
                       </p>
                     </div>
-                    <ExternalLink className="w-3.5 h-3.5 text-zinc-400 group-hover:text-red-700 dark:group-hover:text-red-400 transition-colors shrink-0" />
+                    <ExternalLink className="w-3.5 h-3.5 text-muted-foreground group-hover:text-pink-700 dark:group-hover:text-pink-400 transition-colors shrink-0 ml-2" />
                   </div>
-                  <div className="mt-2 flex items-center space-x-1 text-[10px] text-zinc-400 font-mono">
+                  <div className="mt-2.5 flex items-center space-x-1 text-[10px] text-muted-foreground font-mono">
                     <Clock className="w-3 h-3" />
                     <span>{log.timestamp}</span>
                   </div>
@@ -71,7 +117,7 @@ export const HistoryDrawer: React.FC = () => {
           </div>
 
           {/* Footer */}
-          <div className="px-6 py-3 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/50 text-[11px] font-mono text-zinc-500 dark:text-zinc-400 text-center">
+          <div className="px-6 py-3.5 border-t border-border bg-muted/40 text-[11px] font-mono text-muted-foreground text-center">
             Canvas LMS Audit Trail Engine • GABAY System
           </div>
         </div>

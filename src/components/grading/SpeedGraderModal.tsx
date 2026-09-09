@@ -18,11 +18,9 @@ export const SpeedGraderModal: React.FC = () => {
   const assignment = db.assignments.find(a => a.id === currentSubmission.assignmentId);
   const course = db.courses.find(c => c.id === currentSubmission.courseId);
 
-  // List of all submissions for this assignment to allow switching between students
   const assignmentSubmissions = db.submissions.filter(s => s.assignmentId === currentSubmission.assignmentId);
   const currentIndex = assignmentSubmissions.findIndex(s => s.id === currentSubmission.id);
 
-  // State for grading form
   const [gradeInput, setGradeInput] = useState<number>(currentSubmission.grade ?? 0);
   const [rubricScores, setRubricScores] = useState<Record<string, number>>(currentSubmission.rubricScores || {});
   const [newComment, setNewComment] = useState('');
@@ -38,7 +36,6 @@ export const SpeedGraderModal: React.FC = () => {
     const updated = { ...rubricScores, [rubricId]: score };
     setRubricScores(updated);
 
-    // Auto calculate total sum from rubric
     const total = Object.values(updated).reduce((acc, curr) => acc + curr, 0);
     setGradeInput(total);
   };
@@ -57,19 +54,19 @@ export const SpeedGraderModal: React.FC = () => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden bg-black/80 backdrop-blur-xs flex flex-col animate-in fade-in duration-150">
-      {/* SpeedGrader Top Bar */}
-      <header className="h-14 bg-zinc-950 border-b border-zinc-800 px-6 flex items-center justify-between text-zinc-100 shrink-0 select-none">
+    <div className="fixed inset-0 z-50 overflow-hidden overlay-backdrop flex flex-col animate-fade-in">
+      {/* SpeedGrader Top Header - Cellwego Glass style */}
+      <header className="h-14 bg-card/90 backdrop-blur-xl border-b border-border px-6 flex items-center justify-between text-foreground shrink-0 select-none shadow-subtle">
         <div className="flex items-center space-x-3">
-          <div className="px-2 py-0.5 text-xs font-mono font-bold bg-red-900 text-red-200 rounded border border-red-700">
+          <div className="px-2.5 py-1 text-xs font-mono font-bold bg-pink-500/10 text-pink-700 dark:text-pink-400 rounded-lg border border-pink-500/20">
             SpeedGrader™ Workspace
           </div>
-          <span className="text-zinc-400">|</span>
-          <span className="font-bold text-sm">{assignment?.title}</span>
-          <span className="text-xs font-mono text-zinc-400">({course?.code})</span>
+          <span className="text-muted-foreground/60">|</span>
+          <span className="font-bold text-sm text-foreground">{assignment?.title}</span>
+          <span className="text-xs font-mono text-muted-foreground">({course?.code})</span>
         </div>
 
-        {/* Student Selector */}
+        {/* Student Navigator */}
         <div className="flex items-center space-x-3">
           <button
             disabled={currentIndex <= 0}
@@ -79,14 +76,14 @@ export const SpeedGraderModal: React.FC = () => {
                 useLMS().openSpeedGrader(prevSub.id);
               }
             }}
-            className="p-1 rounded bg-zinc-900 border border-zinc-800 disabled:opacity-30 hover:bg-zinc-800 transition-colors"
+            className="p-1.5 rounded-lg bg-card border border-border disabled:opacity-30 hover:bg-muted transition-colors shadow-soft"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
 
           <div className="text-center font-mono text-xs">
-            <span className="font-bold text-zinc-100">{currentSubmission.studentName}</span>
-            <span className="text-zinc-500 ml-2">({currentIndex + 1} of {assignmentSubmissions.length})</span>
+            <span className="font-bold text-foreground">{currentSubmission.studentName}</span>
+            <span className="text-muted-foreground ml-2">({currentIndex + 1} of {assignmentSubmissions.length})</span>
           </div>
 
           <button
@@ -97,14 +94,14 @@ export const SpeedGraderModal: React.FC = () => {
                 useLMS().openSpeedGrader(nextSub.id);
               }
             }}
-            className="p-1 rounded bg-zinc-900 border border-zinc-800 disabled:opacity-30 hover:bg-zinc-800 transition-colors"
+            className="p-1.5 rounded-lg bg-card border border-border disabled:opacity-30 hover:bg-muted transition-colors shadow-soft"
           >
             <ChevronRight className="w-4 h-4" />
           </button>
 
           <button
             onClick={closeSpeedGrader}
-            className="p-1.5 text-zinc-400 hover:text-white rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 ml-4 transition-colors"
+            className="p-1.5 text-muted-foreground hover:text-foreground rounded-lg bg-card hover:bg-muted border border-border ml-4 transition-colors shadow-soft"
           >
             <X className="w-5 h-5" />
           </button>
@@ -113,14 +110,14 @@ export const SpeedGraderModal: React.FC = () => {
 
       {/* Split View Content */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left Pane: Student Document Submission Preview */}
-        <div className="flex-1 bg-zinc-900 p-6 overflow-y-auto flex flex-col space-y-4">
-          <div className="p-4 bg-zinc-950 border border-zinc-800 rounded-lg flex items-center justify-between text-xs text-zinc-300">
+        {/* Left Pane: Student Document Preview */}
+        <div className="flex-1 bg-background p-6 overflow-y-auto flex flex-col space-y-4">
+          <div className="p-4 bg-card border border-border rounded-xl flex items-center justify-between text-xs text-foreground shadow-subtle">
             <div className="flex items-center space-x-3">
-              <FileText className="w-5 h-5 text-red-500" />
+              <FileText className="w-5 h-5 text-pink-600 dark:text-pink-400" />
               <div>
-                <div className="font-bold text-zinc-100">{currentSubmission.fileName || 'Submission Document'}</div>
-                <div className="font-mono text-[11px] text-zinc-500">
+                <div className="font-bold text-foreground">{currentSubmission.fileName || 'Submission Document'}</div>
+                <div className="font-mono text-[11px] text-muted-foreground">
                   Submitted: {new Date(currentSubmission.submittedAt).toLocaleString()}
                 </div>
               </div>
@@ -129,20 +126,20 @@ export const SpeedGraderModal: React.FC = () => {
               href={currentSubmission.fileUrl}
               target="_blank"
               rel="noreferrer"
-              className="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded text-xs font-semibold font-mono"
+              className="px-3.5 py-1.5 bg-muted hover:bg-muted/80 text-foreground rounded-lg text-xs font-bold font-mono border border-border transition-colors"
             >
               Download PDF Preview
             </a>
           </div>
 
           {/* Render Document Box */}
-          <div className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg p-6 font-mono text-xs text-zinc-300 leading-relaxed overflow-y-auto whitespace-pre-line shadow-inner">
-            <div className="text-zinc-500 pb-2 mb-4 border-b border-zinc-800 flex justify-between items-center text-[10px]">
+          <div className="flex-1 bg-card border border-border rounded-xl p-6 font-mono text-xs text-foreground leading-relaxed overflow-y-auto whitespace-pre-line shadow-inner">
+            <div className="text-muted-foreground pb-2 mb-4 border-b border-border flex justify-between items-center text-[10px]">
               <span>GABAY DOCVIEWER ENGINE v2.4 • STUDENT PAYLOAD RENDERER</span>
               <span>{currentSubmission.studentName} ({currentSubmission.studentId || '2021-SLUC-0492'})</span>
             </div>
             {currentSubmission.content || (
-              <div className="text-center py-12 text-zinc-600">
+              <div className="text-center py-12 text-muted-foreground">
                 [PDF Simulated Canvas DocViewer Markup Rendering]
                 <br />
                 File attached: {currentSubmission.fileName}
@@ -152,60 +149,57 @@ export const SpeedGraderModal: React.FC = () => {
         </div>
 
         {/* Right Sidebar Pane: Rubric & Score Input */}
-        <div className="w-96 bg-zinc-900 border-l border-zinc-800 p-6 overflow-y-auto space-y-6 text-xs text-zinc-300 shrink-0">
+        <div className="w-96 bg-card border-l border-border p-6 overflow-y-auto space-y-6 text-xs text-foreground shrink-0 shadow-lifted animate-slide-in-right">
           <form onSubmit={handleSaveGrade} className="space-y-6">
             {/* Numerical Score Entry */}
-            <div className="p-4 bg-zinc-950 border border-zinc-800 rounded-lg space-y-3">
+            <div className="p-4 bg-muted/40 border border-border rounded-xl space-y-3">
               <div className="flex justify-between items-center">
-                <span className="font-bold text-zinc-100 uppercase tracking-wider text-[11px]">
+                <span className="font-bold text-foreground uppercase tracking-wider text-[11px]">
                   Assessment Score:
                 </span>
-                <span className="font-mono text-zinc-500">
+                <span className="font-mono text-muted-foreground">
                   out of {assignment?.pointsPossible || 100} pts
                 </span>
               </div>
-              <div className="flex items-center space-x-2">
-                <input
-                  type="number"
-                  min={0}
-                  max={assignment?.pointsPossible || 100}
-                  value={gradeInput}
-                  onChange={e => setGradeInput(Number(e.target.value))}
-                  className="w-full p-2 bg-zinc-900 border border-zinc-700 rounded font-mono text-lg font-bold text-red-400 focus:outline-hidden focus:ring-1 focus:ring-red-600 text-center"
-                />
-              </div>
+              <input
+                type="number"
+                min={0}
+                max={assignment?.pointsPossible || 100}
+                value={gradeInput}
+                onChange={e => setGradeInput(Number(e.target.value))}
+                className="w-full p-2.5 bg-card border border-border rounded-xl font-mono text-xl font-extrabold text-pink-700 dark:text-pink-400 focus:outline-hidden focus:ring-2 focus:ring-pink-600/30 text-center shadow-subtle"
+              />
             </div>
 
-            {/* Rubric Breakdown */}
+            {/* Rubric Criteria */}
             {assignment?.rubric && assignment.rubric.length > 0 && (
               <div className="space-y-3">
-                <div className="flex items-center space-x-1.5 font-bold text-zinc-100 uppercase tracking-wider text-[11px]">
-                  <Award className="w-4 h-4 text-emerald-400" />
+                <div className="flex items-center space-x-1.5 font-bold text-foreground uppercase tracking-wider text-[11px]">
+                  <Award className="w-4 h-4 text-emerald-500" />
                   <span>CHED SpeedGrader Rubric</span>
                 </div>
 
                 <div className="space-y-3">
                   {assignment.rubric.map(r => (
-                    <div key={r.id} className="p-3 bg-zinc-950 border border-zinc-800 rounded space-y-2">
-                      <div className="flex justify-between font-semibold text-zinc-200">
+                    <div key={r.id} className="p-3.5 bg-muted/30 border border-border rounded-xl space-y-2">
+                      <div className="flex justify-between font-bold text-foreground">
                         <span>{r.title}</span>
-                        <span className="font-mono text-emerald-400">
+                        <span className="font-mono text-emerald-600 dark:text-emerald-400">
                           {rubricScores[r.id] ?? 0} / {r.points} pts
                         </span>
                       </div>
-                      <p className="text-[10px] text-zinc-500">{r.description}</p>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">{r.description}</p>
 
-                      {/* Criterion Rating Selector */}
                       <div className="grid grid-cols-1 gap-1.5 pt-1">
                         {r.ratings.map(rating => (
                           <button
                             key={rating.points}
                             type="button"
                             onClick={() => handleRubricScoreChange(r.id, rating.points)}
-                            className={`p-2 rounded text-left border text-[11px] transition-colors ${
+                            className={`p-2.5 rounded-lg text-left border text-[11px] transition-all ${
                               rubricScores[r.id] === rating.points
-                                ? 'bg-emerald-950 text-emerald-300 border-emerald-700 font-bold'
-                                : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:border-zinc-700'
+                                ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/40 font-bold shadow-soft'
+                                : 'bg-card text-muted-foreground border-border hover:border-border/80'
                             }`}
                           >
                             <div className="flex justify-between font-mono">
@@ -221,20 +215,20 @@ export const SpeedGraderModal: React.FC = () => {
               </div>
             )}
 
-            {/* Private Instructor Comments */}
+            {/* Feedback Comments */}
             <div className="space-y-3">
-              <div className="flex items-center space-x-1.5 font-bold text-zinc-100 uppercase tracking-wider text-[11px]">
-                <MessageSquare className="w-4 h-4 text-blue-400" />
+              <div className="flex items-center space-x-1.5 font-bold text-foreground uppercase tracking-wider text-[11px]">
+                <MessageSquare className="w-4 h-4 text-blue-500" />
                 <span>Assignment Feedback Comments</span>
               </div>
 
               {currentSubmission.comments.map(c => (
-                <div key={c.id} className="p-3 bg-zinc-950 border border-zinc-800 rounded space-y-1">
-                  <div className="flex justify-between text-[10px] font-mono text-zinc-400">
-                    <span className="font-bold text-zinc-200">{c.authorName}</span>
+                <div key={c.id} className="p-3 bg-muted/40 border border-border rounded-xl space-y-1">
+                  <div className="flex justify-between text-[10px] font-mono text-muted-foreground">
+                    <span className="font-bold text-foreground">{c.authorName}</span>
                     <span>{new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                   </div>
-                  <p className="text-zinc-300 leading-normal italic">{c.text}</p>
+                  <p className="text-foreground leading-normal italic">{c.text}</p>
                 </div>
               ))}
 
@@ -243,7 +237,7 @@ export const SpeedGraderModal: React.FC = () => {
                 value={newComment}
                 onChange={e => setNewComment(e.target.value)}
                 placeholder="Add private evaluation comment for student..."
-                className="w-full p-2.5 bg-zinc-950 border border-zinc-700 rounded font-sans text-zinc-200 focus:outline-hidden focus:ring-1 focus:ring-red-600"
+                className="w-full p-3 bg-card border border-border rounded-xl font-sans text-xs text-foreground focus:outline-hidden focus:ring-2 focus:ring-pink-600/30 shadow-subtle"
               />
             </div>
 
@@ -251,13 +245,13 @@ export const SpeedGraderModal: React.FC = () => {
             <div className="space-y-2">
               <button
                 type="submit"
-                className="w-full py-2.5 text-xs font-semibold bg-red-800 hover:bg-red-900 text-white rounded transition-colors shadow-sm flex items-center justify-center space-x-2"
+                className="w-full py-3 text-xs font-bold bg-pink-700 hover:bg-pink-800 text-white rounded-xl transition-all shadow-card flex items-center justify-center space-x-2 active:scale-[0.98]"
               >
                 <CheckCircle2 className="w-4 h-4" />
                 <span>Submit Final Grade & Feedback</span>
               </button>
               {isSaved && (
-                <div className="text-center font-mono text-[11px] text-emerald-400 animate-pulse">
+                <div className="text-center font-mono text-[11px] text-emerald-600 dark:text-emerald-400 font-bold animate-pulse">
                   Grade and rubric updated in GABAY database!
                 </div>
               )}

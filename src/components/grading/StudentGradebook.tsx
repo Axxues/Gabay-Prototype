@@ -12,7 +12,6 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
   const course = db.courses.find(c => c.id === courseId);
   const courseAssignments = db.assignments.filter(a => a.courseId === courseId);
 
-  // What-If score simulation state: map of assignmentId -> simulatedScore
   const [whatIfScores, setWhatIfScores] = useState<Record<string, number>>({});
   const [isWhatIfActive, setIsWhatIfActive] = useState(false);
 
@@ -26,7 +25,6 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
     setIsWhatIfActive(false);
   };
 
-  // Calculate actual vs what-if course percentage
   let actualEarnedPoints = 0;
   let actualPossiblePoints = 0;
 
@@ -56,53 +54,57 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
   const whatIfPercentage = whatIfPossiblePoints > 0 ? Math.round((whatIfEarnedPoints / whatIfPossiblePoints) * 100) : 0;
 
   return (
-    <div className="space-y-6 max-w-5xl">
-      {/* Grade Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Actual Total */}
-        <div className="p-5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-2xs space-y-1">
-          <div className="text-xs font-mono text-zinc-500 uppercase tracking-wider">
+    <div className="space-y-6 max-w-5xl animate-fade-in">
+      {/* Grade Summary Cards Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        {/* Official Grade Card */}
+        <div className="p-5 bg-card border border-border rounded-xl shadow-subtle space-y-1.5">
+          <div className="text-xs font-mono font-bold text-muted-foreground uppercase tracking-wider">
             Official Course Grade
           </div>
-          <div className="text-3xl font-bold font-mono text-emerald-700 dark:text-emerald-400">
+          <div className="text-3xl font-extrabold font-mono text-emerald-600 dark:text-emerald-400">
             {actualPercentage}%
           </div>
-          <div className="text-[11px] text-zinc-400">
+          <div className="text-[11px] text-muted-foreground">
             Based on {actualPossiblePoints}% completed weight
           </div>
         </div>
 
-        {/* What-If Simulated Total */}
-        <div className={`p-5 rounded-lg border transition-all space-y-1 ${
+        {/* What-If Simulated Grade Card */}
+        <div className={`p-5 rounded-xl border transition-all space-y-1.5 ${
           isWhatIfActive
-            ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800 shadow-sm'
-            : 'bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800'
+            ? 'bg-amber-500/10 border-amber-500/30 shadow-lifted'
+            : 'bg-card border-border shadow-subtle'
         }`}>
-          <div className="flex justify-between items-center text-xs font-mono uppercase tracking-wider text-amber-800 dark:text-amber-300">
+          <div className="flex justify-between items-center text-xs font-mono uppercase tracking-wider text-amber-700 dark:text-amber-300">
             <span className="font-bold">"What-If" Simulated Grade</span>
-            {isWhatIfActive && <span className="text-[9px] px-1.5 py-0.2 bg-amber-200 dark:bg-amber-900 rounded font-bold">SIMULATED</span>}
+            {isWhatIfActive && (
+              <span className="text-[9px] px-2 py-0.5 bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded-md font-bold border border-amber-500/30">
+                SIMULATED
+              </span>
+            )}
           </div>
-          <div className="text-3xl font-bold font-mono text-amber-700 dark:text-amber-400">
+          <div className="text-3xl font-extrabold font-mono text-amber-600 dark:text-amber-400">
             {whatIfPercentage}%
           </div>
-          <div className="text-[11px] text-zinc-500">
-            {isWhatIfActive ? "Adjust sliders below to test target scores" : "Click assignment score to test What-If score"}
+          <div className="text-[11px] text-muted-foreground">
+            {isWhatIfActive ? "Adjust sliders below to test target scores" : "Click sliders below to test target scores"}
           </div>
         </div>
 
-        {/* Reset Button Widget */}
-        <div className="p-5 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg flex flex-col justify-between">
-          <div className="flex items-center space-x-2 text-xs font-bold text-zinc-900 dark:text-zinc-100">
-            <Sliders className="w-4 h-4 text-red-700 dark:text-red-400" />
+        {/* Reset Control Card */}
+        <div className="p-5 bg-muted/40 border border-border rounded-xl flex flex-col justify-between space-y-3">
+          <div className="flex items-center space-x-2 text-xs font-bold text-foreground">
+            <Sliders className="w-4 h-4 text-pink-600 dark:text-pink-400" />
             <span>What-If Score Calculator</span>
           </div>
-          <p className="text-[11px] text-zinc-500">
+          <p className="text-[11px] text-muted-foreground leading-relaxed">
             Simulate future assignment grades to test required scores for honors or passing.
           </p>
           <button
             onClick={handleResetWhatIf}
             disabled={!isWhatIfActive}
-            className="w-full py-1.5 text-xs font-semibold bg-zinc-800 hover:bg-zinc-900 text-white disabled:opacity-40 rounded transition-colors flex items-center justify-center space-x-1.5"
+            className="w-full py-2 text-xs font-bold bg-card border border-border hover:bg-muted text-foreground disabled:opacity-40 rounded-lg transition-all flex items-center justify-center space-x-1.5 shadow-soft active:scale-[0.98]"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             <span>Reset What-If Calculations</span>
@@ -111,12 +113,12 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
       </div>
 
       {/* Assignment Scores Table */}
-      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg overflow-hidden shadow-2xs">
-        <div className="p-4 bg-zinc-50 dark:bg-zinc-950 border-b border-zinc-200 dark:border-zinc-800 flex justify-between items-center text-xs">
-          <span className="font-bold text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">
+      <div className="bg-card border border-border rounded-xl overflow-hidden shadow-subtle">
+        <div className="p-4 bg-muted/40 border-b border-border flex justify-between items-center text-xs">
+          <span className="font-bold text-foreground uppercase tracking-wider">
             Assignment Grade Breakdown & Calculator
           </span>
-          <span className="font-mono text-zinc-500">
+          <span className="font-mono text-muted-foreground font-semibold">
             {course?.code} Gradebook
           </span>
         </div>
@@ -124,15 +126,15 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
-              <tr className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-100/50 dark:bg-zinc-900/50 font-mono text-zinc-500">
-                <th className="p-3">Name</th>
-                <th className="p-3">Category</th>
-                <th className="p-3">Due Date</th>
-                <th className="p-3 text-center">Actual Score</th>
-                <th className="p-3 text-center min-w-[200px]">What-If Score Simulator</th>
+              <tr className="border-b border-border bg-muted/30 font-mono text-muted-foreground">
+                <th className="p-3.5">Name</th>
+                <th className="p-3.5">Category</th>
+                <th className="p-3.5">Due Date</th>
+                <th className="p-3.5 text-center">Actual Score</th>
+                <th className="p-3.5 text-center min-w-[220px]">What-If Score Simulator</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
+            <tbody className="divide-y divide-border">
               {courseAssignments.map(asg => {
                 const sub = db.submissions.find(
                   s => s.assignmentId === asg.id && s.studentId === activeUser.id
@@ -141,30 +143,28 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
                 const simulatedGrade = whatIfScores[asg.id] ?? actualGrade ?? 0;
 
                 return (
-                  <tr key={asg.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-950">
-                    <td className="p-3 font-semibold text-zinc-900 dark:text-zinc-100">
+                  <tr key={asg.id} className="hover:bg-muted/30 transition-colors">
+                    <td className="p-3.5 font-bold text-foreground">
                       {asg.title}
                     </td>
-                    <td className="p-3 font-mono text-zinc-500">
+                    <td className="p-3.5 font-mono text-muted-foreground">
                       {asg.category} ({asg.weight}%)
                     </td>
-                    <td className="p-3 font-mono text-zinc-500">
+                    <td className="p-3.5 font-mono text-muted-foreground">
                       {new Date(asg.dueDate).toLocaleDateString()}
                     </td>
 
-                    {/* Actual Grade */}
-                    <td className="p-3 text-center font-mono font-bold">
+                    <td className="p-3.5 text-center font-mono font-extrabold">
                       {actualGrade !== undefined ? (
-                        <span className="text-emerald-700 dark:text-emerald-400">
+                        <span className="text-emerald-600 dark:text-emerald-400">
                           {actualGrade} / {asg.pointsPossible}
                         </span>
                       ) : (
-                        <span className="text-zinc-400 font-normal">Unsubmitted</span>
+                        <span className="text-muted-foreground font-normal">Unsubmitted</span>
                       )}
                     </td>
 
-                    {/* What-If Slider & Input */}
-                    <td className="p-3 text-center">
+                    <td className="p-3.5 text-center">
                       <div className="flex items-center justify-center space-x-3">
                         <input
                           type="range"
@@ -172,7 +172,7 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
                           max={asg.pointsPossible}
                           value={simulatedGrade}
                           onChange={e => handleWhatIfChange(asg.id, Number(e.target.value))}
-                          className="w-28 accent-red-700"
+                          className="w-28 accent-pink-600 cursor-pointer"
                         />
                         <input
                           type="number"
@@ -180,9 +180,9 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
                           max={asg.pointsPossible}
                           value={simulatedGrade}
                           onChange={e => handleWhatIfChange(asg.id, Number(e.target.value))}
-                          className="w-14 p-1 bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-700 rounded text-center font-mono text-xs font-bold text-amber-700 dark:text-amber-400"
+                          className="w-14 p-1.5 bg-background border border-border rounded-lg text-center font-mono text-xs font-extrabold text-amber-600 dark:text-amber-400 shadow-soft"
                         />
-                        <span className="font-mono text-zinc-400 text-[10px]">/ {asg.pointsPossible}</span>
+                        <span className="font-mono text-muted-foreground text-[10px]">/ {asg.pointsPossible}</span>
                       </div>
                     </td>
                   </tr>
