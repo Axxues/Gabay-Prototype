@@ -60,7 +60,7 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
   onNavigateCourse,
   onNavigateTab
 }) => {
-  const { activeUser, db, createCourse, showAlert } = useLMS();
+  const { activeUser, db, createCourse, createSection, showAlert } = useLMS();
 
   const [courseCode, setCourseCode] = useState('CMSC 180');
   const [courseTitle, setCourseTitle] = useState('Artificial Intelligence & Expert Systems');
@@ -81,6 +81,10 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
   const [courseJoinCode, setCourseJoinCode] = useState(() =>
     generateCourseJoinCode(db.courses, 'CMSC 180')
   );
+
+  const [sections, setSections] = useState<Array<{ name: string; capacity: number; schedule: string; location: string }>>([
+    { name: 'Section A', capacity: 40, schedule: '', location: '' }
+  ]);
 
   const handleRegenerateCode = () => {
     setCourseJoinCode(generateCourseJoinCode(db.courses, courseCode));
@@ -153,6 +157,10 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
       term: courseTerm,
       published: published,
       joinCode: courseJoinCode
+    });
+
+    sections.forEach(s => {
+      createSection(newCourse.id, { name: s.name, capacity: s.capacity, schedule: s.schedule, location: s.location });
     });
 
     showAlert({
@@ -328,6 +336,86 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
                   placeholder="Provide an overview of the course syllabus, objectives, and prerequisites..."
                   className="w-full p-2.5 bg-background border border-border focus:ring-2 focus:ring-primary/30 rounded-xl text-foreground text-xs font-sans placeholder:text-muted-foreground outline-none"
                 />
+              </div>
+
+              {/* Sections */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-foreground">Sections</label>
+                  <button
+                    type="button"
+                    onClick={() => setSections(prev => [
+                      ...prev,
+                      { name: `Section ${String.fromCharCode(65 + prev.length)}`, capacity: 40, schedule: '', location: '' }
+                    ])}
+                    className="text-xs font-bold text-primary hover:text-primary/80 flex items-center gap-1 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Add Section
+                  </button>
+                </div>
+
+                {sections.map((section, idx) => (
+                  <div key={idx} className="p-3 bg-muted/50 rounded-xl border border-border space-y-2">
+                    <div className="flex items-center justify-between">
+                      <input
+                        type="text"
+                        value={section.name}
+                        onChange={e => {
+                          const updated = [...sections];
+                          updated[idx].name = e.target.value;
+                          setSections(updated);
+                        }}
+                        className="text-sm font-bold bg-transparent border-none outline-none flex-1"
+                        placeholder="Section name"
+                      />
+                      {sections.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => setSections(prev => prev.filter((_, i) => i !== idx))}
+                          className="p-1 hover:bg-red-500/10 rounded-lg text-red-500 cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <input
+                        type="number"
+                        value={section.capacity}
+                        onChange={e => {
+                          const updated = [...sections];
+                          updated[idx].capacity = parseInt(e.target.value) || 40;
+                          setSections(updated);
+                        }}
+                        className="text-xs p-2 bg-background border border-border rounded-lg"
+                        placeholder="Capacity"
+                        min="1"
+                      />
+                      <input
+                        type="text"
+                        value={section.schedule}
+                        onChange={e => {
+                          const updated = [...sections];
+                          updated[idx].schedule = e.target.value;
+                          setSections(updated);
+                        }}
+                        className="text-xs p-2 bg-background border border-border rounded-lg"
+                        placeholder="Schedule"
+                      />
+                      <input
+                        type="text"
+                        value={section.location}
+                        onChange={e => {
+                          const updated = [...sections];
+                          updated[idx].location = e.target.value;
+                          setSections(updated);
+                        }}
+                        className="text-xs p-2 bg-background border border-border rounded-lg"
+                        placeholder="Location"
+                      />
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
 
