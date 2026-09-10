@@ -1,5 +1,6 @@
 import React from 'react';
 import { useLMS } from '../context/LMSContext';
+import type { CourseSection } from '../types/lms';
 import { BookOpen, MapPin, Clock, Users, Check, ArrowLeft } from 'lucide-react';
 
 interface SectionSelectionPageProps {
@@ -13,12 +14,12 @@ export const SectionSelectionPage: React.FC<SectionSelectionPageProps> = ({
 }) => {
   const { db, activeUser, selectSection, showAlert } = useLMS();
   const course = db.courses.find(c => c.id === courseId);
-  const sections = db.courseSections.filter(s => s.courseId === courseId);
+  const sections: CourseSection[] = (db.courseSections || []).filter((s: CourseSection) => s.courseId === courseId);
 
   const currentSectionId = activeUser.courseSections?.[courseId];
 
   const handleSelectSection = (sectionId: string) => {
-    const section = db.courseSections.find(s => s.id === sectionId);
+    const section = (db.courseSections || []).find((s: CourseSection) => s.id === sectionId);
     if (!section) return;
 
     if (section.enrolledCount >= section.capacity) {

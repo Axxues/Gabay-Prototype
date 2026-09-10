@@ -4,6 +4,7 @@ import { createDefaultSyllabusForCourse, type OfficialSyllabusData, type Faculty
 import { scanSyllabusDocument, formatBytes, type ScanResult } from '../utils/syllabusParser';
 import { PageHeader } from '../components/common/PageHeader';
 import { DialogFrame } from '../components/common/DialogFrame';
+import { ModalPortal } from '../components/common/ModalPortal';
 import {
   BookOpen,
   ChevronDown,
@@ -30,7 +31,8 @@ import {
   Loader2,
   Trash2,
   AlertTriangle,
-  ArrowLeft
+  ArrowLeft,
+  Pencil
 } from 'lucide-react';
 
 interface SyllabusViewProps {
@@ -75,10 +77,28 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
   const [detectedFacultyName, setDetectedFacultyName] = useState<string>('');
   const [isAutoDetected, setIsAutoDetected] = useState<boolean>(false);
 
+  // Merged instructor list: only scanned names from syllabus
+  const instructorOptions = useMemo(() => {
+    const scannedNames: string[] = scanResult?.detectedFacultyNames || [];
+    const scannedMembers: { name: string }[] = scanResult?.syllabus?.facultyMembers || [];
+    const allScanned = [...new Set([...scannedNames, ...scannedMembers.map(m => m.name)])];
+    const result: { id: string; name: string; label: string }[] = [];
+    for (const name of allScanned) {
+      const match = facultyUsers.find(u => u.name.toLowerCase() === name.toLowerCase());
+      if (match) {
+        result.push({ id: match.id, name: match.name, label: `${match.name} — ${match.title || 'Faculty'}` });
+      } else {
+        result.push({ id: `scanned:${name}`, name, label: `${name} — from scanned syllabus` });
+      }
+    }
+    return result;
+  }, [scanResult, facultyUsers]);
+
   // Collapsible Accordion State - MINIMIZED BY DEFAULT as requested!
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const [searchQuery, setSearchQuery] = useState('');
   const [activeWeekTab, setActiveWeekTab] = useState<string>('all');
+  const [editingSection, setEditingSection] = useState<string | null>(null);
 
   const processFile = async (file: File) => {
     if (!file) return;
@@ -203,7 +223,9 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
     if (!scanResult || !currentCourse) return;
 
     // Find the chosen faculty member
-    const chosenFaculty = facultyUsers.find(u => u.id === selectedFacultyId) || activeUser;
+    const chosenFaculty = facultyUsers.find(u => u.id === selectedFacultyId)
+      || instructorOptions.find(o => o.id === selectedFacultyId)
+      || activeUser;
 
     // Prepare bound faculty schedule for the single course instructor
     const existingFacultySchedule = scanResult.syllabus.facultyMembers.find(f =>
@@ -234,7 +256,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
       signatories: {
         ...scanResult.syllabus.signatories,
         preparedBy: [
-          { name: chosenFaculty.name.toUpperCase(), title: chosenFaculty.title || 'Course Instructor' }
+          { name: chosenFaculty.name.toUpperCase(), title: (chosenFaculty as any).title || 'Course Instructor' }
         ]
       }
     };
@@ -372,12 +394,14 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
 
   // Full-page Review & Verification when scanResult is present
   if (scanResult && !isScanning) {
-    const chosenFaculty = facultyUsers.find(u => u.id === selectedFacultyId) || activeUser;
+    const chosenFaculty = facultyUsers.find(u => u.id === selectedFacultyId)
+      || instructorOptions.find(o => o.id === selectedFacultyId)
+      || activeUser;
 
     return (
       <div className="space-y-5 max-w-5xl mx-auto animate-fade-in pb-20 font-sans">
         {/* Verification strip — identity, confidence and actions in one place */}
-        <div className="lg:sticky lg:top-0 z-10 py-2 bg-background/95 backdrop-blur">
+        <div className="lg:sticky lg:top-0 z-10 py-2 bg-background/95">
           <div className="flex flex-wrap items-center gap-3 p-3 bg-card border border-border rounded-2xl shadow-subtle">
             <button
               type="button"
@@ -396,9 +420,6 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                 <h2 className="text-base font-bold tracking-tight text-foreground truncate">
                   Verify scanned syllabus
                 </h2>
-                <span className="px-2 py-0.5 text-[10px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 rounded-full shrink-0">
-                  {scanResult.validation.confidence}% match
-                </span>
               </div>
               <p className="text-xs text-muted-foreground mt-0.5 truncate">
                 {scanResult.fileName} · {scanResult.fileSize} · {scanResult.fileType.toUpperCase()} — parsed for {currentCourse?.code || 'this course'}
@@ -416,14 +437,6 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>Scan another</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleApplySyllabus}
-                className="px-4 py-2 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all shadow-primary-sm cursor-pointer flex items-center gap-1.5"
-              >
-                <Check className="w-3.5 h-3.5" />
-                <span>Apply syllabus</span>
               </button>
             </div>
           </div>
@@ -506,7 +519,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                       <div>
                         <div className="font-bold text-xs text-foreground">{detectedFacultyName}</div>
                         <div className="text-[11px] text-muted-foreground">
-                          {chosenFaculty.title || 'Course Instructor'} • {chosenFaculty.department || 'Department of Computer Science'}
+                          {(chosenFaculty as any).title || 'Course Instructor'} • {(chosenFaculty as any).department || 'Department of Computer Science'}
                         </div>
                       </div>
                     </div>
@@ -515,23 +528,44 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                     </span>
                   </div>
 
-                  <div className="pt-2 border-t border-emerald-500/20 flex flex-col sm:flex-row sm:items-center justify-between text-xs gap-2">
-                    <span className="text-muted-foreground text-[11px]">Override with another faculty member:</span>
-                    <select
-                      value={selectedFacultyId}
-                      onChange={e => {
-                        setSelectedFacultyId(e.target.value);
-                        const user = db.users.find(u => u.id === e.target.value);
-                        if (user) setDetectedFacultyName(user.name);
-                      }}
-                      className="px-3 py-1.5 bg-card border border-border rounded-xl text-xs text-foreground font-sans focus:ring-2 focus:ring-primary/30 outline-none"
-                    >
-                      {facultyUsers.map(fac => (
-                        <option key={fac.id} value={fac.id}>
-                          {fac.name} ({fac.title || 'Faculty'})
-                        </option>
+                  <div className="pt-2 border-t border-emerald-500/20 space-y-2">
+                    <span className="text-muted-foreground text-[11px]">Override with another scanned instructor:</span>
+                    <div className="space-y-1.5">
+                      {instructorOptions.map(opt => (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedFacultyId(opt.id);
+                            setDetectedFacultyName(opt.name);
+                          }}
+                          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all cursor-pointer ${
+                            selectedFacultyId === opt.id
+                              ? 'bg-primary/10 border border-primary/30 ring-1 ring-primary/20'
+                              : 'bg-card border border-border hover:border-primary/20 hover:bg-muted/50'
+                          }`}
+                        >
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                            selectedFacultyId === opt.id
+                              ? 'bg-primary text-primary-foreground'
+                              : 'bg-muted text-muted-foreground'
+                          }`}>
+                            {opt.name.charAt(0)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className={`text-xs font-bold truncate ${selectedFacultyId === opt.id ? 'text-primary' : 'text-foreground'}`}>
+                              {opt.name}
+                            </div>
+                            <div className="text-[10px] text-muted-foreground truncate">
+                              {opt.id.startsWith('scanned:') ? 'From scanned syllabus' : 'Faculty member'}
+                            </div>
+                          </div>
+                          {selectedFacultyId === opt.id && (
+                            <Check className="w-4 h-4 text-primary shrink-0" />
+                          )}
+                        </button>
                       ))}
-                    </select>
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -547,28 +581,44 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                   </div>
 
                   <p className="text-xs text-muted-foreground leading-relaxed">
-                    The document scanner could not match an instructor in the document text. Please select which faculty member created / teaches this course:
+                    The document scanner could not match an instructor in the document text. Select which faculty member created or teaches this course:
                   </p>
 
-                  <div>
-                    <label className="block text-[11px] font-bold text-foreground mb-1.5 uppercase tracking-wider">
-                      Select Course Instructor:
-                    </label>
-                    <select
-                      value={selectedFacultyId}
-                      onChange={e => {
-                        setSelectedFacultyId(e.target.value);
-                        const user = db.users.find(u => u.id === e.target.value);
-                        if (user) setDetectedFacultyName(user.name);
-                      }}
-                      className="w-full px-3.5 py-2.5 bg-card border border-amber-500/40 rounded-xl text-xs font-bold text-foreground focus:ring-2 focus:ring-primary/30 outline-none shadow-subtle"
-                    >
-                      {facultyUsers.map(fac => (
-                        <option key={fac.id} value={fac.id}>
-                          {fac.name} — {fac.department || 'Department of Computer Science'} ({fac.title || 'Faculty'})
-                        </option>
-                      ))}
-                    </select>
+                  <div className="space-y-1.5">
+                    {instructorOptions.map(opt => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedFacultyId(opt.id);
+                          setDetectedFacultyName(opt.name);
+                        }}
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all cursor-pointer ${
+                          selectedFacultyId === opt.id
+                            ? 'bg-primary/10 border border-primary/30 ring-1 ring-primary/20'
+                            : 'bg-card border border-border hover:border-amber-500/30 hover:bg-muted/50'
+                        }`}
+                      >
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                          selectedFacultyId === opt.id
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-muted text-muted-foreground'
+                        }`}>
+                          {opt.name.charAt(0)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className={`text-xs font-bold truncate ${selectedFacultyId === opt.id ? 'text-primary' : 'text-foreground'}`}>
+                            {opt.name}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground truncate">
+                            {opt.id.startsWith('scanned:') ? 'From scanned syllabus' : 'Faculty member'}
+                          </div>
+                        </div>
+                        {selectedFacultyId === opt.id && (
+                          <Check className="w-4 h-4 text-primary shrink-0" />
+                        )}
+                      </button>
+                    ))}
                   </div>
                 </div>
               )}
@@ -871,7 +921,17 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               </h3>
             </div>
           </div>
-          <div className="shrink-0 ml-3">
+          <div className="shrink-0 ml-3 flex items-center gap-1.5">
+            {isFacultyCreator && (
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); setEditingSection('facultySchedule'); setExpandedSections(prev => ({ ...prev, facultySchedule: true })); }}
+                className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer"
+                title="Edit section"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+            )}
             <div className={`w-6 h-6 rounded-lg bg-muted flex items-center justify-center text-muted-foreground transition-transform duration-200 ${
               expandedSections.facultySchedule ? 'rotate-180 text-primary bg-primary/10' : ''
             }`}>
@@ -886,7 +946,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
           }`}
         >
           <div className="overflow-hidden min-h-0">
-            <div className="p-5 sm:p-6 border-t border-border bg-card space-y-5">
+            <div className={`p-5 sm:p-6 border-t bg-card space-y-5 ${editingSection === 'facultySchedule' ? 'border-primary/50 bg-primary/5' : 'border-border'}`}>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 {facultyListToDisplay.map((fac, idx) => (
                   <div key={idx} className="p-4 rounded-xl border border-border bg-muted/20 space-y-3">
@@ -959,7 +1019,17 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               </h3>
             </div>
           </div>
-          <div className="shrink-0 ml-3">
+          <div className="shrink-0 ml-3 flex items-center gap-1.5">
+            {isFacultyCreator && (
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); setEditingSection('vgmo'); setExpandedSections(prev => ({ ...prev, vgmo: true })); }}
+                className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer"
+                title="Edit section"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+            )}
             <div className={`w-6 h-6 rounded-lg bg-muted flex items-center justify-center text-muted-foreground transition-transform duration-200 ${
               expandedSections.vgmo ? 'rotate-180 text-primary bg-primary/10' : ''
             }`}>
@@ -974,7 +1044,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
           }`}
         >
           <div className="overflow-hidden min-h-0">
-            <div className="p-5 sm:p-6 border-t border-border bg-card space-y-6 text-xs">
+            <div className={`p-5 sm:p-6 border-t bg-card space-y-6 text-xs ${editingSection === 'vgmo' ? 'border-primary/50 bg-primary/5' : 'border-border'}`}>
               {/* VGMO Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="p-4 rounded-xl border border-border bg-muted/20 space-y-1.5">
@@ -1063,7 +1133,12 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               </h3>
             </div>
           </div>
-          <div className="shrink-0 ml-3">
+          <div className="shrink-0 ml-3 flex items-center gap-1.5">
+            {isFacultyCreator && (
+              <button type="button" onClick={e => { e.stopPropagation(); setEditingSection('programOutcomes'); setExpandedSections(prev => ({ ...prev, programOutcomes: true })); }} className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer" title="Edit section">
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+            )}
             <div className={`w-6 h-6 rounded-lg bg-muted flex items-center justify-center text-muted-foreground transition-transform duration-200 ${
               expandedSections.programOutcomes ? 'rotate-180 text-primary bg-primary/10' : ''
             }`}>
@@ -1078,7 +1153,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
           }`}
         >
           <div className="overflow-hidden min-h-0">
-            <div className="p-5 sm:p-6 border-t border-border bg-card space-y-3 text-xs">
+            <div className={`p-5 sm:p-6 border-t bg-card space-y-3 text-xs ${editingSection === 'programOutcomes' ? 'border-primary/50 bg-primary/5' : 'border-border'}`}>
               <p className="text-xs text-muted-foreground font-medium pb-1">
                 Upon graduation, successful BSCS graduates will attain the following program outcomes:
               </p>
@@ -1125,7 +1200,12 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               </h3>
             </div>
           </div>
-          <div className="shrink-0 ml-3">
+          <div className="shrink-0 ml-3 flex items-center gap-1.5">
+            {isFacultyCreator && (
+              <button type="button" onClick={e => { e.stopPropagation(); setEditingSection('courseOutcomes'); setExpandedSections(prev => ({ ...prev, courseOutcomes: true })); }} className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer" title="Edit section">
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+            )}
             <div className={`w-6 h-6 rounded-lg bg-muted flex items-center justify-center text-muted-foreground transition-transform duration-200 ${
               expandedSections.courseOutcomes ? 'rotate-180 text-primary bg-primary/10' : ''
             }`}>
@@ -1140,7 +1220,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
           }`}
         >
           <div className="overflow-hidden min-h-0">
-            <div className="p-5 sm:p-6 border-t border-border bg-card space-y-4 text-xs">
+            <div className={`p-5 sm:p-6 border-t bg-card space-y-4 text-xs ${editingSection === 'courseOutcomes' ? 'border-primary/50 bg-primary/5' : 'border-border'}`}>
               <p className="text-xs text-muted-foreground font-medium">
                 By the end of this course, students should be able to:
               </p>
@@ -1189,7 +1269,12 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               </h3>
             </div>
           </div>
-          <div className="shrink-0 ml-3">
+          <div className="shrink-0 ml-3 flex items-center gap-1.5">
+            {isFacultyCreator && (
+              <button type="button" onClick={e => { e.stopPropagation(); setEditingSection('gradingSystem'); setExpandedSections(prev => ({ ...prev, gradingSystem: true })); }} className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer" title="Edit section">
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+            )}
             <div className={`w-6 h-6 rounded-lg bg-muted flex items-center justify-center text-muted-foreground transition-transform duration-200 ${
               expandedSections.gradingSystem ? 'rotate-180 text-primary bg-primary/10' : ''
             }`}>
@@ -1204,7 +1289,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
           }`}
         >
           <div className="overflow-hidden min-h-0">
-            <div className="p-5 sm:p-6 border-t border-border bg-card space-y-6 text-xs">
+            <div className={`p-5 sm:p-6 border-t bg-card space-y-6 text-xs ${editingSection === 'gradingSystem' ? 'border-primary/50 bg-primary/5' : 'border-border'}`}>
               {/* Requirements */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="p-4 rounded-xl border border-border bg-muted/20 space-y-2">
@@ -1301,7 +1386,12 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               </h3>
             </div>
           </div>
-          <div className="shrink-0 ml-3">
+          <div className="shrink-0 ml-3 flex items-center gap-1.5">
+            {isFacultyCreator && (
+              <button type="button" onClick={e => { e.stopPropagation(); setEditingSection('projectRubrics'); setExpandedSections(prev => ({ ...prev, projectRubrics: true })); }} className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer" title="Edit section">
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+            )}
             <div className={`w-6 h-6 rounded-lg bg-muted flex items-center justify-center text-muted-foreground transition-transform duration-200 ${
               expandedSections.projectRubrics ? 'rotate-180 text-primary bg-primary/10' : ''
             }`}>
@@ -1316,7 +1406,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
           }`}
         >
           <div className="overflow-hidden min-h-0">
-            <div className="p-5 sm:p-6 border-t border-border bg-card space-y-4 text-xs">
+            <div className={`p-5 sm:p-6 border-t bg-card space-y-4 text-xs ${editingSection === 'projectRubrics' ? 'border-primary/50 bg-primary/5' : 'border-border'}`}>
               <p className="text-xs text-muted-foreground font-medium">
                 Teams are evaluated across 10 core engineering and presentation criteria scored from 1 (Beginning) to 4 (Exemplary):
               </p>
@@ -1385,7 +1475,12 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               </h3>
             </div>
           </div>
-          <div className="shrink-0 ml-3">
+          <div className="shrink-0 ml-3 flex items-center gap-1.5">
+            {isFacultyCreator && (
+              <button type="button" onClick={e => { e.stopPropagation(); setEditingSection('classroomPolicies'); setExpandedSections(prev => ({ ...prev, classroomPolicies: true })); }} className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer" title="Edit section">
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+            )}
             <div className={`w-6 h-6 rounded-lg bg-muted flex items-center justify-center text-muted-foreground transition-transform duration-200 ${
               expandedSections.classroomPolicies ? 'rotate-180 text-primary bg-primary/10' : ''
             }`}>
@@ -1400,7 +1495,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
           }`}
         >
           <div className="overflow-hidden min-h-0">
-            <div className="p-5 sm:p-6 border-t border-border bg-card space-y-3 text-xs">
+            <div className={`p-5 sm:p-6 border-t bg-card space-y-3 text-xs ${editingSection === 'classroomPolicies' ? 'border-primary/50 bg-primary/5' : 'border-border'}`}>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {data.classroomPolicies.map((pol, idx) => (
                   <div
@@ -1444,7 +1539,12 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               </h3>
             </div>
           </div>
-          <div className="shrink-0 ml-3">
+          <div className="shrink-0 ml-3 flex items-center gap-1.5">
+            {isFacultyCreator && (
+              <button type="button" onClick={e => { e.stopPropagation(); setEditingSection('courseOutline'); setExpandedSections(prev => ({ ...prev, courseOutline: true })); }} className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer" title="Edit section">
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+            )}
             <div className={`w-6 h-6 rounded-lg bg-muted flex items-center justify-center text-muted-foreground transition-transform duration-200 ${
               expandedSections.courseOutline ? 'rotate-180 text-primary bg-primary/10' : ''
             }`}>
@@ -1459,7 +1559,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
           }`}
         >
           <div className="overflow-hidden min-h-0">
-            <div className="p-5 sm:p-6 border-t border-border bg-card space-y-3 text-xs">
+            <div className={`p-5 sm:p-6 border-t bg-card space-y-3 text-xs ${editingSection === 'courseOutline' ? 'border-primary/50 bg-primary/5' : 'border-border'}`}>
               <div className="space-y-3">
                 {data.courseOutline.map((item, idx) => (
                   <div
@@ -1513,7 +1613,12 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               </h3>
             </div>
           </div>
-          <div className="shrink-0 ml-3">
+          <div className="shrink-0 ml-3 flex items-center gap-1.5">
+            {isFacultyCreator && (
+              <button type="button" onClick={e => { e.stopPropagation(); setEditingSection('learningPlan'); setExpandedSections(prev => ({ ...prev, learningPlan: true })); }} className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer" title="Edit section">
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+            )}
             <div className={`w-6 h-6 rounded-lg bg-muted flex items-center justify-center text-muted-foreground transition-transform duration-200 ${
               expandedSections.learningPlan ? 'rotate-180 text-primary bg-primary/10' : ''
             }`}>
@@ -1528,7 +1633,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
           }`}
         >
           <div className="overflow-hidden min-h-0">
-            <div className="p-5 sm:p-6 border-t border-border bg-card space-y-4 text-xs">
+            <div className={`p-5 sm:p-6 border-t bg-card space-y-4 text-xs ${editingSection === 'learningPlan' ? 'border-primary/50 bg-primary/5' : 'border-border'}`}>
               {/* Filter Pills */}
               <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-border/60">
                 <div className="flex items-center space-x-1.5">
@@ -1673,7 +1778,12 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               </h3>
             </div>
           </div>
-          <div className="shrink-0 ml-3">
+          <div className="shrink-0 ml-3 flex items-center gap-1.5">
+            {isFacultyCreator && (
+              <button type="button" onClick={e => { e.stopPropagation(); setEditingSection('curriculumMap'); setExpandedSections(prev => ({ ...prev, curriculumMap: true })); }} className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer" title="Edit section">
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+            )}
             <div className={`w-6 h-6 rounded-lg bg-muted flex items-center justify-center text-muted-foreground transition-transform duration-200 ${
               expandedSections.curriculumMap ? 'rotate-180 text-primary bg-primary/10' : ''
             }`}>
@@ -1688,7 +1798,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
           }`}
         >
           <div className="overflow-hidden min-h-0">
-            <div className="p-5 sm:p-6 border-t border-border bg-card space-y-4 text-xs">
+            <div className={`p-5 sm:p-6 border-t bg-card space-y-4 text-xs ${editingSection === 'curriculumMap' ? 'border-primary/50 bg-primary/5' : 'border-border'}`}>
               <div className="flex flex-wrap items-center gap-3 text-xs bg-muted/40 p-3 rounded-xl border border-border font-medium">
                 <span className="font-bold text-foreground">Curriculum Level Legend:</span>
                 <span className="inline-flex items-center space-x-1">
@@ -1784,7 +1894,12 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               </h3>
             </div>
           </div>
-          <div className="shrink-0 ml-3">
+          <div className="shrink-0 ml-3 flex items-center gap-1.5">
+            {isFacultyCreator && (
+              <button type="button" onClick={e => { e.stopPropagation(); setEditingSection('referencesSignatures'); setExpandedSections(prev => ({ ...prev, referencesSignatures: true })); }} className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer" title="Edit section">
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+            )}
             <div className={`w-6 h-6 rounded-lg bg-muted flex items-center justify-center text-muted-foreground transition-transform duration-200 ${
               expandedSections.referencesSignatures ? 'rotate-180 text-primary bg-primary/10' : ''
             }`}>
@@ -1799,7 +1914,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
           }`}
         >
           <div className="overflow-hidden min-h-0">
-            <div className="p-5 sm:p-6 border-t border-border bg-card space-y-6 text-xs">
+            <div className={`p-5 sm:p-6 border-t bg-card space-y-6 text-xs ${editingSection === 'referencesSignatures' ? 'border-primary/50 bg-primary/5' : 'border-border'}`}>
               {/* References */}
               <div className="space-y-3">
                 <h4 className="font-bold text-xs uppercase tracking-wider text-foreground flex items-center space-x-2">
@@ -1915,6 +2030,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
 
       {/* Confirmation Modal for Syllabus Deletion */}
       {isDeleteModalOpen && (
+        <ModalPortal>
           <DialogFrame
             title="Remove Course Syllabus?"
             onClose={() => setIsDeleteModalOpen(false)}
@@ -1959,6 +2075,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                 </div>
               </div>
           </DialogFrame>
+        </ModalPortal>
       )}
     </>
   )}
@@ -1967,6 +2084,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
           SYLLABUS SCANNER & UPDATER MODAL (DOCX / PDF)
           ========================================================= */}
       {isUploadModalOpen && (
+        <ModalPortal>
           <DialogFrame
             title="Upload & Scan Course Syllabus"
             subtitle="Upload an official college syllabus document. Gabay will automatically parse the curriculum, 18-week learning plan, outcomes, and grading rubrics."
@@ -2124,6 +2242,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
 
             </div>
           </DialogFrame>
+        </ModalPortal>
       )}
     </div>
   );

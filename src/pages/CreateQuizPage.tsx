@@ -23,7 +23,9 @@ import {
   Type,
   Heading,
   Split,
-  ChevronDown
+  ChevronDown,
+  RefreshCcw,
+  Upload
 } from 'lucide-react';
 
 interface CreateQuizPageProps {
@@ -130,6 +132,12 @@ export const CreateQuizPage: React.FC<CreateQuizPageProps> = ({
       required: true
     }
   ]);
+
+  // Quiz File Upload State
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [extractedQuestions, setExtractedQuestions] = useState<QuestionDraft[]>([]);
+  const [showFileSelector, setShowFileSelector] = useState(false);
 
   const handleAddItem = (type: QuizItemType, insertAfterIndex?: number) => {
     let newItem: QuestionDraft;
@@ -466,6 +474,206 @@ export const CreateQuizPage: React.FC<CreateQuizPageProps> = ({
     onQuizCreated(created.id);
   };
 
+  const handleUploadQuizFile = (file: File) => {
+    setIsUploading(true);
+    setUploadFile(file);
+
+    const reader = new FileReader();
+    reader.onload = (e: any) => {
+      const text = e.target.result;
+      const questions = parseQuizText(text);
+      setExtractedQuestions(questions);
+      setIsUploading(false);
+      setShowFileSelector(true);
+    };
+
+    reader.onerror = () => {
+      showAlert({
+        title: 'Error reading file',
+        message: 'Could not read the uploaded file. Please ensure it is a valid PDF or DOCX.',
+        type: 'error'
+      });
+      setIsUploading(false);
+    };
+
+    reader.readAsText(file);
+  };
+
+  const parseQuizText = (text: string): QuestionDraft[] => {
+    // 1. Try parsing structured JSON
+    try {
+      const parsed = JSON.parse(text);
+      const itemsList = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray(parsed.questions)
+        ? parsed.questions
+        : Array.isArray(parsed.items)
+        ? parsed.items
+        : null;
+
+      if (itemsList && itemsList.length > 0) {
+        return itemsList.map((item: any, idx: number) => ({
+          id: item.id || `item-${Date.now()}-${idx + 1}`,
+          text: (item.text || item.question || item.prompt || `Question ${idx + 1}`).trim(),
+          type: (item.type as QuizItemType) || 'multiple_choice',
+          options: Array.isArray(item.options) ? item.options : item.type === 'multiple_choice' ? ['Option A', 'Option B', 'Option C', 'Option D'] : undefined,
+          correctAnswer: item.correctAnswer || (item.type === 'multiple_choice' ? 'A' : item.type === 'true_false' ? 'True' : ''),
+          points: Number(item.points) || 5,
+          description: item.description || '',
+          rubricNotes: item.rubricNotes || '',
+          required: item.required !== undefined ? item.required : true
+        }));
+      }
+    } catch {
+      // not JSON, fallback to line-by-line parser
+    }
+
+    // 2. Line by line text parsing
+    const questions: QuestionDraft[] = [];
+    const lines = text.split(/\r?\n/);
+
+    let currentType: QuizItemType = 'multiple_choice';
+    let currentText = '';
+    let currentOptions: string[] = [];
+    let currentCorrectAnswer = 'A';
+    let currentPoints = 5;
+    let currentDescription = '';
+
+    const pushQuestion = () => {
+      if (!currentText.trim()) return;
+      questions.push(finalizeQuestion(currentType, currentText, currentOptions, currentCorrectAnswer, currentPoints, currentDescription));
+      currentType = 'multiple_choice';
+      currentText = '';
+      currentOptions = [];
+      currentCorrectAnswer = 'A';
+      currentPoints = 5;
+      currentDescription = '';
+    };
+
+    for (const rawLine of lines) {
+      const trimmed = rawLine.trim();
+      if (!trimmed) {
+        if (currentText.trim() && currentOptions.length >= 2) {
+          pushQuestion();
+        }
+        continue;
+      }
+
+      // 1. Question Numbering (e.g. "1.", "1)", "Q1:", "Question 1:")
+      const qNumMatch = trimmed.match(/^(?:Q(?:uestion)?\s*\d+[:.]|\d+[\.\)])\s*(.*)/i);
+      if (qNumMatch) {
+        pushQuestion();
+        currentText = qNumMatch[1].trim() || trimmed;
+        currentType = 'multiple_choice';
+        continue;
+      }
+
+      // 2. True / False indicator
+      if (/^(?:True\s*[\/\-]\s*False|T\s*\/\s*F)\b/i.test(trimmed)) {
+        currentType = 'true_false';
+        currentOptions = ['True', 'False'];
+        currentCorrectAnswer = /true/i.test(trimmed) ? 'True' : 'False';
+        continue;
+      }
+
+      // 3. Option Match (e.g. "A.", "A)", "(A)", "[A]")
+      const optMatch = trimmed.match(/^(?:[\(\[]?([A-Fa-f])[\)\]\.\:]\s*)(.*)/);
+      if (optMatch) {
+        currentType = 'multiple_choice';
+        currentOptions.push(optMatch[2].trim());
+        continue;
+      }
+
+      // 4. Answer Key Indicator (e.g. "Answer: A" or "Ans: True")
+      const ansMatch = trimmed.match(/^(?:Answer|Ans|Key|Correct(?:\s*Answer)?)\s*[:=-]\s*(.*)/i);
+      if (ansMatch) {
+        const val = ansMatch[1].trim();
+        if (/^(?:True|False)$/i.test(val)) {
+          currentType = 'true_false';
+          currentCorrectAnswer = val.toLowerCase() === 'false' ? 'False' : 'True';
+        } else if (/^[A-Fa-f]$/.test(val)) {
+          currentCorrectAnswer = val.toUpperCase();
+        } else {
+          currentCorrectAnswer = val;
+        }
+        continue;
+      }
+
+      // 5. Points indicator (e.g. "(10 pts)" or "Points: 5")
+      const ptsMatch = trimmed.match(/(?:(?:Points?|Pts?)\s*[:=]\s*|[\(\[])\s*(\d+)\s*(?:pts|points?)?\s*[\)\]]?/i);
+      if (ptsMatch) {
+        currentPoints = parseInt(ptsMatch[1], 10) || 5;
+      }
+
+      // 6. Regular text accumulation
+      if (currentText) {
+        currentText += ' ' + trimmed;
+      } else {
+        currentText = trimmed;
+      }
+    }
+
+    pushQuestion();
+
+    // Fallback if no questions detected
+    if (questions.length === 0 && text.trim()) {
+      questions.push({
+        id: `item-${Date.now()}-1`,
+        text: text.trim().slice(0, 150),
+        type: 'identification',
+        options: [],
+        correctAnswer: '',
+        points: 5,
+        required: true
+      });
+    }
+
+    return questions;
+  };
+
+  const finalizeQuestion = (
+    type: QuizItemType | null,
+    text: string,
+    options: string[],
+    correctAnswer: string,
+    points: number,
+    description: string
+  ): QuestionDraft => {
+    // Clean up text
+    const cleanText = text.replace(/^(?:Q(?:uestion)?\s*\d+[:.]|\d+[\.\)])\s*/i, '').trim();
+
+    let finalType = type || 'multiple_choice';
+    let finalOptions = [...options];
+    let finalCorrectAnswer = correctAnswer;
+    let finalPoints = points;
+
+    if (finalType === 'multiple_choice') {
+      if (finalOptions.length === 0) {
+        finalOptions = ['Option A', 'Option B', 'Option C', 'Option D'];
+      }
+      if (!finalCorrectAnswer || !['A', 'B', 'C', 'D', 'E', 'F'].includes(finalCorrectAnswer)) {
+        finalCorrectAnswer = 'A';
+      }
+    } else if (finalType === 'true_false') {
+      finalOptions = ['True', 'False'];
+      if (finalCorrectAnswer !== 'False') finalCorrectAnswer = 'True';
+    }
+
+    return {
+      id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      text: cleanText || 'Untitled Question',
+      type: finalType,
+      options: finalOptions,
+      correctAnswer: finalCorrectAnswer,
+      points: finalPoints,
+      description: description || undefined,
+      required: true
+    };
+  };
+
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
+
   return (
     <div className="space-y-6 animate-fade-in max-w-4xl mx-auto pt-4 sm:pt-6 pb-28 px-2 sm:px-4 font-sans select-none">
       {/* Top Header & Breadcrumb */}
@@ -507,10 +715,11 @@ export const CreateQuizPage: React.FC<CreateQuizPageProps> = ({
             <div className="flex items-center space-x-2.5 shrink-0 self-end sm:self-auto">
               <button
                 type="button"
-                onClick={onBack}
-                className="px-4 py-2 text-xs font-bold text-muted-foreground hover:text-foreground bg-muted hover:bg-muted/80 rounded-xl transition-all cursor-pointer"
+                onClick={() => setShowFileSelector(prev => !prev)}
+                className="px-4 py-2 text-xs font-bold text-primary-foreground bg-primary hover:bg-primary/90 rounded-xl transition-all shadow-primary-sm cursor-pointer active:scale-98 flex items-center space-x-1.5"
               >
-                Cancel
+                <Upload className="w-3.5 h-3.5" />
+                <span>Upload File</span>
               </button>
               <button
                 type="button"
@@ -542,6 +751,198 @@ export const CreateQuizPage: React.FC<CreateQuizPageProps> = ({
           }}
           className="w-full flex-1 space-y-4 text-xs"
         >
+          {/* Quiz File Upload Section */}
+          {showFileSelector && (
+            <div className="p-4 bg-card border border-border rounded-2xl shadow-subtle space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-bold text-sm text-foreground">Upload Quiz Document</p>
+                  <p className="text-xs text-muted-foreground">
+                    Upload a PDF, DOCX, TXT, or JSON file to auto-populate quiz questions
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowFileSelector(false)}
+                  className="text-muted-foreground hover:text-primary transition-colors cursor-pointer p-1 rounded-lg hover:bg-muted"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* File Drop Zone or Browse Button */}
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                onDragOver={e => {
+                  e.preventDefault();
+                  setIsDraggingFile(true);
+                }}
+                onDragLeave={() => setIsDraggingFile(false)}
+                onDrop={e => {
+                  e.preventDefault();
+                  setIsDraggingFile(false);
+                  if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                    const file = e.dataTransfer.files[0];
+                    setUploadFile(file);
+                    handleUploadQuizFile(file);
+                  }
+                }}
+                className={`border-2 border-dashed rounded-xl p-8 text-center transition-all cursor-pointer flex flex-col items-center justify-center ${
+                  isDraggingFile
+                    ? 'border-primary bg-primary/10'
+                    : 'border-border hover:border-primary/50 bg-muted/20 hover:bg-muted/40'
+                }`}
+              >
+                <Upload className="w-8 h-8 text-primary mb-2" />
+                <p className="font-semibold text-foreground text-xs mb-1">Click to browse or drag & drop</p>
+                <p className="text-[11px] text-muted-foreground">
+                  Supports PDF, DOCX, TXT, MD, JSON (max 10MB)
+                </p>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.doc,.docx,.txt,.md,.json,.csv"
+                  onChange={e => {
+                    if (e.target.files && e.target.files.length > 0) {
+                      const file = e.target.files[0];
+                      setUploadFile(file);
+                      handleUploadQuizFile(file);
+                    }
+                  }}
+                  style={{ display: 'none' }}
+                />
+              </div>
+
+              {/* Upload Status */}
+              {uploadFile && (
+                <div className="p-3 bg-primary/5 rounded-xl border border-primary/20 flex items-center justify-between">
+                  <div>
+                    <p className="font-semibold text-primary text-xs">
+                      {uploadFile.name}
+                    </p>
+                    <p className="text-[10px] text-primary/80">
+                      {uploadFile.size > 1024 * 1024
+                        ? `${(uploadFile.size / 1024 / 1024).toFixed(1)} MB`
+                        : `${(uploadFile.size / 1024).toFixed(1)} KB`}
+                    </p>
+                  </div>
+                  {!isUploading && (
+                    <button
+                      type="button"
+                      onClick={() => handleUploadQuizFile(uploadFile)}
+                      className="px-3 py-1.5 bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-bold rounded-lg transition-all flex items-center space-x-1 cursor-pointer"
+                    >
+                      <RefreshCcw className="w-3.5 h-3.5" />
+                      <span>Re-parse</span>
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Extraction Progress */}
+              {isUploading && (
+                <div className="p-3 bg-muted/30 rounded-xl border border-border/50 text-center">
+                  <p className="text-xs text-muted-foreground font-medium animate-pulse">
+                    Parsing document & extracting questions... Please wait.
+                  </p>
+                </div>
+              )}
+
+              {/* Extracted Questions Preview & Actions */}
+              {extractedQuestions.length > 0 && (
+                <div className="space-y-3 pt-2">
+                  <div className="flex items-center justify-between">
+                    <p className="font-bold text-xs text-foreground">
+                      Extracted Questions ({extractedQuestions.length})
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setExtractedQuestions([])}
+                      className="text-[11px] text-muted-foreground hover:text-rose-600 transition-colors cursor-pointer"
+                    >
+                      Clear All
+                    </button>
+                  </div>
+
+                  <div className="p-3 bg-card/80 rounded-xl border border-border/50 max-h-[260px] overflow-y-auto custom-scrollbar space-y-2">
+                    {extractedQuestions.map((q, idx) => (
+                      <div
+                        key={q.id}
+                        className="p-2.5 bg-muted/30 hover:bg-muted/50 rounded-lg border border-border/40 flex items-start justify-between gap-2"
+                      >
+                        <div className="flex items-start space-x-2 overflow-hidden">
+                          <span className="text-[10px] font-bold text-primary px-1.5 py-0.5 rounded bg-primary/10 shrink-0">
+                            #{idx + 1}
+                          </span>
+                          <div className="truncate">
+                            <p className="text-xs font-semibold text-foreground truncate">
+                              {q.text || 'Untitled Question'}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground font-sans">
+                              Type: {q.type.replace('_', ' ')} • Points: {q.points}
+                              {q.options && q.options.length > 0 && ` • ${q.options.length} options`}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setExtractedQuestions(prev =>
+                              prev.filter((_, i) => i !== idx)
+                            );
+                          }}
+                          className="p-1 text-muted-foreground hover:text-rose-600 rounded transition-colors cursor-pointer"
+                          title="Remove item"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Apply Actions */}
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setItems(prev => [...prev, ...extractedQuestions]);
+                        setShowFileSelector(false);
+                        setExtractedQuestions([]);
+                        setUploadFile(null);
+                        showAlert({
+                          title: 'Questions Added',
+                          message: `Added ${extractedQuestions.length} extracted question(s) to the quiz.`,
+                          type: 'success'
+                        });
+                      }}
+                      className="flex-1 py-2 px-3 bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold rounded-xl transition-all shadow-primary-sm cursor-pointer flex items-center justify-center space-x-1.5 active:scale-98"
+                    >
+                      <PlusCircle className="w-3.5 h-3.5" />
+                      <span>Append ({extractedQuestions.length}) to Quiz</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setItems(extractedQuestions);
+                        setShowFileSelector(false);
+                        setExtractedQuestions([]);
+                        setUploadFile(null);
+                        showAlert({
+                          title: 'Quiz Replaced',
+                          message: `Loaded ${extractedQuestions.length} question(s) from document into the quiz.`,
+                          type: 'success'
+                        });
+                      }}
+                      className="py-2 px-3 bg-card hover:bg-muted/60 border border-border text-foreground text-xs font-bold rounded-xl transition-all shadow-subtle cursor-pointer active:scale-98"
+                    >
+                      <span>Replace All</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Google Form Top Header Card */}
           <div
             onClick={() => setActiveCardIndex(-1)}

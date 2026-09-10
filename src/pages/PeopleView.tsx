@@ -18,7 +18,7 @@ interface PeopleViewProps {
 }
 
 export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
-  const { db, activeRole, activeUser, enrollStudentsInCourse, regenerateCourseJoinCode, getPendingRequestsForCourse, getCourseSections, approveEnrollmentRequests, rejectEnrollmentRequests, showAlert, showConfirm } = useLMS();
+  const { db, activeRole, enrollStudentsInCourse, regenerateCourseJoinCode, getPendingRequestsForCourse, getCourseSections, approveEnrollmentRequests, rejectEnrollmentRequests, showAlert, showConfirm } = useLMS();
   const course = db.courses.find(c => c.id === courseId);
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -285,7 +285,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
                         <td className="p-3.5 font-sans text-foreground">{u.email}</td>
                         <td className="p-3.5">
                           <span className="text-[10px] font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded">
-                            {db.courseSections.find(s => s.id === u.courseSections?.[courseId])?.name || 'No Section'}
+                            {(db.courseSections || []).find((s: any) => s.id === u.courseSections?.[courseId])?.name || 'No Section'}
                           </span>
                         </td>
                         <td className="p-3.5">

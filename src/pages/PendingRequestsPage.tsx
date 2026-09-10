@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useLMS } from '../context/LMSContext';
+import type { EnrollmentRequest } from '../types/lms';
 import { PageHeader } from '../components/common/PageHeader';
 import { CheckCircle, XCircle, UserPlus, Search } from 'lucide-react';
 
@@ -14,10 +15,10 @@ export const PendingRequestsPage: React.FC<PendingRequestsPageProps> = ({ course
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
-  const allRequests = db.enrollmentRequests.filter(r => r.courseId === courseId);
-  const pendingRequests = allRequests.filter(r => r.status === 'pending');
+  const allRequests: EnrollmentRequest[] = (db.enrollmentRequests || []).filter((r: EnrollmentRequest) => r.courseId === courseId);
+  const pendingRequests = allRequests.filter((r: EnrollmentRequest) => r.status === 'pending');
 
-  const filteredRequests = pendingRequests.filter(r => {
+  const filteredRequests = pendingRequests.filter((r: EnrollmentRequest) => {
     const q = searchQuery.toLowerCase();
     return r.studentName.toLowerCase().includes(q) || r.type.toLowerCase().includes(q);
   });

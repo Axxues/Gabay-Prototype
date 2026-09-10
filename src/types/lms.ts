@@ -434,4 +434,6 @@ export interface MockDatabase {
   courseGrades?: CourseStudentGrade[];
   chatGroups?: ChatGroup[];
   notifications?: Notification[];
+  courseSections?: CourseSection[];
+  enrollmentRequests?: EnrollmentRequest[];
 }

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useLMS } from '../context/LMSContext';
 import { ModalPortal } from '../components/common/ModalPortal';
-import type { Announcement } from '../types/lms';
+import type { Announcement, CourseSection } from '../types/lms';
 import {
   Plus,
   Pin,
@@ -32,14 +32,13 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
     activeUser,
     activeRole,
     db,
-    createAnnouncement,
     deleteAnnouncement,
     togglePinAnnouncement,
     toggleLikeAnnouncement,
     addAnnouncementReply,
     markAnnouncementRead,
-    showAlert,
-    showConfirm
+    showConfirm,
+    createNotification
   } = useLMS();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -71,7 +70,7 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
 
     // Student filtering: show "All Sections" or matching their section
     if (!a.sectionRestriction || a.sectionRestriction === 'All Sections') return true;
-    const matchingSection = db.courseSections.find(s => s.id === studentSectionId);
+    const matchingSection = (db.courseSections || []).find((s: CourseSection) => s.id === studentSectionId);
     if (matchingSection && a.sectionRestriction === matchingSection.id) return true;
     return false;
   });
@@ -97,6 +96,19 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
   const handleSendReply = (announcementId: string) => {
     if (!replyText.trim()) return;
     addAnnouncementReply(announcementId, replyText.trim());
+    const ann = (db.announcements || []).find(a => a.id === announcementId);
+    if (ann && ann.authorId !== activeUser.id) {
+      createNotification({
+        type: 'announcement_reply',
+        recipientId: ann.authorId,
+        actorId: activeUser.id,
+        actorName: activeUser.name,
+        actorAvatar: activeUser.avatar,
+        relatedId: announcementId,
+        relatedTitle: ann.title,
+        content: replyText.trim(),
+      });
+    }
     setReplyText('');
   };
 

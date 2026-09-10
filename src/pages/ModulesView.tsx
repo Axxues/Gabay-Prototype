@@ -51,7 +51,8 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
     addModuleComment,
     editModuleComment,
     deleteModuleComment,
-    toggleLikeModuleComment
+    toggleLikeModuleComment,
+    createNotification
   } = useLMS();
 
   const courseModules = db.modules.filter(m => m.courseId === courseId);
@@ -827,6 +828,19 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                               const text = (commentInputs[mod.id] || '').trim();
                               if (!text) return;
                               addModuleComment(mod.id, text);
+                              const targetRecipientId = mod.authorId || (db.courses.find(c => c.id === mod.courseId)?.instructorId);
+                              if (targetRecipientId && targetRecipientId !== activeUser.id) {
+                                createNotification({
+                                  type: 'module_comment_reply',
+                                  recipientId: targetRecipientId,
+                                  actorId: activeUser.id,
+                                  actorName: activeUser.name,
+                                  actorAvatar: activeUser.avatar,
+                                  relatedId: mod.id,
+                                  relatedTitle: mod.title,
+                                  content: text,
+                                });
+                              }
                               setCommentInputs(prev => ({ ...prev, [mod.id]: '' }));
                             }}
                             className="flex items-center space-x-2.5 p-1.5 pb-2"

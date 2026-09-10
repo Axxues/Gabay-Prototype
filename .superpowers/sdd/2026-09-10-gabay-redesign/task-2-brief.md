@@ -1,3 +1,18 @@
+# Task 2 brief — AppRail (Level-1)
+
+Single source of requirements. Implement exactly this.
+
+**Files:**
+- Create: `src/components/layout/AppRail.tsx`
+- Test: `npm run typecheck` PASS, then `npm run build` PASS
+
+**Interfaces:**
+- Consumes: `NavItem, MAIN_NAV, isVisible, NavIcon` from `src/config/navigation.ts` (Task 1, exists in worktree); `useLMS()` for `activeRole, activeUser, logout, showConfirm, db`.
+- Produces: `export const AppRail: React.FC<{ currentTab: string; onNavigateTab: (t: string) => void }>`.
+
+Exact implementation (copy verbatim, do not restyle):
+
+```tsx
 import React from 'react';
 import { LayoutDashboard, BookOpen, Calendar, Inbox, History, HelpCircle, Building, BarChart3, FileCheck2, Users, LogOut, GraduationCap } from 'lucide-react';
 import { useLMS } from '../../context/LMSContext';
@@ -10,7 +25,6 @@ const ICONS: Record<NavIcon, React.ReactNode> = {
   announcements: <BookOpen className="h-5 w-5" />, activities: <BookOpen className="h-5 w-5" />,
   quizzes: <BookOpen className="h-5 w-5" />, files: <BookOpen className="h-5 w-5" />,
   grades: <BookOpen className="h-5 w-5" />, people: <Users className="h-5 w-5" />,
-  'pending-requests': <Users className="h-5 w-5" />,
   accounts: <Users className="h-5 w-5" />, page1: <Building className="h-5 w-5" />,
   page2: <BarChart3 className="h-5 w-5" />, page3: <FileCheck2 className="h-5 w-5" />,
 };
@@ -39,3 +53,13 @@ export const AppRail: React.FC<{ currentTab: string; onNavigateTab: (t: string) 
     </aside>
   );
 };
+```
+
+Steps:
+- [ ] Step 1: confirm `src/components/layout/AppRail.tsx` does not exist.
+- [ ] Step 2: `npm run typecheck` baseline (passes; fail-proof is the missing export once App.tsx imports it in Task 4).
+- [ ] Step 3: create the file verbatim above. No other files.
+- [ ] Step 4: `npm run typecheck` PASS + `npm run build` PASS (this addresses Task 1's deferred build-evidence minor — include both outputs).
+- [ ] Step 5: `git add src/components/layout/AppRail.tsx` + `git commit -m "feat: add AppRail level-1 navigation"`.
+
+Global constraints: lucide only, no new deps, hierarchy normative.

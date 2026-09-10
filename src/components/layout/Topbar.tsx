@@ -12,22 +12,12 @@ import {
   User,
   Shield,
   LogOut,
-  Layers,
-  FileText,
-  FileCheck2,
-  HelpCircle as QuizIcon,
-  Award,
   Users,
-  Megaphone,
-  Folder,
-  Check
+  Bell
 } from 'lucide-react';
 
 interface TopbarProps {
   currentTab: string;
-  courseTab?: string;
-  onNavigateCourse?: (courseId: string, subTab?: string) => void;
-  onSelectCourseTab?: (tab: string) => void;
   onNavigateTab?: (tab: string) => void;
   onOpenSearch: () => void;
   onOpenSidebar?: () => void;
@@ -35,9 +25,6 @@ interface TopbarProps {
 
 export const Topbar: React.FC<TopbarProps> = ({
   currentTab,
-  courseTab,
-  onNavigateCourse,
-  onSelectCourseTab,
   onNavigateTab,
   onOpenSearch,
   onOpenSidebar
@@ -45,23 +32,17 @@ export const Topbar: React.FC<TopbarProps> = ({
   const {
     activeUser,
     activeRole,
-    db,
-    activeCourseId,
-    setActiveCourseId,
     theme,
     toggleTheme,
     setIsRoleModalOpen,
     logout,
-    showConfirm
+    showConfirm,
+    getUnreadNotificationCount
   } = useLMS();
 
   const [profileOpen, setProfileOpen] = useState(false);
-  const [courseDropdownOpen, setCourseDropdownOpen] = useState(false);
-  const [courseTabDropdownOpen, setCourseTabDropdownOpen] = useState(false);
 
   const profileRef = useRef<HTMLDivElement>(null);
-  const courseDropdownRef = useRef<HTMLDivElement>(null);
-  const courseTabDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -69,33 +50,10 @@ export const Topbar: React.FC<TopbarProps> = ({
       if (profileRef.current && !profileRef.current.contains(target)) {
         setProfileOpen(false);
       }
-      if (courseDropdownRef.current && !courseDropdownRef.current.contains(target)) {
-        setCourseDropdownOpen(false);
-      }
-      if (courseTabDropdownRef.current && !courseTabDropdownRef.current.contains(target)) {
-        setCourseTabDropdownOpen(false);
-      }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
-  const availableCourses = activeRole === 'student'
-    ? db.courses.filter(c => (activeUser.enrolledCourseIds || []).includes(c.id))
-    : db.courses;
-
-  const activeCourse = availableCourses.find(c => c.id === activeCourseId) || availableCourses[0] || db.courses[0];
-
-  const courseTabs = [
-    { id: 'modules', label: 'Modules', icon: <Layers className="w-3.5 h-3.5" /> },
-    { id: 'syllabus', label: 'Syllabus', icon: <FileText className="w-3.5 h-3.5" /> },
-    { id: 'announcements', label: 'Announcements', icon: <Megaphone className="w-3.5 h-3.5" /> },
-    { id: 'assignments', label: 'Activities', icon: <FileCheck2 className="w-3.5 h-3.5" /> },
-    { id: 'quizzes', label: 'Quizzes', icon: <QuizIcon className="w-3.5 h-3.5" /> },
-    { id: 'files', label: 'Files', icon: <Folder className="w-3.5 h-3.5" /> },
-    { id: 'grades', label: 'Grades', icon: <Award className="w-3.5 h-3.5" /> },
-    { id: 'people', label: 'People', icon: <Users className="w-3.5 h-3.5" /> },
-  ];
 
   return (
     <nav className="fixed w-full z-30 top-0 transition-all glass border-b border-border/40 shadow-subtle dark:bg-background/80 dark:border-border/30">
@@ -160,7 +118,7 @@ export const Topbar: React.FC<TopbarProps> = ({
           </button>
         </div>
 
-        {/* Right Section: Mobile Search, Course Shell Switcher, History, Help, User Profile */}
+        {/* Right Section: Mobile Search, Course Shell Switcher, History, Help, User Profile, Notification Bell */}
         <div className="flex items-center space-x-2 shrink-0">
           <button
             onClick={onOpenSearch}
@@ -169,125 +127,6 @@ export const Topbar: React.FC<TopbarProps> = ({
           >
             <Search className="h-4 w-4" />
           </button>
-
-          {/* Active Course & Tab Dropdowns if on Course page */}
-          {currentTab === 'courses' && activeCourse && (
-            <div className="hidden xl:flex items-center space-x-1.5 pr-2 border-r border-border">
-              {/* Course Shell Dropdown */}
-              <div className="relative" ref={courseDropdownRef}>
-                <button
-                  onClick={() => setCourseDropdownOpen(!courseDropdownOpen)}
-                  className={`flex items-center space-x-2 font-bold font-sans text-xs px-3 py-1.5 rounded-xl border transition-all shadow-subtle cursor-pointer active:scale-[0.98] ${courseDropdownOpen
-                      ? 'text-primary bg-primary/20 border-primary ring-2 ring-primary/20 shadow-primary-sm'
-                      : 'text-primary bg-primary/10 hover:bg-primary/15 border-primary/30'
-                    }`}
-                >
-                  <span
-                    className="w-2 h-2 rounded-full shrink-0 shadow-xs ring-1 ring-background"
-                    style={{ backgroundColor: activeCourse.color || '#64748b' }}
-                  />
-                  <span>{activeCourse.code}</span>
-                  <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ease-out ${courseDropdownOpen ? 'rotate-180' : ''}`} />
-                </button>
-
-                {courseDropdownOpen && (
-                  <div className="absolute right-0 mt-2 w-72 dropdown-panel p-2 z-50 animate-dropdown">
-                    <div className="px-2.5 py-1.5 flex items-center justify-between border-b border-border/60 mb-1.5">
-                      <span className="text-[10px] font-sans font-bold uppercase text-muted-foreground tracking-wider">
-                        Switch Course Shell
-                      </span>
-                      <span className="text-[9px] font-sans px-2 py-0.5 rounded-full bg-primary/10 text-primary font-bold">
-                        {availableCourses.length} courses
-                      </span>
-                    </div>
-                    <div className="max-h-64 overflow-y-auto space-y-1 custom-scrollbar pr-0.5">
-                      {availableCourses.map(course => {
-                        const isSelected = course.id === activeCourse.id;
-                        return (
-                          <button
-                            key={course.id}
-                            onClick={() => {
-                              setActiveCourseId(course.id);
-                              if (onNavigateCourse) onNavigateCourse(course.id, courseTab || 'modules');
-                              setCourseDropdownOpen(false);
-                            }}
-                            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition-all text-left cursor-pointer group ${isSelected
-                                ? 'bg-primary/15 text-primary font-bold border border-primary/30 shadow-xs'
-                                : 'text-foreground hover:bg-muted/80 hover:translate-x-0.5 font-medium'
-                              }`}
-                          >
-                            <div className="flex items-center space-x-2.5 truncate min-w-0">
-                              <span
-                                className={`w-2.5 h-2.5 rounded-full shrink-0 transition-transform ${isSelected ? 'ring-2 ring-primary/40 scale-110' : 'group-hover:scale-125'}`}
-                                style={{ backgroundColor: course.color || '#64748b' }}
-                              />
-                              <div className="text-left truncate">
-                                <div className="font-sans font-bold block truncate">{course.code}</div>
-                                <div className="text-[10px] text-muted-foreground truncate font-normal">{course.title}</div>
-                              </div>
-                            </div>
-                            {isSelected && (
-                              <div className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center text-primary shrink-0 ml-1.5">
-                                <Check className="w-3 h-3 stroke-[3]" />
-                              </div>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Sub-tab Dropdown */}
-              {courseTab && (
-                <div className="relative" ref={courseTabDropdownRef}>
-                  <button
-                    onClick={() => setCourseTabDropdownOpen(!courseTabDropdownOpen)}
-                    className={`flex items-center space-x-2 text-xs font-semibold capitalize px-3 py-1.5 rounded-xl border transition-all shadow-subtle cursor-pointer active:scale-[0.98] ${courseTabDropdownOpen
-                        ? 'bg-muted border-primary text-primary ring-2 ring-primary/20 shadow-primary-sm'
-                        : 'bg-card/90 hover:bg-muted/80 border-border/80 text-foreground'
-                      }`}
-                  >
-                    <span>{courseTab}</span>
-                    <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ease-out ${courseTabDropdownOpen ? 'rotate-180 text-primary' : 'text-muted-foreground'}`} />
-                  </button>
-
-                  {courseTabDropdownOpen && (
-                    <div className="absolute right-0 mt-2 w-48 dropdown-panel p-1.5 space-y-1 z-50 animate-dropdown">
-                      <div className="px-2.5 py-1.5 text-[10px] font-sans font-bold uppercase text-muted-foreground tracking-wider border-b border-border/60 mb-1">
-                        Course Section
-                      </div>
-                      <div className="space-y-0.5">
-                        {courseTabs.map(tab => {
-                          const isSelected = courseTab === tab.id;
-                          return (
-                            <button
-                              key={tab.id}
-                              onClick={() => {
-                                if (onSelectCourseTab) onSelectCourseTab(tab.id);
-                                setCourseTabDropdownOpen(false);
-                              }}
-                              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition-all cursor-pointer ${isSelected
-                                  ? 'bg-primary text-primary-foreground font-bold shadow-primary-sm'
-                                  : 'text-foreground hover:bg-muted/80 hover:translate-x-0.5 font-medium'
-                                }`}
-                            >
-                              <div className="flex items-center space-x-2.5">
-                                {tab.icon}
-                                <span>{tab.label}</span>
-                              </div>
-                              {isSelected && <Check className="w-3.5 h-3.5 shrink-0 stroke-[2.5]" />}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
 
           {/* History Page Trigger */}
           <button
@@ -311,6 +150,23 @@ export const Topbar: React.FC<TopbarProps> = ({
               }`}
           >
             <HelpCircle className="h-4 w-4" />
+          </button>
+
+          {/* Notification Bell with Unread Count */}
+          <button
+            onClick={() => onNavigateTab && onNavigateTab('inbox')}
+            title="Notifications"
+            className={`relative hidden sm:flex h-9 w-9 items-center justify-center rounded-xl border transition-all cursor-pointer shadow-subtle ${currentTab === 'inbox'
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'text-muted-foreground hover:text-foreground hover:bg-accent border-border bg-background'
+              }`}
+          >
+            <Bell className="h-4 w-4 text-primary" />
+            <span
+              className={`absolute -top-0.5 -right-0.5 rounded-full bg-primary text-xs text-primary-foreground h-4 w-4 flex items-center justify-center ${getUnreadNotificationCount(activeUser.id) > 0 ? '' : 'hidden'}`}
+            >
+              {getUnreadNotificationCount(activeUser.id)}
+            </span>
           </button>
 
           {/* User Profile Pill & Dropdown (Cellwego Layout) */}

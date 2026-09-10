@@ -133,6 +133,7 @@ interface LMSContextType {
   markAnnouncementRead: (id: string) => void;
 
   // Notifications
+  notifications: Notification[];
   createNotification: (notification: Partial<Notification>) => Notification;
   getUnreadNotificationCount: (userId: string, type?: string) => number;
   markNotificationRead: (id: string) => void;
@@ -741,8 +742,20 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [alertOptions, setAlertOptions] = useState<AlertModalOptions | null>(null);
   const [isAlertOpen, setIsAlertOpen] = useState(false);
 
-  // Notifications state
+  // Notifications state (mirrors db.notifications so badges survive reload)
   const [notifications, setNotifications] = useState<Notification[]>([]);
+
+  useEffect(() => {
+    const stored = (db as MockDatabase).notifications;
+    if (stored && Array.isArray(stored)) {
+      setNotifications(prev => {
+        if (prev.length === stored.length && prev.every((n, i) => n.id === stored[i]?.id && n.read === stored[i]?.read)) {
+          return prev;
+        }
+        return [...stored].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      });
+    }
+  }, [db.notifications]);
 
   const showAlert = (options: string | AlertModalOptions, title?: string) => {
     if (typeof options === 'string') {
@@ -1168,7 +1181,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (!student) return prev;
 
         const alreadyEnrolled = (student.enrolledCourseIds || []).includes(targetCourseId);
-        const alreadyPending = prev.enrollmentRequests.find(
+        const alreadyPending = (prev.enrollmentRequests || []).find(
           r => r.studentId === studentId && r.courseId === targetCourseId && r.status === 'pending'
         );
 
@@ -1185,7 +1198,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
           return {
             ...prev,
-            enrollmentRequests: [...prev.enrollmentRequests, newRequest]
+            enrollmentRequests: [...(prev.enrollmentRequests || []), newRequest]
           };
         }
 
@@ -1200,42 +1213,28 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: userData.id || `usr-${role.slice(0, 4)}-${Date.now().toString(36)}`,
       name: userData.name?.trim() || 'New User',
       email: userData.email?.trim() || `user.${Date.now()}@dmmmsu.edu.ph`,
-      role: role,
-      avatar: userData.avatar?.trim() || (
-        role === 'admin'
-          ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'
-          : role === 'faculty'
-          ? 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80'
-          : role === 'staff'
-          ? 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80'
-          : 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80'
-      ),
-      studentId: role === 'student' ? (userData.studentId?.trim() || `2026-SLUC-${Math.floor(1000 + Math.random() * 9000)}`) : undefined,
-      department: userData.department?.trim() || 'Department of Computer Science',
-      title: userData.title?.trim() || (role === 'student' ? 'Student' : role === 'faculty' ? 'Faculty Instructor' : role === 'admin' ? 'College Administrator' : 'Staff'),
-      password: userData.password?.trim() || 'gabay2026',
-      enrolledCourseIds: userData.enrolledCourseIds || (role === 'student' ? ['crs-cmsc131', 'crs-cmsc150'] : [])
+      role,
+      avatar: userData.avatar || `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80`,
+      department: userData.department || 'College of Computer Science',
+      title: userData.title || (role === 'student' ? 'Undergraduate Student' : 'Faculty Instructor'),
+      studentId: userData.studentId || (role === 'student' ? `2026-${Math.floor(10000 + Math.random() * 90000)}` : undefined),
+      password: userData.password || 'password123',
+      enrolledCourseIds: userData.enrolledCourseIds || []
     };
 
     setDb(prev => ({
       ...prev,
-      users: [newUser, ...prev.users]
+      users: [...prev.users, newUser]
     }));
 
     return newUser;
   };
 
-  const updateUser = (userId: string, updates: Partial<User>) => {
+  const updateUser = (id: string, updates: Partial<User>) => {
     setDb(prev => ({
       ...prev,
-      users: prev.users.map(u => (u.id === userId ? { ...u, ...updates } : u))
+      users: prev.users.map(u => (u.id === id ? { ...u, ...updates } : u))
     }));
-
-    if (currentUser && currentUser.id === userId) {
-      const updatedCurrent = { ...currentUser, ...updates };
-      setCurrentUser(updatedCurrent);
-      safeSetLocalStorage(STORAGE_KEY_SESSION, JSON.stringify(updatedCurrent));
-    }
   };
 
   const deleteUser = (userId: string): { success: boolean; message?: string } => {
@@ -1253,7 +1252,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setDb(prev => ({
       ...prev,
-      users: prev.users.filter(u => u.id !== userId)
+      users: prev.users.filter(u => u.id !== userId),
+      submissions: prev.submissions.filter(s => s.studentId !== userId)
     }));
 
     return {
@@ -1264,11 +1264,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const joinCourseByCode = (code: string): { success: boolean; message: string; course?: Course } => {
     const cleanCode = code.trim().toUpperCase();
-    if (!cleanCode) {
-      return { success: false, message: 'Please enter a valid course join code.' };
-    }
-
-    const targetCourse = db.courses.find(c => c.joinCode?.toUpperCase() === cleanCode);
+    const targetCourse = db.courses.find(c => (c.joinCode || '').toUpperCase() === cleanCode);
+    
     if (!targetCourse) {
       return { success: false, message: `No course found matching code "${cleanCode}". Please verify with your instructor.` };
     }
@@ -1282,7 +1279,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }
 
-    const existingPending = db.enrollmentRequests.find(
+    const existingPending = (db.enrollmentRequests || []).find(
       r => r.studentId === activeUser.id && r.courseId === targetCourse.id && r.status === 'pending'
     );
     if (existingPending) {
@@ -1907,14 +1904,14 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const markAllNotificationsRead = (userId: string, type?: string) => {
     setNotifications(prev =>
       prev.map(n =>
-        n.recipientId === userId && (!type || n.type === type ? { ...n, read: true } : n)
+        n.recipientId === userId && (!type || n.type === type) ? { ...n, read: true } : n
       )
     );
 
     setDb(prev => ({
       ...prev,
       notifications: (prev.notifications || []).map(n =>
-        n.recipientId === userId && (!type || n.type === type ? { ...n, read: true } : n)
+        n.recipientId === userId && (!type || n.type === type) ? { ...n, read: true } : n
       )
     }));
   };
@@ -2345,7 +2342,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setDb(prev => ({
       ...prev,
-      courseSections: [...prev.courseSections, newSection],
+      courseSections: [...(prev.courseSections || []), newSection],
       courses: prev.courses.map(c =>
         c.id === courseId
           ? { ...c, sectionIds: [...(c.sectionIds || []), newSection.id] }
@@ -2359,7 +2356,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const updateSection = (sectionId: string, updates: Partial<CourseSection>) => {
     setDb(prev => ({
       ...prev,
-      courseSections: prev.courseSections.map(s =>
+      courseSections: (prev.courseSections || []).map((s: CourseSection) =>
         s.id === sectionId ? { ...s, ...updates } : s
       )
     }));
@@ -2368,7 +2365,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteSection = (sectionId: string) => {
     setDb(prev => ({
       ...prev,
-      courseSections: prev.courseSections.filter(s => s.id !== sectionId),
+      courseSections: (prev.courseSections || []).filter((s: CourseSection) => s.id !== sectionId),
       courses: prev.courses.map(c => ({
         ...c,
         sectionIds: (c.sectionIds || []).filter(id => id !== sectionId)
@@ -2377,13 +2374,13 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const getCourseSections = (courseId: string): CourseSection[] => {
-    return db.courseSections.filter(s => s.courseId === courseId);
+    return (db.courseSections || []).filter((s: CourseSection) => s.courseId === courseId);
   };
 
   const getStudentSection = (courseId: string): CourseSection | null => {
     const sectionId = activeUser.courseSections?.[courseId];
     if (!sectionId) return null;
-    return db.courseSections.find(s => s.id === sectionId) || null;
+    return (db.courseSections || []).find((s: CourseSection) => s.id === sectionId) || null;
   };
 
   // ==========================================
@@ -2403,7 +2400,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setDb(prev => ({
       ...prev,
-      enrollmentRequests: [...prev.enrollmentRequests, newRequest]
+      enrollmentRequests: [...(prev.enrollmentRequests || []), newRequest]
     }));
 
     return newRequest;
@@ -2412,24 +2409,25 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const approveEnrollmentRequests = (requestIds: string[]) => {
     setDb(prev => {
       const now = new Date().toISOString();
-      const requestsToApprove = prev.enrollmentRequests.filter(
-        r => requestIds.includes(r.id) && r.status === 'pending'
+      const existingRequests = prev.enrollmentRequests || [];
+      const requestsToApprove = existingRequests.filter(
+        (r: EnrollmentRequest) => requestIds.includes(r.id) && r.status === 'pending'
       );
 
-      const studentIds = requestsToApprove.map(r => r.studentId);
-      const courseIds = [...new Set(requestsToApprove.map(r => r.courseId))];
+      const studentIds = requestsToApprove.map((r: EnrollmentRequest) => r.studentId);
+      const courseIds = [...new Set(requestsToApprove.map((r: EnrollmentRequest) => r.courseId))];
 
       let updatedUsers = prev.users;
       let updatedCourses = prev.courses;
 
       for (const courseId of courseIds) {
-        const courseStudents = studentIds.filter(sid =>
-          requestsToApprove.find(r => r.studentId === sid && r.courseId === courseId)
+        const courseStudents = studentIds.filter((sid: string) =>
+          requestsToApprove.find((r: EnrollmentRequest) => r.studentId === sid && r.courseId === courseId)
         );
 
         updatedUsers = updatedUsers.map(u => {
           if (courseStudents.includes(u.id)) {
-            const currentCourses = u.enrolledCourseIds || [];
+            const currentCourses: string[] = u.enrolledCourseIds || [];
             if (!currentCourses.includes(courseId)) {
               return { ...u, enrolledCourseIds: [...currentCourses, courseId] };
             }
@@ -2449,7 +2447,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...prev,
         users: updatedUsers,
         courses: updatedCourses,
-        enrollmentRequests: prev.enrollmentRequests.map(r =>
+        enrollmentRequests: existingRequests.map((r: EnrollmentRequest) =>
           requestIds.includes(r.id) && r.status === 'pending'
             ? { ...r, status: 'approved' as const, resolvedAt: now, resolvedBy: activeUser.id }
             : r
@@ -2461,7 +2459,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const rejectEnrollmentRequests = (requestIds: string[]) => {
     setDb(prev => ({
       ...prev,
-      enrollmentRequests: prev.enrollmentRequests.map(r =>
+      enrollmentRequests: (prev.enrollmentRequests || []).map((r: EnrollmentRequest) =>
         requestIds.includes(r.id) && r.status === 'pending'
           ? { ...r, status: 'rejected' as const, resolvedAt: new Date().toISOString(), resolvedBy: activeUser.id }
           : r
@@ -2471,7 +2469,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const studentApproveInvitation = (requestId: string) => {
     setDb(prev => {
-      const request = prev.enrollmentRequests.find(r => r.id === requestId);
+      const request = (prev.enrollmentRequests || []).find((r: EnrollmentRequest) => r.id === requestId);
       if (!request || request.studentId !== activeUser.id) return prev;
 
       const updatedUser = {
@@ -2489,7 +2487,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             ? { ...c, enrolledCount: (c.enrolledCount || 0) + 1 }
             : c
         ),
-        enrollmentRequests: prev.enrollmentRequests.map(r =>
+        enrollmentRequests: (prev.enrollmentRequests || []).map((r: EnrollmentRequest) =>
           r.id === requestId ? { ...r, status: 'approved' as const, resolvedAt: new Date().toISOString() } : r
         )
       };
@@ -2500,18 +2498,18 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const oldSectionId = activeUser.courseSections?.[courseId];
 
     setDb(prev => {
-      const section = prev.courseSections.find(s => s.id === sectionId);
+      const section = (prev.courseSections || []).find((s: CourseSection) => s.id === sectionId);
       if (!section || section.enrolledCount >= section.capacity) return prev;
 
-      let updatedSections = prev.courseSections;
+      let updatedSections = prev.courseSections || [];
 
       if (oldSectionId) {
-        updatedSections = updatedSections.map(s =>
+        updatedSections = updatedSections.map((s: CourseSection) =>
           s.id === oldSectionId ? { ...s, enrolledCount: Math.max(0, s.enrolledCount - 1) } : s
         );
       }
 
-      updatedSections = updatedSections.map(s =>
+      updatedSections = updatedSections.map((s: CourseSection) =>
         s.id === sectionId ? { ...s, enrolledCount: s.enrolledCount + 1 } : s
       );
 
@@ -2533,12 +2531,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const getPendingRequestsForCourse = (courseId: string): EnrollmentRequest[] => {
-    return db.enrollmentRequests.filter(r => r.courseId === courseId && r.status === 'pending');
+    return (db.enrollmentRequests || []).filter((r: EnrollmentRequest) => r.courseId === courseId && r.status === 'pending');
   };
 
   const getPendingRequestsForStudent = (): EnrollmentRequest[] => {
-    return db.enrollmentRequests.filter(
-      r => r.studentId === activeUser.id && r.status === 'pending' && (r.type === 'faculty_enroll' || r.type === 'self_join')
+    return (db.enrollmentRequests || []).filter(
+      (r: EnrollmentRequest) => r.studentId === activeUser.id && r.status === 'pending' && (r.type === 'faculty_enroll' || r.type === 'self_join')
     );
   };
 
@@ -2628,6 +2626,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toggleLikeAnnouncement,
         addAnnouncementReply,
         markAnnouncementRead,
+        notifications,
+        createNotification,
+        getUnreadNotificationCount,
+        markNotificationRead,
+        markAllNotificationsRead,
+        getNotifications,
         createDiscussion,
         deleteDiscussion,
         togglePinDiscussion,

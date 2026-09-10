@@ -19,7 +19,7 @@ export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: strin
   const [copied, setCopied] = React.useState(false);
   const unread = db.messages.filter(m => m.recipientId === activeUser.id && !m.read).length;
   const studentSection = activeRole === 'student' && activeCourseId
-    ? db.courseSections.find(s => s.id === activeUser.courseSections?.[activeCourseId])
+    ? (db.courseSections || []).find(s => s.id === activeUser.courseSections?.[activeCourseId])
     : null;
   const lmsNav = (
     <>

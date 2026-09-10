@@ -24,7 +24,7 @@ export const AppContent: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
 
-  const { activeCourseId, setActiveCourseId, logHistory, isAuthenticated, activeRole } = useLMS();
+  const { setActiveCourseId, logHistory, isAuthenticated, activeRole } = useLMS();
 
   // Role-based active tab auto-guarding
   useEffect(() => {
@@ -73,12 +73,6 @@ export const AppContent: React.FC = () => {
       {/* Fixed Full-Width Topbar */}
       <Topbar
         currentTab={currentTab}
-        courseTab={currentTab === 'courses' ? courseSubTab : undefined}
-        onNavigateCourse={handleNavigateCourse}
-        onSelectCourseTab={(tab) => {
-          setCourseSubTab(tab);
-          logHistory(`/lms/courses/${activeCourseId}/${tab}`, `LMS > Course > ${tab}`);
-        }}
         onNavigateTab={handleNavigateTab}
         onOpenSearch={() => setSearchOpen(true)}
         onOpenSidebar={() => setSidebarOpen(true)}

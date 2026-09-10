@@ -14,7 +14,7 @@ import {
   Video
 } from 'lucide-react';
 import type { CalendarEvent } from '../types/lms';
-import { CalendarEventFormDialog } from '../components/calendar/CalendarEventFormDialog';
+import { CreateEventPage } from './CreateEventPage';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 
@@ -54,12 +54,7 @@ function platformLabel(platform?: string): string {
 export const CalendarPage: React.FC = () => {
   const {
     db,
-    activeRole,
-    addCalendarEvent,
-    updateCalendarEvent,
-    deleteCalendarEvent,
-    showAlert,
-    showConfirm
+    activeRole
   } = useLMS();
 
   const isReadOnlyCalendar = activeRole === 'staff' || activeRole === 'student';
@@ -74,8 +69,8 @@ export const CalendarPage: React.FC = () => {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const filterRef = useRef<HTMLDivElement>(null);
 
-  // Dialog states
-  const [eventDialogOpen, setEventDialogOpen] = useState(false);
+  // Full-page event scheduler states
+  const [isEventPageOpen, setIsEventPageOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
   const [anchorDate, setAnchorDate] = useState<Date | null>(null);
 
@@ -165,49 +160,41 @@ export const CalendarPage: React.FC = () => {
 
   // Event actions
   const openAddEvent = (d: Date) => {
+    if (isReadOnlyCalendar) return;
     setEditingEvent(null);
     setAnchorDate(d);
-    setEventDialogOpen(true);
+    setIsEventPageOpen(true);
   };
 
   const openEditEvent = (ev: CalendarEvent) => {
+    if (isReadOnlyCalendar) return;
     setEditingEvent(ev);
     setAnchorDate(new Date(ev.startAt || ev.date));
-    setEventDialogOpen(true);
+    setIsEventPageOpen(true);
   };
 
-  const handleSaveEvent = (payload: Omit<CalendarEvent, 'id'>, existingId?: string) => {
-    if (existingId) {
-      updateCalendarEvent(existingId, payload);
-      showAlert({
-        title: 'Event Updated',
-        message: `"${payload.title}" has been updated.`,
-        type: 'success'
-      });
-    } else {
-      addCalendarEvent(payload);
-      showAlert({
-        title: 'Event Scheduled',
-        message: `"${payload.title}" has been added to your schedule.`,
-        type: 'success'
-      });
-    }
-  };
-
-  const handleDeleteEvent = (id: string) => {
-    showConfirm(
-      'Are you sure you want to remove this event from the calendar?',
-      () => {
-        deleteCalendarEvent(id);
-        showAlert({
-          title: 'Event Removed',
-          message: 'The event has been deleted from your schedule.',
-          type: 'info'
-        });
-      },
-      'Delete Scheduled Event'
+  if (isEventPageOpen) {
+    return (
+      <CreateEventPage
+        onBack={() => {
+          setIsEventPageOpen(false);
+          setEditingEvent(null);
+        }}
+        onEventSaved={() => {
+          setIsEventPageOpen(false);
+          setEditingEvent(null);
+        }}
+        onEventDeleted={() => {
+          setIsEventPageOpen(false);
+          setEditingEvent(null);
+        }}
+        anchorDate={anchorDate}
+        initialEvent={editingEvent}
+        courses={db.courses}
+        adminOnlyMilestones={isAdminCalendar}
+      />
     );
-  };
+  }
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto animate-fade-in pb-12">
@@ -602,22 +589,6 @@ export const CalendarPage: React.FC = () => {
           </div>
         </aside>
       </div>
-
-      {/* Cell We Go Event Form Dialog (Add / Edit / Delete Event) */}
-      <CalendarEventFormDialog
-        isOpen={eventDialogOpen}
-        onClose={() => {
-          setEventDialogOpen(false);
-          setEditingEvent(null);
-        }}
-        onSubmit={handleSaveEvent}
-        onDelete={handleDeleteEvent}
-        courses={db.courses}
-        anchorDate={anchorDate}
-        initialEvent={editingEvent}
-        readOnly={isReadOnlyCalendar}
-        adminOnlyMilestones={isAdminCalendar}
-      />
     </div>
   );
 };

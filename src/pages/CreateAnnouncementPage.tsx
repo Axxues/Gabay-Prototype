@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useLMS } from '../context/LMSContext';
+import type { CourseSection } from '../types/lms';
 import { uploadFileToPublic, isImageFile } from '../utils/fileUploader';
 import {
   ArrowLeft,
@@ -41,7 +42,7 @@ export const CreateAnnouncementPage: React.FC<CreateAnnouncementPageProps> = ({
   const [sectionRestriction, setSectionRestriction] = useState('all');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const courseSections = db.courseSections.filter(s => s.courseId === courseId);
+  const courseSections: CourseSection[] = (db.courseSections || []).filter((s: CourseSection) => s.courseId === courseId);
 
   const isImageFileName = (name: string, url?: string): boolean => {
     return isImageFile(name, undefined, url);

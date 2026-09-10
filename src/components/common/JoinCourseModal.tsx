@@ -11,7 +11,7 @@ import {
 interface JoinCourseModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onNavigateCourse?: (courseId: string, subTab?: string) => void;
+  onNavigateCourse?: (courseId: string) => void;
 }
 
 export const JoinCourseModal: React.FC<JoinCourseModalProps> = ({
@@ -37,7 +37,7 @@ export const JoinCourseModal: React.FC<JoinCourseModalProps> = ({
 
   const isAlreadyPending = useMemo(() => {
     if (!matchedCourse) return false;
-    return db.enrollmentRequests.some(
+    return (db.enrollmentRequests || []).some(
       r => r.studentId === activeUser.id && r.courseId === matchedCourse.id && r.status === 'pending'
     );
   }, [matchedCourse, activeUser.id, db.enrollmentRequests]);
@@ -61,6 +61,9 @@ export const JoinCourseModal: React.FC<JoinCourseModalProps> = ({
     }
 
     onClose();
+    if (matchedCourse && onNavigateCourse) {
+      onNavigateCourse(matchedCourse.id);
+    }
     showAlert({
       title: 'Join Request Sent',
       message: res.message,
