@@ -100,7 +100,7 @@ export const CreateAnnouncementPage: React.FC<CreateAnnouncementPageProps> = ({
       courseId,
       title: title.trim(),
       content: content.trim(),
-      sectionRestriction: sectionRestriction === 'all' ? 'All Sections' : courseSections.find(s => s.id === sectionRestriction)?.name || 'All Sections',
+      sectionRestriction: sectionRestriction === 'all' ? 'All Sections' : sectionRestriction,
       delayedUntil: delayPosting && delayedDate ? delayedDate : undefined,
       allowComments,
       usersMustPostBeforeReplies: false,

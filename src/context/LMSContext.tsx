@@ -551,6 +551,17 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           });
         }
 
+        // Load notifications from localStorage
+        if (parsed.notifications) {
+          // Ensure notifications have proper format
+          parsed.notifications = parsed.notifications.map((n: Notification) => ({
+            ...n,
+            read: n.read !== undefined ? n.read : false
+          }));
+        } else {
+          parsed.notifications = [];
+        }
+
         // Section defaults
         parsed.courseSections = (parsed as any).courseSections || [];
         parsed.enrollmentRequests = (parsed as any).enrollmentRequests || [];
@@ -1152,30 +1163,34 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!targetCourseId || studentIds.length === 0) return;
 
     for (const studentId of studentIds) {
-      const student = db.users.find(u => u.id === studentId);
-      if (!student) continue;
+      setDb(prev => {
+        const student = prev.users.find(u => u.id === studentId);
+        if (!student) return prev;
 
-      const alreadyEnrolled = (student.enrolledCourseIds || []).includes(targetCourseId);
-      const alreadyPending = db.enrollmentRequests.find(
-        r => r.studentId === studentId && r.courseId === targetCourseId && r.status === 'pending'
-      );
+        const alreadyEnrolled = (student.enrolledCourseIds || []).includes(targetCourseId);
+        const alreadyPending = prev.enrollmentRequests.find(
+          r => r.studentId === studentId && r.courseId === targetCourseId && r.status === 'pending'
+        );
 
-      if (!alreadyEnrolled && !alreadyPending) {
-        const newRequest: EnrollmentRequest = {
-          id: `req-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
-          courseId: targetCourseId,
-          studentId: student.id,
-          studentName: student.name,
-          type: 'faculty_enroll',
-          status: 'pending',
-          requestedAt: new Date().toISOString()
-        };
+        if (!alreadyEnrolled && !alreadyPending) {
+          const newRequest: EnrollmentRequest = {
+            id: `req-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+            courseId: targetCourseId,
+            studentId: student.id,
+            studentName: student.name,
+            type: 'faculty_enroll',
+            status: 'pending',
+            requestedAt: new Date().toISOString()
+          };
 
-        setDb(prev => ({
-          ...prev,
-          enrollmentRequests: [...prev.enrollmentRequests, newRequest]
-        }));
-      }
+          return {
+            ...prev,
+            enrollmentRequests: [...prev.enrollmentRequests, newRequest]
+          };
+        }
+
+        return prev;
+      });
     }
   };
 
@@ -2482,12 +2497,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const selectSection = (courseId: string, sectionId: string) => {
-    const section = db.courseSections.find(s => s.id === sectionId);
-    if (!section || section.enrolledCount >= section.capacity) return;
-
     const oldSectionId = activeUser.courseSections?.[courseId];
 
     setDb(prev => {
+      const section = prev.courseSections.find(s => s.id === sectionId);
+      if (!section || section.enrolledCount >= section.capacity) return prev;
+
       let updatedSections = prev.courseSections;
 
       if (oldSectionId) {
@@ -2523,7 +2538,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const getPendingRequestsForStudent = (): EnrollmentRequest[] => {
     return db.enrollmentRequests.filter(
-      r => r.studentId === activeUser.id && r.status === 'pending' && r.type === 'faculty_enroll'
+      r => r.studentId === activeUser.id && r.status === 'pending' && (r.type === 'faculty_enroll' || r.type === 'self_join')
     );
   };
 

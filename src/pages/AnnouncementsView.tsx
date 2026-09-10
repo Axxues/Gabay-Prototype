@@ -72,7 +72,7 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
     // Student filtering: show "All Sections" or matching their section
     if (!a.sectionRestriction || a.sectionRestriction === 'All Sections') return true;
     const matchingSection = db.courseSections.find(s => s.id === studentSectionId);
-    if (matchingSection && a.sectionRestriction === matchingSection.name) return true;
+    if (matchingSection && a.sectionRestriction === matchingSection.id) return true;
     return false;
   });
 
