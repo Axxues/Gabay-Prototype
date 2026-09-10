@@ -10,7 +10,8 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
-  Check
+  Check,
+  Video
 } from 'lucide-react';
 import type { CalendarEvent } from '../types/lms';
 import { CalendarEventFormDialog } from '../components/calendar/CalendarEventFormDialog';
@@ -37,6 +38,17 @@ function pad(n: number): string {
 
 function dayKey(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+const PLATFORM_LABELS: Record<string, string> = {
+  zoom: 'Zoom',
+  google_meet: 'Google Meet',
+  teams: 'Microsoft Teams',
+  other: 'Video Call'
+};
+
+function platformLabel(platform?: string): string {
+  return platform ? PLATFORM_LABELS[platform] || 'Video Call' : 'Video Call';
 }
 
 export const CalendarPage: React.FC = () => {
@@ -447,8 +459,11 @@ export const CalendarPage: React.FC = () => {
                               }}
                               className="w-full text-left rounded-md px-1.5 py-0.5 text-[10px] font-bold text-white shadow-subtle hover:opacity-90 transition-opacity truncate flex items-center space-x-1"
                               style={{ backgroundColor: eventColor }}
-                              title={`${ev.title} (${ev.time || 'All Day'})`}
+                              title={`${ev.title} (${ev.time || 'All Day'})${ev.type === 'virtual_meeting' ? ` - ${platformLabel(ev.meetingPlatform)}` : ''}`}
                             >
+                              {ev.type === 'virtual_meeting' && (
+                                <Video className="w-2.5 h-2.5 shrink-0" />
+                              )}
                               <span className="truncate">{ev.title}</span>
                             </div>
                           );
@@ -528,7 +543,7 @@ export const CalendarPage: React.FC = () => {
                         </h4>
                       </div>
                       <span className="text-[9px] font-sans uppercase px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border shrink-0">
-                        {ev.type}
+                        {ev.type === 'virtual_meeting' ? 'Virtual Meeting' : ev.type}
                       </span>
                     </div>
 
@@ -543,12 +558,42 @@ export const CalendarPage: React.FC = () => {
                           <span className="truncate">{ev.location}</span>
                         </div>
                       )}
+                      {ev.type === 'virtual_meeting' && (
+                        <div className="flex items-center space-x-1 shrink-0">
+                          <Video className="w-3 h-3" />
+                          <span>{platformLabel(ev.meetingPlatform)}</span>
+                        </div>
+                      )}
                     </div>
 
                     {ev.description && (
                       <p className="text-[11px] text-muted-foreground line-clamp-2 pl-4.5 font-sans">
                         {ev.description}
                       </p>
+                    )}
+
+                    {ev.type === 'virtual_meeting' && (ev.meetingJoinUrl || ev.meetingId) && (
+                      <div className="flex items-center gap-1.5 pl-4.5 pt-1 flex-wrap">
+                        {ev.meetingJoinUrl && (
+                          <a
+                            href={ev.meetingJoinUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={e => e.stopPropagation()}
+                            className="inline-flex items-center space-x-1 px-2 py-1 text-[10px] font-bold bg-teal-600 hover:bg-teal-700 text-white rounded-lg transition-colors cursor-pointer"
+                          >
+                            <Video className="w-3 h-3" />
+                            <span>Join Meeting</span>
+                          </a>
+                        )}
+                        {(ev.meetingId || ev.meetingPasscode) && (
+                          <span className="text-[9px] font-sans text-muted-foreground">
+                            {ev.meetingId && `ID: ${ev.meetingId}`}
+                            {ev.meetingId && ev.meetingPasscode && ' • '}
+                            {ev.meetingPasscode && `Passcode: ${ev.meetingPasscode}`}
+                          </span>
+                        )}
+                      </div>
                     )}
                   </div>
                 ))

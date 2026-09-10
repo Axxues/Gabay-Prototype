@@ -234,13 +234,17 @@ export interface CalendarEvent {
   time: string;
   courseId?: string;
   courseCode?: string;
-  type: 'assignment' | 'milestone' | 'advising' | 'lecture' | 'exam' | 'event' | 'holiday';
+  type: 'assignment' | 'milestone' | 'advising' | 'lecture' | 'exam' | 'event' | 'holiday' | 'virtual_meeting';
   description: string;
   startAt?: string;
   endAt?: string;
   isAllDay?: boolean;
   colorHex?: string;
   location?: string;
+  meetingPlatform?: 'zoom' | 'google_meet' | 'teams' | 'other';
+  meetingId?: string;
+  meetingPasscode?: string;
+  meetingJoinUrl?: string;
 }
 
 export interface AdvisingSlot {
@@ -429,6 +433,5 @@ export interface MockDatabase {
   courseFolders?: CourseFolder[];
   courseGrades?: CourseStudentGrade[];
   chatGroups?: ChatGroup[];
-  courseSections?: CourseSection[];
-  enrollmentRequests?: EnrollmentRequest[];
+  notifications?: Notification[];
 }

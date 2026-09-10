@@ -12,7 +12,10 @@ import {
   Flag,
   UserCheck,
   BookOpen,
-  HelpCircle
+  HelpCircle,
+  Video,
+  Hash,
+  KeyRound
 } from 'lucide-react';
 import type { CalendarEvent, Course } from '../../types/lms';
 import { ModalPortal, useModalAnimate } from '../common/ModalPortal';
@@ -88,6 +91,13 @@ const EVENT_TYPE_OPTIONS: EventTypeOption[] = [
     defaultColor: '#4f46e5'
   },
   {
+    value: 'virtual_meeting',
+    label: 'Virtual Meeting',
+    icon: Video,
+    iconColor: 'text-teal-500',
+    defaultColor: '#0d9488'
+  },
+  {
     value: 'exam',
     label: 'Quiz / Major Examination',
     icon: HelpCircle,
@@ -131,6 +141,10 @@ export const CalendarEventFormDialog: React.FC<CalendarEventFormDialogProps> = (
   const [endDateStr, setEndDateStr] = useState('');
   const [location, setLocation] = useState('');
   const [colorHex, setColorHex] = useState('#be185d');
+  const [meetingPlatform, setMeetingPlatform] = useState<CalendarEvent['meetingPlatform']>('zoom');
+  const [meetingId, setMeetingId] = useState('');
+  const [meetingPasscode, setMeetingPasscode] = useState('');
+  const [meetingJoinUrl, setMeetingJoinUrl] = useState('');
 
   // Custom dropdown open states
   const [isCourseDropdownOpen, setIsCourseDropdownOpen] = useState(false);
@@ -164,6 +178,10 @@ export const CalendarEventFormDialog: React.FC<CalendarEventFormDialogProps> = (
       setIsAllDay(initialEvent.isAllDay ?? false);
       setLocation(initialEvent.location || '');
       setColorHex(initialEvent.colorHex || '#be185d');
+      setMeetingPlatform(initialEvent.meetingPlatform || 'zoom');
+      setMeetingId(initialEvent.meetingId || '');
+      setMeetingPasscode(initialEvent.meetingPasscode || '');
+      setMeetingJoinUrl(initialEvent.meetingJoinUrl || '');
 
       const start = initialEvent.startAt
         ? new Date(initialEvent.startAt)
@@ -192,6 +210,10 @@ export const CalendarEventFormDialog: React.FC<CalendarEventFormDialogProps> = (
       setIsAllDay(false);
       setLocation('');
       setColorHex('#be185d');
+      setMeetingPlatform('zoom');
+      setMeetingId('');
+      setMeetingPasscode('');
+      setMeetingJoinUrl('');
       setStartDateStr(toDatetimeLocalValue(base));
       setEndDateStr(toDatetimeLocalValue(end));
     }
@@ -248,7 +270,11 @@ export const CalendarEventFormDialog: React.FC<CalendarEventFormDialogProps> = (
       startAt: startIso,
       endAt: endIso,
       colorHex: matchedCourse?.color || colorHex,
-      location: location.trim() || undefined
+      location: location.trim() || undefined,
+      meetingPlatform: eventType === 'virtual_meeting' ? meetingPlatform : undefined,
+      meetingId: eventType === 'virtual_meeting' && meetingId.trim() ? meetingId.trim() : undefined,
+      meetingPasscode: eventType === 'virtual_meeting' && meetingPasscode.trim() ? meetingPasscode.trim() : undefined,
+      meetingJoinUrl: eventType === 'virtual_meeting' && meetingJoinUrl.trim() ? meetingJoinUrl.trim() : undefined
     };
 
     startClose(() => {
@@ -583,7 +609,7 @@ export const CalendarEventFormDialog: React.FC<CalendarEventFormDialogProps> = (
             {/* Location / Meeting Link */}
             <div>
               <label className="block font-bold text-foreground mb-1">
-                Location / Video Link (Optional)
+                {eventType === 'virtual_meeting' ? 'Location / Room (Optional)' : 'Location / Video Link (Optional)'}
               </label>
               <div className="relative">
                 <MapPin className="w-3.5 h-3.5 text-muted-foreground absolute left-3 top-3" />
@@ -591,11 +617,93 @@ export const CalendarEventFormDialog: React.FC<CalendarEventFormDialogProps> = (
                   type="text"
                   value={location}
                   onChange={e => setLocation(e.target.value)}
-                  placeholder="e.g. SLUC CS Lab 304, Zoom Meeting Link"
+                  placeholder={eventType === 'virtual_meeting'
+                    ? 'e.g. SLUC CS Lab 304 (physical room, optional)'
+                    : 'e.g. SLUC CS Lab 304, Zoom Meeting Link'}
                   className="w-full pl-9 pr-3 py-2 bg-background border border-border focus:ring-2 focus:ring-primary/30 rounded-xl text-foreground text-xs"
                 />
               </div>
             </div>
+
+            {/* Virtual Meeting Details */}
+            {eventType === 'virtual_meeting' && (
+              <div className="p-4 bg-teal-500/5 border border-teal-500/20 rounded-xl space-y-3">
+                <div className="flex items-center space-x-2">
+                  <div className="p-1.5 rounded-lg bg-teal-500/15 text-teal-600 dark:text-teal-400">
+                    <Video className="w-3.5 h-3.5" />
+                  </div>
+                  <span className="text-xs font-bold text-foreground">Virtual Meeting Details</span>
+                </div>
+
+                {/* Platform Dropdown */}
+                <div>
+                  <label className="block font-bold text-foreground mb-1">
+                    Meeting Platform
+                  </label>
+                  <select
+                    value={meetingPlatform}
+                    onChange={e => setMeetingPlatform(e.target.value as CalendarEvent['meetingPlatform'])}
+                    className="w-full p-2.5 bg-background border border-border focus:ring-2 focus:ring-primary/30 rounded-xl text-foreground text-xs font-sans"
+                  >
+                    <option value="zoom">Zoom</option>
+                    <option value="google_meet">Google Meet</option>
+                    <option value="teams">Microsoft Teams</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+
+                {/* Meeting Join URL */}
+                <div>
+                  <label className="block font-bold text-foreground mb-1">
+                    Meeting Join Link (Optional)
+                  </label>
+                  <div className="relative">
+                    <Video className="w-3.5 h-3.5 text-muted-foreground absolute left-3 top-3" />
+                    <input
+                      type="text"
+                      value={meetingJoinUrl}
+                      onChange={e => setMeetingJoinUrl(e.target.value)}
+                      placeholder="e.g. https://zoom.us/j/1234567890"
+                      className="w-full pl-9 pr-3 py-2 bg-background border border-border focus:ring-2 focus:ring-primary/30 rounded-xl text-foreground text-xs"
+                    />
+                  </div>
+                </div>
+
+                {/* Meeting ID */}
+                <div>
+                  <label className="block font-bold text-foreground mb-1">
+                    Meeting ID (Optional)
+                  </label>
+                  <div className="relative">
+                    <Hash className="w-3.5 h-3.5 text-muted-foreground absolute left-3 top-3" />
+                    <input
+                      type="text"
+                      value={meetingId}
+                      onChange={e => setMeetingId(e.target.value)}
+                      placeholder="e.g. 845 2217 9034"
+                      className="w-full pl-9 pr-3 py-2 bg-background border border-border focus:ring-2 focus:ring-primary/30 rounded-xl text-foreground text-xs"
+                    />
+                  </div>
+                </div>
+
+                {/* Passcode */}
+                <div>
+                  <label className="block font-bold text-foreground mb-1">
+                    Passcode (Optional)
+                  </label>
+                  <div className="relative">
+                    <KeyRound className="w-3.5 h-3.5 text-muted-foreground absolute left-3 top-3" />
+                    <input
+                      type="text"
+                      value={meetingPasscode}
+                      onChange={e => setMeetingPasscode(e.target.value)}
+                      placeholder="e.g. 882471"
+                      className="w-full pl-9 pr-3 py-2 bg-background border border-border focus:ring-2 focus:ring-primary/30 rounded-xl text-foreground text-xs"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Color Swatch Picker */}
             <div>
