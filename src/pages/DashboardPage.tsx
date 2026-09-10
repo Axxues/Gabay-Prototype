@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useLMS } from '../context/LMSContext';
 import { JoinCourseModal } from '../components/common/JoinCourseModal';
+import { PageHeader } from '../components/common/PageHeader';
+import { EmptyState } from '../components/common/EmptyState';
 import {
   BookOpen,
   Clock,
@@ -69,63 +71,49 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       <div className={hasRightSidebar ? "grid grid-cols-1 lg:grid-cols-3 gap-6" : "space-y-6"}>
         {/* Left Pane: Enrolled Course Cards */}
         <div className={hasRightSidebar ? "lg:col-span-2 space-y-4" : "space-y-4"}>
-          <div className="flex items-center justify-between">
-            <h2 className="heading-3 text-foreground flex items-center space-x-2">
-              <BookOpen className="w-5 h-5 text-primary" />
-              <span>My Courses</span>
-            </h2>
-            <div className="flex items-center space-x-2">
-              {activeRole === 'student' && (
-                <button
-                  type="button"
-                  onClick={() => setIsJoinModalOpen(true)}
-                  className="px-3.5 py-2 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all shadow-primary-sm flex items-center space-x-1.5 cursor-pointer"
-                >
-                  <KeyRound className="w-3.5 h-3.5" />
-                  <span>Join Course</span>
-                </button>
-              )}
-              {activeRole === 'faculty' && (
-                <button
-                  type="button"
-                  onClick={() => onNavigateTab('create-course')}
-                  className="px-3.5 py-2 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all shadow-primary-sm flex items-center space-x-1.5 cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Create Course</span>
-                </button>
-              )}
-              <span className="text-xs font-sans text-muted-foreground bg-muted px-2.5 py-1 rounded-md border border-border">
-                {userCourses.length} Courses
-              </span>
-            </div>
-          </div>
+          <PageHeader
+            title="My Courses"
+            description="Your enrolled course shells"
+            actions={
+              <>
+                {activeRole === 'student' && (
+                  <button
+                    type="button"
+                    onClick={() => setIsJoinModalOpen(true)}
+                    className="px-3.5 py-2 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all shadow-primary-sm flex items-center space-x-1.5 cursor-pointer"
+                  >
+                    <KeyRound className="w-3.5 h-3.5" />
+                    <span>Join Course</span>
+                  </button>
+                )}
+                {activeRole === 'faculty' && (
+                  <button
+                    type="button"
+                    onClick={() => onNavigateTab('create-course')}
+                    className="px-3.5 py-2 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all shadow-primary-sm flex items-center space-x-1.5 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Create Course</span>
+                  </button>
+                )}
+                <span className="text-xs font-sans text-muted-foreground bg-muted px-2.5 py-1 rounded-md border border-border">
+                  {userCourses.length} Courses
+                </span>
+              </>
+            }
+          />
 
           {/* Empty State or Course Cards Grid */}
           {userCourses.length === 0 ? (
-            <div className="p-10 text-center bg-card border border-dashed border-border rounded-2xl space-y-3 shadow-subtle">
-              <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary mx-auto flex items-center justify-center">
-                <BookOpen className="w-6 h-6" />
-              </div>
-              <div className="space-y-1">
-                <h4 className="text-sm font-bold text-foreground">No Enrolled Courses</h4>
-                <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-                  {activeRole === 'student'
-                    ? 'You are not enrolled in any courses yet. Ask your faculty instructor for the course join code and click below to enter your code.'
-                    : 'No course shells assigned to your account.'}
-                </p>
-              </div>
-              {activeRole === 'student' && (
-                <button
-                  type="button"
-                  onClick={() => setIsJoinModalOpen(true)}
-                  className="px-4 py-2.5 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl shadow-primary-sm transition-all inline-flex items-center space-x-2 cursor-pointer"
-                >
-                  <KeyRound className="w-4 h-4" />
-                  <span>Enter Course Join Code</span>
-                </button>
-              )}
-            </div>
+            <EmptyState
+              icon={<BookOpen className="h-6 w-6" />}
+              title="No Enrolled Courses"
+              body={activeRole === 'student'
+                ? 'You are not enrolled in any courses yet. Ask your faculty instructor for the course join code and click below to enter your code.'
+                : 'No course shells assigned to your account.'}
+              actionLabel={activeRole === 'student' ? 'Enter Course Join Code' : undefined}
+              onAction={activeRole === 'student' ? () => setIsJoinModalOpen(true) : undefined}
+            />
           ) : (
             <div className={`grid gap-5 ${hasRightSidebar ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1 md:grid-cols-2 lg:grid-cols-3"}`}>
             {userCourses.map(course => (
@@ -137,7 +125,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 <div>
                   {/* Card Color Header */}
                   <div
-                    className="h-24 p-4 flex flex-col justify-between relative overflow-hidden"
+                    className="h-20 p-4 flex flex-col justify-between relative overflow-hidden"
                     style={{ backgroundColor: course.color || undefined }}
                   >
                     {course.image ? (
