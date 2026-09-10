@@ -29,9 +29,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   onNavigateCourse,
   onNavigateTab
 }) => {
-  const { activeRole, activeUser, db, openSpeedGrader } = useLMS();
+  const { activeRole, activeUser, db, openSpeedGrader, getPendingRequestsForStudent, studentApproveInvitation } = useLMS();
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
   const [copiedCodeCourseId, setCopiedCodeCourseId] = useState<string | null>(null);
+  const pendingInvitations = getPendingRequestsForStudent();
 
   // Filter courses based on user role
   const userCourses = db.courses.filter(c => {
@@ -246,6 +247,43 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             {/* STUDENT WIDGETS */}
           {activeRole === 'student' && (
             <>
+              {/* Pending Invitations Card */}
+              {activeRole === 'student' && pendingInvitations.length > 0 && (
+                <div className="bg-card border border-border rounded-xl shadow-subtle p-5 space-y-3">
+                  <h3 className="text-sm font-extrabold flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-amber-500" /> Pending Invitations
+                  </h3>
+                  {pendingInvitations.map(req => {
+                    const course = db.courses.find(c => c.id === req.courseId);
+                    return (
+                      <div key={req.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-xl">
+                        <div>
+                          <div className="text-xs font-bold">{course?.code} — {course?.title}</div>
+                          <div className="text-[11px] text-muted-foreground">Invited by {course?.instructorName}</div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => {
+                              studentApproveInvitation(req.id);
+                              onNavigateCourse(req.courseId, 'section-selection');
+                            }}
+                            className="px-3 py-1.5 text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg cursor-pointer"
+                          >
+                            Accept
+                          </button>
+                          <button
+                            onClick={() => { /* reject */ }}
+                            className="px-3 py-1.5 text-[11px] font-bold bg-red-500/10 text-red-600 hover:bg-red-500/20 rounded-lg cursor-pointer"
+                          >
+                            Decline
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
               {/* To-Do List Card */}
               <div className="bg-card border border-border rounded-xl p-5 space-y-4 shadow-subtle">
                 <div className="flex items-center justify-between border-b border-border pb-3">
