@@ -21,7 +21,9 @@ import type {
   CourseFile,
   CourseFolder,
   CourseStudentGrade,
-  ChatGroup
+  ChatGroup,
+  Notification,
+  CourseSection
 } from '../types/lms';
 import initialMockData from '../data/mockData.json';
 import { AlertModal, type AlertModalOptions } from '../components/common/AlertModal';
@@ -129,6 +131,13 @@ interface LMSContextType {
   addAnnouncementReply: (announcementId: string, content: string) => void;
   markAnnouncementRead: (id: string) => void;
 
+  // Notifications
+  createNotification: (notification: Partial<Notification>) => Notification;
+  getUnreadNotificationCount: (userId: string, type?: string) => number;
+  markNotificationRead: (id: string) => void;
+  markAllNotificationsRead: (userId: string, type?: string) => void;
+  getNotifications: (userId: string, type?: string, limit?: number) => Notification[];
+
   // Discussions CRUD
   createDiscussion: (data: Partial<Discussion>) => Discussion;
   deleteDiscussion: (id: string) => void;
@@ -153,12 +162,19 @@ interface LMSContextType {
     score: number | null
   ) => void;
 
+  // Sections CRUD
+  createSection: (courseId: string, data: Partial<CourseSection>) => CourseSection;
+  updateSection: (sectionId: string, updates: Partial<CourseSection>) => void;
+  deleteSection: (sectionId: string) => void;
+  getCourseSections: (courseId: string) => CourseSection[];
+  getStudentSection: (courseId: string) => CourseSection | null;
+
   logHistory: (path: string, title: string) => void;
   clearHistory: () => void;
   resetData: () => void;
 }
 
-const STORAGE_KEY_DB = 'gabay_lms_db_v5';
+const STORAGE_KEY_DB = 'gabay_lms_db_v6';
 const STORAGE_KEY_THEME = 'gabay_theme_v1';
 const STORAGE_KEY_SESSION = 'gabay_auth_session_v1';
 
@@ -525,6 +541,33 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           });
         }
 
+        // Section defaults
+        parsed.courseSections = (parsed as any).courseSections || [];
+        parsed.enrollmentRequests = (parsed as any).enrollmentRequests || [];
+
+        // Migration: if courseSections missing, create from existing courses
+        if (!parsed.courseSections || parsed.courseSections.length === 0) {
+          const migratedSections: CourseSection[] = [];
+          const migratedCourses = parsed.courses.map(c => {
+            const sectionId = `sec-${c.id}-a`;
+            migratedSections.push({
+              id: sectionId,
+              courseId: c.id,
+              name: c.section || 'Section A',
+              capacity: 60,
+              enrolledCount: c.enrolledCount || 0,
+              schedule: 'TBD',
+              location: 'TBD'
+            });
+            return { ...c, sectionIds: [sectionId] };
+          });
+          parsed.courses = migratedCourses;
+          parsed.courseSections = migratedSections;
+        }
+        if (!parsed.enrollmentRequests) {
+          parsed.enrollmentRequests = [];
+        }
+
         return parsed;
       }
     } catch (e) {
@@ -673,9 +716,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
   const [isUserProfileModalOpen, setIsUserProfileModalOpen] = useState(false);
 
-  // Alert & Confirmation Modal state
+// Alert & Confirmation Modal state
   const [alertOptions, setAlertOptions] = useState<AlertModalOptions | null>(null);
   const [isAlertOpen, setIsAlertOpen] = useState(false);
+
+  // Notifications state
+  const [notifications, setNotifications] = useState<Notification[]>([]);
 
   const showAlert = (options: string | AlertModalOptions, title?: string) => {
     if (typeof options === 'string') {
@@ -1265,9 +1311,14 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...syllabus,
       courseId
     };
+    const instructorFromSyllabus = boundSyllabus.facultyMembers?.[0]?.name;
     setDb(prev => ({
       ...prev,
-      courses: prev.courses.map(c => (c.id === courseId ? { ...c, syllabus: boundSyllabus } : c))
+      courses: prev.courses.map(c => (c.id === courseId ? {
+        ...c,
+        syllabus: boundSyllabus,
+        ...(instructorFromSyllabus ? { instructorName: instructorFromSyllabus } : {})
+      } : c))
     }));
   };
 
@@ -2185,6 +2236,64 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   };
 
+  // ==========================================
+  // SECTIONS CRUD
+  // ==========================================
+
+  const createSection = (courseId: string, data: Partial<CourseSection>): CourseSection => {
+    const newSection: CourseSection = {
+      id: `sec-${Date.now().toString(36)}`,
+      courseId,
+      name: data.name || 'New Section',
+      capacity: data.capacity || 40,
+      enrolledCount: 0,
+      schedule: data.schedule || '',
+      location: data.location || ''
+    };
+
+    setDb(prev => ({
+      ...prev,
+      courseSections: [...prev.courseSections, newSection],
+      courses: prev.courses.map(c =>
+        c.id === courseId
+          ? { ...c, sectionIds: [...(c.sectionIds || []), newSection.id] }
+          : c
+      )
+    }));
+
+    return newSection;
+  };
+
+  const updateSection = (sectionId: string, updates: Partial<CourseSection>) => {
+    setDb(prev => ({
+      ...prev,
+      courseSections: prev.courseSections.map(s =>
+        s.id === sectionId ? { ...s, ...updates } : s
+      )
+    }));
+  };
+
+  const deleteSection = (sectionId: string) => {
+    setDb(prev => ({
+      ...prev,
+      courseSections: prev.courseSections.filter(s => s.id !== sectionId),
+      courses: prev.courses.map(c => ({
+        ...c,
+        sectionIds: (c.sectionIds || []).filter(id => id !== sectionId)
+      }))
+    }));
+  };
+
+  const getCourseSections = (courseId: string): CourseSection[] => {
+    return db.courseSections.filter(s => s.courseId === courseId);
+  };
+
+  const getStudentSection = (courseId: string): CourseSection | null => {
+    const sectionId = activeUser.courseSections?.[courseId];
+    if (!sectionId) return null;
+    return db.courseSections.find(s => s.id === sectionId) || null;
+  };
+
   const resetData = () => {
     localStorage.removeItem(STORAGE_KEY_DB);
     localStorage.removeItem(STORAGE_KEY_SESSION);
@@ -2284,6 +2393,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateFileVisibility,
         renameCourseFile,
         setCourseStudentGrade,
+        createSection,
+        updateSection,
+        deleteSection,
+        getCourseSections,
+        getStudentSection,
         logHistory,
         clearHistory,
         resetData
