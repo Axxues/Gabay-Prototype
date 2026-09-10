@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useLMS } from '../../context/LMSContext';
 import {
   Menu,
-  X,
   Search,
   Command,
   Sun,
@@ -24,26 +23,24 @@ import {
   Check
 } from 'lucide-react';
 
-interface TopNavbarProps {
-  sidebarOpen: boolean;
-  setSidebarOpen: (open: boolean | ((prev: boolean) => boolean)) => void;
+interface TopbarProps {
   currentTab: string;
   courseTab?: string;
   onNavigateCourse?: (courseId: string, subTab?: string) => void;
   onSelectCourseTab?: (tab: string) => void;
   onNavigateTab?: (tab: string) => void;
   onOpenSearch: () => void;
+  onOpenSidebar?: () => void;
 }
 
-export const TopNavbar: React.FC<TopNavbarProps> = ({
-  sidebarOpen,
-  setSidebarOpen,
+export const Topbar: React.FC<TopbarProps> = ({
   currentTab,
   courseTab,
   onNavigateCourse,
   onSelectCourseTab,
   onNavigateTab,
-  onOpenSearch
+  onOpenSearch,
+  onOpenSidebar
 }) => {
   const {
     activeUser,
@@ -105,13 +102,15 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
       <div className="px-4 sm:px-6 h-16 flex justify-between items-center max-w-[100vw]">
         {/* Left Section: Mobile Menu + Brand Logo & Badge + Theme Toggle */}
         <div className="flex items-center min-w-0 shrink-0 gap-3">
-          <button
-            onClick={() => setSidebarOpen((prev: boolean) => !prev)}
-            className="lg:hidden p-2 text-muted-foreground hover:bg-accent rounded-xl transition-colors cursor-pointer"
-            aria-label="Toggle navigation menu"
-          >
-            {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </button>
+          {onOpenSidebar && (
+            <button
+              onClick={onOpenSidebar}
+              className="lg:hidden p-2 text-muted-foreground hover:bg-accent rounded-xl transition-colors cursor-pointer"
+              aria-label="Open navigation menu"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+          )}
 
           <div
             onClick={() => onNavigateTab && onNavigateTab('dashboard')}

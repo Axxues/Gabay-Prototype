@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useLMS, LMSProvider } from './context/LMSContext';
-import { GlobalSidebar } from './components/layout/GlobalSidebar';
-import { TopNavbar } from './components/layout/TopNavbar';
+import { AppRail } from './components/layout/AppRail';
+import { LMSContextPanel } from './components/layout/LMSContextPanel';
+import { Topbar } from './components/layout/Topbar';
 import { DashboardPage } from './pages/DashboardPage';
 import { CoursesPage } from './pages/CoursesPage';
 import { CalendarPage } from './pages/CalendarPage';
@@ -21,7 +22,6 @@ export const AppContent: React.FC = () => {
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
   const [courseSubTab, setCourseSubTab] = useState<string>('modules');
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
 
   const { activeCourseId, setActiveCourseId, logHistory, isAuthenticated, activeRole } = useLMS();
@@ -70,10 +70,8 @@ export const AppContent: React.FC = () => {
 
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-muted font-sans selection:bg-primary/20 dark:bg-background">
-      {/* Fixed Full-Width Top Navbar (Cellwego Layout) */}
-      <TopNavbar
-        sidebarOpen={sidebarOpen}
-        setSidebarOpen={setSidebarOpen}
+      {/* Fixed Full-Width Topbar */}
+      <Topbar
         currentTab={currentTab}
         courseTab={currentTab === 'courses' ? courseSubTab : undefined}
         onNavigateCourse={handleNavigateCourse}
@@ -83,9 +81,10 @@ export const AppContent: React.FC = () => {
         }}
         onNavigateTab={handleNavigateTab}
         onOpenSearch={() => setSearchOpen(true)}
+        onOpenSidebar={() => setSidebarOpen(true)}
       />
 
-      {/* Main App Canvas underneath TopNavbar */}
+      {/* Main App Canvas underneath Topbar */}
       <div className="relative flex min-w-0 flex-1 overflow-hidden pt-16">
         {/* Mobile Backdrop Overlay */}
         {sidebarOpen && (
@@ -95,17 +94,9 @@ export const AppContent: React.FC = () => {
           />
         )}
 
-        {/* Collapsible Global Sidebar */}
-        <div className="w-0 flex-[0_0_0px] overflow-visible lg:w-auto lg:flex-shrink-0">
-          <GlobalSidebar
-            sidebarOpen={sidebarOpen}
-            setSidebarOpen={setSidebarOpen}
-            collapsed={sidebarCollapsed}
-            onToggleCollapse={() => setSidebarCollapsed(prev => !prev)}
-            currentTab={currentTab}
-            setCurrentTab={handleNavigateTab}
-          />
-        </div>
+        {/* Rail + Context Panel (desktop) / drawer (mobile) */}
+        <div className="hidden lg:flex"><AppRail currentTab={currentTab} onNavigateTab={handleNavigateTab} /><LMSContextPanel currentTab={currentTab} courseSubTab={courseSubTab} onNavigateTab={handleNavigateTab} onSelectCourseTab={(t) => setCourseSubTab(t)} onNavigateCourse={handleNavigateCourse} /></div>
+        {sidebarOpen && <div className="fixed left-0 top-16 bottom-0 z-20 flex lg:hidden"><AppRail currentTab={currentTab} onNavigateTab={(t) => { handleNavigateTab(t); setSidebarOpen(false); }} /><LMSContextPanel currentTab={currentTab} courseSubTab={courseSubTab} onNavigateTab={(t) => { handleNavigateTab(t); setSidebarOpen(false); }} onSelectCourseTab={(t) => { setCourseSubTab(t); setSidebarOpen(false); }} onNavigateCourse={(id, sub) => { handleNavigateCourse(id, sub); setSidebarOpen(false); }} /></div>}
 
         {/* Dynamic Page Views Canvas with Cellwego Scrollbar & Container */}
         <main className={`relative min-w-0 w-full flex-1 ${currentTab === 'courses' || currentTab === 'inbox' ? 'overflow-hidden flex flex-col' : 'overflow-y-auto custom-scrollbar'}`}>
