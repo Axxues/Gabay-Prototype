@@ -13,6 +13,8 @@ import {
   ArrowLeft
 } from 'lucide-react';
 import { CreateAssignmentPage } from './CreateAssignmentPage';
+import { PageHeader } from '../components/common/PageHeader';
+import { EmptyState } from '../components/common/EmptyState';
 
 interface AssignmentsViewProps {
   courseId: string;
@@ -123,32 +125,28 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
             <span>Back to Modules</span>
           </button>
         )}
-        <div className="flex items-center justify-between pb-3 border-b border-border">
-          <div>
-            <h2 className="text-xl font-bold tracking-tight text-foreground">
-              Activities
-            </h2>
-            <p className="text-xs text-muted-foreground">
-              Course activities and laboratory tasks.
-            </p>
-          </div>
-
-          {activeRole === 'faculty' && (
-            <button
-              onClick={() => setIsCreatingAssignment(true)}
-              className="px-3.5 py-2 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all shadow-subtle flex items-center space-x-1.5 cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Create Activity</span>
-            </button>
-          )}
-        </div>
+        <PageHeader
+          title="Activities"
+          description="Course activities and laboratory tasks."
+          actions={
+            activeRole === 'faculty' && (
+              <button
+                onClick={() => setIsCreatingAssignment(true)}
+                className="px-3.5 py-2 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all shadow-subtle flex items-center space-x-1.5 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Create Activity</span>
+              </button>
+            )
+          }
+        />
 
         <div className="space-y-3">
           {courseAssignments.length === 0 ? (
-            <div className="p-8 text-center bg-card rounded-xl border border-border text-xs text-muted-foreground">
-              No activities published for this course yet.
-            </div>
+            <EmptyState
+              title="No activities published for this course yet."
+              body=""
+            />
           ) : (
             courseAssignments.map(asg => {
               const studentSub = db.submissions.find(

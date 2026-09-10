@@ -8,7 +8,7 @@ interface ModalPortalProps {
 /**
  * Portals modals and dialogs directly to document.body so they escape
  * any parent stacking contexts, filters, transforms, or overflow containers.
- * This guarantees the backdrop blurs the entire screen, including TopNavbar and GlobalSidebar.
+ * This guarantees the backdrop blurs the entire screen, including Topbar, rail and context panel.
  */
 export const ModalPortal: React.FC<ModalPortalProps> = ({ children }) => {
   const [mounted, setMounted] = useState(false);

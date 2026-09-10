@@ -23,6 +23,7 @@ import {
   Check
 } from 'lucide-react';
 import { FilesView } from './FilesView';
+import { PageHeader } from '../components/common/PageHeader';
 
 interface ProfilePageProps {
   onNavigateCourse?: (courseId: string, subTab?: string) => void;
@@ -100,27 +101,32 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6 animate-fade-in pb-16 select-none">
       {/* Top Action Bar */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-start gap-3">
         <button
           onClick={() => onNavigateTab && onNavigateTab('dashboard')}
-          className="inline-flex items-center space-x-2 text-xs font-bold text-muted-foreground hover:text-foreground bg-card hover:bg-muted border border-border px-3.5 py-2 rounded-xl transition-all shadow-subtle cursor-pointer active:scale-[0.98]"
+          className="inline-flex items-center space-x-2 text-xs font-bold text-muted-foreground hover:text-foreground bg-card hover:bg-muted border border-border px-3.5 py-2 rounded-xl transition-all shadow-subtle cursor-pointer active:scale-[0.98] shrink-0 mt-0.5"
         >
           <ArrowLeft className="w-4 h-4" />
           <span>Back to Dashboard</span>
         </button>
 
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={() => {
-              showConfirm("Are you sure you want to sign out of your GABAY LMS session?", () => {
-                logout();
-              }, "Sign Out");
-            }}
-            className="inline-flex items-center space-x-1.5 text-xs font-bold bg-destructive hover:bg-destructive/90 active:scale-[0.98] text-destructive-foreground px-3.5 py-2 rounded-xl transition-all shadow-subtle cursor-pointer"
-          >
-            <LogOut className="w-3.5 h-3.5" />
-            <span>Sign Out</span>
-          </button>
+        <div className="flex-1">
+          <PageHeader
+            title="Profile"
+            actions={
+              <button
+                onClick={() => {
+                  showConfirm("Are you sure you want to sign out of your GABAY LMS session?", () => {
+                    logout();
+                  }, "Sign Out");
+                }}
+                className="inline-flex items-center space-x-1.5 text-xs font-bold bg-destructive hover:bg-destructive/90 active:scale-[0.98] text-destructive-foreground px-3.5 py-2 rounded-xl transition-all shadow-subtle cursor-pointer"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Sign Out</span>
+              </button>
+            }
+          />
         </div>
       </div>
 

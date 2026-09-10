@@ -2,7 +2,8 @@ import React, { useState, useMemo, useRef } from 'react';
 import { useLMS } from '../context/LMSContext';
 import { createDefaultSyllabusForCourse, type OfficialSyllabusData, type FacultySchedule } from '../data/syllabusData';
 import { scanSyllabusDocument, formatBytes, type ScanResult } from '../utils/syllabusParser';
-import { ModalPortal } from '../components/common/ModalPortal';
+import { PageHeader } from '../components/common/PageHeader';
+import { DialogFrame } from '../components/common/DialogFrame';
 import {
   BookOpen,
   ChevronDown,
@@ -685,6 +686,10 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto animate-fade-in pb-20 px-1 font-sans">
+      <PageHeader
+        title="Syllabus"
+        description={currentCourse ? `${currentCourse.code}: ${currentCourse.title}` : undefined}
+      />
       {!data ? (
         <div className="p-8 sm:p-14 bg-card border border-border rounded-2xl shadow-subtle text-center space-y-6 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-80 h-80 bg-primary/5 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
@@ -1910,42 +1915,11 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
 
       {/* Confirmation Modal for Syllabus Deletion */}
       {isDeleteModalOpen && (
-        <ModalPortal>
-          <div
-            role="dialog"
-            aria-modal="true"
-            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in"
-            onClick={() => setIsDeleteModalOpen(false)}
-          >
-            <div
-              className="bg-card border border-border rounded-2xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col animate-scale-in"
-              onClick={e => e.stopPropagation()}
-            >
-              <div className="p-6 space-y-4">
-                <div className="w-12 h-12 rounded-2xl bg-destructive/10 text-destructive flex items-center justify-center mx-auto">
-                  <Trash2 className="w-6 h-6" />
-                </div>
-
-                <div className="text-center space-y-2">
-                  <h3 className="text-lg font-black text-foreground">
-                    Remove Course Syllabus?
-                  </h3>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    Are you sure you want to remove the current syllabus for <strong className="text-foreground">{currentCourse?.code}: {currentCourse?.title}</strong>?
-                  </p>
-                  <div className="p-3.5 bg-destructive/10 border border-destructive/20 rounded-xl text-[11px] text-destructive text-left space-y-1 mt-2">
-                    <p className="font-semibold flex items-center gap-1.5">
-                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                      Important Note:
-                    </p>
-                    <p className="opacity-90 leading-normal">
-                      Students will no longer see the 18-week learning plan, grading rubrics, or course outcomes. You can upload a new syllabus or restore the institutional template at any time.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-4 border-t border-border flex items-center justify-end space-x-2 bg-muted/20">
+          <DialogFrame
+            title="Remove Course Syllabus?"
+            onClose={() => setIsDeleteModalOpen(false)}
+            footer={
+              <>
                 <button
                   type="button"
                   onClick={() => setIsDeleteModalOpen(false)}
@@ -1961,10 +1935,30 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                   <Trash2 className="w-3.5 h-3.5" />
                   <span>Yes, Remove Syllabus</span>
                 </button>
+              </>
+            }
+          >
+              <div className="space-y-4">
+                <div className="w-12 h-12 rounded-2xl bg-destructive/10 text-destructive flex items-center justify-center mx-auto">
+                  <Trash2 className="w-6 h-6" />
+                </div>
+
+                <div className="text-center space-y-2">
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Are you sure you want to remove the current syllabus for <strong className="text-foreground">{currentCourse?.code}: {currentCourse?.title}</strong>?
+                  </p>
+                  <div className="p-3.5 bg-destructive/10 border border-destructive/20 rounded-xl text-[11px] text-destructive text-left space-y-1 mt-2">
+                    <p className="font-semibold flex items-center gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                      Important Note:
+                    </p>
+                    <p className="opacity-90 leading-normal">
+                      Students will no longer see the 18-week learning plan, grading rubrics, or course outcomes. You can upload a new syllabus or restore the institutional template at any time.
+                    </p>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
-        </ModalPortal>
+          </DialogFrame>
       )}
     </>
   )}
@@ -1973,49 +1967,28 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
           SYLLABUS SCANNER & UPDATER MODAL (DOCX / PDF)
           ========================================================= */}
       {isUploadModalOpen && (
-        <ModalPortal>
-          <div
-            role="dialog"
-            aria-modal="true"
-            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in"
-            onClick={() => {
+          <DialogFrame
+            title="Upload & Scan Course Syllabus"
+            subtitle="Upload an official college syllabus document. Gabay will automatically parse the curriculum, 18-week learning plan, outcomes, and grading rubrics."
+            onClose={() => {
               if (!isScanning) setIsUploadModalOpen(false);
             }}
-          >
-          <div
-            className="bg-card border border-border rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[90vh] animate-scale-in"
-            onClick={e => e.stopPropagation()}
-          >
-            {/* Modal Header */}
-            <div className="p-5 border-b border-border flex items-start justify-between bg-muted/20">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="p-1.5 rounded-lg bg-primary/10 text-primary">
-                    <UploadCloud className="w-5 h-5" />
-                  </span>
-                  <h3 className="text-base font-bold text-foreground">
-                    Upload & Scan Course Syllabus
-                  </h3>
-                  <span className="px-2 py-0.5 text-[10px] font-bold bg-primary/10 text-primary rounded-full border border-primary/20">
-                    PDF &bull; DOCX
-                  </span>
-                </div>
-                <p className="text-xs text-muted-foreground pl-9">
-                  Upload an official college syllabus document. Gabay will automatically parse the curriculum, 18-week learning plan, outcomes, and grading rubrics.
-                </p>
-              </div>
+            footer={
               <button
                 type="button"
                 disabled={isScanning}
-                onClick={() => setIsUploadModalOpen(false)}
-                className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                onClick={() => {
+                  setIsUploadModalOpen(false);
+                  setScanError(null);
+                }}
+                className="px-4 py-2 text-xs font-bold bg-muted hover:bg-muted/80 text-foreground border border-border rounded-xl transition-all cursor-pointer disabled:opacity-50"
               >
-                <X className="w-5 h-5" />
+                Cancel
               </button>
-            </div>
-
+            }
+          >
             {/* Modal Body */}
-            <div className="p-6 overflow-y-auto space-y-5">
+            <div className="space-y-5">
               {/* Error banner if any */}
               {scanError && (
                 <div className="p-3.5 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-xs flex items-start gap-2.5">
@@ -2149,25 +2122,8 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               )}
 
             </div>
-
-            {/* Modal Footer */}
-            <div className="p-4 border-t border-border flex items-center justify-end bg-muted/20">
-              <button
-                type="button"
-                disabled={isScanning}
-                onClick={() => {
-                  setIsUploadModalOpen(false);
-                  setScanError(null);
-                }}
-                className="px-4 py-2 text-xs font-bold bg-muted hover:bg-muted/80 text-foreground border border-border rounded-xl transition-all cursor-pointer disabled:opacity-50"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      </ModalPortal>
-    )}
+          </DialogFrame>
+      )}
     </div>
   );
 };

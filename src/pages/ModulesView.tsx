@@ -23,6 +23,8 @@ import {
   Check
 } from 'lucide-react';
 import { ModalPortal } from '../components/common/ModalPortal';
+import { PageHeader } from '../components/common/PageHeader';
+import { EmptyState } from '../components/common/EmptyState';
 import { AddModuleItemPage } from './AddModuleItemPage';
 
 interface ModulesViewProps {
@@ -249,18 +251,11 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
   return (
     <div className="space-y-6 animate-fade-in">
       {/* View Header Toolbar */}
-      <div className="flex items-center justify-between pb-3 border-b border-border">
-        <div>
-          <h2 className="text-xl font-bold tracking-tight text-foreground font-sans">
-            Modules
-          </h2>
-          <p className="text-xs text-muted-foreground font-sans">
-            Course learning units, syllabus readings, and downloadable laboratory materials.
-          </p>
-        </div>
-
-        {activeRole === 'faculty' && (
-          <div className="flex items-center space-x-2">
+      <PageHeader
+        title="Modules"
+        description="Course learning units, syllabus readings, and downloadable laboratory materials."
+        actions={
+          activeRole === 'faculty' && (
             <button
               type="button"
               onClick={() => {
@@ -274,9 +269,9 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
               <Plus className="w-4 h-4" />
               <span>Add Module</span>
             </button>
-          </div>
-        )}
-      </div>
+          )
+        }
+      />
 
       {/* Inline Add Module Input Form at the Top Part */}
       {isAddModuleOpen && activeRole === 'faculty' && (
@@ -345,9 +340,10 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
       {/* Modules List */}
       <div className="space-y-4">
         {sortedModules.length === 0 ? (
-          <div className="p-8 text-center bg-card rounded-2xl border border-border text-xs font-sans text-muted-foreground">
-            No modules available for this course section yet.
-          </div>
+          <EmptyState
+            title="No modules available for this course section yet."
+            body=""
+          />
         ) : (
           sortedModules.map(mod => {
             const isExpanded = expandedModules[mod.id] ?? false;

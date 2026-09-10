@@ -1,9 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { useLMS } from '../../context/LMSContext';
 import { ModalPortal } from './ModalPortal';
+import { DialogFrame } from './DialogFrame';
 import {
-  KeyRound,
-  X,
   AlertCircle,
   BookOpen,
   ArrowRight
@@ -68,32 +67,11 @@ export const JoinCourseModal: React.FC<JoinCourseModalProps> = ({
 
   return (
     <ModalPortal>
-      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in select-none">
-        <div className="bg-card border border-border rounded-2xl shadow-xl max-w-md w-full p-6 space-y-5 animate-scale-in">
-          {/* Header */}
-          <div className="flex items-center justify-between pb-3 border-b border-border">
-            <div className="flex items-center space-x-2.5">
-              <div className="w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-                <KeyRound className="w-4 h-4" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-foreground font-sans">
-                  Join a Course
-                </h3>
-                <p className="text-[11px] text-muted-foreground">
-                  Enter the unique join code provided by your instructor.
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-
+      <DialogFrame
+        title="Join a Course"
+        subtitle="Enter the unique join code provided by your instructor."
+        onClose={onClose}
+      >
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Input */}
             <div>
@@ -176,8 +154,7 @@ export const JoinCourseModal: React.FC<JoinCourseModalProps> = ({
               </button>
             </div>
           </form>
-        </div>
-      </div>
+      </DialogFrame>
     </ModalPortal>
   );
 };

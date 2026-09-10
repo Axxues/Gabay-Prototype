@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useLMS } from '../context/LMSContext';
 import type { User, UserRole } from '../types/lms';
-import { ModalPortal } from '../components/common/ModalPortal';
+import { PageHeader } from '../components/common/PageHeader';
+import { DialogFrame } from '../components/common/DialogFrame';
 import {
   Users,
   UserPlus,
@@ -474,37 +475,20 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = () => {
       )}
 
       {/* Top Header & Actions */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-border">
-        <div>
-          <div className="flex items-center space-x-2.5">
-            <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center text-primary border border-primary/20 shadow-subtle">
-              <Users className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground font-sans">
-                  Manage College Accounts
-                </h1>
-                <span className="px-2 py-0.5 text-[9px] font-sans font-bold uppercase tracking-wider bg-primary/10 text-primary border border-primary/20 rounded-md">
-                  Admin Authority
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground font-sans mt-0.5">
-                Centrally provision, edit, configure, and manage user accounts across all College of Computer Science departments.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          onClick={handleOpenCreateModal}
-          className="px-4 py-2.5 bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground font-bold text-xs rounded-xl transition-all shadow-primary-sm flex items-center justify-center space-x-2 cursor-pointer shrink-0"
-        >
-          <UserPlus className="w-4 h-4" />
-          <span>Create New Account</span>
-        </button>
-      </div>
+      <PageHeader
+        title="Manage College Accounts"
+        description="Centrally provision, edit, configure, and manage user accounts across all College of Computer Science departments."
+        actions={
+          <button
+            type="button"
+            onClick={handleOpenCreateModal}
+            className="px-4 py-2.5 bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground font-bold text-xs rounded-xl transition-all shadow-primary-sm flex items-center justify-center space-x-2 cursor-pointer shrink-0"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>Create New Account</span>
+          </button>
+        }
+      />
 
       {/* 5-Card Metric Overview */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 sm:gap-4">
@@ -854,32 +838,11 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = () => {
 
       {/* CREATE ACCOUNT MODAL */}
       {isCreateModalOpen && (
-        <ModalPortal>
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in select-none">
-            <div className="bg-card border border-border rounded-2xl shadow-xl max-w-lg w-full p-6 space-y-5 animate-scale-in max-h-[90vh] overflow-y-auto custom-scrollbar">
-              <div className="flex items-center justify-between pb-3 border-b border-border">
-                <div className="flex items-center space-x-2.5">
-                  <div className="w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-                    <UserPlus className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-bold text-foreground font-sans">
-                      Provision College Account
-                    </h3>
-                    <p className="text-[11px] text-muted-foreground">
-                      Create an official institutional account with access credentials.
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIsCreateModalOpen(false)}
-                  className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
+          <DialogFrame
+            title="Provision College Account"
+            subtitle="Create an official institutional account with access credentials."
+            onClose={() => setIsCreateModalOpen(false)}
+          >
               <form onSubmit={handleCreateSubmit} className="space-y-4">
                 {/* Institutional Email */}
                 <div>
@@ -970,39 +933,16 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = () => {
                   </button>
                 </div>
               </form>
-            </div>
-          </div>
-        </ModalPortal>
+          </DialogFrame>
       )}
 
       {/* EDIT ACCOUNT MODAL */}
       {editingUser && (
-        <ModalPortal>
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in select-none">
-            <div className="bg-card border border-border rounded-2xl shadow-xl max-w-lg w-full p-6 space-y-5 animate-scale-in max-h-[90vh] overflow-y-auto custom-scrollbar">
-              <div className="flex items-center justify-between pb-3 border-b border-border">
-                <div className="flex items-center space-x-2.5">
-                  <div className="w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-                    <Edit3 className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-bold text-foreground font-sans">
-                      Edit Account Details
-                    </h3>
-                    <p className="text-[11px] text-muted-foreground">
-                      Modifying record for <span className="font-semibold text-foreground">{editingUser.name}</span>
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setEditingUser(null)}
-                  className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
+          <DialogFrame
+            title="Edit Account Details"
+            subtitle={`Modifying record for ${editingUser.name}`}
+            onClose={() => setEditingUser(null)}
+          >
               <form onSubmit={handleEditSubmit} className="space-y-4">
                 {/* Institutional Email */}
                 <div>
@@ -1093,37 +1033,17 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = () => {
                   </button>
                 </div>
               </form>
-            </div>
-          </div>
-        </ModalPortal>
+          </DialogFrame>
       )}
 
       {/* DELETE CONFIRMATION MODAL */}
       {deletingUser && (
-        <ModalPortal>
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in select-none">
-            <div className="bg-card border border-border rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4 animate-scale-in">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 rounded-xl bg-red-500/10 text-red-600 flex items-center justify-center shrink-0">
-                  <AlertTriangle className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-foreground font-sans">
-                    Delete User Account?
-                  </h3>
-                  <p className="text-xs text-muted-foreground">
-                    This action will permanently remove this account from the college database.
-                  </p>
-                </div>
-              </div>
-
-              <div className="p-3.5 bg-muted/60 border border-border rounded-xl space-y-1 text-xs font-sans">
-                <div className="font-bold text-foreground">{deletingUser.name}</div>
-                <div className="text-muted-foreground">{deletingUser.email}</div>
-                <div className="text-[11px] font-semibold text-primary uppercase">{deletingUser.role} • {deletingUser.department}</div>
-              </div>
-
-              <div className="flex items-center justify-end space-x-2 pt-2">
+          <DialogFrame
+            title="Delete User Account?"
+            subtitle="This action will permanently remove this account from the college database."
+            onClose={() => setDeletingUser(null)}
+            footer={
+              <>
                 <button
                   type="button"
                   onClick={() => setDeletingUser(null)}
@@ -1138,10 +1058,15 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = () => {
                 >
                   Delete Account
                 </button>
+              </>
+            }
+          >
+              <div className="p-3.5 bg-muted/60 border border-border rounded-xl space-y-1 text-xs font-sans">
+                <div className="font-bold text-foreground">{deletingUser.name}</div>
+                <div className="text-muted-foreground">{deletingUser.email}</div>
+                <div className="text-[11px] font-semibold text-primary uppercase">{deletingUser.role} • {deletingUser.department}</div>
               </div>
-            </div>
-          </div>
-        </ModalPortal>
+          </DialogFrame>
       )}
     </div>
   );

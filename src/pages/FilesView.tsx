@@ -23,6 +23,9 @@ import {
 
 import { uploadFileToPublic } from '../utils/fileUploader';
 import { ModalPortal } from '../components/common/ModalPortal';
+import { PageHeader } from '../components/common/PageHeader';
+import { EmptyState } from '../components/common/EmptyState';
+import { DialogFrame } from '../components/common/DialogFrame';
 
 interface FilesViewProps {
   courseId?: string; // If undefined or 'personal', loads account-level storage
@@ -517,64 +520,58 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
   return (
     <div className="space-y-6">
       {/* Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-border">
-        <div>
-          <div className="flex items-center space-x-2">
-            <h1 className="heading-2 text-foreground flex items-center space-x-2.5">
-              <Folder className="w-5 h-5 text-primary" />
-              <span>{isPersonal ? 'Personal & Submission Files' : 'Course Files Repository'}</span>
-            </h1>
+      <PageHeader
+        title={isPersonal ? 'Personal & Submission Files' : 'Course Files Repository'}
+        description={
+          isPersonal
+            ? 'Personal cloud storage, uploaded drafts, and submitted coursework archives.'
+            : `Curricular materials, lecture handouts, and laboratory assets for ${course?.code || 'Course'}.`
+        }
+        actions={
+          <>
             <span className="px-2.5 py-0.5 text-xs font-sans font-bold rounded-md bg-muted text-foreground border border-border">
               {visibleFiles.length} Items
             </span>
-          </div>
-          <p className="text-xs text-muted-foreground mt-1">
-            {isPersonal
-              ? 'Personal cloud storage, uploaded drafts, and submitted coursework archives.'
-              : `Curricular materials, lecture handouts, and laboratory assets for ${course?.code || 'Course'}.`}
-          </p>
-        </div>
+            <button
+              type="button"
+              onClick={handleDownloadAllZip}
+              className="px-3.5 py-2 text-xs font-bold bg-card hover:bg-accent text-foreground border border-border rounded-xl transition-all shadow-subtle flex items-center space-x-1.5 cursor-pointer"
+              title="Download folder as ZIP"
+            >
+              <Archive className="w-4 h-4 text-muted-foreground" />
+              <span className="hidden sm:inline">Download All Files (.zip)</span>
+            </button>
 
-        <div className="flex items-center space-x-2.5">
-          <button
-            type="button"
-            onClick={handleDownloadAllZip}
-            className="px-3.5 py-2 text-xs font-bold bg-card hover:bg-accent text-foreground border border-border rounded-xl transition-all shadow-subtle flex items-center space-x-1.5 cursor-pointer"
-            title="Download folder as ZIP"
-          >
-            <Archive className="w-4 h-4 text-muted-foreground" />
-            <span className="hidden sm:inline">Download All Files (.zip)</span>
-          </button>
+            {canManage && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setIsCreateFolderOpen(true)}
+                  className="px-3.5 py-2 text-xs font-bold bg-card hover:bg-accent text-foreground border border-border rounded-xl transition-all shadow-subtle flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <FolderPlus className="w-4 h-4 text-primary" />
+                  <span>+ Folder</span>
+                </button>
 
-          {canManage && (
-            <>
-              <button
-                type="button"
-                onClick={() => setIsCreateFolderOpen(true)}
-                className="px-3.5 py-2 text-xs font-bold bg-card hover:bg-accent text-foreground border border-border rounded-xl transition-all shadow-subtle flex items-center space-x-1.5 cursor-pointer"
-              >
-                <FolderPlus className="w-4 h-4 text-primary" />
-                <span>+ Folder</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="px-4 py-2 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all shadow-primary-sm flex items-center space-x-1.5 cursor-pointer active:scale-[0.98]"
-              >
-                <Upload className="w-4 h-4" />
-                <span>Upload File</span>
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                onChange={handleFileUpload}
-                className="hidden"
-              />
-            </>
-          )}
-        </div>
-      </div>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-4 py-2 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all shadow-primary-sm flex items-center space-x-1.5 cursor-pointer active:scale-[0.98]"
+                >
+                  <Upload className="w-4 h-4" />
+                  <span>Upload File</span>
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
+              </>
+            )}
+          </>
+        }
+      />
 
       {/* Source Filter Tabs */}
       <div className="flex items-center space-x-2 overflow-x-auto pb-1 scrollbar-none">
@@ -682,25 +679,10 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
       {/* Create Folder Modal */}
       {isCreateFolderOpen && (
         <ModalPortal>
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 overflow-hidden select-none">
-            <div
-              className="fixed inset-0 overlay-backdrop animate-fade-in"
-              onClick={() => setIsCreateFolderOpen(false)}
-            />
-            <div className="bg-card border border-border rounded-2xl w-full max-w-md shadow-elevated p-6 space-y-4 animate-scale-in relative z-10">
-              <div className="flex items-center justify-between border-b border-border pb-3">
-                <h3 className="text-sm font-bold text-foreground flex items-center space-x-2">
-                  <FolderPlus className="w-4 h-4 text-primary" />
-                  <span>Create New Folder</span>
-                </h3>
-                <button
-                  type="button"
-                  onClick={() => setIsCreateFolderOpen(false)}
-                  className="text-muted-foreground hover:text-foreground cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
+          <DialogFrame
+            title="Create New Folder"
+            onClose={() => setIsCreateFolderOpen(false)}
+          >
               <form onSubmit={handleCreateFolder} className="space-y-4">
                 <div>
                   <label className="block text-xs font-bold text-foreground mb-1">
@@ -732,8 +714,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
                   </button>
                 </div>
               </form>
-            </div>
-          </div>
+          </DialogFrame>
         </ModalPortal>
       )}
 
@@ -995,19 +976,12 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
           })}
 
           {currentFolders.length === 0 && currentFiles.length === 0 && (
-            <div className="p-10 text-center text-xs text-muted-foreground font-sans space-y-2">
-              <Folder className="w-8 h-8 text-muted-foreground/50 mx-auto" />
-              <p>This folder is currently empty.</p>
-              {canManage && (
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="text-primary hover:underline font-bold"
-                >
-                  Upload a file now
-                </button>
-              )}
-            </div>
+            <EmptyState
+              title="This folder is currently empty."
+              body=""
+              actionLabel={canManage ? 'Upload a file now' : undefined}
+              onAction={canManage ? () => fileInputRef.current?.click() : undefined}
+            />
           )}
         </div>
       </div>

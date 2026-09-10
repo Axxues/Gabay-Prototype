@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useLMS } from '../../context/LMSContext';
-import { Sliders, RefreshCw, Calculator } from 'lucide-react';
+import { Sliders, RefreshCw } from 'lucide-react';
+import { PageHeader } from '../common/PageHeader';
 import { getTransmutedGrade } from './FacultyGradebook';
 
 interface StudentGradebookProps {
@@ -60,26 +61,20 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
   return (
     <div className="space-y-6 max-w-5xl animate-fade-in font-sans">
       {/* Header Banner */}
-      <div className="p-5 bg-card border border-border rounded-2xl shadow-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-black tracking-tight text-foreground flex items-center space-x-2">
-            <Calculator className="w-5 h-5 text-primary" />
-            <span>Academic Performance & Grade Calculator</span>
-          </h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {course?.code}: {course?.title} &bull; Grading Policy: <strong>40% Midterm + 60% Final</strong>
-          </p>
-        </div>
-
-        <div className="flex items-center space-x-2 text-xs font-sans">
-          <span className="px-3 py-1 rounded-xl bg-primary/10 text-primary border border-primary/20 font-bold">
-            Midterm (40%)
-          </span>
-          <span className="px-3 py-1 rounded-xl bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 font-bold">
-            Final (60%)
-          </span>
-        </div>
-      </div>
+      <PageHeader
+        title="Academic Performance & Grade Calculator"
+        description={`${course?.code}: ${course?.title} • Grading Policy: 40% Midterm + 60% Final`}
+        actions={
+          <>
+            <span className="px-3 py-1 rounded-xl bg-primary/10 text-primary border border-primary/20 font-bold">
+              Midterm (40%)
+            </span>
+            <span className="px-3 py-1 rounded-xl bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 font-bold">
+              Final (60%)
+            </span>
+          </>
+        }
+      />
 
       {/* Grade Summary Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">

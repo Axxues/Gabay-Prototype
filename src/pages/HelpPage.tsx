@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useLMS } from '../context/LMSContext';
 import {
-  HelpCircle,
   BookOpen,
   Mail,
   FileText,
@@ -17,6 +16,7 @@ import {
   Layers,
   Award
 } from 'lucide-react';
+import { PageHeader } from '../components/common/PageHeader';
 
 interface HelpPageProps {
   onNavigateTab?: (tab: string) => void;
@@ -77,33 +77,25 @@ export const HelpPage: React.FC<HelpPageProps> = ({ onNavigateTab }) => {
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6 animate-fade-in pb-16 select-none">
       {/* Top Header Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={() => onNavigateTab && onNavigateTab('dashboard')}
-            className="p-2 bg-card border border-border hover:bg-muted text-muted-foreground hover:text-foreground rounded-xl transition-all shadow-subtle cursor-pointer active:scale-[0.98]"
-            title="Back to Dashboard"
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </button>
-          <div>
-            <div className="flex items-center space-x-2">
-              <div className="p-1.5 rounded-lg bg-primary/10 text-primary border border-primary/20">
-                <HelpCircle className="w-4 h-4" />
-              </div>
-              <h1 className="text-xl font-extrabold text-foreground tracking-tight">
-                Help & Support
-              </h1>
-            </div>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Frequently asked questions and guides.
-            </p>
-          </div>
+      <div className="flex items-start gap-3">
+        <button
+          onClick={() => onNavigateTab && onNavigateTab('dashboard')}
+          className="p-2 bg-card border border-border hover:bg-muted text-muted-foreground hover:text-foreground rounded-xl transition-all shadow-subtle cursor-pointer active:scale-[0.98] shrink-0 mt-0.5"
+          title="Back to Dashboard"
+        >
+          <ArrowLeft className="w-4 h-4" />
+        </button>
+        <div className="flex-1">
+          <PageHeader
+            title="Help & Support"
+            description="Frequently asked questions and guides."
+            actions={
+              <span className="px-3 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs font-sans font-bold text-emerald-700 dark:text-emerald-400 self-start sm:self-auto shadow-soft">
+                All Services Operational
+              </span>
+            }
+          />
         </div>
-
-        <span className="px-3 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs font-sans font-bold text-emerald-700 dark:text-emerald-400 self-start sm:self-auto shadow-soft">
-          All Services Operational
-        </span>
       </div>
 
       {resetAlert && (

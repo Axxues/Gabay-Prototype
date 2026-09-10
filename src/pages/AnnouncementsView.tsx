@@ -3,7 +3,6 @@ import { useLMS } from '../context/LMSContext';
 import { ModalPortal } from '../components/common/ModalPortal';
 import type { Announcement } from '../types/lms';
 import {
-  Megaphone,
   Plus,
   Pin,
   Heart,
@@ -22,6 +21,9 @@ import {
   X
 } from 'lucide-react';
 import { uploadFileToPublic, isImageFile } from '../utils/fileUploader';
+import { PageHeader } from '../components/common/PageHeader';
+import { EmptyState } from '../components/common/EmptyState';
+import { DialogFrame } from '../components/common/DialogFrame';
 
 interface AnnouncementsViewProps {
   courseId: string;
@@ -181,35 +183,27 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
   return (
     <div className="space-y-6">
       {/* Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-border">
-        <div>
-          <div className="flex items-center space-x-2">
-            <h1 className="heading-2 text-foreground flex items-center space-x-2.5">
-              <Megaphone className="w-5 h-5 text-primary" />
-              <span>Announcements</span>
-            </h1>
+      <PageHeader
+        title="Announcements"
+        description={`Broadcasts, academic directives, and time-sensitive reminders for ${course?.code || 'Course'}.`}
+        actions={
+          <>
             <span className="px-2.5 py-0.5 text-xs font-sans font-bold rounded-md bg-muted text-foreground border border-border">
               {filteredAnnouncements.length}
             </span>
-          </div>
-          <p className="text-xs text-muted-foreground mt-1">
-            Broadcasts, academic directives, and time-sensitive reminders for {course?.code || 'Course'}.
-          </p>
-        </div>
-
-        <div className="flex items-center space-x-3">
-          {canCreate && (
-            <button
-              type="button"
-              onClick={() => setIsComposeOpen(true)}
-              className="px-4 py-2 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all shadow-primary-sm flex items-center space-x-2 cursor-pointer active:scale-[0.98]"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Announcement</span>
-            </button>
-          )}
-        </div>
-      </div>
+            {canCreate && (
+              <button
+                type="button"
+                onClick={() => setIsComposeOpen(true)}
+                className="px-4 py-2 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all shadow-primary-sm flex items-center space-x-2 cursor-pointer active:scale-[0.98]"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Announcement</span>
+              </button>
+            )}
+          </>
+        }
+      />
 
       {/* Filter & Search Bar */}
       <div className="flex items-center justify-between gap-4">
@@ -237,23 +231,11 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
       {/* Compose Announcement Modal */}
       {isComposeOpen && (
         <ModalPortal>
-          <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto animate-fade-in select-none">
-            <div className="bg-card border border-border rounded-2xl w-full max-w-2xl shadow-elevated overflow-hidden animate-scale-in my-8 max-h-[90vh] overflow-y-auto custom-scrollbar">
-              <div className="px-6 py-4 border-b border-border flex items-center justify-between bg-muted/40">
-                <div className="flex items-center space-x-2">
-                  <Megaphone className="w-4 h-4 text-primary" />
-                  <h3 className="text-sm font-bold text-foreground">Create Course Announcement</h3>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIsComposeOpen(false)}
-                  className="text-muted-foreground hover:text-foreground p-1 rounded-lg hover:bg-accent cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <form onSubmit={handleCreateSubmit} className="p-6 space-y-4">
+          <DialogFrame
+            title="Create Course Announcement"
+            onClose={() => setIsComposeOpen(false)}
+          >
+              <form onSubmit={handleCreateSubmit} className="space-y-4">
                 <div>
                   <label className="block text-xs font-bold text-foreground mb-1">
                     Topic Title *
@@ -447,33 +429,22 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
                   </button>
                 </div>
               </form>
-            </div>
-          </div>
+          </DialogFrame>
         </ModalPortal>
       )}
 
       {/* Feed List */}
       {filteredAnnouncements.length === 0 ? (
-        <div className="p-12 text-center bg-card border border-border rounded-2xl shadow-subtle space-y-3">
-          <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center mx-auto">
-            <Megaphone className="w-6 h-6" />
-          </div>
-          <h3 className="text-base font-bold text-foreground">No Announcements Found</h3>
-          <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-            {searchQuery
+        <EmptyState
+          title="No Announcements Found"
+          body={
+            searchQuery
               ? 'No announcements match your search query.'
-              : 'There are no active announcements posted in this course yet.'}
-          </p>
-          {canCreate && !searchQuery && (
-            <button
-              type="button"
-              onClick={() => setIsComposeOpen(true)}
-              className="px-4 py-2 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all shadow-primary-sm mt-2 cursor-pointer"
-            >
-              + Post First Announcement
-            </button>
-          )}
-        </div>
+              : 'There are no active announcements posted in this course yet.'
+          }
+          actionLabel={canCreate && !searchQuery ? '+ Post First Announcement' : undefined}
+          onAction={canCreate && !searchQuery ? () => setIsComposeOpen(true) : undefined}
+        />
       ) : (
         <div className="space-y-4">
           {filteredAnnouncements.map(ann => {

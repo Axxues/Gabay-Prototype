@@ -58,7 +58,7 @@ export const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-muted dark:bg-background text-foreground relative overflow-hidden select-none font-sans p-4">
+    <div className="min-h-screen bg-muted flex items-center justify-center p-4 relative overflow-hidden text-foreground select-none font-sans">
       {/* Subtle Background Glows */}
       <div className="absolute -top-32 -left-32 w-96 h-96 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute -bottom-32 -right-32 w-96 h-96 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
@@ -79,7 +79,7 @@ export const LoginPage: React.FC = () => {
       </div>
 
       {/* Cellwego Glass Login Card */}
-      <div className="w-full max-w-sm bg-card border border-border rounded-2xl p-7 shadow-elevated space-y-6 z-10 animate-scale-in">
+      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8 shadow-elevated space-y-6 z-10 animate-scale-in">
         {/* Simple Brand Header */}
         <div className="text-center space-y-2">
           <div className="w-12 h-12 mx-auto rounded-xl bg-primary text-primary-foreground flex items-center justify-center font-extrabold text-xl shadow-primary-sm">

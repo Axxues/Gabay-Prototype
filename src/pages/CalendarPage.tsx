@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useLMS } from '../context/LMSContext';
+import { PageHeader } from '../components/common/PageHeader';
+import { EmptyState } from '../components/common/EmptyState';
 import {
-  Calendar as CalendarIcon,
   Clock,
   Plus,
   Filter,
@@ -199,18 +200,23 @@ export const CalendarPage: React.FC = () => {
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto animate-fade-in pb-12">
       {/* Cell We Go Style Header & Toolbar Controls */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between pb-3 border-b border-border gap-4">
-        <div>
-          <h1 className="text-2xl font-black text-foreground tracking-tight flex items-center space-x-2.5">
-            <div className="p-2 rounded-xl bg-primary/10 text-primary border border-primary/20 shadow-soft">
-              <CalendarIcon className="w-5 h-5" />
-            </div>
-            <span>Academic Calendar & Scheduler</span>
-          </h1>
-          <p className="text-xs text-muted-foreground mt-1">
-            Course milestones, assignment deadlines, lectures, and faculty advising office hours.
-          </p>
-        </div>
+      <div className="pb-3 border-b border-border space-y-4">
+        <PageHeader
+          title="Academic Calendar & Scheduler"
+          description="Course milestones, assignment deadlines, lectures, and faculty advising office hours."
+          actions={
+            !isReadOnlyCalendar && (
+              <button
+                type="button"
+                onClick={() => openAddEvent(selectedDay)}
+                className="px-3.5 py-2 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all shadow-primary-sm flex items-center space-x-1.5 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Schedule Event</span>
+              </button>
+            )
+          }
+        />
 
         {/* Action Controls */}
         <div className="flex flex-wrap items-center gap-2.5">
@@ -349,18 +355,6 @@ export const CalendarPage: React.FC = () => {
               Today
             </button>
           </div>
-
-          {/* Primary Action Button */}
-          {!isReadOnlyCalendar && (
-            <button
-              type="button"
-              onClick={() => openAddEvent(selectedDay)}
-              className="px-3.5 py-2 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all shadow-primary-sm flex items-center space-x-1.5 cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Schedule Event</span>
-            </button>
-          )}
         </div>
       </div>
 
@@ -511,18 +505,12 @@ export const CalendarPage: React.FC = () => {
               </span>
 
               {selectedDayEvents.length === 0 ? (
-                <div className="p-4 rounded-xl border border-border/80 bg-muted/20 text-center space-y-1">
-                  <p className="text-xs text-muted-foreground font-medium">No events scheduled for this day.</p>
-                  {!isReadOnlyCalendar && (
-                    <button
-                      type="button"
-                      onClick={() => openAddEvent(selectedDay)}
-                      className="text-xs font-bold text-primary hover:underline cursor-pointer"
-                    >
-                      + Click here to add an event
-                    </button>
-                  )}
-                </div>
+                <EmptyState
+                  title="No events scheduled for this day."
+                  body=""
+                  actionLabel={!isReadOnlyCalendar ? '+ Click here to add an event' : undefined}
+                  onAction={!isReadOnlyCalendar ? () => openAddEvent(selectedDay) : undefined}
+                />
               ) : (
                 selectedDayEvents.map(ev => (
                   <div

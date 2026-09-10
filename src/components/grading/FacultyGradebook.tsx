@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useLMS } from '../../context/LMSContext';
+import { PageHeader } from '../common/PageHeader';
 import {
-  FileSpreadsheet,
   Download,
   Search,
   Lock,
@@ -118,52 +118,46 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) 
   return (
     <div className="space-y-6 animate-fade-in font-sans">
       {/* Header Controls */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-border gap-4">
-        <div>
-          <h2 className="heading-3 text-foreground flex items-center space-x-2">
-            <FileSpreadsheet className="w-5 h-5 text-primary" />
-            <span>Course Gradebook</span>
-          </h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {course?.code} ({course?.section}) &bull; Official Institutional Grading Matrix
-          </p>
-        </div>
+      <PageHeader
+        title="Course Gradebook"
+        description={`${course?.code} (${course?.section}) • Official Institutional Grading Matrix`}
+        actions={
+          <>
+            {/* Formula Badge */}
+            <div className="hidden md:flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-primary/10 border border-primary/20 text-primary text-xs font-bold shadow-xs">
+              <Calculator className="w-3.5 h-3.5" />
+              <span>Total = 40% Midterm + 60% Final</span>
+            </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
-          {/* Formula Badge */}
-          <div className="hidden md:flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-primary/10 border border-primary/20 text-primary text-xs font-bold shadow-xs">
-            <Calculator className="w-3.5 h-3.5" />
-            <span>Total = 40% Midterm + 60% Final</span>
-          </div>
+            <button
+              type="button"
+              onClick={() => setPostingPolicy(prev => (prev === 'manual' ? 'automatic' : 'manual'))}
+              className="px-3.5 py-2 rounded-xl border border-border text-xs font-bold flex items-center space-x-2 transition-all bg-card text-foreground hover:bg-muted shadow-subtle active:scale-98 cursor-pointer"
+            >
+              {postingPolicy === 'manual' ? (
+                <>
+                  <Lock className="w-3.5 h-3.5 text-amber-500" />
+                  <span>Policy: Manual Posting</span>
+                </>
+              ) : (
+                <>
+                  <Globe className="w-3.5 h-3.5 text-emerald-500" />
+                  <span>Policy: Automatic Posting</span>
+                </>
+              )}
+            </button>
 
-          <button
-            type="button"
-            onClick={() => setPostingPolicy(prev => (prev === 'manual' ? 'automatic' : 'manual'))}
-            className="px-3.5 py-2 rounded-xl border border-border text-xs font-bold flex items-center space-x-2 transition-all bg-card text-foreground hover:bg-muted shadow-subtle active:scale-98 cursor-pointer"
-          >
-            {postingPolicy === 'manual' ? (
-              <>
-                <Lock className="w-3.5 h-3.5 text-amber-500" />
-                <span>Policy: Manual Posting</span>
-              </>
-            ) : (
-              <>
-                <Globe className="w-3.5 h-3.5 text-emerald-500" />
-                <span>Policy: Automatic Posting</span>
-              </>
-            )}
-          </button>
-
-          <button
-            type="button"
-            onClick={handleExportCSV}
-            className="px-4 py-2 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all flex items-center space-x-1.5 shadow-subtle active:scale-98 cursor-pointer"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Export CSV</span>
-          </button>
-        </div>
-      </div>
+            <button
+              type="button"
+              onClick={handleExportCSV}
+              className="px-4 py-2 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all flex items-center space-x-1.5 shadow-subtle active:scale-98 cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Export CSV</span>
+            </button>
+          </>
+        }
+      />
 
       {/* Search Input & Legend Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">

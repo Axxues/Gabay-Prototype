@@ -11,6 +11,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { AnimatedModal } from '../components/common/ModalPortal';
+import { PageHeader } from '../components/common/PageHeader';
 
 interface PeopleViewProps {
   courseId: string;
@@ -85,18 +86,11 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-border gap-4">
-        <div>
-          <h2 className="text-xl font-bold tracking-tight text-foreground">
-            People Management
-          </h2>
-          <p className="text-xs text-muted-foreground font-sans">
-            Section {course?.section}
-          </p>
-        </div>
-
-        <div className="flex items-center space-x-2.5">
-          {activeRole === 'faculty' && (
+      <PageHeader
+        title="People Management"
+        description={`Section ${course?.section}`}
+        actions={
+          activeRole === 'faculty' && (
             <button
               onClick={() => {
                 setSelectedStudentIds([]);
@@ -108,9 +102,9 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
               <UserPlus className="w-4 h-4" />
               <span>+ Enroll Person</span>
             </button>
-          )}
-        </div>
-      </div>
+          )
+        }
+      />
 
       {/* Course Join Code Banner */}
       {course?.joinCode && (

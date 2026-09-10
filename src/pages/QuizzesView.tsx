@@ -17,6 +17,8 @@ import {
   Lock
 } from 'lucide-react';
 import { CreateQuizPage } from './CreateQuizPage';
+import { PageHeader } from '../components/common/PageHeader';
+import { EmptyState } from '../components/common/EmptyState';
 
 interface QuizzesViewProps {
   courseId: string;
@@ -578,45 +580,30 @@ export const QuizzesView: React.FC<QuizzesViewProps> = ({
         </button>
       )}
 
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-border">
-        <div>
-          <h2 className="text-xl font-black tracking-tight text-foreground flex items-center space-x-2.5">
-            <div className="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center border border-amber-500/20">
-              <HelpCircle className="w-4 h-4" />
-            </div>
-            <span>Quizzes & Assessments</span>
-          </h2>
-          <p className="text-xs text-muted-foreground mt-1">
-            Standardized evaluation modules, Google Forms-style quizzes, and timed knowledge checks.
-          </p>
-        </div>
-
-        {activeRole === 'faculty' && (
-          <button
-            onClick={() => setIsCreatingQuiz(true)}
-            className="px-4 py-2 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all shadow-primary-sm flex items-center space-x-1.5 cursor-pointer self-start sm:self-auto"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Create Quiz</span>
-          </button>
-        )}
-      </div>
+      <PageHeader
+        title="Quizzes & Assessments"
+        description="Standardized evaluation modules, Google Forms-style quizzes, and timed knowledge checks."
+        actions={
+          activeRole === 'faculty' && (
+            <button
+              onClick={() => setIsCreatingQuiz(true)}
+              className="px-4 py-2 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all shadow-primary-sm flex items-center space-x-1.5 cursor-pointer self-start sm:self-auto"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Create Quiz</span>
+            </button>
+          )
+        }
+      />
 
       <div className="space-y-3">
         {courseQuizzes.length === 0 ? (
-          <div className="p-10 text-center bg-card rounded-2xl border border-border text-xs text-muted-foreground space-y-3 shadow-subtle">
-            <HelpCircle className="w-8 h-8 text-muted-foreground/40 mx-auto" />
-            <p>No quizzes published for this course yet.</p>
-            {activeRole === 'faculty' && (
-              <button
-                type="button"
-                onClick={() => setIsCreatingQuiz(true)}
-                className="text-primary hover:underline font-bold text-xs"
-              >
-                Create your first quiz now
-              </button>
-            )}
-          </div>
+          <EmptyState
+            title="No quizzes published for this course yet."
+            body=""
+            actionLabel={activeRole === 'faculty' ? 'Create your first quiz now' : undefined}
+            onAction={activeRole === 'faculty' ? () => setIsCreatingQuiz(true) : undefined}
+          />
         ) : (
           courseQuizzes.map(quiz => {
             const existingSub = db.submissions.find(
