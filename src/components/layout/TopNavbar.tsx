@@ -3,7 +3,6 @@ import { useLMS } from '../../context/LMSContext';
 import {
   Menu,
   X,
-  ShieldCheck,
   Search,
   Command,
   Sun,
@@ -84,13 +83,17 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const activeCourse = db.courses.find(c => c.id === activeCourseId);
+  const availableCourses = activeRole === 'student'
+    ? db.courses.filter(c => (activeUser.enrolledCourseIds || []).includes(c.id))
+    : db.courses;
+
+  const activeCourse = availableCourses.find(c => c.id === activeCourseId) || availableCourses[0] || db.courses[0];
 
   const courseTabs = [
     { id: 'modules', label: 'Modules', icon: <Layers className="w-3.5 h-3.5" /> },
     { id: 'syllabus', label: 'Syllabus', icon: <FileText className="w-3.5 h-3.5" /> },
     { id: 'announcements', label: 'Announcements', icon: <Megaphone className="w-3.5 h-3.5" /> },
-    { id: 'assignments', label: 'Assignments', icon: <FileCheck2 className="w-3.5 h-3.5" /> },
+    { id: 'assignments', label: 'Activities', icon: <FileCheck2 className="w-3.5 h-3.5" /> },
     { id: 'quizzes', label: 'Quizzes', icon: <QuizIcon className="w-3.5 h-3.5" /> },
     { id: 'files', label: 'Files', icon: <Folder className="w-3.5 h-3.5" /> },
     { id: 'grades', label: 'Grades', icon: <Award className="w-3.5 h-3.5" /> },
@@ -119,17 +122,9 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
             </div>
             <div className="flex items-center gap-1.5">
               <span className="font-extrabold text-sm sm:text-base tracking-tight text-foreground font-sans">
-                GABAY LMS
+                GABAY
               </span>
-              <span className="live-dot" title="Live System Active" />
             </div>
-          </div>
-
-          <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-success/10 rounded-full border border-success/20 ml-1">
-            <ShieldCheck className="h-3 w-3 text-success" />
-            <span className="text-[9px] font-bold uppercase tracking-widest text-success font-sans">
-              SECURE RBAC
-            </span>
           </div>
 
           <button
@@ -183,11 +178,10 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
               <div className="relative" ref={courseDropdownRef}>
                 <button
                   onClick={() => setCourseDropdownOpen(!courseDropdownOpen)}
-                  className={`flex items-center space-x-2 font-bold font-sans text-xs px-3 py-1.5 rounded-xl border transition-all shadow-subtle cursor-pointer active:scale-[0.98] ${
-                    courseDropdownOpen
+                  className={`flex items-center space-x-2 font-bold font-sans text-xs px-3 py-1.5 rounded-xl border transition-all shadow-subtle cursor-pointer active:scale-[0.98] ${courseDropdownOpen
                       ? 'text-primary bg-primary/20 border-primary ring-2 ring-primary/20 shadow-primary-sm'
                       : 'text-primary bg-primary/10 hover:bg-primary/15 border-primary/30'
-                  }`}
+                    }`}
                 >
                   <span
                     className="w-2 h-2 rounded-full shrink-0 shadow-xs ring-1 ring-background"
@@ -203,12 +197,12 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
                       <span className="text-[10px] font-sans font-bold uppercase text-muted-foreground tracking-wider">
                         Switch Course Shell
                       </span>
-                      <span className="text-[9px] font-mono px-2 py-0.5 rounded-full bg-primary/10 text-primary font-bold">
-                        {db.courses.length} courses
+                      <span className="text-[9px] font-sans px-2 py-0.5 rounded-full bg-primary/10 text-primary font-bold">
+                        {availableCourses.length} courses
                       </span>
                     </div>
                     <div className="max-h-64 overflow-y-auto space-y-1 custom-scrollbar pr-0.5">
-                      {db.courses.map(course => {
+                      {availableCourses.map(course => {
                         const isSelected = course.id === activeCourse.id;
                         return (
                           <button
@@ -218,11 +212,10 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
                               if (onNavigateCourse) onNavigateCourse(course.id, courseTab || 'modules');
                               setCourseDropdownOpen(false);
                             }}
-                            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition-all text-left cursor-pointer group ${
-                              isSelected
+                            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition-all text-left cursor-pointer group ${isSelected
                                 ? 'bg-primary/15 text-primary font-bold border border-primary/30 shadow-xs'
                                 : 'text-foreground hover:bg-muted/80 hover:translate-x-0.5 font-medium'
-                            }`}
+                              }`}
                           >
                             <div className="flex items-center space-x-2.5 truncate min-w-0">
                               <span
@@ -252,11 +245,10 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
                 <div className="relative" ref={courseTabDropdownRef}>
                   <button
                     onClick={() => setCourseTabDropdownOpen(!courseTabDropdownOpen)}
-                    className={`flex items-center space-x-2 text-xs font-semibold capitalize px-3 py-1.5 rounded-xl border transition-all shadow-subtle cursor-pointer active:scale-[0.98] ${
-                      courseTabDropdownOpen
+                    className={`flex items-center space-x-2 text-xs font-semibold capitalize px-3 py-1.5 rounded-xl border transition-all shadow-subtle cursor-pointer active:scale-[0.98] ${courseTabDropdownOpen
                         ? 'bg-muted border-primary text-primary ring-2 ring-primary/20 shadow-primary-sm'
                         : 'bg-card/90 hover:bg-muted/80 border-border/80 text-foreground'
-                    }`}
+                      }`}
                   >
                     <span>{courseTab}</span>
                     <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ease-out ${courseTabDropdownOpen ? 'rotate-180 text-primary' : 'text-muted-foreground'}`} />
@@ -277,11 +269,10 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
                                 if (onSelectCourseTab) onSelectCourseTab(tab.id);
                                 setCourseTabDropdownOpen(false);
                               }}
-                              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition-all cursor-pointer ${
-                                isSelected
+                              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition-all cursor-pointer ${isSelected
                                   ? 'bg-primary text-primary-foreground font-bold shadow-primary-sm'
                                   : 'text-foreground hover:bg-muted/80 hover:translate-x-0.5 font-medium'
-                              }`}
+                                }`}
                             >
                               <div className="flex items-center space-x-2.5">
                                 {tab.icon}
@@ -303,11 +294,10 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
           <button
             onClick={() => onNavigateTab && onNavigateTab('history')}
             title="Session Trail History"
-            className={`hidden sm:flex h-9 w-9 items-center justify-center rounded-xl border transition-all cursor-pointer shadow-subtle ${
-              currentTab === 'history'
+            className={`hidden sm:flex h-9 w-9 items-center justify-center rounded-xl border transition-all cursor-pointer shadow-subtle ${currentTab === 'history'
                 ? 'bg-primary text-primary-foreground border-primary'
                 : 'text-muted-foreground hover:text-foreground hover:bg-accent border-border bg-background'
-            }`}
+              }`}
           >
             <History className="h-4 w-4" />
           </button>
@@ -316,11 +306,10 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
           <button
             onClick={() => onNavigateTab && onNavigateTab('help')}
             title="User Manual & Help"
-            className={`hidden sm:flex h-9 w-9 items-center justify-center rounded-xl border transition-all cursor-pointer shadow-subtle ${
-              currentTab === 'help'
+            className={`hidden sm:flex h-9 w-9 items-center justify-center rounded-xl border transition-all cursor-pointer shadow-subtle ${currentTab === 'help'
                 ? 'bg-primary text-primary-foreground border-primary'
                 : 'text-muted-foreground hover:text-foreground hover:bg-accent border-border bg-background'
-            }`}
+              }`}
           >
             <HelpCircle className="h-4 w-4" />
           </button>
@@ -329,11 +318,10 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
           <div className="relative" ref={profileRef}>
             <button
               onClick={() => setProfileOpen(!profileOpen)}
-              className={`flex items-center px-2.5 py-1.5 rounded-2xl border transition-all cursor-pointer group ${
-                profileOpen
+              className={`flex items-center px-2.5 py-1.5 rounded-2xl border transition-all cursor-pointer group ${profileOpen
                   ? 'bg-accent/80 border-primary ring-2 ring-primary/20 shadow-primary-sm'
                   : 'hover:bg-accent/60 border-border/80 shadow-subtle'
-              }`}
+                }`}
             >
               <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center flex-shrink-0 text-white font-bold text-sm shadow-card overflow-hidden ring-2 ring-primary/25 ring-offset-1 ring-offset-background group-hover:scale-105 transition-transform">
                 {activeUser.avatar ? (
@@ -386,6 +374,21 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
                     </div>
                     Account Profile
                   </button>
+
+                  {activeRole === 'admin' && (
+                    <button
+                      onClick={() => {
+                        setProfileOpen(false);
+                        if (onNavigateTab) onNavigateTab('accounts');
+                      }}
+                      className="flex items-center w-full px-3 py-2 text-xs font-bold text-foreground hover:bg-accent/80 hover:translate-x-0.5 rounded-xl transition-all cursor-pointer group"
+                    >
+                      <div className="w-6 h-6 rounded-lg bg-muted flex items-center justify-center text-muted-foreground group-hover:text-foreground mr-2.5 transition-colors">
+                        <Users className="h-3.5 w-3.5" />
+                      </div>
+                      Manage College Accounts
+                    </button>
+                  )}
 
                   <button
                     onClick={() => {

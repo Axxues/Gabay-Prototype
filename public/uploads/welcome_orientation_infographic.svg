@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="50%" stop-color="#1e1b4b" />
+      <stop offset="100%" stop-color="#090d16" />
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ec4899" />
+      <stop offset="50%" stop-color="#8b5cf6" />
+      <stop offset="100%" stop-color="#3b82f6" />
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="40" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="675" fill="url(#bgGrad)" />
+
+  <!-- Geometric Grid & Glows -->
+  <circle cx="200" cy="180" r="160" fill="#ec4899" opacity="0.12" filter="url(#glow)" />
+  <circle cx="1000" cy="480" r="200" fill="#8b5cf6" opacity="0.15" filter="url(#glow)" />
+  <circle cx="600" cy="337" r="280" fill="#3b82f6" opacity="0.08" filter="url(#glow)" />
+
+  <!-- Grid Lines -->
+  <g stroke="#334155" stroke-width="1" opacity="0.25">
+    <line x1="100" y1="0" x2="100" y2="675" />
+    <line x1="300" y1="0" x2="300" y2="675" />
+    <line x1="500" y1="0" x2="500" y2="675" />
+    <line x1="700" y1="0" x2="700" y2="675" />
+    <line x1="900" y1="0" x2="900" y2="675" />
+    <line x1="1100" y1="0" x2="1100" y2="675" />
+    <line x1="0" y1="135" x2="1200" y2="135" />
+    <line x1="0" y1="270" x2="1200" y2="270" />
+    <line x1="0" y1="405" x2="1200" y2="405" />
+    <line x1="0" y1="540" x2="1200" y2="540" />
+  </g>
+
+  <!-- Center Card -->
+  <rect x="150" y="90" width="900" height="495" rx="28" fill="#1e293b" fill-opacity="0.6" stroke="#475569" stroke-width="1.5" />
+  
+  <!-- Accent Top Border -->
+  <rect x="150" y="90" width="900" height="8" rx="4" fill="url(#accentGrad)" />
+
+  <!-- University & Department Badge -->
+  <g transform="translate(200, 150)">
+    <rect width="280" height="34" rx="17" fill="#ec4899" fill-opacity="0.15" stroke="#ec4899" stroke-width="1.2" />
+    <text x="140" y="22" fill="#f472b6" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="700" text-anchor="middle" letter-spacing="1">DMMMSU-SLUC • BSCS 2026-2027</text>
+  </g>
+
+  <!-- Main Title -->
+  <text x="200" y="245" fill="#f8fafc" font-family="system-ui, -apple-system, sans-serif" font-size="44" font-weight="800" letter-spacing="-0.5">
+    Course Orientation & Syllabus Guide
+  </text>
+  <text x="200" y="290" fill="#94a3b8" font-family="system-ui, -apple-system, sans-serif" font-size="20" font-weight="500">
+    CMSC 131 • Web Engineering & Frameworks (Section BSCS 4-1)
+  </text>
+
+  <!-- 3 Feature Pillars -->
+  <g transform="translate(200, 340)">
+    <!-- Pillar 1 -->
+    <rect x="0" y="0" width="240" height="180" rx="18" fill="#0f172a" stroke="#334155" stroke-width="1" />
+    <circle cx="36" cy="36" r="16" fill="#ec4899" fill-opacity="0.2" />
+    <text x="36" y="42" fill="#f472b6" font-family="system-ui" font-size="14" font-weight="bold" text-anchor="middle">01</text>
+    <text x="24" y="82" fill="#f1f5f9" font-family="system-ui" font-size="16" font-weight="700">Course Outcomes</text>
+    <text x="24" y="112" fill="#94a3b8" font-family="system-ui" font-size="12" font-weight="400">Outcome-based syllabus aligned with CHED CMO 25 s. 2015 standards.</text>
+    <text x="24" y="152" fill="#38bdf8" font-family="system-ui" font-size="11" font-weight="600">3 Units Lecture + Lab →</text>
+
+    <!-- Pillar 2 -->
+    <rect x="260" y="0" width="240" height="180" rx="18" fill="#0f172a" stroke="#334155" stroke-width="1" />
+    <circle cx="296" cy="36" r="16" fill="#8b5cf6" fill-opacity="0.2" />
+    <text x="296" y="42" fill="#a78bfa" font-family="system-ui" font-size="14" font-weight="bold" text-anchor="middle">02</text>
+    <text x="284" y="82" fill="#f1f5f9" font-family="system-ui" font-size="16" font-weight="700">Tech Stack & Tools</text>
+    <text x="284" y="112" fill="#94a3b8" font-family="system-ui" font-size="12" font-weight="400">Modern TypeScript, Vite, React, TailwindCSS & Likha ERP Sync API.</text>
+    <text x="284" y="152" fill="#38bdf8" font-family="system-ui" font-size="11" font-weight="600">Full CI/CD Pipeline →</text>
+
+    <!-- Pillar 3 -->
+    <rect x="520" y="0" width="240" height="180" rx="18" fill="#0f172a" stroke="#334155" stroke-width="1" />
+    <circle cx="556" cy="36" r="16" fill="#3b82f6" fill-opacity="0.2" />
+    <text x="556" y="42" fill="#60a5fa" font-family="system-ui" font-size="14" font-weight="bold" text-anchor="middle">03</text>
+    <text x="544" y="82" fill="#f1f5f9" font-family="system-ui" font-size="16" font-weight="700">SpeedGrader Policy</text>
+    <text x="544" y="112" fill="#94a3b8" font-family="system-ui" font-size="12" font-weight="400">Strict rubric matrices with Likha institutional grade ledger sync.</text>
+    <text x="544" y="152" fill="#38bdf8" font-family="system-ui" font-size="11" font-weight="600">Passing Grade: 75% (3.0) →</text>
+  </g>
+</svg>

@@ -16,7 +16,8 @@ import {
   LogOut,
   PanelLeftClose,
   PanelLeftOpen,
-  User
+  User,
+  Users
 } from 'lucide-react';
 
 interface GlobalSidebarProps {
@@ -114,56 +115,58 @@ export const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
           </div>
         )}
 
-        {/* Page 1 */}
-        <button
-          type="button"
-          onClick={() => handleNavigate('page1')}
-          title="Page 1"
-          className={`w-full flex items-center ${collapsed ? 'justify-center p-3' : 'justify-between px-3 py-2.5'} rounded-xl cursor-pointer transition-all duration-150 ${
-            currentTab === 'page1'
-              ? 'bg-primary text-primary-foreground font-bold shadow-primary-sm translate-x-0.5'
-              : 'text-muted-foreground hover:text-foreground hover:bg-accent font-medium'
-          }`}
-        >
-          <div className="flex items-center space-x-2.5">
-            <Building className="w-4 h-4 flex-shrink-0" />
-            {!collapsed && <span>Page 1</span>}
-          </div>
-        </button>
+        {/* Page 1, 2, 3 (Not accessible to Non-teaching Staff) */}
+        {activeRole !== 'staff' && (
+          <>
+            {/* Page 1 */}
+            <button
+              type="button"
+              onClick={() => handleNavigate('page1')}
+              title="Page 1"
+              className={`w-full flex items-center ${collapsed ? 'justify-center p-3' : 'justify-between px-3 py-2.5'} rounded-xl cursor-pointer transition-all duration-150 ${currentTab === 'page1'
+                  ? 'bg-primary text-primary-foreground font-bold shadow-primary-sm translate-x-0.5'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-accent font-medium'
+                }`}
+            >
+              <div className="flex items-center space-x-2.5">
+                <Building className="w-4 h-4 flex-shrink-0" />
+                {!collapsed && <span>Page 1</span>}
+              </div>
+            </button>
 
-        {/* Page 2 */}
-        <button
-          type="button"
-          onClick={() => handleNavigate('page2')}
-          title="Page 2"
-          className={`w-full flex items-center ${collapsed ? 'justify-center p-3' : 'justify-between px-3 py-2.5'} rounded-xl cursor-pointer transition-all duration-150 ${
-            currentTab === 'page2'
-              ? 'bg-primary text-primary-foreground font-bold shadow-primary-sm translate-x-0.5'
-              : 'text-muted-foreground hover:text-foreground hover:bg-accent font-medium'
-          }`}
-        >
-          <div className="flex items-center space-x-2.5">
-            <BarChart3 className="w-4 h-4 flex-shrink-0" />
-            {!collapsed && <span>Page 2</span>}
-          </div>
-        </button>
+            {/* Page 2 */}
+            <button
+              type="button"
+              onClick={() => handleNavigate('page2')}
+              title="Page 2"
+              className={`w-full flex items-center ${collapsed ? 'justify-center p-3' : 'justify-between px-3 py-2.5'} rounded-xl cursor-pointer transition-all duration-150 ${currentTab === 'page2'
+                  ? 'bg-primary text-primary-foreground font-bold shadow-primary-sm translate-x-0.5'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-accent font-medium'
+                }`}
+            >
+              <div className="flex items-center space-x-2.5">
+                <BarChart3 className="w-4 h-4 flex-shrink-0" />
+                {!collapsed && <span>Page 2</span>}
+              </div>
+            </button>
 
-        {/* Page 3 */}
-        <button
-          type="button"
-          onClick={() => handleNavigate('page3')}
-          title="Page 3"
-          className={`w-full flex items-center ${collapsed ? 'justify-center p-3' : 'justify-between px-3 py-2.5'} rounded-xl cursor-pointer transition-all duration-150 ${
-            currentTab === 'page3'
-              ? 'bg-primary text-primary-foreground font-bold shadow-primary-sm translate-x-0.5'
-              : 'text-muted-foreground hover:text-foreground hover:bg-accent font-medium'
-          }`}
-        >
-          <div className="flex items-center space-x-2.5">
-            <FileCheck2 className="w-4 h-4 flex-shrink-0" />
-            {!collapsed && <span>Page 3</span>}
-          </div>
-        </button>
+            {/* Page 3 */}
+            <button
+              type="button"
+              onClick={() => handleNavigate('page3')}
+              title="Page 3"
+              className={`w-full flex items-center ${collapsed ? 'justify-center p-3' : 'justify-between px-3 py-2.5'} rounded-xl cursor-pointer transition-all duration-150 ${currentTab === 'page3'
+                  ? 'bg-primary text-primary-foreground font-bold shadow-primary-sm translate-x-0.5'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-accent font-medium'
+                }`}
+            >
+              <div className="flex items-center space-x-2.5">
+                <FileCheck2 className="w-4 h-4 flex-shrink-0" />
+                {!collapsed && <span>Page 3</span>}
+              </div>
+            </button>
+          </>
+        )}
 
         {/* Module 4: LMS */}
         <div className="pt-2">
@@ -173,7 +176,7 @@ export const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    handleNavigate('dashboard');
+                    handleNavigate(activeRole === 'staff' ? 'inbox' : 'dashboard');
                     setIsLmsExpanded(true);
                   }}
                   className="flex items-center space-x-2.5 text-left flex-1 cursor-pointer"
@@ -192,133 +195,139 @@ export const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
               </div>
 
               {/* LMS Sub-navigation */}
-              {isLmsExpanded && (
-                <div className="pl-3 border-l-2 border-border ml-3 dark:border-border/70 space-y-1">
-                  {/* Dashboard */}
-                  <button
-                    type="button"
-                    onClick={() => handleNavigate('dashboard')}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-150 cursor-pointer ${
-                      currentTab === 'dashboard'
-                        ? 'bg-primary text-primary-foreground font-bold shadow-primary-sm translate-x-0.5'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-                    }`}
-                  >
-                    <div className="flex items-center space-x-2.5">
-                      <LayoutDashboard className="w-4 h-4 flex-shrink-0" />
-                      <span>Dashboard</span>
-                    </div>
-                  </button>
-
-                  {/* Courses */}
-                  <button
-                    type="button"
-                    onClick={() => handleNavigate('courses')}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-150 cursor-pointer ${
-                      currentTab === 'courses' || currentTab === 'create-course'
-                        ? 'bg-primary text-primary-foreground font-bold shadow-primary-sm translate-x-0.5'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-                    }`}
-                  >
-                    <div className="flex items-center space-x-2.5">
-                      <BookOpen className="w-4 h-4 flex-shrink-0" />
-                      <span>Courses</span>
-                    </div>
-                  </button>
-
-                  {/* Calendar */}
-                  <button
-                    type="button"
-                    onClick={() => handleNavigate('calendar')}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-150 cursor-pointer ${
-                      currentTab === 'calendar'
-                        ? 'bg-primary text-primary-foreground font-bold shadow-primary-sm translate-x-0.5'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-                    }`}
-                  >
-                    <div className="flex items-center space-x-2.5">
-                      <Calendar className="w-4 h-4 flex-shrink-0" />
-                      <span>Calendar</span>
-                    </div>
-                  </button>
-
-                  {/* Inbox */}
-                  <button
-                    type="button"
-                    onClick={() => handleNavigate('inbox')}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-150 cursor-pointer ${
-                      currentTab === 'inbox'
-                        ? 'bg-primary text-primary-foreground font-bold shadow-primary-sm translate-x-0.5'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-                    }`}
-                  >
-                    <div className="flex items-center space-x-2.5">
-                      <Inbox className="w-4 h-4 flex-shrink-0" />
-                      <span>Inbox</span>
-                    </div>
-                    {unreadMessageCount > 0 && (
-                      <span className="px-1.5 py-0.5 text-[10px] font-sans font-bold bg-primary text-primary-foreground rounded-full shadow-subtle">
-                        {unreadMessageCount}
-                      </span>
+              <div
+                className={`grid transition-all duration-300 ease-in-out overflow-hidden ${isLmsExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+                  }`}
+              >
+                <div className="overflow-hidden min-h-0">
+                  <div className="pl-3 border-l-2 border-border ml-3 dark:border-border/70 space-y-1 pt-1">
+                    {/* Dashboard (Hidden for staff) */}
+                    {activeRole !== 'staff' && (
+                      <button
+                        type="button"
+                        onClick={() => handleNavigate('dashboard')}
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-150 cursor-pointer ${currentTab === 'dashboard'
+                            ? 'bg-primary text-primary-foreground font-bold shadow-primary-sm translate-x-0.5'
+                            : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                          }`}
+                      >
+                        <div className="flex items-center space-x-2.5">
+                          <LayoutDashboard className="w-4 h-4 flex-shrink-0" />
+                          <span>Dashboard</span>
+                        </div>
+                      </button>
                     )}
-                  </button>
 
-                  {/* History */}
-                  <button
-                    type="button"
-                    onClick={() => handleNavigate('history')}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-150 cursor-pointer ${
-                      currentTab === 'history'
-                        ? 'bg-primary text-primary-foreground font-bold shadow-primary-sm translate-x-0.5'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-                    }`}
-                  >
-                    <div className="flex items-center space-x-2.5">
-                      <History className="w-4 h-4 flex-shrink-0" />
-                      <span>History</span>
-                    </div>
-                  </button>
+                    {/* Courses (Hidden for staff) */}
+                    {activeRole !== 'staff' && (
+                      <button
+                        type="button"
+                        onClick={() => handleNavigate('courses')}
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-150 cursor-pointer ${currentTab === 'courses' || currentTab === 'create-course'
+                            ? 'bg-primary text-primary-foreground font-bold shadow-primary-sm translate-x-0.5'
+                            : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                          }`}
+                      >
+                        <div className="flex items-center space-x-2.5">
+                          <BookOpen className="w-4 h-4 flex-shrink-0" />
+                          <span>Courses</span>
+                        </div>
+                      </button>
+                    )}
+
+                    {/* Calendar */}
+                    <button
+                      type="button"
+                      onClick={() => handleNavigate('calendar')}
+                      className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-150 cursor-pointer ${currentTab === 'calendar'
+                          ? 'bg-primary text-primary-foreground font-bold shadow-primary-sm translate-x-0.5'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                        }`}
+                    >
+                      <div className="flex items-center space-x-2.5">
+                        <Calendar className="w-4 h-4 flex-shrink-0" />
+                        <span>Calendar</span>
+                      </div>
+                    </button>
+
+                    {/* Inbox */}
+                    <button
+                      type="button"
+                      onClick={() => handleNavigate('inbox')}
+                      className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-150 cursor-pointer ${currentTab === 'inbox'
+                          ? 'bg-primary text-primary-foreground font-bold shadow-primary-sm translate-x-0.5'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                        }`}
+                    >
+                      <div className="flex items-center space-x-2.5">
+                        <Inbox className="w-4 h-4 flex-shrink-0" />
+                        <span>Inbox</span>
+                      </div>
+                      {unreadMessageCount > 0 && (
+                        <span className="px-1.5 py-0.5 text-[10px] font-sans font-bold bg-primary text-primary-foreground rounded-full shadow-subtle">
+                          {unreadMessageCount}
+                        </span>
+                      )}
+                    </button>
+
+                    {/* History */}
+                    {/* <button
+                      type="button"
+                      onClick={() => handleNavigate('history')}
+                      className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-150 cursor-pointer ${
+                        currentTab === 'history'
+                          ? 'bg-primary text-primary-foreground font-bold shadow-primary-sm translate-x-0.5'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-2.5">
+                        <History className="w-4 h-4 flex-shrink-0" />
+                        <span>History</span>
+                      </div>
+                    </button> */}
+                  </div>
                 </div>
-              )}
+              </div>
             </div>
           ) : (
             /* Collapsed LMS icons */
             <div className="space-y-1">
-              <button
-                type="button"
-                onClick={() => handleNavigate('dashboard')}
-                title="Dashboard"
-                className={`relative flex items-center justify-center w-full p-3 rounded-xl transition-all cursor-pointer ${
-                  currentTab === 'dashboard'
-                    ? 'bg-primary/10 text-primary shadow-subtle ring-1 ring-primary/20'
-                    : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                }`}
-              >
-                <LayoutDashboard className="h-5 w-5 flex-shrink-0" />
-              </button>
+              {activeRole !== 'staff' && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => handleNavigate('dashboard')}
+                    title="Dashboard"
+                    className={`relative flex items-center justify-center w-full p-3 rounded-xl transition-all cursor-pointer ${currentTab === 'dashboard'
+                        ? 'bg-primary/10 text-primary shadow-subtle ring-1 ring-primary/20'
+                        : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                      }`}
+                  >
+                    <LayoutDashboard className="h-5 w-5 flex-shrink-0" />
+                  </button>
 
-              <button
-                type="button"
-                onClick={() => handleNavigate('courses')}
-                title="Courses"
-                className={`relative flex items-center justify-center w-full p-3 rounded-xl transition-all cursor-pointer ${
-                  currentTab === 'courses' || currentTab === 'create-course'
-                    ? 'bg-primary/10 text-primary shadow-subtle ring-1 ring-primary/20'
-                    : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                }`}
-              >
-                <BookOpen className="h-5 w-5 flex-shrink-0" />
-              </button>
+                  <button
+                    type="button"
+                    onClick={() => handleNavigate('courses')}
+                    title="Courses"
+                    className={`relative flex items-center justify-center w-full p-3 rounded-xl transition-all cursor-pointer ${currentTab === 'courses' || currentTab === 'create-course'
+                        ? 'bg-primary/10 text-primary shadow-subtle ring-1 ring-primary/20'
+                        : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                      }`}
+                  >
+                    <BookOpen className="h-5 w-5 flex-shrink-0" />
+                  </button>
+                </>
+              )}
 
               <button
                 type="button"
                 onClick={() => handleNavigate('calendar')}
                 title="Calendar"
-                className={`relative flex items-center justify-center w-full p-3 rounded-xl transition-all cursor-pointer ${
-                  currentTab === 'calendar'
+                className={`relative flex items-center justify-center w-full p-3 rounded-xl transition-all cursor-pointer ${currentTab === 'calendar'
                     ? 'bg-primary/10 text-primary shadow-subtle ring-1 ring-primary/20'
                     : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                }`}
+                  }`}
               >
                 <Calendar className="h-5 w-5 flex-shrink-0" />
               </button>
@@ -327,11 +336,10 @@ export const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
                 type="button"
                 onClick={() => handleNavigate('inbox')}
                 title="Inbox"
-                className={`relative flex items-center justify-center w-full p-3 rounded-xl transition-all cursor-pointer ${
-                  currentTab === 'inbox'
+                className={`relative flex items-center justify-center w-full p-3 rounded-xl transition-all cursor-pointer ${currentTab === 'inbox'
                     ? 'bg-primary/10 text-primary shadow-subtle ring-1 ring-primary/20'
                     : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                }`}
+                  }`}
               >
                 <Inbox className="h-5 w-5 flex-shrink-0" />
                 {unreadMessageCount > 0 && (
@@ -343,17 +351,56 @@ export const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
                 type="button"
                 onClick={() => handleNavigate('history')}
                 title="History"
-                className={`relative flex items-center justify-center w-full p-3 rounded-xl transition-all cursor-pointer ${
-                  currentTab === 'history'
+                className={`relative flex items-center justify-center w-full p-3 rounded-xl transition-all cursor-pointer ${currentTab === 'history'
                     ? 'bg-primary/10 text-primary shadow-subtle ring-1 ring-primary/20'
                     : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                }`}
+                  }`}
               >
                 <History className="h-5 w-5 flex-shrink-0" />
               </button>
             </div>
           )}
         </div>
+
+        {/* Module 5: Manage College Accounts (Admin Authority - Same level as LMS) */}
+        {activeRole === 'admin' && (
+          <div className="pt-2">
+            {!collapsed ? (
+              <button
+                type="button"
+                onClick={() => handleNavigate('accounts')}
+                title="Manage College Accounts"
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-150 ${currentTab === 'accounts'
+                    ? 'bg-primary text-primary-foreground font-bold shadow-primary-sm translate-x-0.5'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-accent font-medium'
+                  }`}
+              >
+                <div className="flex items-center space-x-2.5">
+                  <Users className="w-4 h-4 flex-shrink-0" />
+                  <span className="text-xs font-bold">Manage College Accounts</span>
+                </div>
+                <span className={`px-1.5 py-0.5 text-[9px] font-sans font-bold rounded-md ${currentTab === 'accounts'
+                    ? 'bg-white/20 text-white'
+                    : 'bg-muted text-muted-foreground border border-border'
+                  }`}>
+                  {(db?.users || []).length}
+                </span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => handleNavigate('accounts')}
+                title="Manage College Accounts"
+                className={`relative flex items-center justify-center w-full p-3 rounded-xl transition-all cursor-pointer ${currentTab === 'accounts'
+                    ? 'bg-primary/10 text-primary shadow-subtle ring-1 ring-primary/20'
+                    : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                  }`}
+              >
+                <Users className="h-5 w-5 flex-shrink-0" />
+              </button>
+            )}
+          </div>
+        )}
       </nav>
 
       {/* Bottom Profile / Utilities Area */}
@@ -362,9 +409,8 @@ export const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
           <div className="p-3 bg-card border border-border rounded-xl space-y-2.5 shadow-subtle">
             <div
               onClick={() => handleNavigate('profile')}
-              className={`flex items-center space-x-2.5 cursor-pointer p-1 rounded-lg transition-all ${
-                currentTab === 'profile' ? 'bg-primary/10 ring-1 ring-primary/30' : 'hover:opacity-80'
-              }`}
+              className={`flex items-center space-x-2.5 cursor-pointer p-1 rounded-lg transition-all ${currentTab === 'profile' ? 'bg-primary/10 ring-1 ring-primary/30' : 'hover:opacity-80'
+                }`}
               title="View Profile Page"
             >
               <img
@@ -378,9 +424,8 @@ export const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
                 </p>
                 <div className="flex items-center space-x-1 mt-1">
                   <span
-                    className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-md border text-[9px] font-sans font-bold ${
-                      roleBadges[activeRole]?.style
-                    }`}
+                    className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-md border text-[9px] font-sans font-bold ${roleBadges[activeRole]?.style
+                      }`}
                   >
                     {roleBadges[activeRole]?.icon}
                     <span>{roleBadges[activeRole]?.label}</span>
@@ -393,11 +438,10 @@ export const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
               <button
                 type="button"
                 onClick={() => handleNavigate('profile')}
-                className={`flex-1 flex items-center justify-center space-x-1 py-1.5 px-2 rounded-lg text-[11px] font-semibold border transition-all cursor-pointer ${
-                  currentTab === 'profile'
+                className={`flex-1 flex items-center justify-center space-x-1 py-1.5 px-2 rounded-lg text-[11px] font-semibold border transition-all cursor-pointer ${currentTab === 'profile'
                     ? 'bg-primary text-primary-foreground border-primary font-bold shadow-subtle'
                     : 'bg-muted/60 hover:bg-muted text-foreground border-border'
-                }`}
+                  }`}
               >
                 <User className="w-3 h-3 mr-1" />
                 <span>Profile</span>

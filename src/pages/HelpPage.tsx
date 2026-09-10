@@ -317,11 +317,17 @@ export const HelpPage: React.FC<HelpPageProps> = ({ onNavigateTab }) => {
                     }`}
                   />
                 </button>
-                {isOpen && (
-                  <div className="p-4 pt-1 text-xs text-muted-foreground leading-relaxed border-t border-border/50 animate-accordion">
-                    {faq.answer}
+                <div
+                  className={`grid transition-all duration-300 ease-in-out overflow-hidden ${
+                    isOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+                  }`}
+                >
+                  <div className="overflow-hidden min-h-0">
+                    <div className="p-4 pt-1 text-xs text-muted-foreground leading-relaxed border-t border-border/50">
+                      {faq.answer}
+                    </div>
                   </div>
-                )}
+                </div>
               </div>
             );
           })}

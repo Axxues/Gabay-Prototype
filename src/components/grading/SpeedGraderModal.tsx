@@ -8,8 +8,11 @@ export const SpeedGraderModal: React.FC = () => {
     activeSpeedGraderSubmissionId,
     closeSpeedGrader,
     db,
-    gradeSubmission
+    gradeSubmission,
+    activeRole
   } = useLMS();
+
+  const isAdmin = activeRole === 'admin';
 
   const { isClosing, startClose } = useModalAnimate(closeSpeedGrader, 200);
 
@@ -49,6 +52,7 @@ export const SpeedGraderModal: React.FC = () => {
   }, [currentSubmission.id]);
 
   const handleRubricScoreChange = (rubricId: string, score: number) => {
+    if (isAdmin) return;
     const updated = { ...rubricScores, [rubricId]: score };
     setRubricScores(updated);
 
@@ -58,6 +62,7 @@ export const SpeedGraderModal: React.FC = () => {
 
   const handleSaveGrade = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isAdmin) return;
     gradeSubmission(
       currentSubmission.id,
       Number(gradeInput),
@@ -80,6 +85,11 @@ export const SpeedGraderModal: React.FC = () => {
           <div className="px-2.5 py-1 text-xs font-sans font-bold bg-primary/10 text-primary rounded-lg border border-primary/20">
             SpeedGrader™ Workspace
           </div>
+          {isAdmin && (
+            <span className="px-2.5 py-0.5 text-[11px] font-sans font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-lg border border-amber-500/20">
+              Read-Only Audit Mode
+            </span>
+          )}
           <span className="text-muted-foreground/60">|</span>
           <span className="font-bold text-sm text-foreground">{assignment?.title}</span>
           <span className="text-xs font-sans text-muted-foreground">({course?.code})</span>
@@ -185,8 +195,9 @@ export const SpeedGraderModal: React.FC = () => {
                 min={0}
                 max={assignment?.pointsPossible || 100}
                 value={gradeInput}
+                disabled={isAdmin}
                 onChange={e => setGradeInput(Number(e.target.value))}
-                className="w-full p-2.5 bg-card border border-border rounded-xl font-sans text-xl font-extrabold text-primary focus:outline-hidden focus:ring-2 focus:ring-primary/30 text-center shadow-subtle"
+                className="w-full p-2.5 bg-card border border-border rounded-xl font-sans text-xl font-extrabold text-primary focus:outline-hidden focus:ring-2 focus:ring-primary/30 text-center shadow-subtle disabled:opacity-75 disabled:cursor-not-allowed"
               />
             </div>
 
@@ -214,12 +225,13 @@ export const SpeedGraderModal: React.FC = () => {
                           <button
                             key={rating.points}
                             type="button"
+                            disabled={isAdmin}
                             onClick={() => handleRubricScoreChange(r.id, rating.points)}
                             className={`p-2.5 rounded-lg text-left border text-[11px] transition-all ${
                               rubricScores[r.id] === rating.points
                                 ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/40 font-bold shadow-soft'
                                 : 'bg-card text-muted-foreground border-border hover:border-border/80'
-                            }`}
+                            } ${isAdmin ? 'cursor-default opacity-80' : 'cursor-pointer'}`}
                           >
                             <div className="flex justify-between font-sans">
                               <span>{rating.description}</span>
@@ -253,30 +265,38 @@ export const SpeedGraderModal: React.FC = () => {
                 </div>
               ))}
 
-              <textarea
-                rows={3}
-                value={newComment}
-                onChange={e => setNewComment(e.target.value)}
-                placeholder="Add private evaluation comment for student..."
-                className="w-full p-3 bg-card border border-border rounded-xl font-sans text-xs text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/30 shadow-subtle"
-              />
+              {!isAdmin && (
+                <textarea
+                  rows={3}
+                  value={newComment}
+                  onChange={e => setNewComment(e.target.value)}
+                  placeholder="Add private evaluation comment for student..."
+                  className="w-full p-3 bg-card border border-border rounded-xl font-sans text-xs text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/30 shadow-subtle"
+                />
+              )}
             </div>
 
             {/* Save Grade Button */}
-            <div className="space-y-2">
-              <button
-                type="submit"
-                className="w-full py-3 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all shadow-primary-sm flex items-center justify-center space-x-2 active:scale-[0.98]"
-              >
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Submit Final Grade & Feedback</span>
-              </button>
-              {isSaved && (
-                <div className="text-center font-sans text-[11px] text-emerald-600 dark:text-emerald-400 font-bold animate-pulse">
-                  Grade and rubric updated in GABAY database!
-                </div>
-              )}
-            </div>
+            {!isAdmin ? (
+              <div className="space-y-2">
+                <button
+                  type="submit"
+                  className="w-full py-3 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all shadow-primary-sm flex items-center justify-center space-x-2 active:scale-[0.98] cursor-pointer"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Submit Final Grade & Feedback</span>
+                </button>
+                {isSaved && (
+                  <div className="text-center font-sans text-[11px] text-emerald-600 dark:text-emerald-400 font-bold animate-pulse">
+                    Grade and rubric updated in GABAY database!
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="p-3 bg-muted/40 border border-border rounded-xl text-center font-sans text-xs text-muted-foreground">
+                🔒 SpeedGrader is in read-only audit mode for administrators.
+              </div>
+            )}
           </form>
         </div>
       </div>

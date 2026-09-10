@@ -128,6 +128,14 @@
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 
+  code,
+  pre,
+  kbd,
+  samp,
+  .font-mono {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif !important;
+  }
+
   *:focus-visible {
     outline: none;
   }

@@ -82,6 +82,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
   const badge = roleBadges[activeRole] || roleBadges.student;
 
   const userCourses = db.courses.filter(c => {
+    if (activeRole === 'student') return (currentUser.enrolledCourseIds || []).includes(c.id);
     if (activeRole === 'faculty') return c.instructorId === currentUser.id;
     return true;
   });

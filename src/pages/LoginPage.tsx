@@ -87,7 +87,7 @@ export const LoginPage: React.FC = () => {
           </div>
           <div>
             <h1 className="text-xl font-extrabold tracking-tight text-foreground font-sans">
-              GABAY LMS
+              GABAY
             </h1>
             <p className="text-xs text-muted-foreground mt-0.5">
               Sign in to your academic portal

@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gabay LMS Use Case Diagram</title>
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        mermaid.initialize({ startOnLoad: true, theme: 'default' });
+    </script>
+    <style>
+        body { 
+            font-family: 'Inter', sans-serif; 
+            margin: 0; 
+            padding: 40px;
+            background-color: #f8fafc;
+            color: #0f172a;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 40px;
+            color: #1e293b;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+        }
+        .mermaid { 
+            display: flex; 
+            justify-content: center; 
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Gabay LMS - Role-Based Use Case Diagram</h1>
+        <div class="mermaid">
+            flowchart LR
+                classDef actor fill:#f1f5f9,stroke:#64748b,stroke-width:2px,color:#0f172a,font-weight:bold
+                classDef usecase fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0f172a
+                
+                Admin((Admin)):::actor
+                Staff(("Non-Teaching Staff")):::actor
+                Faculty((Faculty)):::actor
+                Student((Student)):::actor
+                
+                subgraph Dashboard ["Dashboard"]
+                    UC1(["Read Dashboard & System Overview"]):::usecase
+                    UC2(["Create Course Shell"]):::usecase
+                    UC3(["View Enrolled Courses & To-Do"]):::usecase
+                end
+                
+                subgraph Courses_Contents ["Courses & Contents"]
+                    UC4(["Audit Courses Read-Only"]):::usecase
+                    UC5(["Manage Modules, Files, Quizzes, Assignments"]):::usecase
+                    UC6(["Grade Submissions & SpeedGrader"]):::usecase
+                    UC7(["Manage Course Roster & Syllabus"]):::usecase
+                    UC8(["View Modules, Files, Syllabus"]):::usecase
+                    UC9(["Submit Assignments & Take Quizzes"]):::usecase
+                    UC10(["View Personal Grades & What-If"]):::usecase
+                end
+                
+                subgraph CalendarModule ["Calendar"]
+                    UC11(["Manage All Courses & Milestones"]):::usecase
+                    UC12(["Manage Owned Courses Events"]):::usecase
+                    UC13(["View Calendar Read-Only"]):::usecase
+                end
+                
+                subgraph CommSupport ["Communication & Support"]
+                    UC14(["Use Inbox/Chat"]):::usecase
+                    UC15(["View History"]):::usecase
+                    UC16(["Use Help & Support"]):::usecase
+                end
+                
+                subgraph Administration ["Administration"]
+                    UC17(["Manage College Accounts"]):::usecase
+                end
+                
+                Admin --- UC1
+                Admin --- UC4
+                Admin --- UC11
+                Admin --- UC14
+                Admin --- UC15
+                Admin --- UC16
+                Admin --- UC17
+                
+                Faculty --- UC1
+                Faculty --- UC2
+                Faculty --- UC5
+                Faculty --- UC6
+                Faculty --- UC7
+                Faculty --- UC12
+                Faculty --- UC14
+                Faculty --- UC15
+                Faculty --- UC16
+                
+                UC13 --- Staff
+                UC14 --- Staff
+                UC15 --- Staff
+                UC16 --- Staff
+                
+                UC3 --- Student
+                UC8 --- Student
+                UC9 --- Student
+                UC10 --- Student
+                UC13 --- Student
+                UC14 --- Student
+                UC15 --- Student
+                UC16 --- Student
+        </div>
+    </div>
+</body>
+</html>

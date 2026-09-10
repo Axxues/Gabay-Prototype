@@ -21,9 +21,12 @@ import {
   BookOpen
 } from 'lucide-react';
 
+import { uploadFileToPublic } from '../utils/fileUploader';
+
 interface AddModuleItemPageProps {
   courseId: string;
   moduleId: string;
+  editingItem?: ModuleItem;
   onBack: () => void;
 }
 
@@ -56,8 +59,8 @@ const RESOURCE_TYPES: Array<{
     },
     {
       type: 'assignment',
-      label: 'Assignment Milestone',
-      badge: 'Assignment',
+      label: 'Activity Milestone',
+      badge: 'Activity',
       description: 'Graded student submission with deadline, instructions & rubric',
       icon: FileCheck2,
       iconBg: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
@@ -86,9 +89,11 @@ const RESOURCE_TYPES: Array<{
 export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
   courseId,
   moduleId,
+  editingItem,
   onBack
 }) => {
-  const { db, addModuleItem, showAlert } = useLMS();
+  const { db, addModuleItem, updateModuleItem, showAlert } = useLMS();
+  const isEditing = Boolean(editingItem);
 
   const course = db.courses.find(c => c.id === courseId);
   const courseModules = db.modules.filter(m => m.courseId === courseId);
@@ -98,9 +103,9 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
   });
   // Form State
   const [targetModuleId, setTargetModuleId] = useState(moduleId || sortedModules[0]?.id || '');
-  const [itemType, setItemType] = useState<ModuleItem['type']>('page');
-  const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
+  const [itemType, setItemType] = useState<ModuleItem['type']>(editingItem?.type || 'page');
+  const [title, setTitle] = useState(editingItem?.title || '');
+  const [content, setContent] = useState(editingItem?.content || '');
 
   // Custom Dropdown Open States
   const [isModuleDropdownOpen, setIsModuleDropdownOpen] = useState(false);
@@ -124,25 +129,17 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
   }, []);
 
   // Attachment State
-  const [attachedFileName, setAttachedFileName] = useState('');
-  const [attachedFileSize, setAttachedFileSize] = useState('');
-  const [attachedFileType, setAttachedFileType] = useState('');
-  const [attachedFileUrl, setAttachedFileUrl] = useState('');
+  const [attachedFileName, setAttachedFileName] = useState(editingItem?.fileName || '');
+  const [attachedFileSize, setAttachedFileSize] = useState(editingItem?.fileSize || '');
+  const [attachedFileType, setAttachedFileType] = useState(editingItem?.fileType || '');
+  const [attachedFileUrl, setAttachedFileUrl] = useState(editingItem?.fileUrl || '');
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const selectedModule = courseModules.find(m => m.id === targetModuleId);
   const currentResourceType = RESOURCE_TYPES.find(r => r.type === itemType) || RESOURCE_TYPES[0];
 
-  const formatBytes = (bytes: number): string => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-  };
-
-  const handleProcessFile = (file: globalThis.File) => {
+  const handleProcessFile = async (file: globalThis.File) => {
     if (file.size > 50 * 1024 * 1024) {
       showAlert({
         title: 'File Too Large',
@@ -152,22 +149,21 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = e => {
-      if (typeof e.target?.result === 'string') {
-        setAttachedFileUrl(e.target.result);
-        setAttachedFileName(file.name);
-        setAttachedFileSize(formatBytes(file.size));
-        setAttachedFileType(file.type || file.name.split('.').pop() || 'file');
+    try {
+      const result = await uploadFileToPublic(file);
+      setAttachedFileUrl(result.url);
+      setAttachedFileName(result.name);
+      setAttachedFileSize(result.size);
+      setAttachedFileType(result.type || 'file');
 
-        // Auto-populate title if empty
-        if (!title.trim()) {
-          const nameWithoutExt = file.name.replace(/\.[^/.]+$/, '');
-          setTitle(nameWithoutExt);
-        }
+      // Auto-populate title if empty
+      if (!title.trim()) {
+        const nameWithoutExt = file.name.replace(/\.[^/.]+$/, '');
+        setTitle(nameWithoutExt);
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      console.error('Failed to upload module item file:', err);
+    }
   };
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -207,6 +203,32 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
     }
 
     const savedTitle = title.trim();
+
+    if (isEditing && editingItem) {
+      updateModuleItem(
+        moduleId,
+        editingItem.id,
+        {
+          title: savedTitle,
+          type: itemType,
+          content: content.trim() || 'Unit resource instructions aligned with syllabus requirements.',
+          fileName: attachedFileName || undefined,
+          fileSize: attachedFileSize || undefined,
+          fileType: attachedFileType || undefined,
+          fileUrl: attachedFileUrl || undefined
+        },
+        targetModuleId
+      );
+
+      showAlert({
+        title: 'Module Item Updated',
+        message: `"${savedTitle}" has been updated successfully.`,
+        type: 'success'
+      });
+      onBack();
+      return;
+    }
+
     addModuleItem(targetModuleId, {
       title: savedTitle,
       type: itemType,
@@ -282,7 +304,7 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
             </span>
             <span className="text-muted-foreground/40">/</span>
             <span className="text-primary font-bold px-2.5 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-[11px]">
-              Add Item
+              {isEditing ? 'Edit Item' : 'Add Item'}
             </span>
           </div>
 
@@ -292,10 +314,13 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
               <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 shadow-xs">
                 <Layers className="w-5 h-5" />
               </div>
-              <span>Add Item to Module</span>
+              <span>{isEditing ? 'Edit Module Item' : 'Add Item to Module'}</span>
             </h1>
             <p className="text-xs sm:text-sm text-muted-foreground font-medium pl-0.5">
-              {course ? `${course.code} • ` : ''}Publish reading materials, assignments, quizzes, and attach downloadable files.
+              {course ? `${course.code} • ` : ''}
+              {isEditing
+                ? 'Update learning material, instructions, or attached files for this unit item.'
+                : 'Publish reading materials, assignments, quizzes, and attach downloadable files.'}
             </p>
           </div>
         </div>
@@ -621,20 +646,22 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
           >
             Cancel
           </button>
-          <button
-            type="button"
-            onClick={() => handleSave(true)}
-            className="px-5 py-2.5 text-xs font-bold bg-muted hover:bg-muted/80 text-foreground border border-border rounded-xl transition-all shadow-xs cursor-pointer active:scale-[0.98] flex items-center justify-center space-x-1.5"
-          >
-            <Plus className="w-3.5 h-3.5 text-primary" />
-            <span>Save & Add Another</span>
-          </button>
+          {!isEditing && (
+            <button
+              type="button"
+              onClick={() => handleSave(true)}
+              className="px-5 py-2.5 text-xs font-bold bg-muted hover:bg-muted/80 text-foreground border border-border rounded-xl transition-all shadow-xs cursor-pointer active:scale-[0.98] flex items-center justify-center space-x-1.5"
+            >
+              <Plus className="w-3.5 h-3.5 text-primary" />
+              <span>Save & Add Another</span>
+            </button>
+          )}
           <button
             type="submit"
             className="px-6 py-2.5 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all shadow-primary-sm cursor-pointer active:scale-[0.98] flex items-center justify-center space-x-2"
           >
             <Check className="w-4 h-4" />
-            <span>Save & Add to Module</span>
+            <span>{isEditing ? 'Save Changes' : 'Save & Add to Module'}</span>
           </button>
         </div>
       </form>

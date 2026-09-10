@@ -219,7 +219,7 @@ export const GlobalSearchDialog: React.FC<GlobalSearchDialogProps> = ({
                 {filteredResults.assignments.length > 0 && (
                   <div>
                     <div className="px-2 py-1 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                      Assignments
+                      Activities
                     </div>
                     <div className="space-y-1 mt-1">
                       {filteredResults.assignments.map(asg => (

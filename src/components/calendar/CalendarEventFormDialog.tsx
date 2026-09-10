@@ -1,5 +1,19 @@
-import React, { useState, useEffect } from 'react';
-import { X, Calendar, MapPin, Trash2, Check } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  X,
+  Calendar,
+  MapPin,
+  Trash2,
+  Check,
+  ChevronDown,
+  Layers,
+  Sun,
+  FileCheck2,
+  Flag,
+  UserCheck,
+  BookOpen,
+  HelpCircle
+} from 'lucide-react';
 import type { CalendarEvent, Course } from '../../types/lms';
 import { ModalPortal, useModalAnimate } from '../common/ModalPortal';
 
@@ -22,6 +36,66 @@ const PRESET_COLORS = [
   { label: 'Slate Zinc', hex: '#475569' }
 ];
 
+interface EventTypeOption {
+  value: CalendarEvent['type'];
+  label: string;
+  icon: React.ElementType;
+  iconColor: string;
+  defaultColor: string;
+}
+
+const EVENT_TYPE_OPTIONS: EventTypeOption[] = [
+  {
+    value: 'event',
+    label: 'General Event',
+    icon: Calendar,
+    iconColor: 'text-blue-500',
+    defaultColor: '#2563eb'
+  },
+  {
+    value: 'holiday',
+    label: 'Holiday',
+    icon: Sun,
+    iconColor: 'text-amber-500',
+    defaultColor: '#d97706'
+  },
+  {
+    value: 'assignment',
+    label: 'Assignment Deadline',
+    icon: FileCheck2,
+    iconColor: 'text-emerald-500',
+    defaultColor: '#059669'
+  },
+  {
+    value: 'milestone',
+    label: 'Curriculum Milestone',
+    icon: Flag,
+    iconColor: 'text-purple-500',
+    defaultColor: '#7c3aed'
+  },
+  {
+    value: 'advising',
+    label: 'Academic Advising',
+    icon: UserCheck,
+    iconColor: 'text-teal-500',
+    defaultColor: '#0d9488'
+  },
+  {
+    value: 'lecture',
+    label: 'Lecture / Class Session',
+    icon: BookOpen,
+    iconColor: 'text-indigo-500',
+    defaultColor: '#4f46e5'
+  },
+  {
+    value: 'exam',
+    label: 'Quiz / Major Examination',
+    icon: HelpCircle,
+    iconColor: 'text-rose-500',
+    defaultColor: '#e11d48'
+  }
+];
+
 interface CalendarEventFormDialogProps {
   isOpen: boolean;
   onClose: () => void;
@@ -30,6 +104,8 @@ interface CalendarEventFormDialogProps {
   courses: Course[];
   anchorDate: Date | null;
   initialEvent?: CalendarEvent | null;
+  readOnly?: boolean;
+  adminOnlyMilestones?: boolean;
 }
 
 export const CalendarEventFormDialog: React.FC<CalendarEventFormDialogProps> = ({
@@ -39,7 +115,9 @@ export const CalendarEventFormDialog: React.FC<CalendarEventFormDialogProps> = (
   onDelete,
   courses,
   anchorDate,
-  initialEvent
+  initialEvent,
+  readOnly = false,
+  adminOnlyMilestones = false
 }) => {
   const isEditing = !!initialEvent?.id;
   const { isClosing, startClose } = useModalAnimate(onClose, 200);
@@ -47,12 +125,33 @@ export const CalendarEventFormDialog: React.FC<CalendarEventFormDialogProps> = (
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [courseId, setCourseId] = useState<string>('');
-  const [eventType, setEventType] = useState<'assignment' | 'milestone' | 'advising' | 'lecture' | 'exam' | 'event'>('event');
+  const [eventType, setEventType] = useState<CalendarEvent['type']>('event');
   const [isAllDay, setIsAllDay] = useState(false);
   const [startDateStr, setStartDateStr] = useState('');
   const [endDateStr, setEndDateStr] = useState('');
   const [location, setLocation] = useState('');
   const [colorHex, setColorHex] = useState('#be185d');
+
+  // Custom dropdown open states
+  const [isCourseDropdownOpen, setIsCourseDropdownOpen] = useState(false);
+  const [isTypeDropdownOpen, setIsTypeDropdownOpen] = useState(false);
+
+  const courseDropdownRef = useRef<HTMLDivElement>(null);
+  const typeDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdowns on click outside
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (courseDropdownRef.current && !courseDropdownRef.current.contains(e.target as Node)) {
+        setIsCourseDropdownOpen(false);
+      }
+      if (typeDropdownRef.current && !typeDropdownRef.current.contains(e.target as Node)) {
+        setIsTypeDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -96,9 +195,16 @@ export const CalendarEventFormDialog: React.FC<CalendarEventFormDialogProps> = (
       setStartDateStr(toDatetimeLocalValue(base));
       setEndDateStr(toDatetimeLocalValue(end));
     }
+
+    setIsCourseDropdownOpen(false);
+    setIsTypeDropdownOpen(false);
   }, [isOpen, initialEvent, anchorDate]);
 
   if (!isOpen) return null;
+
+  const selectedCourse = courses.find(c => c.id === courseId);
+  const selectedTypeOption = EVENT_TYPE_OPTIONS.find(opt => opt.value === eventType) || EVENT_TYPE_OPTIONS[0];
+  const SelectedTypeIcon = selectedTypeOption.icon;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -112,8 +218,7 @@ export const CalendarEventFormDialog: React.FC<CalendarEventFormDialogProps> = (
     if (isAllDay) {
       const parts = startDateStr.split('-').map(Number);
       const s = new Date(parts[0], parts[1] - 1, parts[2], 0, 0, 0);
-      const endParts = (endDateStr || startDateStr).split('-').map(Number);
-      const e = new Date(endParts[0], endParts[1] - 1, endParts[2], 23, 59, 59);
+      const e = new Date(parts[0], parts[1] - 1, parts[2], 23, 59, 59);
 
       startIso = s.toISOString();
       endIso = e.toISOString();
@@ -168,13 +273,13 @@ export const CalendarEventFormDialog: React.FC<CalendarEventFormDialogProps> = (
         onClick={() => startClose()}
       >
         <div
-          className={`w-full max-w-lg bg-card border border-border rounded-2xl shadow-elevated overflow-hidden ${
+          className={`w-full max-w-lg bg-card border border-border rounded-2xl shadow-elevated overflow-visible ${
             isClosing ? 'animate-scale-out' : 'animate-scale-in'
           }`}
           onClick={e => e.stopPropagation()}
         >
           {/* Modal Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-muted/40">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-muted/40 rounded-t-2xl">
             <div className="flex items-center space-x-2.5">
               <div className="p-2 rounded-xl bg-primary/10 text-primary border border-primary/20">
                 <Calendar className="w-4 h-4" />
@@ -210,52 +315,198 @@ export const CalendarEventFormDialog: React.FC<CalendarEventFormDialogProps> = (
                 autoFocus
                 value={title}
                 onChange={e => setTitle(e.target.value)}
-                placeholder="e.g. Lab 3 Submission, Faculty Advising, Midterm Exam"
+                placeholder="e.g. Lab 3 Submission, Faculty Advising, Midterm Exam, Independence Day"
                 className="w-full p-2.5 bg-background border border-border focus:ring-2 focus:ring-primary/30 rounded-xl text-foreground text-xs shadow-inner font-sans"
               />
             </div>
 
-            {/* Event Category / Course Assignment */}
+            {/* Custom Dropdowns for Course Attachment and Event Type */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
+              {/* Custom Course Attachment Dropdown */}
+              <div className="relative" ref={courseDropdownRef}>
                 <label className="block font-bold text-foreground mb-1">
                   Course Attachment
                 </label>
-                <select
-                  value={courseId}
-                  onChange={e => {
-                    const val = e.target.value;
-                    setCourseId(val);
-                    const c = courses.find(item => item.id === val);
-                    if (c?.color) setColorHex(c.color);
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCourseDropdownOpen(prev => !prev);
+                    setIsTypeDropdownOpen(false);
                   }}
-                  className="w-full p-2.5 bg-background border border-border hover:border-primary/40 focus:border-primary focus:ring-2 focus:ring-primary/20 rounded-xl text-foreground text-xs font-sans font-medium outline-none shadow-subtle cursor-pointer transition-all"
+                  className={`w-full p-2.5 bg-background border rounded-xl text-foreground text-xs font-sans font-medium flex items-center justify-between shadow-subtle cursor-pointer transition-all ${
+                    isCourseDropdownOpen
+                      ? 'border-primary ring-2 ring-primary/20 text-primary'
+                      : 'border-border hover:border-primary/40'
+                  }`}
                 >
-                  <option value="">General / Institutional Milestone</option>
-                  {courses.map(c => (
-                    <option key={c.id} value={c.id}>
-                      {c.code} ({c.section})
-                    </option>
-                  ))}
-                </select>
+                  <div className="flex items-center space-x-2 truncate min-w-0 pr-1">
+                    {selectedCourse ? (
+                      <>
+                        <span
+                          className="w-2.5 h-2.5 rounded-full shrink-0 shadow-xs"
+                          style={{ backgroundColor: selectedCourse.color || '#64748b' }}
+                        />
+                        <span className="truncate font-semibold text-foreground">
+                          {selectedCourse.code} • {selectedCourse.title}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <div className="p-0.5 rounded bg-muted text-muted-foreground shrink-0">
+                          <Layers className="w-3.5 h-3.5" />
+                        </div>
+                        <span className="truncate text-foreground font-semibold">
+                          General / Institutional
+                        </span>
+                      </>
+                    )}
+                  </div>
+                  <ChevronDown
+                    className={`w-3.5 h-3.5 text-muted-foreground transition-transform duration-200 shrink-0 ${
+                      isCourseDropdownOpen ? 'rotate-180 text-primary' : 'rotate-0'
+                    }`}
+                  />
+                </button>
+
+                {/* Course Dropdown Menu */}
+                {isCourseDropdownOpen && (
+                  <div className="absolute left-0 right-0 top-full mt-1.5 dropdown-panel p-1.5 z-50 animate-dropdown max-h-56 overflow-y-auto custom-scrollbar shadow-elevated">
+                    <div className="px-2 py-1 text-[10px] font-sans font-bold uppercase tracking-wider text-muted-foreground border-b border-border/60 mb-1 flex items-center justify-between">
+                      <span>Select Course Context</span>
+                      {adminOnlyMilestones && (
+                        <span className="text-primary text-[9px]">Admin Milestone Scope</span>
+                      )}
+                    </div>
+                    {/* General / Institutional Milestone */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCourseId('');
+                        setIsCourseDropdownOpen(false);
+                      }}
+                      className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-sans transition-all text-left cursor-pointer ${
+                        courseId === ''
+                          ? 'bg-primary/15 text-primary font-bold border border-primary/30 shadow-xs'
+                          : 'text-foreground hover:bg-muted font-medium'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-2 truncate">
+                        <Layers className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                        <span className="truncate">General / Institutional Milestone</span>
+                      </div>
+                      {courseId === '' && <Check className="w-3.5 h-3.5 text-primary shrink-0 ml-1.5" />}
+                    </button>
+
+                    {/* Course list */}
+                    {courses.map(c => {
+                      const isSelected = courseId === c.id;
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => {
+                            setCourseId(c.id);
+                            if (c.color) setColorHex(c.color);
+                            setIsCourseDropdownOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-sans transition-all text-left cursor-pointer ${
+                            isSelected
+                              ? 'bg-primary/15 text-primary font-bold border border-primary/30 shadow-xs'
+                              : 'text-foreground hover:bg-muted font-medium'
+                          }`}
+                        >
+                          <div className="flex items-center space-x-2 truncate min-w-0">
+                            <span
+                              className="w-2.5 h-2.5 rounded-full shrink-0 shadow-xs"
+                              style={{ backgroundColor: c.color || '#64748b' }}
+                            />
+                            <div className="truncate">
+                              <span className="font-bold block truncate">{c.code}</span>
+                              <span className="text-[10px] text-muted-foreground block truncate font-normal">
+                                {c.title}
+                              </span>
+                            </div>
+                          </div>
+                          {isSelected && <Check className="w-3.5 h-3.5 text-primary shrink-0 ml-1.5" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
-              <div>
+              {/* Custom Event Type Dropdown */}
+              <div className="relative" ref={typeDropdownRef}>
                 <label className="block font-bold text-foreground mb-1">
                   Event Type
                 </label>
-                <select
-                  value={eventType}
-                  onChange={e => setEventType(e.target.value as any)}
-                  className="w-full p-2.5 bg-background border border-border hover:border-primary/40 focus:border-primary focus:ring-2 focus:ring-primary/20 rounded-xl text-foreground text-xs font-sans font-medium outline-none shadow-subtle cursor-pointer transition-all"
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsTypeDropdownOpen(prev => !prev);
+                    setIsCourseDropdownOpen(false);
+                  }}
+                  className={`w-full p-2.5 bg-background border rounded-xl text-foreground text-xs font-sans font-medium flex items-center justify-between shadow-subtle cursor-pointer transition-all ${
+                    isTypeDropdownOpen
+                      ? 'border-primary ring-2 ring-primary/20 text-primary'
+                      : 'border-border hover:border-primary/40'
+                  }`}
                 >
-                  <option value="event">General Event</option>
-                  <option value="assignment">Assignment Deadline</option>
-                  <option value="milestone">Curriculum Milestone</option>
-                  <option value="advising">Academic Advising / Office Hours</option>
-                  <option value="lecture">Lecture / Class Session</option>
-                  <option value="exam">Quiz / Major Examination</option>
-                </select>
+                  <div className="flex items-center space-x-2 truncate min-w-0 pr-1">
+                    <SelectedTypeIcon className={`w-3.5 h-3.5 shrink-0 ${selectedTypeOption.iconColor}`} />
+                    <span className="truncate font-semibold text-foreground">
+                      {selectedTypeOption.label}
+                    </span>
+                  </div>
+                  <ChevronDown
+                    className={`w-3.5 h-3.5 text-muted-foreground transition-transform duration-200 shrink-0 ${
+                      isTypeDropdownOpen ? 'rotate-180 text-primary' : 'rotate-0'
+                    }`}
+                  />
+                </button>
+
+                {/* Event Type Dropdown Menu */}
+                {isTypeDropdownOpen && (
+                  <div className="absolute left-0 right-0 top-full mt-1.5 dropdown-panel p-1.5 z-50 animate-dropdown max-h-60 overflow-y-auto custom-scrollbar shadow-elevated">
+                    <div className="px-2 py-1 text-[10px] font-sans font-bold uppercase tracking-wider text-muted-foreground border-b border-border/60 mb-1">
+                      Select Event Type
+                    </div>
+                    {EVENT_TYPE_OPTIONS.map(opt => {
+                      const isSelected = eventType === opt.value;
+                      const IconComp = opt.icon;
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => {
+                            setEventType(opt.value);
+                            if (opt.value === 'holiday') {
+                              setIsAllDay(true);
+                              setColorHex(opt.defaultColor);
+                              setStartDateStr(prev => prev.split('T')[0] || toDateOnlyValue(new Date()));
+                            }
+                            setIsTypeDropdownOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-sans transition-all text-left cursor-pointer ${
+                            isSelected
+                              ? 'bg-primary/15 text-primary font-bold border border-primary/30 shadow-xs'
+                              : 'text-foreground hover:bg-muted font-medium'
+                          }`}
+                        >
+                          <div className="flex items-center space-x-2.5 truncate min-w-0">
+                            <div className="p-1 rounded-md bg-muted shrink-0">
+                              <IconComp className={`w-3.5 h-3.5 ${opt.iconColor}`} />
+                            </div>
+                            <span className="font-bold block truncate text-foreground">
+                              {opt.label}
+                            </span>
+                          </div>
+                          {isSelected && <Check className="w-3.5 h-3.5 text-primary shrink-0 ml-1.5" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -270,7 +521,6 @@ export const CalendarEventFormDialog: React.FC<CalendarEventFormDialogProps> = (
                   setIsAllDay(checked);
                   if (checked) {
                     setStartDateStr(startDateStr.split('T')[0] || toDateOnlyValue(new Date()));
-                    setEndDateStr(endDateStr.split('T')[0] || toDateOnlyValue(new Date()));
                   } else {
                     const base = anchorDate ? new Date(anchorDate) : new Date();
                     base.setHours(9, 0, 0, 0);
@@ -287,33 +537,48 @@ export const CalendarEventFormDialog: React.FC<CalendarEventFormDialogProps> = (
               </label>
             </div>
 
-            {/* Date & Time Pickers */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* Date & Time Pickers - When All Day is checked, End Date is hidden */}
+            {isAllDay ? (
               <div>
                 <label className="block font-bold text-foreground mb-1">
-                  Start {isAllDay ? 'Date' : 'Time'}
+                  Event Date *
                 </label>
                 <input
-                  type={isAllDay ? 'date' : 'datetime-local'}
+                  type="date"
                   required
                   value={startDateStr}
                   onChange={e => setStartDateStr(e.target.value)}
                   className="w-full p-2.5 bg-background border border-border focus:ring-2 focus:ring-primary/30 rounded-xl text-foreground text-xs font-sans"
                 />
               </div>
-              <div>
-                <label className="block font-bold text-foreground mb-1">
-                  End {isAllDay ? 'Date' : 'Time'}
-                </label>
-                <input
-                  type={isAllDay ? 'date' : 'datetime-local'}
-                  required
-                  value={endDateStr}
-                  onChange={e => setEndDateStr(e.target.value)}
-                  className="w-full p-2.5 bg-background border border-border focus:ring-2 focus:ring-primary/30 rounded-xl text-foreground text-xs font-sans"
-                />
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-foreground mb-1">
+                    Start Time *
+                  </label>
+                  <input
+                    type="datetime-local"
+                    required
+                    value={startDateStr}
+                    onChange={e => setStartDateStr(e.target.value)}
+                    className="w-full p-2.5 bg-background border border-border focus:ring-2 focus:ring-primary/30 rounded-xl text-foreground text-xs font-sans"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-foreground mb-1">
+                    End Time *
+                  </label>
+                  <input
+                    type="datetime-local"
+                    required
+                    value={endDateStr}
+                    onChange={e => setEndDateStr(e.target.value)}
+                    className="w-full p-2.5 bg-background border border-border focus:ring-2 focus:ring-primary/30 rounded-xl text-foreground text-xs font-sans"
+                  />
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Location / Meeting Link */}
             <div>
@@ -377,34 +642,46 @@ export const CalendarEventFormDialog: React.FC<CalendarEventFormDialogProps> = (
             </div>
 
             {/* Modal Actions */}
-            <div className="pt-3 border-t border-border flex items-center justify-between">
-              {isEditing && onDelete ? (
-                <button
-                  type="button"
-                  onClick={handleDelete}
-                  className="px-3 py-2 text-xs font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-500/10 rounded-xl transition-all flex items-center space-x-1 cursor-pointer"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Delete Event</span>
-                </button>
-              ) : <div />}
-
-              <div className="flex items-center space-x-2">
+            {readOnly ? (
+              <div className="pt-3 border-t border-border flex items-center justify-end">
                 <button
                   type="button"
                   onClick={() => startClose()}
-                  className="px-4 py-2 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-colors cursor-pointer"
+                  className="px-5 py-2 text-xs font-bold bg-primary text-primary-foreground rounded-xl transition-all shadow-primary-sm cursor-pointer"
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all shadow-primary-sm cursor-pointer"
-                >
-                  {isEditing ? 'Save Changes' : 'Schedule Event'}
+                  Close
                 </button>
               </div>
-            </div>
+            ) : (
+              <div className="pt-3 border-t border-border flex items-center justify-between">
+                {isEditing && onDelete ? (
+                  <button
+                    type="button"
+                    onClick={handleDelete}
+                    className="px-3 py-2 text-xs font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-500/10 rounded-xl transition-all flex items-center space-x-1 cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete Event</span>
+                  </button>
+                ) : <div />}
+
+                <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => startClose()}
+                    className="px-4 py-2 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all shadow-primary-sm cursor-pointer"
+                  >
+                    {isEditing ? 'Save Changes' : 'Schedule Event'}
+                  </button>
+                </div>
+              </div>
+            )}
           </form>
         </div>
       </div>

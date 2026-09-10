@@ -4,19 +4,15 @@ import {
   Calendar as CalendarIcon,
   Clock,
   Plus,
-  UserCheck,
-  CheckCircle2,
   Filter,
   MapPin,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
-  Check,
-  X
+  Check
 } from 'lucide-react';
 import type { CalendarEvent } from '../types/lms';
 import { CalendarEventFormDialog } from '../components/calendar/CalendarEventFormDialog';
-import { AnimatedModal } from '../components/common/ModalPortal';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 
@@ -44,16 +40,17 @@ function dayKey(d: Date): string {
 
 export const CalendarPage: React.FC = () => {
   const {
-    activeRole,
     db,
-    bookAdvisingSlot,
-    createAdvisingSlot,
+    activeRole,
     addCalendarEvent,
     updateCalendarEvent,
     deleteCalendarEvent,
     showAlert,
     showConfirm
   } = useLMS();
+
+  const isReadOnlyCalendar = activeRole === 'staff' || activeRole === 'student';
+  const isAdminCalendar = activeRole === 'admin';
 
   // Cell We Go Month Cursor
   const [cursor, setCursor] = useState<Date>(() => startOfMonth(new Date()));
@@ -68,12 +65,6 @@ export const CalendarPage: React.FC = () => {
   const [eventDialogOpen, setEventDialogOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
   const [anchorDate, setAnchorDate] = useState<Date | null>(null);
-
-  // Advising office hours modal
-  const [showAdvisingModal, setShowAdvisingModal] = useState(false);
-  const [advisingDate, setAdvisingDate] = useState(() => dayKey(new Date()));
-  const [advisingTime, setAdvisingTime] = useState('10:00 AM - 10:30 AM');
-  const [advisingLocation, setAdvisingLocation] = useState('CS Faculty Office / Zoom');
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -159,10 +150,6 @@ export const CalendarPage: React.FC = () => {
   const selectedDayKey = dayKey(selectedDay);
   const selectedDayEvents = dayEventsMap.get(selectedDayKey) || [];
 
-  const selectedDayAdvisingSlots = useMemo(() => {
-    return db.advisingSlots.filter(s => s.date === selectedDayKey);
-  }, [db.advisingSlots, selectedDayKey]);
-
   // Event actions
   const openAddEvent = (d: Date) => {
     setEditingEvent(null);
@@ -207,17 +194,6 @@ export const CalendarPage: React.FC = () => {
       },
       'Delete Scheduled Event'
     );
-  };
-
-  const handleCreateAdvising = (e: React.FormEvent) => {
-    e.preventDefault();
-    createAdvisingSlot(advisingDate, advisingTime, advisingLocation);
-    setShowAdvisingModal(false);
-    showAlert({
-      title: 'Advising Slot Created',
-      message: `Office hours slot published for ${advisingDate}.`,
-      type: 'success'
-    });
   };
 
   return (
@@ -272,7 +248,7 @@ export const CalendarPage: React.FC = () => {
                   <span className="text-[10px] font-sans font-bold uppercase tracking-wider text-muted-foreground">
                     Filter Events
                   </span>
-                  <span className="text-[9px] font-mono px-2 py-0.5 rounded-full bg-primary/10 text-primary font-bold">
+                  <span className="text-[9px] font-sans px-2 py-0.5 rounded-full bg-primary/10 text-primary font-bold">
                     {db.courses.length + 1} options
                   </span>
                 </div>
@@ -375,14 +351,16 @@ export const CalendarPage: React.FC = () => {
           </div>
 
           {/* Primary Action Button */}
-          <button
-            type="button"
-            onClick={() => openAddEvent(selectedDay)}
-            className="px-3.5 py-2 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all shadow-primary-sm flex items-center space-x-1.5 cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Schedule Event</span>
-          </button>
+          {!isReadOnlyCalendar && (
+            <button
+              type="button"
+              onClick={() => openAddEvent(selectedDay)}
+              className="px-3.5 py-2 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all shadow-primary-sm flex items-center space-x-1.5 cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Schedule Event</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -421,7 +399,6 @@ export const CalendarPage: React.FC = () => {
                   const isSelected = selectedDay && isSameDay(cell, selectedDay);
                   const cellKey = dayKey(cell);
                   const dayEvents = dayEventsMap.get(cellKey) || [];
-                  const dayAdvising = db.advisingSlots.filter(s => s.date === cellKey);
 
                   return (
                     <div
@@ -447,17 +424,19 @@ export const CalendarPage: React.FC = () => {
                           {cell.getDate()}
                         </span>
 
-                        <button
-                          type="button"
-                          onClick={e => {
-                            e.stopPropagation();
-                            openAddEvent(cell);
-                          }}
-                          className="opacity-0 group-hover:opacity-100 p-1 rounded-md hover:bg-primary/15 text-primary transition-opacity cursor-pointer"
-                          title="Schedule event on this date"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                        </button>
+                        {!isReadOnlyCalendar && (
+                          <button
+                            type="button"
+                            onClick={e => {
+                              e.stopPropagation();
+                              openAddEvent(cell);
+                            }}
+                            className="opacity-0 group-hover:opacity-100 p-1 rounded-md hover:bg-primary/15 text-primary transition-opacity cursor-pointer"
+                            title="Schedule event on this date"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
 
                       {/* Event Chips (Cell We Go Styling) */}
@@ -480,17 +459,6 @@ export const CalendarPage: React.FC = () => {
                             </div>
                           );
                         })}
-
-                        {/* Advising Slots indicator */}
-                        {dayAdvising.length > 0 && dayEvents.length < 3 && (
-                          <div
-                            className="w-full text-left rounded-md px-1.5 py-0.5 text-[9px] font-sans font-bold bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30 truncate flex items-center space-x-1"
-                            title={`${dayAdvising.length} Advising Slot(s)`}
-                          >
-                            <UserCheck className="w-2.5 h-2.5 shrink-0" />
-                            <span className="truncate">Advising ({dayAdvising.length})</span>
-                          </div>
-                        )}
 
                         {/* +N More Indicator */}
                         {dayEvents.length > 3 && (
@@ -545,13 +513,15 @@ export const CalendarPage: React.FC = () => {
               {selectedDayEvents.length === 0 ? (
                 <div className="p-4 rounded-xl border border-border/80 bg-muted/20 text-center space-y-1">
                   <p className="text-xs text-muted-foreground font-medium">No events scheduled for this day.</p>
-                  <button
-                    type="button"
-                    onClick={() => openAddEvent(selectedDay)}
-                    className="text-xs font-bold text-primary hover:underline cursor-pointer"
-                  >
-                    + Click here to add an event
-                  </button>
+                  {!isReadOnlyCalendar && (
+                    <button
+                      type="button"
+                      onClick={() => openAddEvent(selectedDay)}
+                      className="text-xs font-bold text-primary hover:underline cursor-pointer"
+                    >
+                      + Click here to add an event
+                    </button>
+                  )}
                 </div>
               ) : (
                 selectedDayEvents.map(ev => (
@@ -597,90 +567,6 @@ export const CalendarPage: React.FC = () => {
                 ))
               )}
             </div>
-
-            {/* Academic Advising Office Hours Section */}
-            <div className="pt-3 border-t border-border space-y-2.5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-1.5 text-xs font-bold text-foreground">
-                  <UserCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                  <span>Advising Office Hours</span>
-                </div>
-                {(activeRole === 'faculty' || activeRole === 'admin') && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAdvisingDate(selectedDayKey);
-                      setShowAdvisingModal(true);
-                    }}
-                    className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 hover:underline cursor-pointer"
-                  >
-                    + Open Slot
-                  </button>
-                )}
-              </div>
-
-              {selectedDayAdvisingSlots.length === 0 ? (
-                <p className="text-[11px] text-muted-foreground">
-                  No faculty office hours posted for this day.
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {selectedDayAdvisingSlots.map(slot => (
-                    <div
-                      key={slot.id}
-                      className="p-3 bg-muted/30 border border-border rounded-xl space-y-2 text-xs"
-                    >
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <div className="font-bold text-foreground">{slot.instructorName}</div>
-                          <div className="text-[10px] font-sans text-muted-foreground flex items-center space-x-1 mt-0.5">
-                            <Clock className="w-3 h-3" />
-                            <span>{slot.timeSlot}</span>
-                          </div>
-                          <div className="text-[10px] font-sans text-muted-foreground flex items-center space-x-1 mt-0.5">
-                            <MapPin className="w-3 h-3" />
-                            <span>{slot.location}</span>
-                          </div>
-                        </div>
-
-                        <span className={`px-2 py-0.5 text-[9px] font-sans font-bold uppercase rounded border ${
-                          slot.status === 'available'
-                            ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20'
-                            : 'bg-muted text-muted-foreground border-border'
-                        }`}>
-                          {slot.status}
-                        </span>
-                      </div>
-
-                      {slot.status === 'booked' && (
-                        <div className="text-[10px] font-sans bg-muted/60 p-2 rounded-lg text-foreground border border-border">
-                          Booked by: <span className="font-bold">{slot.bookedByStudentName}</span>
-                          {slot.notes && <p className="italic text-muted-foreground mt-0.5">"{slot.notes}"</p>}
-                        </div>
-                      )}
-
-                      {activeRole === 'student' && slot.status === 'available' && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            bookAdvisingSlot(slot.id);
-                            showAlert({
-                              title: 'Appointment Booked',
-                              message: `Advising appointment booked with ${slot.instructorName}!`,
-                              type: 'success'
-                            });
-                          }}
-                          className="w-full py-1.5 text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl transition-all shadow-subtle flex items-center justify-center space-x-1.5 cursor-pointer active:scale-[0.98]"
-                        >
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>Book Advising Slot</span>
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
           </div>
         </aside>
       </div>
@@ -697,85 +583,9 @@ export const CalendarPage: React.FC = () => {
         courses={db.courses}
         anchorDate={anchorDate}
         initialEvent={editingEvent}
+        readOnly={isReadOnlyCalendar}
+        adminOnlyMilestones={isAdminCalendar}
       />
-
-      {/* Faculty Office Hours Modal */}
-      <AnimatedModal
-        isOpen={showAdvisingModal}
-        onClose={() => setShowAdvisingModal(false)}
-        panelClassName="w-full max-w-md bg-card border border-border rounded-2xl p-6 space-y-4 shadow-elevated"
-      >
-        {({ startClose }) => (
-          <>
-            <div className="flex items-center justify-between pb-2 border-b border-border">
-              <h3 className="font-bold text-base text-foreground flex items-center space-x-2">
-                <UserCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                <span>Open Advising Office Hours</span>
-              </h3>
-              <button
-                type="button"
-                onClick={startClose}
-                className="p-1 text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted transition-colors cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateAdvising} className="space-y-4 text-xs">
-              <div>
-                <label className="block font-bold text-foreground mb-1">Date</label>
-                <input
-                  type="date"
-                  required
-                  value={advisingDate}
-                  onChange={e => setAdvisingDate(e.target.value)}
-                  className="w-full p-2.5 bg-background border border-border focus:ring-2 focus:ring-primary/30 rounded-xl text-foreground font-sans"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-foreground mb-1">Time Window</label>
-                <input
-                  type="text"
-                  required
-                  value={advisingTime}
-                  onChange={e => setAdvisingTime(e.target.value)}
-                  placeholder="e.g. 10:00 AM - 10:30 AM"
-                  className="w-full p-2.5 bg-background border border-border focus:ring-2 focus:ring-primary/30 rounded-xl text-foreground font-sans"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-foreground mb-1">Office Location / Link</label>
-                <input
-                  type="text"
-                  required
-                  value={advisingLocation}
-                  onChange={e => setAdvisingLocation(e.target.value)}
-                  placeholder="e.g. CS Faculty Office Room 204 or Zoom Link"
-                  className="w-full p-2.5 bg-background border border-border focus:ring-2 focus:ring-primary/30 rounded-xl text-foreground"
-                />
-              </div>
-
-              <div className="pt-2 flex justify-end space-x-2">
-                <button
-                  type="button"
-                  onClick={startClose}
-                  className="px-4 py-2 text-xs font-bold text-muted-foreground hover:bg-muted rounded-xl transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl transition-all shadow-card cursor-pointer"
-                >
-                  Publish Slot
-                </button>
-              </div>
-            </form>
-          </>
-        )}
-      </AnimatedModal>
     </div>
   );
 };

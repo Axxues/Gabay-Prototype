@@ -19,7 +19,9 @@ import type {
   Discussion,
   DiscussionReply,
   CourseFile,
-  CourseFolder
+  CourseFolder,
+  CourseStudentGrade,
+  ChatGroup
 } from '../types/lms';
 import initialMockData from '../data/mockData.json';
 import { AlertModal, type AlertModalOptions } from '../components/common/AlertModal';
@@ -67,12 +69,23 @@ interface LMSContextType {
   createAssignment: (asg: Partial<Assignment>) => Assignment;
   deleteAssignment: (asgId: string) => void;
   createModule: (courseId: string, title: string) => Module;
+  updateModule: (moduleId: string, updates: Partial<Module>) => void;
+  deleteModule: (moduleId: string) => void;
   addModuleItem: (moduleId: string, item: Partial<ModuleItem>) => void;
+  updateModuleItem: (currentModuleId: string, itemId: string, updates: Partial<ModuleItem>, targetModuleId?: string) => void;
+  deleteModuleItem: (moduleId: string, itemId: string) => void;
   createQuiz: (quiz: Partial<Quiz>) => Quiz;
   recordQuizSubmission: (quizId: string, studentId: string, score: number, answers: Record<string, string>) => void;
   enrollPerson: (person: Partial<User>, courseId?: string) => void;
+  enrollStudentsInCourse: (studentIds: string[], courseId: string) => void;
+  createUser: (userData: Partial<User>) => User;
+  updateUser: (userId: string, updates: Partial<User>) => void;
+  deleteUser: (userId: string) => { success: boolean; message?: string };
+  joinCourseByCode: (joinCode: string) => { success: boolean; message: string; course?: Course };
+  regenerateCourseJoinCode: (courseId: string) => string;
   updateSyllabus: (courseId: string, updates: Partial<Course>) => void;
   updateCourseSyllabus: (courseId: string, syllabus: OfficialSyllabusData) => void;
+  removeCourseSyllabus: (courseId: string) => void;
   importCommonsTemplate: (templateId: string, targetCourseId: string) => { success: boolean; message: string };
 
   gradeSubmission: (
@@ -93,7 +106,10 @@ interface LMSContextType {
   editModuleComment: (moduleId: string, commentId: string, newContent: string) => void;
   deleteModuleComment: (moduleId: string, commentId: string) => void;
   toggleLikeModuleComment: (moduleId: string, commentId: string) => void;
-  sendMessage: (recipientId: string, subject: string, body: string, courseId?: string) => void;
+  sendMessage: (recipientId: string, subject: string, body: string, courseId?: string, attachmentName?: string, attachmentSize?: string, isGroup?: boolean, groupId?: string) => void;
+  createChatGroup: (name: string, memberIds: string[], courseId?: string) => ChatGroup;
+  markThreadAsRead: (partnerId: string) => void;
+  toggleMessageReaction: (messageId: string, reaction: string) => void;
   bookAdvisingSlot: (slotId: string) => void;
   createAdvisingSlot: (date: string, timeSlot: string, location: string) => void;
   addCalendarEvent: (event: Omit<CalendarEvent, 'id'>) => void;
@@ -124,26 +140,97 @@ interface LMSContextType {
   updateFileVisibility: (fileId: string, visibility: 'published' | 'unpublished' | 'restricted') => void;
   renameCourseFile: (fileId: string, newName: string) => void;
 
+  // Course Grades CRUD (Midterm 40%, Final 60%)
+  setCourseStudentGrade: (
+    courseId: string,
+    studentId: string,
+    type: 'midterm' | 'final',
+    score: number | null
+  ) => void;
+
   logHistory: (path: string, title: string) => void;
   clearHistory: () => void;
   resetData: () => void;
 }
 
-const STORAGE_KEY_DB = 'gabay_lms_db_v3';
+const STORAGE_KEY_DB = 'gabay_lms_db_v5';
 const STORAGE_KEY_THEME = 'gabay_theme_v1';
 const STORAGE_KEY_SESSION = 'gabay_auth_session_v1';
 
+// Aggressive cleanup of bloated past storage keys to reclaim browser quota
+const purgeOldStorageKeys = () => {
+  try {
+    const legacyKeys = [
+      'gabay_lms_db',
+      'gabay_lms_db_v1',
+      'gabay_lms_db_v2',
+      'gabay_lms_db_v3',
+      'gabay_lms_db_v4',
+      'gabay_lms_db_backup'
+    ];
+    legacyKeys.forEach(k => {
+      try {
+        localStorage.removeItem(k);
+      } catch (_) {}
+    });
+  } catch (_) {}
+};
+
+// Immediately run purge on module evaluation
+purgeOldStorageKeys();
+
+const safeSetLocalStorage = (key: string, value: string): boolean => {
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch (err) {
+    console.warn(`LocalStorage quota reached when setting "${key}". Purging legacy caches...`, err);
+    try {
+      purgeOldStorageKeys();
+      localStorage.setItem(key, value);
+      return true;
+    } catch (retryErr) {
+      console.warn(`LocalStorage setItem retry failed for "${key}".`, retryErr);
+      return false;
+    }
+  }
+};
+
 const LMSContext = createContext<LMSContextType | undefined>(undefined);
+
+export const generateCourseJoinCode = (existingCourses: Course[] = [], prefix?: string): string => {
+  const chars = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
+  const cleanPrefix = (prefix || 'GBY')
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .slice(0, 4)
+    .toUpperCase() || 'GBY';
+
+  for (let attempt = 0; attempt < 200; attempt++) {
+    let randomPart = '';
+    for (let i = 0; i < 4; i++) {
+      randomPart += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    const candidate = `${cleanPrefix}-${randomPart}`;
+    if (!existingCourses.some(c => c.joinCode?.toUpperCase() === candidate)) {
+      return candidate;
+    }
+  }
+  return `${cleanPrefix}-${Date.now().toString(36).toUpperCase().slice(-4)}`;
+};
 
 export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Theme state
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY_THEME);
-    return saved === 'light' ? 'light' : 'dark';
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_THEME);
+      return saved === 'light' ? 'light' : 'dark';
+    } catch (_) {
+      return 'dark';
+    }
   });
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_THEME, theme);
+    safeSetLocalStorage(STORAGE_KEY_THEME, theme);
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
     } else {
@@ -157,9 +244,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Database State
   const [db, setDb] = useState<MockDatabase>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY_DB);
-    if (saved) {
-      try {
+    purgeOldStorageKeys();
+
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_DB);
+      if (saved) {
         const parsed = JSON.parse(saved) as MockDatabase;
         // Merge saved users with initialMockData users to ensure base accounts exist and enrolled users persist
         const existingUserMap = new Map((parsed.users || []).map(u => [u.id, u]));
@@ -171,7 +260,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         parsed.users = Array.from(existingUserMap.values());
         parsed.submissions = parsed.submissions || [];
 
-        // Ensure announcements, discussions, files fall back to initialMockData if empty
+        // Ensure announcements, discussions, files, messages fall back to initialMockData if empty
         const initialMock = initialMockData as unknown as MockDatabase;
         if (!parsed.announcements || parsed.announcements.length === 0) {
           parsed.announcements = initialMock.announcements || [];
@@ -186,6 +275,69 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           parsed.courseFolders = initialMock.courseFolders || [];
         }
 
+        // Merge messages with initialMockData messages
+        if (!parsed.messages || parsed.messages.length === 0) {
+          parsed.messages = (initialMock.messages || []) as Message[];
+        } else {
+          const initialMap = new Map(((initialMock.messages || []) as Message[]).map(m => [m.id, m]));
+          const existingMsgMap = new Map((parsed.messages || []).map(m => {
+            const initMsg = initialMap.get(m.id);
+            if (initMsg) {
+              return [m.id, { ...m, timestamp: initMsg.timestamp }];
+            }
+            return [m.id, m];
+          }));
+          ((initialMock.messages || []) as Message[]).forEach(m => {
+            if (!existingMsgMap.has(m.id)) {
+              existingMsgMap.set(m.id, m);
+            }
+          });
+          parsed.messages = Array.from(existingMsgMap.values());
+        }
+
+        // Merge chatGroups with initialMockData chatGroups
+        if (!parsed.chatGroups || parsed.chatGroups.length === 0) {
+          parsed.chatGroups = (initialMock.chatGroups || []) as ChatGroup[];
+        } else {
+          const existingGroupMap = new Map((parsed.chatGroups || []).map(g => [g.id, g]));
+          ((initialMock.chatGroups || []) as ChatGroup[]).forEach(g => {
+            if (!existingGroupMap.has(g.id)) {
+              existingGroupMap.set(g.id, g);
+            }
+          });
+          parsed.chatGroups = Array.from(existingGroupMap.values());
+        }
+
+        // Ensure announcements have persistent attachment URLs in /uploads/
+        if (parsed.announcements) {
+          const initialAnnouncements = (initialMock.announcements || []) as Announcement[];
+          parsed.announcements = parsed.announcements.map(ann => {
+            const initialAnn = initialAnnouncements.find(ia => ia.id === ann.id);
+            if (ann.attachments && ann.attachments.length > 0) {
+              const updatedAttachments = ann.attachments.map(att => {
+                if (!att.url) {
+                  const initialAtt = initialAnn?.attachments?.find(ia => ia.name === att.name);
+                  const resolvedUrl = initialAtt?.url || `/uploads/${att.name}`;
+                  return { ...att, url: resolvedUrl };
+                }
+                return att;
+              });
+              return { ...ann, attachments: updatedAttachments };
+            }
+            return ann;
+          });
+        }
+
+        // Ensure courseFiles have static /uploads/ URLs
+        if (parsed.courseFiles) {
+          parsed.courseFiles = parsed.courseFiles.map(cf => {
+            if (!cf.fileUrl) {
+              return { ...cf, fileUrl: `/uploads/${cf.name}` };
+            }
+            return cf;
+          });
+        }
+
         // Sync sample item attachment and comments if missing in local cache
         if (parsed.modules && parsed.modules.length > 0) {
           const mod1 = parsed.modules.find(m => m.id === 'mod-131-1');
@@ -197,10 +349,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const mod2 = parsed.modules.find(m => m.id === 'mod-131-2');
           if (mod2) {
             const itm = mod2.items.find(i => i.id === 'item-131-21');
-            if (itm && !itm.fileName) {
-              itm.fileName = 'CHED-CMO-25-Series-2015-Standards.pdf';
-              itm.fileSize = '2.4 MB';
-              itm.fileType = 'pdf';
+            if (itm) {
+              if (!itm.fileName) itm.fileName = 'CHED-CMO-25-Series-2015-Standards.pdf';
+              if (!itm.fileUrl) itm.fileUrl = '/uploads/CHED-CMO-25-Series-2015-Standards.pdf';
+              if (!itm.fileSize) itm.fileSize = '2.4 MB';
+              if (!itm.fileType) itm.fileType = 'pdf';
             }
             if (!mod2.comments || mod2.comments.length === 0) {
               const initialMod2 = (initialMock.modules || []).find(m => m.id === 'mod-131-2');
@@ -209,16 +362,99 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
         }
 
+        if (parsed.courses) {
+          const hasCspc = parsed.courses.some((c: Course) => c.id === 'crs-cspc112');
+          if (!hasCspc) {
+            const initialCspc = (initialMockData.courses as Course[]).find(c => c.id === 'crs-cspc112');
+            if (initialCspc) parsed.courses.push(initialCspc);
+          }
+
+          // Ensure all courses have a unique joinCode
+          const mockCourses = initialMockData.courses as Course[];
+          parsed.courses = parsed.courses.map((c: Course) => {
+            if (!c.joinCode) {
+              const fromMock = mockCourses.find(mc => mc.id === c.id);
+              return { ...c, joinCode: fromMock?.joinCode || generateCourseJoinCode(parsed.courses, c.code) };
+            }
+            return c;
+          });
+        }
+
+        if (parsed.users) {
+          const mockUsers = initialMockData.users as User[];
+          parsed.users = parsed.users.map((u: User) => {
+            if (u.role === 'student' && (!u.enrolledCourseIds || u.enrolledCourseIds.length === 0)) {
+              const fromMock = mockUsers.find(mu => mu.id === u.id);
+              return { ...u, enrolledCourseIds: fromMock?.enrolledCourseIds || ['crs-cmsc131', 'crs-cmsc150'] };
+            }
+            return u;
+          });
+        }
+
         return parsed;
-      } catch (e) {
-        console.error('Failed to parse saved LMS db', e);
       }
+    } catch (e) {
+      console.error('Failed to parse saved LMS db', e);
     }
+
     return initialMockData as unknown as MockDatabase;
   });
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_DB, JSON.stringify(db));
+    try {
+      // Sanitize database before saving: strip large data URLs from course syllabi
+      const sanitizedCourses = (db.courses || []).map(course => {
+        if (!course.syllabus) return course;
+        if (course.syllabus.sourceDocument?.fileDataUrl?.startsWith('data:')) {
+          return {
+            ...course,
+            syllabus: {
+              ...course.syllabus,
+              sourceDocument: {
+                ...course.syllabus.sourceDocument,
+                fileDataUrl: undefined
+              }
+            }
+          };
+        }
+        return course;
+      });
+
+      const payload = JSON.stringify({
+        ...db,
+        courses: sanitizedCourses
+      });
+
+      const savedOk = safeSetLocalStorage(STORAGE_KEY_DB, payload);
+      if (!savedOk) {
+        // Tier 1 fallback: Prune heavy source document data from syllabus to fit quota
+        const compactCourses = (db.courses || []).map(c => ({
+          ...c,
+          syllabus: c.syllabus ? {
+            ...c.syllabus,
+            sourceDocument: c.syllabus.sourceDocument ? {
+              fileName: c.syllabus.sourceDocument.fileName,
+              fileSize: c.syllabus.sourceDocument.fileSize,
+              fileType: c.syllabus.sourceDocument.fileType,
+              uploadedAt: c.syllabus.sourceDocument.uploadedAt
+            } : undefined
+          } : c.syllabus
+        }));
+        const compactPayload = JSON.stringify({ ...db, courses: compactCourses });
+        const retry1 = safeSetLocalStorage(STORAGE_KEY_DB, compactPayload);
+
+        if (!retry1) {
+          // Tier 2 fallback: Strip syllabus objects entirely from storage
+          const ultraTrimmed = (db.courses || []).map(c => ({
+            ...c,
+            syllabus: c.syllabus === null ? null : undefined
+          }));
+          safeSetLocalStorage(STORAGE_KEY_DB, JSON.stringify({ ...db, courses: ultraTrimmed }));
+        }
+      }
+    } catch (err: any) {
+      console.warn('LocalStorage save skipped; state maintained in memory safely:', err);
+    }
   }, [db]);
 
   // Authentication State
@@ -273,13 +509,15 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     setCurrentUser(matchedUser);
-    localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(matchedUser));
+    safeSetLocalStorage(STORAGE_KEY_SESSION, JSON.stringify(matchedUser));
     return { success: true };
   };
 
   const logout = () => {
     setCurrentUser(null);
-    localStorage.removeItem(STORAGE_KEY_SESSION);
+    try {
+      localStorage.removeItem(STORAGE_KEY_SESSION);
+    } catch (_) {}
     setIsUserProfileModalOpen(false);
     setIsRoleModalOpen(false);
   };
@@ -288,7 +526,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const userWithRole = db.users.find(u => u.role === role);
     if (userWithRole) {
       setCurrentUser(userWithRole);
-      localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(userWithRole));
+      safeSetLocalStorage(STORAGE_KEY_SESSION, JSON.stringify(userWithRole));
     }
   };
 
@@ -369,6 +607,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // ==========================================
 
   const createCourse = (courseData: Partial<Course>): Course => {
+    const uniqueJoinCode =
+      courseData.joinCode?.trim().toUpperCase() ||
+      generateCourseJoinCode(db.courses, courseData.code);
+
     const newCourse: Course = {
       id: `crs-${Date.now().toString(36)}`,
       code: courseData.code || 'CMSC 199',
@@ -382,7 +624,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       enrolledCount: courseData.enrolledCount || 1,
       credits: courseData.credits || 3,
       chedComplianceCode: courseData.chedComplianceCode || 'CMO-25-2015',
-      image: courseData.image || ''
+      image: courseData.image || '',
+      joinCode: uniqueJoinCode
     };
 
     setDb(prev => ({
@@ -470,6 +713,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       title,
       order: db.modules.filter(m => m.courseId === courseId).length + 1,
       published: true,
+      authorId: activeUser.id,
+      authorName: activeUser.name,
       items: []
     };
 
@@ -479,6 +724,25 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
 
     return newModule;
+  };
+
+  const updateModule = (moduleId: string, updates: Partial<Module>) => {
+    setDb(prev => ({
+      ...prev,
+      modules: (prev.modules || []).map(mod => {
+        if (mod.id === moduleId) {
+          return { ...mod, ...updates };
+        }
+        return mod;
+      })
+    }));
+  };
+
+  const deleteModule = (moduleId: string) => {
+    setDb(prev => ({
+      ...prev,
+      modules: (prev.modules || []).filter(m => m.id !== moduleId)
+    }));
   };
 
   const addModuleItem = (moduleId: string, itemData: Partial<ModuleItem>) => {
@@ -496,6 +760,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       fileName: itemData.fileName,
       fileSize: itemData.fileSize,
       fileType: itemData.fileType,
+      authorId: itemData.authorId || activeUser.id,
+      authorName: itemData.authorName || activeUser.name,
       completed: false
     };
 
@@ -506,6 +772,79 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           return {
             ...mod,
             items: [...mod.items, newItem]
+          };
+        }
+        return mod;
+      })
+    }));
+  };
+
+  const updateModuleItem = (
+    currentModuleId: string,
+    itemId: string,
+    updates: Partial<ModuleItem>,
+    targetModuleId?: string
+  ) => {
+    setDb(prev => {
+      const destModuleId = targetModuleId || currentModuleId;
+
+      // If item stays in the same module
+      if (destModuleId === currentModuleId) {
+        return {
+          ...prev,
+          modules: (prev.modules || []).map(mod => {
+            if (mod.id === currentModuleId) {
+              return {
+                ...mod,
+                items: mod.items.map(it => (it.id === itemId ? { ...it, ...updates } : it))
+              };
+            }
+            return mod;
+          })
+        };
+      }
+
+      // If moving item to another module
+      let movedItem: ModuleItem | null = null;
+      const modulesWithItemRemoved = (prev.modules || []).map(mod => {
+        if (mod.id === currentModuleId) {
+          const item = mod.items.find(it => it.id === itemId);
+          if (item) {
+            movedItem = { ...item, ...updates };
+          }
+          return {
+            ...mod,
+            items: mod.items.filter(it => it.id !== itemId)
+          };
+        }
+        return mod;
+      });
+
+      if (!movedItem) return prev;
+
+      return {
+        ...prev,
+        modules: modulesWithItemRemoved.map(mod => {
+          if (mod.id === destModuleId) {
+            return {
+              ...mod,
+              items: [...mod.items, movedItem!]
+            };
+          }
+          return mod;
+        })
+      };
+    });
+  };
+
+  const deleteModuleItem = (moduleId: string, itemId: string) => {
+    setDb(prev => ({
+      ...prev,
+      modules: (prev.modules || []).map(mod => {
+        if (mod.id === moduleId) {
+          return {
+            ...mod,
+            items: mod.items.filter(it => it.id !== itemId)
           };
         }
         return mod;
@@ -618,6 +957,168 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
+  const enrollStudentsInCourse = (studentIds: string[], courseId: string) => {
+    const targetCourseId = courseId || activeCourseId;
+    if (!targetCourseId || studentIds.length === 0) return;
+
+    setDb(prev => {
+      let newlyEnrolledCount = 0;
+      const updatedUsers = prev.users.map(u => {
+        if (studentIds.includes(u.id)) {
+          const currentCourses = u.enrolledCourseIds || [];
+          if (!currentCourses.includes(targetCourseId)) {
+            newlyEnrolledCount++;
+            return {
+              ...u,
+              enrolledCourseIds: [...currentCourses, targetCourseId]
+            };
+          }
+        }
+        return u;
+      });
+
+      const updatedCourses = prev.courses.map(c => {
+        if (c.id === targetCourseId) {
+          return {
+            ...c,
+            enrolledCount: (c.enrolledCount || 0) + newlyEnrolledCount
+          };
+        }
+        return c;
+      });
+
+      return {
+        ...prev,
+        users: updatedUsers,
+        courses: updatedCourses
+      };
+    });
+  };
+
+  const createUser = (userData: Partial<User>): User => {
+    const role = userData.role || 'student';
+    const newUser: User = {
+      id: userData.id || `usr-${role.slice(0, 4)}-${Date.now().toString(36)}`,
+      name: userData.name?.trim() || 'New User',
+      email: userData.email?.trim() || `user.${Date.now()}@dmmmsu.edu.ph`,
+      role: role,
+      avatar: userData.avatar?.trim() || (
+        role === 'admin'
+          ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'
+          : role === 'faculty'
+          ? 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80'
+          : role === 'staff'
+          ? 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80'
+          : 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80'
+      ),
+      studentId: role === 'student' ? (userData.studentId?.trim() || `2026-SLUC-${Math.floor(1000 + Math.random() * 9000)}`) : undefined,
+      department: userData.department?.trim() || 'Department of Computer Science',
+      title: userData.title?.trim() || (role === 'student' ? 'Student' : role === 'faculty' ? 'Faculty Instructor' : role === 'admin' ? 'College Administrator' : 'Staff'),
+      password: userData.password?.trim() || 'gabay2026',
+      enrolledCourseIds: userData.enrolledCourseIds || (role === 'student' ? ['crs-cmsc131', 'crs-cmsc150'] : [])
+    };
+
+    setDb(prev => ({
+      ...prev,
+      users: [newUser, ...prev.users]
+    }));
+
+    return newUser;
+  };
+
+  const updateUser = (userId: string, updates: Partial<User>) => {
+    setDb(prev => ({
+      ...prev,
+      users: prev.users.map(u => (u.id === userId ? { ...u, ...updates } : u))
+    }));
+
+    if (currentUser && currentUser.id === userId) {
+      const updatedCurrent = { ...currentUser, ...updates };
+      setCurrentUser(updatedCurrent);
+      safeSetLocalStorage(STORAGE_KEY_SESSION, JSON.stringify(updatedCurrent));
+    }
+  };
+
+  const deleteUser = (userId: string): { success: boolean; message?: string } => {
+    if (activeUser.id === userId) {
+      return {
+        success: false,
+        message: 'You cannot delete your own active account.'
+      };
+    }
+
+    const userToDelete = db.users.find(u => u.id === userId);
+    if (!userToDelete) {
+      return { success: false, message: 'User not found.' };
+    }
+
+    setDb(prev => ({
+      ...prev,
+      users: prev.users.filter(u => u.id !== userId)
+    }));
+
+    return {
+      success: true,
+      message: `Account for ${userToDelete.name} has been deleted.`
+    };
+  };
+
+  const joinCourseByCode = (code: string): { success: boolean; message: string; course?: Course } => {
+    const cleanCode = code.trim().toUpperCase();
+    if (!cleanCode) {
+      return { success: false, message: 'Please enter a valid course join code.' };
+    }
+
+    const targetCourse = db.courses.find(c => c.joinCode?.toUpperCase() === cleanCode);
+    if (!targetCourse) {
+      return { success: false, message: `No course found matching code "${cleanCode}". Please verify with your instructor.` };
+    }
+
+    const currentEnrolled = activeUser.enrolledCourseIds || [];
+    if (currentEnrolled.includes(targetCourse.id)) {
+      return {
+        success: false,
+        message: `You are already enrolled in ${targetCourse.code} (${targetCourse.title}).`,
+        course: targetCourse
+      };
+    }
+
+    const updatedEnrolled = [...currentEnrolled, targetCourse.id];
+    const updatedUser: User = {
+      ...activeUser,
+      enrolledCourseIds: updatedEnrolled
+    };
+
+    setCurrentUser(updatedUser);
+    safeSetLocalStorage(STORAGE_KEY_SESSION, JSON.stringify(updatedUser));
+
+    setDb(prev => ({
+      ...prev,
+      users: prev.users.map(u => (u.id === activeUser.id ? updatedUser : u)),
+      courses: prev.courses.map(c =>
+        c.id === targetCourse.id ? { ...c, enrolledCount: (c.enrolledCount || 0) + 1 } : c
+      )
+    }));
+
+    setActiveCourseId(targetCourse.id);
+
+    return {
+      success: true,
+      message: `Successfully joined ${targetCourse.code} - ${targetCourse.title}!`,
+      course: targetCourse
+    };
+  };
+
+  const regenerateCourseJoinCode = (courseId: string): string => {
+    const targetCourse = db.courses.find(c => c.id === courseId);
+    const newCode = generateCourseJoinCode(db.courses, targetCourse?.code);
+    setDb(prev => ({
+      ...prev,
+      courses: prev.courses.map(c => (c.id === courseId ? { ...c, joinCode: newCode } : c))
+    }));
+    return newCode;
+  };
+
   const updateSyllabus = (courseId: string, updates: Partial<Course>) => {
     setDb(prev => ({
       ...prev,
@@ -626,9 +1127,20 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateCourseSyllabus = (courseId: string, syllabus: OfficialSyllabusData) => {
+    const boundSyllabus: OfficialSyllabusData = {
+      ...syllabus,
+      courseId
+    };
     setDb(prev => ({
       ...prev,
-      courses: prev.courses.map(c => (c.id === courseId ? { ...c, syllabus } : c))
+      courses: prev.courses.map(c => (c.id === courseId ? { ...c, syllabus: boundSyllabus } : c))
+    }));
+  };
+
+  const removeCourseSyllabus = (courseId: string) => {
+    setDb(prev => ({
+      ...prev,
+      courses: prev.courses.map(c => (c.id === courseId ? { ...c, syllabus: null } : c))
     }));
   };
 
@@ -870,28 +1382,109 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   };
 
-  const sendMessage = (recipientId: string, subject: string, body: string, courseId?: string) => {
+  const sendMessage = (
+    recipientId: string,
+    subject: string,
+    body: string,
+    courseId?: string,
+    attachmentName?: string,
+    attachmentSize?: string,
+    isGroupParam?: boolean,
+    groupIdParam?: string
+  ) => {
+    const matchedGroup = (db.chatGroups || []).find(g => g.id === (groupIdParam || recipientId));
     const recipient = db.users.find(u => u.id === recipientId);
-    if (!recipient) return;
-    const course = db.courses.find(c => c.id === courseId);
+    const isGroup = isGroupParam !== undefined ? isGroupParam : !!matchedGroup;
+    if (!recipient && !matchedGroup) return;
+
+    const course = db.courses.find(c => c.id === (courseId || matchedGroup?.courseId));
 
     const newMsg: Message = {
-      id: `msg-${Date.now()}`,
+      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       senderId: activeUser.id,
       senderName: activeUser.name,
       senderRole: activeRole,
-      recipientId: recipient.id,
-      recipientName: recipient.name,
-      recipientRole: recipient.role,
-      courseId,
+      recipientId: isGroup ? matchedGroup!.id : recipient!.id,
+      recipientName: isGroup ? matchedGroup!.name : recipient!.name,
+      recipientRole: isGroup ? 'student' : recipient!.role,
+      courseId: course?.id,
       courseCode: course?.code,
       subject,
       body,
       timestamp: new Date().toISOString(),
-      read: false
+      read: false,
+      attachmentName,
+      attachmentSize,
+      isGroup,
+      groupId: isGroup ? (groupIdParam || matchedGroup?.id) : undefined
     };
 
-    setDb(prev => ({ ...prev, messages: [newMsg, ...prev.messages] }));
+    setDb(prev => ({ ...prev, messages: [newMsg, ...(prev.messages || [])] }));
+  };
+
+  const createChatGroup = (name: string, memberIds: string[], courseId?: string): ChatGroup => {
+    const course = db.courses.find(c => c.id === courseId);
+    const allMembers = Array.from(new Set([activeUser.id, ...memberIds]));
+
+    const newGroup: ChatGroup = {
+      id: `grp-${Date.now()}`,
+      name: name.trim() || 'New Study Group',
+      memberIds: allMembers,
+      courseId,
+      courseCode: course?.code,
+      createdAt: new Date().toISOString(),
+      createdBy: activeUser.id
+    };
+
+    const welcomeMsg: Message = {
+      id: `msg-${Date.now()}-welcome`,
+      senderId: activeUser.id,
+      senderName: activeUser.name,
+      senderRole: activeRole,
+      recipientId: newGroup.id,
+      recipientName: newGroup.name,
+      recipientRole: 'student',
+      courseId: course?.id,
+      courseCode: course?.code,
+      subject: `Welcome to ${newGroup.name}`,
+      body: `Group created by ${activeUser.name}. Welcome everyone!`,
+      timestamp: new Date().toISOString(),
+      read: true,
+      groupId: newGroup.id,
+      isGroup: true
+    };
+
+    setDb(prev => ({
+      ...prev,
+      chatGroups: [newGroup, ...(prev.chatGroups || [])],
+      messages: [welcomeMsg, ...(prev.messages || [])]
+    }));
+
+    return newGroup;
+  };
+
+  const markThreadAsRead = (partnerId: string) => {
+    setDb(prev => ({
+      ...prev,
+      messages: (prev.messages || []).map(m => {
+        if (m.senderId === partnerId && m.recipientId === activeUser.id && !m.read) {
+          return { ...m, read: true };
+        }
+        return m;
+      })
+    }));
+  };
+
+  const toggleMessageReaction = (messageId: string, reaction: string) => {
+    setDb(prev => ({
+      ...prev,
+      messages: (prev.messages || []).map(m => {
+        if (m.id === messageId) {
+          return { ...m, reaction: m.reaction === reaction ? undefined : reaction };
+        }
+        return m;
+      })
+    }));
   };
 
   const bookAdvisingSlot = (slotId: string) => {
@@ -1218,10 +1811,130 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteCourseFile = (fileId: string) => {
-    setDb(prev => ({
-      ...prev,
-      courseFiles: (prev.courseFiles || []).filter(f => f.id !== fileId)
-    }));
+    setDb(prev => {
+      // 1. Direct course files
+      const updatedCourseFiles = (prev.courseFiles || []).filter(f => f.id !== fileId);
+
+      // 2. Module item file
+      let updatedModules = prev.modules;
+      if (fileId.startsWith('mod-file-')) {
+        const itemId = fileId.replace('mod-file-', '');
+        updatedModules = (prev.modules || []).map(m => ({
+          ...m,
+          items: m.items
+            .map(item => {
+              if (item.id === itemId) {
+                return {
+                  ...item,
+                  fileName: undefined,
+                  fileUrl: undefined,
+                  fileSize: undefined,
+                  fileType: undefined
+                };
+              }
+              return item;
+            })
+            .filter(item => !(item.type === 'file' && item.id === itemId))
+        }));
+      }
+
+      // 3. Announcement attachment
+      let updatedAnnouncements = prev.announcements;
+      if (fileId.startsWith('ann-file-')) {
+        const parts = fileId.split('-');
+        const attIdx = Number(parts[parts.length - 1]);
+        updatedAnnouncements = (prev.announcements || []).map(ann => {
+          if (fileId.includes(ann.id)) {
+            return {
+              ...ann,
+              attachments: (ann.attachments || []).filter((_, idx) => idx !== attIdx)
+            };
+          }
+          return ann;
+        });
+      }
+
+      // 4. Assignment / Activity handout file
+      let updatedAssignments = prev.assignments;
+      if (fileId.startsWith('asg-file-')) {
+        const asgId = fileId.replace('asg-file-', '');
+        updatedAssignments = (prev.assignments || []).map(asg => {
+          if (asg.id === asgId) {
+            return {
+              ...asg,
+              fileName: undefined,
+              fileUrl: undefined,
+              fileSize: undefined
+            };
+          }
+          return asg;
+        });
+      }
+
+      // 5. Submission file
+      let updatedSubmissions = prev.submissions;
+      if (fileId.startsWith('sub-file-')) {
+        const subId = fileId.replace('sub-file-', '');
+        updatedSubmissions = (prev.submissions || []).map(sub => {
+          if (sub.id === subId) {
+            return {
+              ...sub,
+              fileName: undefined,
+              fileUrl: undefined
+            };
+          }
+          return sub;
+        });
+      }
+
+      // 6. Quiz reference or question file
+      let updatedQuizzes = prev.quizzes;
+      if (fileId.startsWith('quiz-file-')) {
+        const quizId = fileId.replace('quiz-file-', '');
+        updatedQuizzes = (prev.quizzes || []).map(q => {
+          if (q.id === quizId) {
+            return {
+              ...q,
+              fileName: undefined,
+              fileUrl: undefined,
+              fileSize: undefined
+            } as any;
+          }
+          return q;
+        });
+      } else if (fileId.startsWith('quiz-q-file-')) {
+        updatedQuizzes = (prev.quizzes || []).map(q => {
+          if (fileId.includes(q.id)) {
+            return {
+              ...q,
+              questions: (q.questions || []).map((question: any) => {
+                if (fileId.includes(question.id)) {
+                  return {
+                    ...question,
+                    imageUrl: undefined,
+                    imageName: undefined,
+                    fileUrl: undefined,
+                    fileName: undefined
+                  };
+                }
+                return question;
+              })
+            };
+          }
+          return q;
+        });
+      }
+
+      return {
+        ...prev,
+        courseFiles: updatedCourseFiles,
+        modules: updatedModules,
+        announcements: updatedAnnouncements,
+        assignments: updatedAssignments,
+        submissions: updatedSubmissions,
+        quizzes: updatedQuizzes
+      };
+    });
   };
 
   const deleteCourseFolder = (folderId: string) => {
@@ -1242,12 +1955,93 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const renameCourseFile = (fileId: string, newName: string) => {
-    setDb(prev => ({
-      ...prev,
-      courseFiles: (prev.courseFiles || []).map(f =>
+    setDb(prev => {
+      const updatedCourseFiles = (prev.courseFiles || []).map(f =>
         f.id === fileId ? { ...f, name: newName, updatedAt: new Date().toISOString() } : f
-      )
-    }));
+      );
+
+      let updatedModules = prev.modules;
+      if (fileId.startsWith('mod-file-')) {
+        const itemId = fileId.replace('mod-file-', '');
+        updatedModules = (prev.modules || []).map(m => ({
+          ...m,
+          items: m.items.map(item =>
+            item.id === itemId ? { ...item, fileName: newName } : item
+          )
+        }));
+      }
+
+      let updatedAnnouncements = prev.announcements;
+      if (fileId.startsWith('ann-file-')) {
+        const parts = fileId.split('-');
+        const attIdx = Number(parts[parts.length - 1]);
+        updatedAnnouncements = (prev.announcements || []).map(ann => {
+          if (fileId.includes(ann.id)) {
+            return {
+              ...ann,
+              attachments: (ann.attachments || []).map((att, idx) =>
+                idx === attIdx ? { ...att, name: newName } : att
+              )
+            };
+          }
+          return ann;
+        });
+      }
+
+      let updatedAssignments = prev.assignments;
+      if (fileId.startsWith('asg-file-')) {
+        const asgId = fileId.replace('asg-file-', '');
+        updatedAssignments = (prev.assignments || []).map(asg =>
+          asg.id === asgId ? { ...asg, fileName: newName } : asg
+        );
+      }
+
+      return {
+        ...prev,
+        courseFiles: updatedCourseFiles,
+        modules: updatedModules,
+        announcements: updatedAnnouncements,
+        assignments: updatedAssignments
+      };
+    });
+  };
+
+  const setCourseStudentGrade = (
+    courseId: string,
+    studentId: string,
+    type: 'midterm' | 'final',
+    score: number | null
+  ) => {
+    setDb(prev => {
+      const existingGrades = prev.courseGrades || [];
+      const index = existingGrades.findIndex(
+        g => g.courseId === courseId && g.studentId === studentId
+      );
+
+      let updatedList: CourseStudentGrade[];
+      if (index >= 0) {
+        const item = { ...existingGrades[index] };
+        if (type === 'midterm') item.midtermGrade = score;
+        if (type === 'final') item.finalGrade = score;
+        item.updatedAt = new Date().toISOString();
+        updatedList = [...existingGrades];
+        updatedList[index] = item;
+      } else {
+        const newItem: CourseStudentGrade = {
+          courseId,
+          studentId,
+          midtermGrade: type === 'midterm' ? score : null,
+          finalGrade: type === 'final' ? score : null,
+          updatedAt: new Date().toISOString()
+        };
+        updatedList = [...existingGrades, newItem];
+      }
+
+      return {
+        ...prev,
+        courseGrades: updatedList
+      };
+    });
   };
 
   const clearHistory = () => {
@@ -1297,12 +2091,23 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         createAssignment,
         deleteAssignment,
         createModule,
+        updateModule,
+        deleteModule,
         addModuleItem,
+        updateModuleItem,
+        deleteModuleItem,
         createQuiz,
         recordQuizSubmission,
         enrollPerson,
+        enrollStudentsInCourse,
+        createUser,
+        updateUser,
+        deleteUser,
+        joinCourseByCode,
+        regenerateCourseJoinCode,
         updateSyllabus,
         updateCourseSyllabus,
+        removeCourseSyllabus,
         importCommonsTemplate,
         gradeSubmission,
         submitAssignment,
@@ -1313,6 +2118,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteModuleComment,
         toggleLikeModuleComment,
         sendMessage,
+        createChatGroup,
+        markThreadAsRead,
+        toggleMessageReaction,
         bookAdvisingSlot,
         createAdvisingSlot,
         addCalendarEvent,
@@ -1336,6 +2144,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteCourseFolder,
         updateFileVisibility,
         renameCourseFile,
+        setCourseStudentGrade,
         logHistory,
         clearHistory,
         resetData

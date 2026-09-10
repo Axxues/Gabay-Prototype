@@ -10,10 +10,9 @@ import {
   ChevronRight,
   Plus,
   Trash2,
-  X,
   ArrowLeft
 } from 'lucide-react';
-import { AnimatedModal } from '../components/common/ModalPortal';
+import { CreateAssignmentPage } from './CreateAssignmentPage';
 
 interface AssignmentsViewProps {
   courseId: string;
@@ -33,7 +32,6 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
     activeUser,
     db,
     submitAssignment,
-    createAssignment,
     deleteAssignment,
     openSpeedGrader,
     showAlert,
@@ -49,14 +47,8 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
   const [simulatedFileName, setSimulatedFileName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Create Assignment Modal State
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [newTitle, setNewTitle] = useState('');
-  const [newInstructions, setNewInstructions] = useState('');
-  const [newCategory, setNewCategory] = useState('Laboratory');
-  const [newPoints, setNewPoints] = useState(100);
-  const [newWeight, setNewWeight] = useState(20);
-  const [newDueDate, setNewDueDate] = useState('');
+  // Full Page Create Assignment State
+  const [isCreatingAssignment, setIsCreatingAssignment] = useState(false);
 
   const currentSubmission = selectedAssignment
     ? db.submissions.find(s => s.assignmentId === selectedAssignment.id && s.studentId === activeUser.id)
@@ -85,49 +77,37 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
       );
       setIsSubmitting(false);
       showAlert({
-        title: "Assignment Submitted",
+        title: "Activity Submitted",
         message: "Your submission has been recorded successfully.",
         type: "success"
       });
     }, 600);
   };
 
-  const handleCreateAssignment = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTitle.trim()) {
-      showAlert("Please provide an assignment title.");
-      return;
-    }
-
-    const created = createAssignment({
-      courseId,
-      title: newTitle.trim(),
-      instructions: newInstructions.trim() || 'Complete the assignment guidelines aligned with course syllabus objectives.',
-      category: newCategory,
-      pointsPossible: Number(newPoints) || 100,
-      weight: Number(newWeight) || 20,
-      dueDate: newDueDate || new Date(Date.now() + 7 * 86400000).toISOString(),
-      submissionTypes: ['file', 'online_text'],
-      published: true
-    });
-
-    setIsCreateModalOpen(false);
-    setNewTitle('');
-    setNewInstructions('');
-    setNewDueDate('');
-    onSelectAssignment(created.id);
-  };
-
   const handleDelete = (asgId: string) => {
     showConfirm(
-      "Are you sure you want to delete this assignment and all associated student submissions?",
+      "Are you sure you want to delete this activity and all associated student submissions?",
       () => {
         deleteAssignment(asgId);
         onSelectAssignment(null);
       },
-      "Delete Assignment"
+      "Delete Activity"
     );
   };
+
+  // If user clicked create assignment, render dedicated full page
+  if (isCreatingAssignment) {
+    return (
+      <CreateAssignmentPage
+        courseId={courseId}
+        onBack={() => setIsCreatingAssignment(false)}
+        onAssignmentCreated={asgId => {
+          setIsCreatingAssignment(false);
+          onSelectAssignment(asgId);
+        }}
+      />
+    );
+  }
 
   // If no assignment selected, render assignment list
   if (!selectedAssignment) {
@@ -146,20 +126,20 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
         <div className="flex items-center justify-between pb-3 border-b border-border">
           <div>
             <h2 className="text-xl font-bold tracking-tight text-foreground">
-              Assignments
+              Activities
             </h2>
             <p className="text-xs text-muted-foreground">
-              Course assignments and laboratory tasks.
+              Course activities and laboratory tasks.
             </p>
           </div>
 
-          {(activeRole === 'faculty' || activeRole === 'admin') && (
+          {activeRole === 'faculty' && (
             <button
-              onClick={() => setIsCreateModalOpen(true)}
+              onClick={() => setIsCreatingAssignment(true)}
               className="px-3.5 py-2 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all shadow-subtle flex items-center space-x-1.5 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              <span>+ Create Assignment</span>
+              <span>Create Activity</span>
             </button>
           )}
         </div>
@@ -167,7 +147,7 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
         <div className="space-y-3">
           {courseAssignments.length === 0 ? (
             <div className="p-8 text-center bg-card rounded-xl border border-border text-xs text-muted-foreground">
-              No assignments published for this course yet.
+              No activities published for this course yet.
             </div>
           ) : (
             courseAssignments.map(asg => {
@@ -191,7 +171,7 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
                       </h3>
                       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground mt-1 font-sans">
                         <span className="px-2 py-0.5 rounded bg-muted text-[10px] font-bold text-foreground">
-                          {asg.category} ({asg.weight}%)
+                          {asg.category}
                         </span>
                         <span>•</span>
                         <span>Due: {new Date(asg.dueDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
@@ -226,129 +206,6 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
             })
           )}
         </div>
-
-        {/* Modal: Create Assignment */}
-        <AnimatedModal
-          isOpen={isCreateModalOpen}
-          onClose={() => setIsCreateModalOpen(false)}
-          panelClassName="w-full max-w-lg bg-card border border-border rounded-2xl shadow-elevated overflow-hidden z-10 flex flex-col max-h-[90vh]"
-        >
-          {({ startClose }) => (
-            <>
-              {/* Header */}
-              <div className="px-6 py-4 border-b border-border bg-muted/40 flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <div className="p-2 rounded-lg bg-primary/10 text-primary border border-primary/20">
-                    <Plus className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-foreground">Create New Assignment</h3>
-                    <p className="text-[10px] font-sans text-muted-foreground">OBE Course Assessment Milestone</p>
-                  </div>
-                </div>
-                <button
-                  onClick={startClose}
-                  className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Form */}
-              <form onSubmit={handleCreateAssignment} className="p-6 overflow-y-auto space-y-4 text-xs">
-                <div>
-                  <label className="block font-bold text-foreground mb-1">Assignment Title *</label>
-                  <input
-                    type="text"
-                    required
-                    value={newTitle}
-                    onChange={e => setNewTitle(e.target.value)}
-                    placeholder="e.g. Lab Exercise 4: React State Architecture"
-                    className="w-full p-2.5 bg-background border border-border rounded-xl text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/40 focus:border-primary font-sans outline-none"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block font-bold text-foreground mb-1">Category</label>
-                    <select
-                      value={newCategory}
-                      onChange={e => setNewCategory(e.target.value)}
-                      className="w-full p-2.5 bg-background border border-border hover:border-primary/40 focus:border-primary focus:ring-2 focus:ring-primary/20 rounded-xl text-foreground text-xs font-sans font-medium outline-none shadow-subtle cursor-pointer transition-all"
-                    >
-                      <option value="Laboratory">Laboratory Exercise</option>
-                      <option value="Homework">Problem Set / Homework</option>
-                      <option value="Exams">Major Examination</option>
-                      <option value="Project">Capstone / Term Project</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block font-bold text-foreground mb-1">Total Points Possible</label>
-                    <input
-                      type="number"
-                      min={1}
-                      value={newPoints}
-                      onChange={e => setNewPoints(Number(e.target.value))}
-                      className="w-full p-2.5 bg-background border border-border rounded-xl text-foreground font-sans outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block font-bold text-foreground mb-1">Grading Weight (%)</label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={100}
-                      value={newWeight}
-                      onChange={e => setNewWeight(Number(e.target.value))}
-                      className="w-full p-2.5 bg-background border border-border rounded-xl text-foreground font-sans outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-bold text-foreground mb-1">Due Date</label>
-                    <input
-                      type="datetime-local"
-                      value={newDueDate}
-                      onChange={e => setNewDueDate(e.target.value)}
-                      className="w-full p-2.5 bg-background border border-border rounded-xl text-foreground font-sans outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block font-bold text-foreground mb-1">Instructions & Guidelines</label>
-                  <textarea
-                    rows={3}
-                    value={newInstructions}
-                    onChange={e => setNewInstructions(e.target.value)}
-                    placeholder="Describe laboratory objectives, submission format, and rubric expectations..."
-                    className="w-full p-2.5 bg-background border border-border rounded-xl text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/40 focus:border-primary font-sans outline-none"
-                  />
-                </div>
-
-                <div className="pt-3 border-t border-border flex items-center justify-end space-x-2">
-                  <button
-                    type="button"
-                    onClick={startClose}
-                    className="px-4 py-2 text-xs font-bold text-muted-foreground hover:bg-muted rounded-xl transition-colors cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-4 py-2 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl shadow-subtle transition-all cursor-pointer"
-                  >
-                    Publish Assignment
-                  </button>
-                </div>
-              </form>
-            </>
-          )}
-        </AnimatedModal>
       </div>
     );
   }
@@ -369,16 +226,16 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
           className="text-xs font-bold text-muted-foreground hover:text-foreground transition-colors flex items-center space-x-1.5 cursor-pointer"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
-          <span>{onBackToModules ? 'Back to Modules' : 'Back to Assignments List'}</span>
+          <span>{onBackToModules ? 'Back to Modules' : 'Back to Activities List'}</span>
         </button>
 
-        {(activeRole === 'faculty' || activeRole === 'admin') && (
+        {activeRole === 'faculty' && (
           <div className="flex items-center space-x-2">
             <button
               onClick={() => {
                 const sub = db.submissions.find(s => s.assignmentId === selectedAssignment.id);
                 if (sub) openSpeedGrader(sub.id);
-                else showAlert("No student submissions yet for this assignment.");
+                else showAlert("No student submissions yet for this activity.");
               }}
               className="px-3 py-1.5 text-xs font-bold bg-muted hover:bg-muted/80 text-foreground border border-border rounded-xl transition-colors cursor-pointer"
             >
@@ -387,7 +244,7 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
             <button
               onClick={() => handleDelete(selectedAssignment.id)}
               className="p-1.5 text-red-600 hover:bg-red-500/10 rounded-xl border border-red-500/20 transition-colors cursor-pointer"
-              title="Delete Assignment"
+              title="Delete Activity"
             >
               <Trash2 className="w-4 h-4" />
             </button>
@@ -402,9 +259,6 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
             <div className="flex items-center space-x-2">
               <span className="px-2.5 py-0.5 text-[10px] font-sans font-bold uppercase bg-primary/10 text-primary rounded-md border border-primary/20">
                 {selectedAssignment.category}
-              </span>
-              <span className="text-xs font-sans text-muted-foreground">
-                Weight: {selectedAssignment.weight}% of Final Grade
               </span>
             </div>
             <h1 className="text-2xl font-extrabold tracking-tight text-foreground mt-2">
@@ -501,22 +355,20 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
               <button
                 type="button"
                 onClick={() => setSubmissionType('online_text')}
-                className={`px-3 py-1.5 rounded-lg font-bold transition-colors cursor-pointer ${
-                  submissionType === 'online_text'
+                className={`px-3 py-1.5 rounded-lg font-bold transition-colors cursor-pointer ${submissionType === 'online_text'
                     ? 'bg-primary text-primary-foreground shadow-subtle'
                     : 'bg-muted text-muted-foreground hover:text-foreground'
-                }`}
+                  }`}
               >
                 Text Entry / Repository URL
               </button>
               <button
                 type="button"
                 onClick={() => setSubmissionType('file')}
-                className={`px-3 py-1.5 rounded-lg font-bold transition-colors cursor-pointer ${
-                  submissionType === 'file'
+                className={`px-3 py-1.5 rounded-lg font-bold transition-colors cursor-pointer ${submissionType === 'file'
                     ? 'bg-primary text-primary-foreground shadow-subtle'
                     : 'bg-muted text-muted-foreground hover:text-foreground'
-                }`}
+                  }`}
               >
                 File Upload (.PDF / .ZIP)
               </button>
@@ -566,7 +418,7 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
                 className="px-5 py-2.5 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all shadow-primary-sm flex items-center space-x-2 cursor-pointer disabled:opacity-50"
               >
                 <Send className="w-3.5 h-3.5" />
-                <span>{currentSubmission ? 'Resubmit Assignment' : 'Submit Assignment to GABAY'}</span>
+                <span>{currentSubmission ? 'Resubmit Activity' : 'Submit Activity to GABAY'}</span>
               </button>
             </div>
           </form>

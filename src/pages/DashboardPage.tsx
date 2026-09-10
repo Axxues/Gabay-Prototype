@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useLMS } from '../context/LMSContext';
+import { JoinCourseModal } from '../components/common/JoinCourseModal';
 import {
   BookOpen,
   Clock,
@@ -9,7 +10,12 @@ import {
   ArrowRight,
   Plus,
   Megaphone,
-  Folder
+  Folder,
+  KeyRound,
+  Copy,
+  Check,
+  ShieldCheck,
+  Users
 } from 'lucide-react';
 
 interface DashboardPageProps {
@@ -22,17 +28,21 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   onNavigateTab
 }) => {
   const { activeRole, activeUser, db, openSpeedGrader } = useLMS();
+  const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
+  const [copiedCodeCourseId, setCopiedCodeCourseId] = useState<string | null>(null);
 
   // Filter courses based on user role
   const userCourses = db.courses.filter(c => {
-    if (activeRole === 'student') return true;
+    if (activeRole === 'student') {
+      return (activeUser.enrolledCourseIds || []).includes(c.id);
+    }
     if (activeRole === 'faculty') return c.instructorId === activeUser.id;
     return true;
   });
 
   const unsubmittedList = db.submissions.filter(s => s.status === 'submitted');
   const studentAssignments = db.assignments.filter(a => a.published);
-  const hasRightSidebar = activeRole === 'student' || activeRole === 'faculty';
+  const hasRightSidebar = activeRole === 'student' || activeRole === 'faculty' || activeRole === 'admin';
 
   // Dynamic Instructor Name Resolution
   const getCourseInstructorName = (course: (typeof db.courses)[0]) => {
@@ -65,7 +75,17 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               <span>My Courses</span>
             </h2>
             <div className="flex items-center space-x-2">
-              {(activeRole === 'admin' || activeRole === 'faculty') && (
+              {activeRole === 'student' && (
+                <button
+                  type="button"
+                  onClick={() => setIsJoinModalOpen(true)}
+                  className="px-3.5 py-2 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all shadow-primary-sm flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <KeyRound className="w-3.5 h-3.5" />
+                  <span>Join Course</span>
+                </button>
+              )}
+              {activeRole === 'faculty' && (
                 <button
                   type="button"
                   onClick={() => onNavigateTab('create-course')}
@@ -81,8 +101,33 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             </div>
           </div>
 
-          {/* Course Cards Grid */}
-          <div className={`grid gap-5 ${hasRightSidebar ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1 md:grid-cols-2 lg:grid-cols-3"}`}>
+          {/* Empty State or Course Cards Grid */}
+          {userCourses.length === 0 ? (
+            <div className="p-10 text-center bg-card border border-dashed border-border rounded-2xl space-y-3 shadow-subtle">
+              <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary mx-auto flex items-center justify-center">
+                <BookOpen className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <h4 className="text-sm font-bold text-foreground">No Enrolled Courses</h4>
+                <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                  {activeRole === 'student'
+                    ? 'You are not enrolled in any courses yet. Ask your faculty instructor for the course join code and click below to enter your code.'
+                    : 'No course shells assigned to your account.'}
+                </p>
+              </div>
+              {activeRole === 'student' && (
+                <button
+                  type="button"
+                  onClick={() => setIsJoinModalOpen(true)}
+                  className="px-4 py-2.5 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl shadow-primary-sm transition-all inline-flex items-center space-x-2 cursor-pointer"
+                >
+                  <KeyRound className="w-4 h-4" />
+                  <span>Enter Course Join Code</span>
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className={`grid gap-5 ${hasRightSidebar ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1 md:grid-cols-2 lg:grid-cols-3"}`}>
             {userCourses.map(course => (
               <div
                 key={course.id}
@@ -137,6 +182,36 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                           {getCourseStudentCount(course)} {getCourseStudentCount(course) === 1 ? 'Student' : 'Students'}
                         </span>
                       </div>
+                      <div className="flex justify-between items-center text-muted-foreground font-sans text-[11px] pt-1.5 border-t border-border/50">
+                        <span className="flex items-center space-x-1">
+                          <KeyRound className="w-3 h-3 text-primary" />
+                          <span>Join Code:</span>
+                        </span>
+                        <div className="flex items-center space-x-1">
+                          <span className="font-mono font-bold text-foreground bg-muted px-1.5 py-0.5 rounded border border-border text-[10px]">
+                            {course.joinCode || 'N/A'}
+                          </span>
+                          {course.joinCode && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigator.clipboard.writeText(course.joinCode || '');
+                                setCopiedCodeCourseId(course.id);
+                                setTimeout(() => setCopiedCodeCourseId(null), 2000);
+                              }}
+                              className="p-1 hover:bg-accent rounded text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                              title="Copy Join Code"
+                            >
+                              {copiedCodeCourseId === course.id ? (
+                                <Check className="w-3 h-3 text-emerald-500" />
+                              ) : (
+                                <Copy className="w-3 h-3" />
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -174,6 +249,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               </div>
             ))}
           </div>
+          )}
         </div>
 
         {/* Right Sidebar Widgets */}
@@ -301,9 +377,64 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               </div>
             </div>
           )}
+
+          {/* ADMIN WIDGETS */}
+          {activeRole === 'admin' && (
+            <div className="bg-card border border-border rounded-xl p-5 space-y-4 shadow-subtle">
+              <div className="flex items-center justify-between border-b border-border pb-3">
+                <h3 className="font-bold text-sm text-foreground flex items-center space-x-2">
+                  <ShieldCheck className="w-4 h-4 text-primary" />
+                  <span>College System Overview</span>
+                </h3>
+                <span className="px-2.5 py-0.5 text-[11px] font-sans font-bold bg-primary/10 text-primary rounded-md border border-primary/20">
+                  Read-Only Audit
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5 text-xs">
+                <div className="p-3 bg-muted/40 border border-border rounded-xl space-y-1">
+                  <span className="text-[10px] uppercase font-sans text-muted-foreground font-bold tracking-wider">Total Courses</span>
+                  <div className="text-xl font-bold font-sans text-foreground">{db.courses.length}</div>
+                </div>
+                <div className="p-3 bg-muted/40 border border-border rounded-xl space-y-1">
+                  <span className="text-[10px] uppercase font-sans text-muted-foreground font-bold tracking-wider">Total Faculty</span>
+                  <div className="text-xl font-bold font-sans text-foreground">
+                    {db.users.filter(u => u.role === 'faculty').length}
+                  </div>
+                </div>
+                <div className="p-3 bg-muted/40 border border-border rounded-xl space-y-1">
+                  <span className="text-[10px] uppercase font-sans text-muted-foreground font-bold tracking-wider">Enrolled Students</span>
+                  <div className="text-xl font-bold font-sans text-foreground">
+                    {db.users.filter(u => u.role === 'student').length}
+                  </div>
+                </div>
+                <div className="p-3 bg-muted/40 border border-border rounded-xl space-y-1">
+                  <span className="text-[10px] uppercase font-sans text-muted-foreground font-bold tracking-wider">Staff Accounts</span>
+                  <div className="text-xl font-bold font-sans text-foreground">
+                    {db.users.filter(u => u.role === 'staff').length}
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => onNavigateTab('accounts')}
+                className="w-full py-2.5 px-3 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all shadow-primary-sm flex items-center justify-center space-x-2 active:scale-[0.98] cursor-pointer"
+              >
+                <Users className="w-4 h-4" />
+                <span>Manage College Accounts</span>
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
+
+    <JoinCourseModal
+      isOpen={isJoinModalOpen}
+      onClose={() => setIsJoinModalOpen(false)}
+      onNavigateCourse={onNavigateCourse}
+    />
   </div>
   );
 };

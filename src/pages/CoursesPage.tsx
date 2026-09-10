@@ -20,21 +20,26 @@ import {
   Megaphone,
   Folder,
   ChevronDown,
-  Check
+  Check,
+  Copy,
+  KeyRound
 } from 'lucide-react';
+import { JoinCourseModal } from '../components/common/JoinCourseModal';
 
 interface CoursesPageProps {
   initialSubTab?: string;
 }
 
 export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modules' }) => {
-  const { activeCourseId, setActiveCourseId, db, activeRole } = useLMS();
+  const { activeCourseId, setActiveCourseId, db, activeRole, activeUser } = useLMS();
 
   const [subTab, setSubTab] = useState(initialSubTab);
   const [returnToTab, setReturnToTab] = useState<string | null>(null);
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<string | null>(null);
   const [selectedQuizId, setSelectedQuizId] = useState<string | null>(null);
   const [isCourseDropdownOpen, setIsCourseDropdownOpen] = useState(false);
+  const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -47,17 +52,27 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const activeCourse = db.courses.find(c => c.id === activeCourseId) || db.courses[0];
+  const availableCourses = activeRole === 'student'
+    ? db.courses.filter(c => (activeUser.enrolledCourseIds || []).includes(c.id))
+    : db.courses;
+
+  const activeCourse = availableCourses.find(c => c.id === activeCourseId) || availableCourses[0] || db.courses[0];
+
+  useEffect(() => {
+    if (activeRole === 'student' && subTab === 'people') {
+      setSubTab('modules');
+    }
+  }, [activeRole, subTab]);
 
   const courseTabs = [
     { id: 'modules', label: 'Modules', icon: <Layers className="w-4 h-4" /> },
     { id: 'syllabus', label: 'Syllabus', icon: <FileText className="w-4 h-4" /> },
     { id: 'announcements', label: 'Announcements', icon: <Megaphone className="w-4 h-4" /> },
-    { id: 'assignments', label: 'Assignments', icon: <FileCheck2 className="w-4 h-4" /> },
+    { id: 'assignments', label: 'Activities', icon: <FileCheck2 className="w-4 h-4" /> },
     { id: 'quizzes', label: 'Quizzes', icon: <HelpCircle className="w-4 h-4" /> },
     { id: 'files', label: 'Files', icon: <Folder className="w-4 h-4" /> },
     { id: 'grades', label: 'Grades', icon: <Award className="w-4 h-4" /> },
-    { id: 'people', label: 'People', icon: <Users className="w-4 h-4" /> }
+    ...(activeRole !== 'student' ? [{ id: 'people', label: 'People', icon: <Users className="w-4 h-4" /> }] : [])
   ];
 
   return (
@@ -105,12 +120,12 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
                 <span className="text-[10px] font-sans font-bold uppercase tracking-wider text-muted-foreground">
                   Switch Subject
                 </span>
-                <span className="text-[9px] font-mono px-2 py-0.5 rounded-full bg-primary/10 text-primary font-bold">
-                  {db.courses.length} shells
+                <span className="text-[9px] font-sans px-2 py-0.5 rounded-full bg-primary/10 text-primary font-bold">
+                  {availableCourses.length} shells
                 </span>
               </div>
               <div className="max-h-60 overflow-y-auto space-y-1 custom-scrollbar pr-0.5">
-                {db.courses.map(c => {
+                {availableCourses.map(c => {
                   const isSelected = c.id === activeCourse.id;
                   return (
                     <button
@@ -145,9 +160,55 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
                   );
                 })}
               </div>
+
+              {activeRole === 'student' && (
+                <div className="pt-1 mt-1 border-t border-border">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCourseDropdownOpen(false);
+                      setIsJoinModalOpen(true);
+                    }}
+                    className="w-full flex items-center space-x-2 px-3 py-2 rounded-xl text-xs font-bold text-primary hover:bg-primary/10 transition-colors cursor-pointer"
+                  >
+                    <KeyRound className="w-3.5 h-3.5" />
+                    <span>Join Course with Code</span>
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
+
+        {/* Course Join Code Badge */}
+        {activeCourse?.joinCode && (
+          <div className="p-2.5 bg-card border border-border rounded-xl flex items-center justify-between text-xs shadow-subtle">
+            <div className="min-w-0">
+              <span className="text-[9px] font-sans font-bold uppercase text-muted-foreground tracking-wider block">
+                Course Join Code
+              </span>
+              <span className="font-mono font-bold text-foreground text-xs tracking-wider">
+                {activeCourse.joinCode}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard.writeText(activeCourse.joinCode || '');
+                setCopiedCode(true);
+                setTimeout(() => setCopiedCode(false), 2000);
+              }}
+              className="p-1.5 hover:bg-accent rounded-lg text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+              title="Copy Course Join Code"
+            >
+              {copiedCode ? (
+                <Check className="w-3.5 h-3.5 text-emerald-500" />
+              ) : (
+                <Copy className="w-3.5 h-3.5" />
+              )}
+            </button>
+          </div>
+        )}
 
         {/* Course Summary Card */}
         <div className="p-3.5 bg-card border border-border rounded-xl space-y-1.5 text-xs shadow-subtle overflow-hidden">
@@ -286,6 +347,15 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
 
         {subTab === 'people' && <PeopleView courseId={activeCourse.id} />}
       </main>
+
+      <JoinCourseModal
+        isOpen={isJoinModalOpen}
+        onClose={() => setIsJoinModalOpen(false)}
+        onNavigateCourse={(id) => {
+          setActiveCourseId(id);
+          setSubTab('modules');
+        }}
+      />
     </div>
   );
 };

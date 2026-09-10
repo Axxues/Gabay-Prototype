@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useLMS } from '../context/LMSContext';
-import type { CourseFile } from '../types/lms';
+import type { CourseFile, CourseFolder } from '../types/lms';
 import {
   Folder,
   File,
@@ -21,6 +21,9 @@ import {
   FolderPlus
 } from 'lucide-react';
 
+import { uploadFileToPublic } from '../utils/fileUploader';
+import { ModalPortal } from '../components/common/ModalPortal';
+
 interface FilesViewProps {
   courseId?: string; // If undefined or 'personal', loads account-level storage
 }
@@ -34,7 +37,6 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
     uploadCourseFile,
     deleteCourseFile,
     deleteCourseFolder,
-    updateFileVisibility,
     renameCourseFile,
     showAlert,
     showConfirm
@@ -46,11 +48,12 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
 
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [sourceFilter, setSourceFilter] = useState<'all' | 'modules' | 'announcements' | 'activities' | 'quizzes' | 'uploads'>('all');
 
   // Modals
   const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
-  const [previewFile, setPreviewFile] = useState<CourseFile | null>(null);
+  const [previewFile, setPreviewFile] = useState<CourseFile & { sourceLabel?: string } | null>(null);
   const [renamingFileId, setRenamingFileId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
 
@@ -58,27 +61,275 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
 
-  const canManage = isPersonal || activeRole === 'faculty' || activeRole === 'admin';
+  const canManage = isPersonal || activeRole === 'faculty';
 
-  // Files and folders in this scope
+  const detectFileType = (nameOrUrl: string): CourseFile['type'] => {
+    const lower = (nameOrUrl || '').toLowerCase();
+    if (lower.endsWith('.pdf')) return 'pdf';
+    if (
+      lower.endsWith('.png') ||
+      lower.endsWith('.jpg') ||
+      lower.endsWith('.jpeg') ||
+      lower.endsWith('.gif') ||
+      lower.endsWith('.webp') ||
+      lower.endsWith('.svg')
+    )
+      return 'image';
+    if (
+      lower.endsWith('.zip') ||
+      lower.endsWith('.tar') ||
+      lower.endsWith('.gz') ||
+      lower.endsWith('.rar') ||
+      lower.endsWith('.7z')
+    )
+      return 'archive';
+    if (
+      lower.endsWith('.ts') ||
+      lower.endsWith('.tsx') ||
+      lower.endsWith('.js') ||
+      lower.endsWith('.jsx') ||
+      lower.endsWith('.py') ||
+      lower.endsWith('.json') ||
+      lower.endsWith('.html') ||
+      lower.endsWith('.css')
+    )
+      return 'code';
+    if (lower.endsWith('.ppt') || lower.endsWith('.pptx')) return 'slide';
+    return 'document';
+  };
+
+  // 1. Direct course files
+  const directFiles: (CourseFile & { source: string; sourceLabel: string })[] = (db.courseFiles || [])
+    .filter(f => (isPersonal ? f.courseId === effectiveScopeId : f.courseId === courseId || f.courseId === effectiveScopeId))
+    .map(f => ({
+      ...f,
+      source: 'uploads',
+      sourceLabel: 'Direct Upload'
+    }));
+
+  // 2. Module uploaded files and images
+  const moduleFiles: (CourseFile & { source: string; sourceLabel: string })[] = [];
+  const relevantModules = isPersonal ? db.modules : db.modules.filter(m => m.courseId === courseId);
+  relevantModules.forEach(mod => {
+    (mod.items || []).forEach(item => {
+      if (item.fileName || item.fileUrl) {
+        const fName = item.fileName || item.title || 'Module_Asset.pdf';
+        const fUrl = item.fileUrl || `/public/uploads/${fName}`;
+        moduleFiles.push({
+          id: `mod-file-${item.id}`,
+          courseId: mod.courseId,
+          folderId: null,
+          name: fName,
+          size: 1024 * 1024,
+          formattedSize: item.fileSize || '1.2 MB',
+          type: detectFileType(fName || fUrl),
+          visibility: item.published ? 'published' : 'unpublished',
+          updatedAt: new Date().toISOString(),
+          uploadedBy: 'faculty',
+          uploadedByName: 'Course Faculty',
+          url: fUrl,
+          fileUrl: fUrl,
+          content: item.content,
+          source: 'modules',
+          sourceLabel: `Module: ${mod.title}`
+        });
+      }
+    });
+  });
+
+  // 3. Announcements attached files and images
+  const announcementFiles: (CourseFile & { source: string; sourceLabel: string })[] = [];
+  const relevantAnnouncements = isPersonal
+    ? (db.announcements || [])
+    : (db.announcements || []).filter(a => a.courseId === courseId || a.courseId === 'all');
+  relevantAnnouncements.forEach(ann => {
+    if (ann.attachments && ann.attachments.length > 0) {
+      ann.attachments.forEach((att, idx) => {
+        const aUrl = att.url || `/public/uploads/${att.name}`;
+        announcementFiles.push({
+          id: `ann-file-${ann.id}-${idx}`,
+          courseId: ann.courseId,
+          folderId: null,
+          name: att.name,
+          size: 1024 * 1024,
+          formattedSize: att.size || '850 KB',
+          type: detectFileType(att.name || aUrl),
+          visibility: 'published',
+          updatedAt: ann.createdAt || new Date().toISOString(),
+          uploadedBy: ann.authorId,
+          uploadedByName: ann.authorName || 'Instructor',
+          url: aUrl,
+          fileUrl: aUrl,
+          content: ann.content,
+          source: 'announcements',
+          sourceLabel: `Announcement: ${ann.title}`
+        });
+      });
+    }
+  });
+
+  // 4. Activities attached starter files and student file submissions
+  const activityFiles: (CourseFile & { source: string; sourceLabel: string })[] = [];
+  const relevantAssignments = isPersonal
+    ? (db.assignments || [])
+    : (db.assignments || []).filter(a => a.courseId === courseId);
+  relevantAssignments.forEach(asg => {
+    if (asg.fileName || asg.fileUrl) {
+      const asgUrl = asg.fileUrl || `/public/uploads/${asg.fileName}`;
+      activityFiles.push({
+        id: `asg-file-${asg.id}`,
+        courseId: asg.courseId,
+        folderId: null,
+        name: asg.fileName || `${asg.title}_Handout.pdf`,
+        size: 1024 * 1024,
+        formattedSize: asg.fileSize || '1.5 MB',
+        type: detectFileType(asg.fileName || asgUrl),
+        visibility: asg.published ? 'published' : 'unpublished',
+        updatedAt: asg.dueDate || new Date().toISOString(),
+        uploadedBy: 'faculty',
+        uploadedByName: 'Course Faculty',
+        url: asgUrl,
+        fileUrl: asgUrl,
+        content: asg.instructions,
+        source: 'activities',
+        sourceLabel: `Activity: ${asg.title}`
+      });
+    }
+
+    // Student file submissions for this activity
+    const relevantSubs = (db.submissions || []).filter(
+      s => s.assignmentId === asg.id && (s.fileName || s.fileUrl)
+    );
+    relevantSubs.forEach(sub => {
+      const subUrl = sub.fileUrl || (sub.fileName ? `/public/uploads/${sub.fileName}` : undefined);
+      activityFiles.push({
+        id: `sub-file-${sub.id}`,
+        courseId: asg.courseId,
+        folderId: null,
+        name: sub.fileName || `${sub.studentName}_Submission.pdf`,
+        size: 1024 * 1024,
+        formattedSize: '1.8 MB',
+        type: detectFileType(sub.fileName || subUrl || 'file.pdf'),
+        visibility: 'published',
+        updatedAt: sub.submittedAt || new Date().toISOString(),
+        uploadedBy: sub.studentId,
+        uploadedByName: sub.studentName,
+        url: subUrl,
+        fileUrl: subUrl,
+        content: sub.content,
+        source: 'activities',
+        sourceLabel: `Student Submission (${sub.studentName})`
+      });
+    });
+  });
+
+  // 5. Quizzes attached starter files / images / question assets
+  const quizFiles: (CourseFile & { source: string; sourceLabel: string })[] = [];
+  const relevantQuizzes = isPersonal
+    ? (db.quizzes || [])
+    : (db.quizzes || []).filter(q => q.courseId === courseId);
+  relevantQuizzes.forEach(quiz => {
+    if ((quiz as any).fileName || (quiz as any).fileUrl) {
+      const qUrl = (quiz as any).fileUrl || `/public/uploads/${(quiz as any).fileName}`;
+      quizFiles.push({
+        id: `quiz-file-${quiz.id}`,
+        courseId: quiz.courseId,
+        folderId: null,
+        name: (quiz as any).fileName || `${quiz.title}_Quiz_Reference.pdf`,
+        size: 1024 * 1024,
+        formattedSize: (quiz as any).fileSize || '950 KB',
+        type: detectFileType((quiz as any).fileName || qUrl),
+        visibility: quiz.published ? 'published' : 'unpublished',
+        updatedAt: new Date().toISOString(),
+        uploadedBy: 'faculty',
+        uploadedByName: 'Course Faculty',
+        url: qUrl,
+        fileUrl: qUrl,
+        content: quiz.instructions,
+        source: 'quizzes',
+        sourceLabel: `Quiz: ${quiz.title}`
+      });
+    }
+
+    // Question images/assets
+    (quiz.questions || []).forEach((q: any, qIdx: number) => {
+      if (q.imageUrl || q.imageName || q.fileUrl || q.fileName) {
+        const qName = q.fileName || q.imageName || `${quiz.title}_Q${qIdx + 1}_Diagram.png`;
+        const qUrl = q.fileUrl || q.imageUrl || `/public/uploads/${qName}`;
+        quizFiles.push({
+          id: `quiz-q-file-${quiz.id}-${q.id || qIdx}`,
+          courseId: quiz.courseId,
+          folderId: null,
+          name: qName,
+          size: 512 * 1024,
+          formattedSize: '512 KB',
+          type: detectFileType(qName || qUrl),
+          visibility: quiz.published ? 'published' : 'unpublished',
+          updatedAt: new Date().toISOString(),
+          uploadedBy: 'faculty',
+          uploadedByName: 'Course Faculty',
+          url: qUrl,
+          fileUrl: qUrl,
+          content: q.text,
+          source: 'quizzes',
+          sourceLabel: `Quiz Question: ${quiz.title} (Q${qIdx + 1})`
+        });
+      }
+    });
+  });
+
+  // Combine and deduplicate files across all sources
+  const combinedRawFiles = [
+    ...directFiles,
+    ...moduleFiles,
+    ...announcementFiles,
+    ...activityFiles,
+    ...quizFiles
+  ];
+
+  // Remove duplicate entries with identical URL and name
+  const seenFileKeys = new Set<string>();
+  const allFiles = combinedRawFiles.filter(item => {
+    const key = `${item.name}-${item.url || item.fileUrl || item.id}`;
+    if (seenFileKeys.has(key)) return false;
+    seenFileKeys.add(key);
+    return true;
+  });
+
+  // Source counts for pills
+  const sourceCounts = {
+    all: allFiles.length,
+    modules: allFiles.filter(f => (f as any).source === 'modules').length,
+    announcements: allFiles.filter(f => (f as any).source === 'announcements').length,
+    activities: allFiles.filter(f => (f as any).source === 'activities').length,
+    quizzes: allFiles.filter(f => (f as any).source === 'quizzes').length,
+    uploads: allFiles.filter(f => (f as any).source === 'uploads').length
+  };
+
+  // Folders in this scope
   const allFolders = (db.courseFolders || []).filter(f => f.courseId === effectiveScopeId);
-  const allFiles = (db.courseFiles || []).filter(f => f.courseId === effectiveScopeId);
 
   // Filter based on student permissions: students only see 'published' or 'restricted'
   const visibleFiles = allFiles.filter(file => {
+    if (sourceFilter !== 'all' && (file as any).source !== sourceFilter) return false;
     if (canManage) return true;
     return file.visibility === 'published' || file.visibility === 'restricted';
   });
 
-  // Current folder's children
-  const currentFolders = allFolders.filter(f => {
-    if (searchQuery) return f.name.toLowerCase().includes(searchQuery.toLowerCase());
-    return currentFolderId ? f.parentId === currentFolderId : !f.parentId;
-  });
+  // Current folder's children (folders only shown when in 'all' or 'uploads' source filter and at root)
+  const currentFolders = (sourceFilter === 'all' || sourceFilter === 'uploads')
+    ? allFolders.filter(f => {
+      if (searchQuery) return f.name.toLowerCase().includes(searchQuery.toLowerCase());
+      return currentFolderId ? f.parentId === currentFolderId : !f.parentId;
+    })
+    : [];
 
   const currentFiles = visibleFiles.filter(file => {
     if (searchQuery) return file.name.toLowerCase().includes(searchQuery.toLowerCase());
-    return currentFolderId ? file.folderId === currentFolderId : !file.folderId;
+    if (file.folderId) {
+      return currentFolderId === file.folderId;
+    }
+    return !currentFolderId || (file as any).source !== 'uploads';
   });
 
   // Breadcrumbs calculation
@@ -109,7 +360,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
     });
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -127,9 +378,8 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
     )
       type = 'code';
 
-    const reader = new FileReader();
-    reader.onload = event => {
-      const content = typeof event.target?.result === 'string' ? event.target.result : '';
+    try {
+      const uploadRes = await uploadFileToPublic(file);
       uploadCourseFile({
         courseId: effectiveScopeId,
         folderId: currentFolderId,
@@ -137,20 +387,18 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
         size: file.size,
         type,
         visibility: 'published',
-        content
+        content: uploadRes.url,
+        url: uploadRes.url,
+        fileUrl: uploadRes.url
       });
 
       showAlert({
         title: 'File Uploaded',
-        message: `File "${file.name}" has been uploaded to the current folder.`,
+        message: `File "${file.name}" has been uploaded and saved to /public/uploads/.`,
         type: 'success'
       });
-    };
-
-    if (type === 'code' || type === 'document') {
-      reader.readAsText(file);
-    } else {
-      reader.readAsDataURL(file);
+    } catch (err) {
+      console.error('Failed to upload file in FilesView:', err);
     }
   };
 
@@ -184,8 +432,48 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
   const handleSaveRename = (fileId: string) => {
     if (renameValue.trim()) {
       renameCourseFile(fileId, renameValue.trim());
+      showAlert({
+        title: 'File Renamed',
+        message: `File has been renamed to "${renameValue.trim()}".`,
+        type: 'success'
+      });
     }
     setRenamingFileId(null);
+  };
+
+  const handleDeleteFile = (file: CourseFile, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    showConfirm(
+      `Are you sure you want to delete "${file.name}"?`,
+      () => {
+        deleteCourseFile(file.id);
+        if (previewFile?.id === file.id) {
+          setPreviewFile(null);
+        }
+        showAlert({
+          title: 'File Deleted',
+          message: `"${file.name}" has been successfully removed.`,
+          type: 'success'
+        });
+      },
+      'Delete File'
+    );
+  };
+
+  const handleDeleteFolder = (folder: CourseFolder, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    showConfirm(
+      `Delete folder "${folder.name}" and all its contents?`,
+      () => {
+        deleteCourseFolder(folder.id);
+        showAlert({
+          title: 'Folder Deleted',
+          message: `Folder "${folder.name}" has been deleted.`,
+          type: 'success'
+        });
+      },
+      'Delete Folder'
+    );
   };
 
   const handleDownloadFile = (file: CourseFile) => {
@@ -255,7 +543,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
             title="Download folder as ZIP"
           >
             <Archive className="w-4 h-4 text-muted-foreground" />
-            <span className="hidden sm:inline">Download Folder (.zip)</span>
+            <span className="hidden sm:inline">Download All Files (.zip)</span>
           </button>
 
           {canManage && (
@@ -288,6 +576,44 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
         </div>
       </div>
 
+      {/* Source Filter Tabs */}
+      <div className="flex items-center space-x-2 overflow-x-auto pb-1 scrollbar-none">
+        {[
+          { id: 'all', label: 'All Files', count: sourceCounts.all },
+          { id: 'modules', label: 'Modules', count: sourceCounts.modules },
+          { id: 'announcements', label: 'Announcements', count: sourceCounts.announcements },
+          { id: 'activities', label: 'Activities', count: sourceCounts.activities },
+          { id: 'quizzes', label: 'Quizzes', count: sourceCounts.quizzes },
+          { id: 'uploads', label: 'Direct Uploads', count: sourceCounts.uploads }
+        ].map(tab => {
+          const isActive = sourceFilter === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => {
+                setSourceFilter(tab.id as any);
+                setCurrentFolderId(null);
+              }}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer whitespace-nowrap active:scale-98 ${isActive
+                  ? 'bg-primary text-primary-foreground shadow-primary-sm'
+                  : 'bg-card hover:bg-muted text-muted-foreground hover:text-foreground border border-border'
+                }`}
+            >
+              <span>{tab.label}</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.2 rounded-full font-sans font-semibold ${isActive
+                    ? 'bg-white/20 text-white'
+                    : 'bg-muted text-muted-foreground'
+                  }`}
+              >
+                {tab.count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       {/* Breadcrumb Navigation & Search */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         {/* Breadcrumbs */}
@@ -297,11 +623,10 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
               <button
                 type="button"
                 onClick={() => setCurrentFolderId(crumb.id)}
-                className={`px-2 py-1 rounded-lg transition-colors hover:bg-muted ${
-                  idx === arr.length - 1
+                className={`px-2 py-1 rounded-lg transition-colors hover:bg-muted ${idx === arr.length - 1
                     ? 'font-bold text-foreground bg-muted/60'
                     : 'text-muted-foreground hover:text-foreground'
-                }`}
+                  }`}
               >
                 {crumb.name}
               </button>
@@ -342,11 +667,10 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
           onDragLeave={() => setIsDragging(false)}
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
-          className={`border-2 border-dashed rounded-2xl p-4 flex items-center justify-center space-x-3 transition-all cursor-pointer ${
-            isDragging
+          className={`border-2 border-dashed rounded-2xl p-4 flex items-center justify-center space-x-3 transition-all cursor-pointer ${isDragging
               ? 'border-primary bg-primary/10 scale-[1.01]'
               : 'border-border hover:border-primary/40 bg-muted/20 hover:bg-muted/30'
-          }`}
+            }`}
         >
           <Upload className="w-4 h-4 text-primary" />
           <span className="text-xs text-foreground font-medium">
@@ -357,122 +681,151 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
 
       {/* Create Folder Modal */}
       {isCreateFolderOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-card border border-border rounded-2xl w-full max-w-md shadow-elevated p-6 space-y-4 animate-scale-in">
-            <div className="flex items-center justify-between border-b border-border pb-3">
-              <h3 className="text-sm font-bold text-foreground flex items-center space-x-2">
-                <FolderPlus className="w-4 h-4 text-primary" />
-                <span>Create New Folder</span>
-              </h3>
-              <button
-                type="button"
-                onClick={() => setIsCreateFolderOpen(false)}
-                className="text-muted-foreground hover:text-foreground"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <form onSubmit={handleCreateFolder} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-foreground mb-1">
-                  Folder Name
-                </label>
-                <input
-                  type="text"
-                  required
-                  autoFocus
-                  value={newFolderName}
-                  onChange={e => setNewFolderName(e.target.value)}
-                  placeholder="e.g. 04 Midterm Review Materials"
-                  className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs font-sans text-foreground outline-none focus:ring-2 focus:ring-primary/20"
-                />
-              </div>
-              <div className="flex justify-end space-x-2">
+        <ModalPortal>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 overflow-hidden select-none">
+            <div
+              className="fixed inset-0 overlay-backdrop animate-fade-in"
+              onClick={() => setIsCreateFolderOpen(false)}
+            />
+            <div className="bg-card border border-border rounded-2xl w-full max-w-md shadow-elevated p-6 space-y-4 animate-scale-in relative z-10">
+              <div className="flex items-center justify-between border-b border-border pb-3">
+                <h3 className="text-sm font-bold text-foreground flex items-center space-x-2">
+                  <FolderPlus className="w-4 h-4 text-primary" />
+                  <span>Create New Folder</span>
+                </h3>
                 <button
                   type="button"
                   onClick={() => setIsCreateFolderOpen(false)}
-                  className="px-3.5 py-1.5 text-xs text-muted-foreground hover:text-foreground"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all shadow-primary-sm"
-                >
-                  Create Folder
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Document Previewer Modal */}
-      {previewFile && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-card border border-border rounded-2xl w-full max-w-3xl shadow-elevated overflow-hidden animate-scale-in flex flex-col max-h-[90vh]">
-            <div className="px-6 py-4 border-b border-border flex items-center justify-between bg-muted/40">
-              <div className="flex items-center space-x-3">
-                {getFileIcon(previewFile.type)}
-                <div>
-                  <h3 className="text-sm font-bold text-foreground truncate max-w-md">
-                    {previewFile.name}
-                  </h3>
-                  <p className="text-[10px] font-sans text-muted-foreground">
-                    {previewFile.formattedSize} • Uploaded by {previewFile.uploadedByName}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center space-x-2">
-                <button
-                  type="button"
-                  onClick={() => handleDownloadFile(previewFile)}
-                  className="px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold rounded-xl transition-all shadow-primary-sm flex items-center space-x-1.5 cursor-pointer"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Download</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPreviewFile(null)}
-                  className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg"
+                  className="text-muted-foreground hover:text-foreground cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
-            </div>
-
-            {/* In-Browser Document Preview Body */}
-            <div className="p-6 overflow-y-auto custom-scrollbar flex-1 bg-background">
-              {previewFile.type === 'pdf' ? (
-                <div className="p-8 bg-card border border-border rounded-xl space-y-4 shadow-subtle">
-                  <div className="border-b border-border pb-3 flex items-center justify-between">
-                    <span className="font-sans text-xs font-bold text-primary uppercase tracking-wider">
-                      PDF Document Previewer
-                    </span>
-                    <span className="text-[10px] font-sans text-muted-foreground">Page 1 of 4</span>
-                  </div>
-                  <div className="font-sans text-xs text-foreground whitespace-pre-line leading-relaxed p-4 bg-muted/30 rounded-lg">
-                    {previewFile.content ||
-                      `[GABAY Built-in PDF Reader]\nFile: ${previewFile.name}\n\nDocument contents rendered seamlessly in-browser. Clean vector fidelity with full offline caching.`}
-                  </div>
-                </div>
-              ) : previewFile.type === 'image' && previewFile.url ? (
-                <div className="flex items-center justify-center p-4">
-                  <img
-                    src={previewFile.url}
-                    alt={previewFile.name}
-                    className="max-h-[60vh] rounded-xl object-contain shadow-card border border-border"
+              <form onSubmit={handleCreateFolder} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-foreground mb-1">
+                    Folder Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    autoFocus
+                    value={newFolderName}
+                    onChange={e => setNewFolderName(e.target.value)}
+                    placeholder="e.g. 04 Midterm Review Materials"
+                    className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs font-sans text-foreground outline-none focus:ring-2 focus:ring-primary/20"
                   />
                 </div>
-              ) : (
-                <div className="p-4 bg-muted/30 border border-border rounded-xl font-sans text-xs text-foreground whitespace-pre-wrap leading-relaxed">
-                  {previewFile.content || `Plaintext content of ${previewFile.name}`}
+                <div className="flex justify-end space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsCreateFolderOpen(false)}
+                    className="px-3.5 py-1.5 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-1.5 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all shadow-primary-sm cursor-pointer active:scale-98"
+                  >
+                    Create Folder
+                  </button>
                 </div>
-              )}
+              </form>
             </div>
           </div>
-        </div>
+        </ModalPortal>
+      )}
+
+      {/* Document Previewer Modal */}
+      {previewFile && (
+        <ModalPortal>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6 overflow-hidden">
+            <div
+              className="fixed inset-0 overlay-backdrop animate-fade-in"
+              onClick={() => setPreviewFile(null)}
+            />
+            <div className="bg-card border border-border rounded-2xl w-full max-w-5xl shadow-elevated overflow-hidden animate-scale-in flex flex-col max-h-[92vh] relative z-10">
+              <div className="px-6 py-4 border-b border-border flex items-center justify-between bg-muted/40">
+                <div className="flex items-center space-x-3 truncate">
+                  {getFileIcon(previewFile.type)}
+                  <div className="truncate">
+                    <h3 className="text-sm font-bold text-foreground truncate max-w-xl">
+                      {previewFile.name}
+                    </h3>
+                    <div className="flex items-center space-x-2 text-[10px] font-sans text-muted-foreground mt-0.5">
+                      {previewFile.sourceLabel && (
+                        <span className="px-2 py-0.5 rounded-md font-bold text-[9px] bg-primary/10 text-primary border border-primary/20">
+                          {previewFile.sourceLabel}
+                        </span>
+                      )}
+                      <span>{previewFile.formattedSize}</span>
+                      <span>•</span>
+                      <span>Uploaded by {previewFile.uploadedByName}</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadFile(previewFile)}
+                    className="px-3.5 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold rounded-xl transition-all shadow-primary-sm flex items-center space-x-1.5 cursor-pointer active:scale-98"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Download</span>
+                  </button>
+                  {canManage && (
+                    <button
+                      type="button"
+                      onClick={e => handleDeleteFile(previewFile, e)}
+                      className="px-3.5 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 text-xs font-bold rounded-xl transition-all flex items-center space-x-1.5 cursor-pointer active:scale-98"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setPreviewFile(null)}
+                    className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* In-Browser Document Preview Body */}
+              <div className="p-6 overflow-y-auto custom-scrollbar flex-1 bg-background">
+                {previewFile.type === 'pdf' ? (
+                  <div className="p-8 bg-card border border-border rounded-xl space-y-4 shadow-subtle">
+                    <div className="border-b border-border pb-3 flex items-center justify-between">
+                      <span className="font-sans text-xs font-bold text-primary uppercase tracking-wider">
+                        PDF Document Previewer
+                      </span>
+                      <span className="text-[10px] font-sans text-muted-foreground">Vector Document Preview</span>
+                    </div>
+                    <div className="font-sans text-xs text-foreground whitespace-pre-line leading-relaxed p-4 bg-muted/30 rounded-lg">
+                      {previewFile.content ||
+                        `[GABAY Built-in PDF Reader]\nFile: ${previewFile.name}\n\nDocument contents rendered seamlessly in-browser. Clean vector fidelity with full offline caching.`}
+                    </div>
+                  </div>
+                ) : previewFile.type === 'image' && (previewFile.url || previewFile.fileUrl) ? (
+                  <div className="flex items-center justify-center p-4 bg-muted/10 rounded-xl">
+                    <img
+                      src={previewFile.url || previewFile.fileUrl}
+                      alt={previewFile.name}
+                      className="max-h-[65vh] w-auto max-w-full rounded-xl object-contain shadow-card border border-border"
+                    />
+                  </div>
+                ) : (
+                  <div className="p-4 bg-muted/30 border border-border rounded-xl font-sans text-xs text-foreground whitespace-pre-wrap leading-relaxed">
+                    {previewFile.content || `Plaintext content of ${previewFile.name}`}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </ModalPortal>
       )}
 
       {/* Directory Content Table / Grid */}
@@ -503,13 +856,8 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
                 {canManage && (
                   <button
                     type="button"
-                    onClick={() =>
-                      showConfirm(
-                        `Delete folder "${folder.name}" and its files?`,
-                        () => deleteCourseFolder(folder.id),
-                        'Delete Folder'
-                      )
-                    }
+                    onClick={e => handleDeleteFolder(folder, e)}
+                    title="Delete Folder"
                     className="p-1.5 text-muted-foreground hover:text-rose-600 rounded-lg hover:bg-rose-500/10 cursor-pointer"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -523,6 +871,23 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
           {/* Files List */}
           {currentFiles.map(file => {
             const isRenaming = renamingFileId === file.id;
+            const fileSource = (file as any).source || 'uploads';
+            const sourceLabel = (file as any).sourceLabel || 'Direct Upload';
+
+            const getSourceBadgeColor = (src: string) => {
+              switch (src) {
+                case 'modules':
+                  return 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20';
+                case 'announcements':
+                  return 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20';
+                case 'activities':
+                  return 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20';
+                case 'quizzes':
+                  return 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20';
+                default:
+                  return 'bg-muted text-muted-foreground border-border';
+              }
+            };
 
             return (
               <div
@@ -565,7 +930,11 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
                         <span className="text-xs font-bold text-foreground hover:text-primary transition-colors block truncate">
                           {file.name}
                         </span>
-                        <div className="flex items-center space-x-2 text-[10px] font-sans text-muted-foreground">
+                        <div className="flex items-center space-x-2 text-[10px] font-sans text-muted-foreground mt-0.5">
+                          <span className={`px-2 py-0.5 rounded-md font-bold text-[9px] border ${getSourceBadgeColor(fileSource)}`}>
+                            {sourceLabel}
+                          </span>
+                          <span>•</span>
                           <span>{file.formattedSize}</span>
                           <span>•</span>
                           <span>Uploaded by {file.uploadedByName}</span>
@@ -577,42 +946,8 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
                   </div>
                 </div>
 
-                {/* Right Visibility & Actions */}
+                {/* Right Actions */}
                 <div className="flex items-center space-x-2 shrink-0">
-                  {/* Visibility Badge / Switcher */}
-                  {canManage ? (
-                    <select
-                      value={file.visibility}
-                      onChange={e =>
-                        updateFileVisibility(
-                          file.id,
-                          e.target.value as 'published' | 'unpublished' | 'restricted'
-                        )
-                      }
-                      className={`text-[11px] font-sans font-bold px-2 py-1 rounded-lg border outline-none cursor-pointer ${
-                        file.visibility === 'published'
-                          ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20'
-                          : file.visibility === 'restricted'
-                          ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20'
-                          : 'bg-muted text-muted-foreground border-border'
-                      }`}
-                    >
-                      <option value="published">Published</option>
-                      <option value="unpublished">Unpublished</option>
-                      <option value="restricted">Restricted Access</option>
-                    </select>
-                  ) : (
-                    <span
-                      className={`text-[10px] font-sans font-bold px-2 py-0.5 rounded-md border ${
-                        file.visibility === 'published'
-                          ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
-                          : 'bg-amber-500/10 text-amber-600 border-amber-500/20'
-                      }`}
-                    >
-                      {file.visibility.toUpperCase()}
-                    </span>
-                  )}
-
                   {/* Preview Button */}
                   <button
                     type="button"
@@ -646,14 +981,8 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
 
                       <button
                         type="button"
-                        onClick={() =>
-                          showConfirm(
-                            `Delete "${file.name}"?`,
-                            () => deleteCourseFile(file.id),
-                            'Delete File'
-                          )
-                        }
-                        title="Delete"
+                        onClick={e => handleDeleteFile(file, e)}
+                        title="Delete File"
                         className="p-1.5 text-muted-foreground hover:text-rose-600 rounded-lg hover:bg-rose-500/10 cursor-pointer"
                       >
                         <Trash2 className="w-3.5 h-3.5" />

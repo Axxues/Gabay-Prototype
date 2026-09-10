@@ -13,6 +13,9 @@ export interface User {
   enrolledCourseIds?: string[];
 }
 
+// Runtime export stubs to guarantee Vite ESM dev imports and browser runtime never fail
+export const User = {} as unknown as User;
+
 import type { OfficialSyllabusData } from '../data/syllabusData';
 
 export interface Course {
@@ -29,8 +32,11 @@ export interface Course {
   credits?: number;
   chedComplianceCode?: string;
   image?: string;
-  syllabus?: OfficialSyllabusData;
+  syllabus?: OfficialSyllabusData | null;
+  joinCode?: string;
 }
+
+export const Course = {} as unknown as Course;
 
 export interface ModuleItem {
   id: string;
@@ -48,6 +54,8 @@ export interface ModuleItem {
   fileSize?: string;
   fileType?: string;
   completed?: boolean;
+  authorId?: string;
+  authorName?: string;
 }
 
 export interface ModuleComment {
@@ -74,6 +82,8 @@ export interface Module {
   order: number;
   published: boolean;
   prerequisiteModuleId?: string;
+  authorId?: string;
+  authorName?: string;
   items: ModuleItem[];
   comments?: ModuleComment[];
 }
@@ -103,6 +113,12 @@ export interface Assignment {
   category: string;
   weight: number; // percentage (e.g. 20 for 20%)
   rubric: RubricCriterion[];
+  fileName?: string;
+  fileUrl?: string;
+  fileSize?: string;
+  availableFrom?: string;
+  availableUntil?: string;
+  sectionRestriction?: string;
 }
 
 export interface SubmissionComment {
@@ -134,13 +150,27 @@ export interface Submission {
   comments: SubmissionComment[];
 }
 
+export type QuizItemType =
+  | 'multiple_choice'
+  | 'identification'
+  | 'true_false'
+  | 'essay'
+  | 'description'
+  | 'page_break';
+
 export interface QuizQuestion {
   id: string;
   text: string;
-  type: 'multiple_choice' | 'true_false';
+  type: QuizItemType;
   options?: string[];
-  correctAnswer: string;
+  correctAnswer?: string;
   points: number;
+  description?: string;
+  rubricNotes?: string;
+  imageUrl?: string;
+  imageName?: string;
+  fileUrl?: string;
+  fileName?: string;
 }
 
 export interface Quiz {
@@ -150,7 +180,12 @@ export interface Quiz {
   instructions: string;
   timeLimitMinutes: number;
   published: boolean;
+  delayedUntil?: string; // scheduled release date/time
+  dueDate?: string;
   questions: QuizQuestion[];
+  fileName?: string;
+  fileUrl?: string;
+  fileSize?: string;
 }
 
 export interface CalendarEvent {
@@ -160,7 +195,7 @@ export interface CalendarEvent {
   time: string;
   courseId?: string;
   courseCode?: string;
-  type: 'assignment' | 'milestone' | 'advising' | 'lecture' | 'exam' | 'event';
+  type: 'assignment' | 'milestone' | 'advising' | 'lecture' | 'exam' | 'event' | 'holiday';
   description: string;
   startAt?: string;
   endAt?: string;
@@ -196,6 +231,22 @@ export interface Message {
   body: string;
   timestamp: string;
   read: boolean;
+  reaction?: string;
+  attachmentName?: string;
+  attachmentSize?: string;
+  groupId?: string;
+  isGroup?: boolean;
+}
+
+export interface ChatGroup {
+  id: string;
+  name: string;
+  avatar?: string;
+  memberIds: string[];
+  courseId?: string;
+  courseCode?: string;
+  createdAt: string;
+  createdBy: string;
 }
 
 export interface HistoryLog {
@@ -302,6 +353,7 @@ export interface CourseFile {
   uploadedByName: string;
   content?: string; // for built-in previewer
   url?: string;
+  fileUrl?: string;
 }
 
 export interface CourseFolder {
@@ -310,6 +362,14 @@ export interface CourseFolder {
   parentId?: string | null;
   name: string;
   updatedAt: string;
+}
+
+export interface CourseStudentGrade {
+  courseId: string;
+  studentId: string;
+  midtermGrade?: number | null;
+  finalGrade?: number | null;
+  updatedAt?: string;
 }
 
 export interface MockDatabase {
@@ -328,4 +388,6 @@ export interface MockDatabase {
   discussions?: Discussion[];
   courseFiles?: CourseFile[];
   courseFolders?: CourseFolder[];
+  courseGrades?: CourseStudentGrade[];
+  chatGroups?: ChatGroup[];
 }

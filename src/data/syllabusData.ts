@@ -64,6 +64,7 @@ export interface FacultySchedule {
 }
 
 export interface OfficialSyllabusData {
+  courseId?: string; // Strictly bounded to this specific course
   institution: {
     university: string;
     college: string;
@@ -121,6 +122,13 @@ export interface OfficialSyllabusData {
     preparedBy: Array<{ name: string; title: string }>;
     recommendingApproval: { name: string; title: string };
     approved: { name: string; title: string };
+  };
+  sourceDocument?: {
+    fileName: string;
+    fileSize: string;
+    fileType: 'pdf' | 'docx';
+    fileDataUrl?: string;
+    uploadedAt: string;
   };
 }
 
@@ -885,5 +893,295 @@ export const OFFICIAL_SYLLABUS_CSPC112: OfficialSyllabusData = {
       name: 'CHARLIE S. MARZAN',
       title: 'Dean, CCS'
     }
+  },
+  sourceDocument: {
+    fileName: 'Checked-CSPC-112-Software-Engineering-Course-Syllabus.pdf',
+    fileSize: '512 KB',
+    fileType: 'pdf',
+    fileDataUrl: '/Checked-CSPC-112-Software-Engineering-Course-Syllabus.pdf',
+    uploadedAt: '2026-06-23T08:00:00Z'
   }
 };
+
+/**
+ * Creates a unique, course-specific syllabus strictly bounded to one course.
+ * Ensures no two courses share the same syllabus instance or metadata.
+ */
+export function createDefaultSyllabusForCourse(course: {
+  id: string;
+  code: string;
+  title: string;
+  section?: string;
+  term?: string;
+  instructorName?: string;
+  credits?: number;
+}): OfficialSyllabusData {
+  const normCode = course.code.replace(/\s+/g, '').toUpperCase();
+
+  // CSPC 112: Software Engineering 2
+  if (normCode === 'CSPC112') {
+    return {
+      ...JSON.parse(JSON.stringify(OFFICIAL_SYLLABUS_CSPC112)),
+      courseId: course.id,
+      courseInfo: {
+        ...OFFICIAL_SYLLABUS_CSPC112.courseInfo,
+        code: course.code,
+        title: course.title,
+        semester: course.term || '1st Semester AY 2026-2027'
+      }
+    };
+  }
+
+  // CMSC 131: Web Engineering & Frameworks
+  if (normCode === 'CMSC131') {
+    const base = JSON.parse(JSON.stringify(OFFICIAL_SYLLABUS_CSPC112));
+    return {
+      ...base,
+      courseId: course.id,
+      courseInfo: {
+        code: course.code,
+        title: course.title,
+        semester: course.term || '1st Sem AY 2026-2027',
+        academicYear: '2026-2027',
+        type: 'Lecture and Laboratory',
+        credit: `${course.credits || 3} units`,
+        lectureHours: '2 hours/week',
+        labHours: '3 hours/week',
+        prerequisite: 'CMSC 100 - Web Development Fundamentals',
+        description:
+          'CMSC 131 – Web Engineering & Frameworks covers advanced modern web application architecture, component-driven client systems, asynchronous client-server APIs, reactive state synchronization, serverless cloud workflows, web application security (CORS, XSS, CSRF mitigation), and performance profiling. Students collaborate in software teams to engineer production-ready, accessible web applications adhering to modern industry specifications.'
+      },
+      facultyMembers: [
+        {
+          name: course.instructorName || 'Faculty 1',
+          sections: [
+            { section: course.section || 'BSCS 4-1', schedule: '08:00-09:30 MF / 02:00-03:00 MF', room: 'Computer Lab 3' }
+          ],
+          consultation: 'MTWTHF 02:00PM - 03:00PM'
+        }
+      ],
+      courseOutcomes: [
+        { number: 1, statement: 'Formulate component hierarchies and architectural designs for complex single-page web applications.' },
+        { number: 2, statement: 'Implement responsive, accessible, and reactive user interfaces using modern CSS frameworks and design systems.' },
+        { number: 3, statement: 'Design and integrate asynchronous RESTful and GraphQL APIs with optimistic UI and caching strategies.' },
+        { number: 4, statement: 'Apply robust state management and persistence layers across client-server boundaries.' },
+        { number: 5, statement: 'Execute automated component testing, end-to-end user journey validation, and performance audits.' },
+        { number: 6, statement: 'Deploy and maintain production web applications with continuous integration and security hardening.' }
+      ],
+      references: [
+        { citation: 'Flanagan, D. (2024). JavaScript: The Definitive Guide (8th ed.). O’Reilly Media.', year: '2024' },
+        { citation: 'Banks, A., & Porcello, E. (2023). Learning React: Modern Patterns for Developing React Apps (2nd ed.). O’Reilly.', year: '2023' },
+        { citation: 'MDN Web Docs. (2026). Web Security and Performance Best Practices. Mozilla Developer Network.', year: '2026' }
+      ],
+      signatories: {
+        ...base.signatories,
+        preparedBy: [
+          { name: (course.instructorName || 'FACULTY 1').toUpperCase(), title: 'Course Lead / Associate Professor I' }
+        ]
+      },
+      sourceDocument: {
+        fileName: 'CMSC-131-Web-Engineering-Syllabus.pdf',
+        fileSize: '480 KB',
+        fileType: 'pdf',
+        fileDataUrl: '/Checked-CSPC-112-Software-Engineering-Course-Syllabus.pdf',
+        uploadedAt: '2026-06-23T08:00:00Z'
+      }
+    };
+  }
+
+  // CMSC 150: Automata Theory & Formal Languages
+  if (normCode === 'CMSC150') {
+    const base = JSON.parse(JSON.stringify(OFFICIAL_SYLLABUS_CSPC112));
+    return {
+      ...base,
+      courseId: course.id,
+      courseInfo: {
+        code: course.code,
+        title: course.title,
+        semester: course.term || '1st Sem AY 2026-2027',
+        academicYear: '2026-2027',
+        type: 'Lecture and Laboratory',
+        credit: `${course.credits || 3} units`,
+        lectureHours: '2 hours/week',
+        labHours: '3 hours/week',
+        prerequisite: 'MATH 21 - Discrete Mathematics',
+        description:
+          'CMSC 150 – Automata Theory & Formal Languages introduces the theoretical foundations of computation. Topics include finite automata, regular languages, regular expressions, context-free grammars, pushdown automata, Turing machines, decidability, and computational complexity.'
+      },
+      facultyMembers: [
+        {
+          name: course.instructorName || 'Faculty 1',
+          sections: [
+            { section: course.section || 'BSCS 4-1', schedule: '09:30-11:00 MF / 08:00-10:00 W', room: 'Room 205' }
+          ],
+          consultation: 'MTWTHF 02:00PM - 03:00PM'
+        }
+      ],
+      courseOutcomes: [
+        { number: 1, statement: 'Design deterministic and nondeterministic finite automata to recognize specified formal languages.' },
+        { number: 2, statement: 'Convert between regular expressions, regular grammars, and finite automata.' },
+        { number: 3, statement: 'Apply the Pumping Lemma to rigorously prove non-regularity and non-context-freeness.' },
+        { number: 4, statement: 'Construct pushdown automata and context-free grammars for syntactic definitions of computer languages.' },
+        { number: 5, statement: 'Formulate standard Turing machine models and classify problems as decidable, recognizable, or undecidable.' }
+      ],
+      references: [
+        { citation: 'Hopcroft, J. E., Motwani, R., & Ullman, J. D. (2023). Introduction to Automata Theory, Languages, and Computation (4th ed.). Pearson.', year: '2023' },
+        { citation: 'Sipser, M. (2022). Introduction to the Theory of Computation (3rd ed.). Cengage Learning.', year: '2022' }
+      ],
+      signatories: {
+        ...base.signatories,
+        preparedBy: [
+          { name: (course.instructorName || 'FACULTY 1').toUpperCase(), title: 'Course Lead / Associate Professor I' }
+        ]
+      },
+      sourceDocument: {
+        fileName: 'CMSC-150-Automata-Theory-Syllabus.pdf',
+        fileSize: '440 KB',
+        fileType: 'pdf',
+        fileDataUrl: '/Checked-CSPC-112-Software-Engineering-Course-Syllabus.pdf',
+        uploadedAt: '2026-06-23T08:00:00Z'
+      }
+    };
+  }
+
+  // CMSC 170: Introduction to Artificial Intelligence
+  if (normCode === 'CMSC170') {
+    const base = JSON.parse(JSON.stringify(OFFICIAL_SYLLABUS_CSPC112));
+    return {
+      ...base,
+      courseId: course.id,
+      courseInfo: {
+        code: course.code,
+        title: course.title,
+        semester: course.term || '1st Sem AY 2026-2027',
+        academicYear: '2026-2027',
+        type: 'Lecture and Laboratory',
+        credit: `${course.credits || 3} units`,
+        lectureHours: '2 hours/week',
+        labHours: '3 hours/week',
+        prerequisite: 'CMSC 123 - Data Structures & Algorithms',
+        description:
+          'CMSC 170 – Introduction to Artificial Intelligence covers the principles and algorithms of intelligent agents. Topics include informed search algorithms (A*, greedy), adversarial game playing (minimax, alpha-beta pruning), constraint satisfaction problems, logic-based reasoning, probabilistic inference, and supervised machine learning algorithms.'
+      },
+      facultyMembers: [
+        {
+          name: course.instructorName || 'Faculty 1',
+          sections: [
+            { section: course.section || 'BSCS 4-2', schedule: '10:00-12:00 W / 11:00-12:30 TTh', room: 'Room 101' }
+          ],
+          consultation: 'MTWTHF 02:00PM - 03:00PM'
+        }
+      ],
+      courseOutcomes: [
+        { number: 1, statement: 'Formulate search problems and implement heuristic search strategies for problem solving.' },
+        { number: 2, statement: 'Implement game-playing algorithms with alpha-beta pruning and heuristic evaluation functions.' },
+        { number: 3, statement: 'Model domain constraints using constraint satisfaction and probabilistic graphical frameworks.' },
+        { number: 4, statement: 'Design, train, and evaluate machine learning models for classification and regression tasks.' },
+        { number: 5, statement: 'Critically assess ethical, fairness, and safety considerations in modern artificial intelligence deployments.' }
+      ],
+      references: [
+        { citation: 'Russell, S., & Norvig, P. (2024). Artificial Intelligence: A Modern Approach (4th ed.). Pearson.', year: '2024' }
+      ],
+      signatories: {
+        ...base.signatories,
+        preparedBy: [
+          { name: (course.instructorName || 'FACULTY 1').toUpperCase(), title: 'Course Lead / Associate Professor I' }
+        ]
+      },
+      sourceDocument: {
+        fileName: 'CMSC-170-Intro-AI-Syllabus.pdf',
+        fileSize: '495 KB',
+        fileType: 'pdf',
+        fileDataUrl: '/Checked-CSPC-112-Software-Engineering-Course-Syllabus.pdf',
+        uploadedAt: '2026-06-23T08:00:00Z'
+      }
+    };
+  }
+
+  // CMSC 190: Special Problem / Capstone Project 1
+  if (normCode === 'CMSC190') {
+    const base = JSON.parse(JSON.stringify(OFFICIAL_SYLLABUS_CSPC112));
+    return {
+      ...base,
+      courseId: course.id,
+      courseInfo: {
+        code: course.code,
+        title: course.title,
+        semester: course.term || '1st Sem AY 2026-2027',
+        academicYear: '2026-2027',
+        type: 'Lecture',
+        credit: `${course.credits || 3} units`,
+        lectureHours: '3 hours/week',
+        labHours: '0 hours/week',
+        prerequisite: 'Senior Standing',
+        description:
+          'CMSC 190 – Special Problem / Capstone Project 1 initiates the undergraduate thesis sequence. Students formulate significant computing research proposals, conduct comprehensive literature reviews, specify functional and architectural requirements, and defend their proposal before an institutional faculty committee.'
+      },
+      facultyMembers: [
+        {
+          name: course.instructorName || 'Dean 1',
+          sections: [
+            { section: course.section || 'BSCS 4-1', schedule: '01:00-04:00 F', room: 'Conference Hall' }
+          ],
+          consultation: 'WTh 02:00PM - 04:00PM'
+        }
+      ],
+      courseOutcomes: [
+        { number: 1, statement: 'Identify and formalize a novel, high-impact computing research question.' },
+        { number: 2, statement: 'Synthesize literature and formulate a rigorous methodology aligned with scientific rigor.' },
+        { number: 3, statement: 'Develop formal software architecture specifications and proof-of-concept prototypes.' },
+        { number: 4, statement: 'Successfully present and defend the project proposal before the departmental review panel.' }
+      ],
+      signatories: {
+        ...base.signatories,
+        preparedBy: [
+          { name: (course.instructorName || 'DEAN 1').toUpperCase(), title: 'Dean & Professor IV' }
+        ]
+      },
+      sourceDocument: {
+        fileName: 'CMSC-190-Capstone-Project-1-Syllabus.pdf',
+        fileSize: '520 KB',
+        fileType: 'pdf',
+        fileDataUrl: '/Checked-CSPC-112-Software-Engineering-Course-Syllabus.pdf',
+        uploadedAt: '2026-06-23T08:00:00Z'
+      }
+    };
+  }
+
+  // Fallback for any other custom or dynamically added course
+  const base = JSON.parse(JSON.stringify(OFFICIAL_SYLLABUS_CSPC112));
+  return {
+    ...base,
+    courseId: course.id,
+    courseInfo: {
+      ...base.courseInfo,
+      code: course.code,
+      title: course.title,
+      semester: course.term || '1st Sem AY 2026-2027',
+      credit: `${course.credits || 3} units`,
+      description: `${course.code} – ${course.title}. Official institutional course syllabus under the Department of Computer Science, DMMMSU College of Computer Science.`
+    },
+    facultyMembers: [
+      {
+        name: course.instructorName || 'Faculty Member',
+        sections: [
+          { section: course.section || 'Section 1', schedule: 'TBA', room: 'TBA' }
+        ],
+        consultation: 'TBA'
+      }
+    ],
+    signatories: {
+      ...base.signatories,
+      preparedBy: [
+        { name: (course.instructorName || 'FACULTY MEMBER').toUpperCase(), title: 'Course Instructor' }
+      ]
+    },
+    sourceDocument: {
+      fileName: `${course.code.replace(/\s+/g, '-')}-Official-Syllabus.pdf`,
+      fileSize: '450 KB',
+      fileType: 'pdf',
+      fileDataUrl: '/Checked-CSPC-112-Software-Engineering-Course-Syllabus.pdf',
+      uploadedAt: new Date().toISOString()
+    }
+  };
+}

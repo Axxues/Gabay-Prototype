@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { useLMS } from '../context/LMSContext';
+import { useLMS, generateCourseJoinCode } from '../context/LMSContext';
 import {
   ArrowLeft,
   BookOpen,
@@ -7,11 +7,12 @@ import {
   Check,
   Sparkles,
   GraduationCap,
-  Eye,
   ImageIcon,
   Upload,
   X,
-  Ban
+  Ban,
+  KeyRound,
+  RefreshCw
 } from 'lucide-react';
 
 const PRESET_COLORS = [
@@ -59,7 +60,7 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
   onNavigateCourse,
   onNavigateTab
 }) => {
-  const { activeUser, createCourse, showAlert } = useLMS();
+  const { activeUser, db, createCourse, showAlert } = useLMS();
 
   const [courseCode, setCourseCode] = useState('CMSC 180');
   const [courseTitle, setCourseTitle] = useState('Artificial Intelligence & Expert Systems');
@@ -76,6 +77,14 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
     'Covers foundational concepts in heuristics, search algorithms, knowledge representation, inference engines, and expert system design.'
   );
   const [published, setPublished] = useState(true);
+
+  const [courseJoinCode, setCourseJoinCode] = useState(() =>
+    generateCourseJoinCode(db.courses, 'CMSC 180')
+  );
+
+  const handleRegenerateCode = () => {
+    setCourseJoinCode(generateCourseJoinCode(db.courses, courseCode));
+  };
 
   const processImageFile = (file: File) => {
     if (!file.type.startsWith('image/')) {
@@ -142,7 +151,8 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
       instructorId: activeUser.id,
       instructorName: activeUser.name,
       term: courseTerm,
-      published: published
+      published: published,
+      joinCode: courseJoinCode
     });
 
     showAlert({
@@ -275,6 +285,36 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
                   <option value="Midyear / Summer 2026">Midyear / Summer 2026</option>
                   <option value="Special Term">Special Term</option>
                 </select>
+              </div>
+
+              {/* Course Join Code (Auto-Generated) */}
+              <div className="p-3.5 bg-muted/50 border border-border rounded-xl space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-foreground flex items-center space-x-1.5">
+                    <KeyRound className="w-3.5 h-3.5 text-primary" />
+                    <span>Course Join Code (Auto-Generated)</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleRegenerateCode}
+                    className="text-[11px] text-primary hover:text-primary/80 font-bold flex items-center space-x-1 cursor-pointer"
+                    title="Generate New Unique Code"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    <span>Regenerate</span>
+                  </button>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="text"
+                    value={courseJoinCode}
+                    onChange={e => setCourseJoinCode(e.target.value.toUpperCase())}
+                    className="w-full p-2 bg-background border border-border rounded-xl font-mono font-bold text-xs uppercase tracking-wider text-foreground outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  Students will use this unique code to self-enroll in this course once published.
+                </p>
               </div>
 
               <div>
@@ -616,86 +656,6 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
                   onChange={e => setCourseColor(e.target.value)}
                   className="w-full p-2 bg-background border border-border rounded-xl text-foreground font-sans text-xs uppercase placeholder:normal-case placeholder:text-muted-foreground"
                 />
-              </div>
-            </div>
-          </div>
-
-          {/* Live Dashboard Card Preview */}
-          <div className="p-6 bg-card border border-border rounded-2xl shadow-subtle space-y-3">
-            <div className="flex items-center space-x-1.5 text-xs text-muted-foreground font-semibold">
-              <Eye className="w-3.5 h-3.5 text-primary" />
-              <span>Live Dashboard Card Preview</span>
-            </div>
-
-            {/* Preview Card */}
-            <div className="bg-background border border-border rounded-xl overflow-hidden shadow-card flex flex-col justify-between transition-all">
-              <div
-                className="h-28 p-4 flex flex-col justify-between relative overflow-hidden transition-colors"
-                style={{ backgroundColor: courseColor || undefined }}
-              >
-                {courseImage ? (
-                  <>
-                    <img
-                      src={courseImage}
-                      alt="Cover"
-                      className={`absolute inset-0 w-full h-full object-cover ${
-                        courseColor ? 'opacity-50 mix-blend-overlay' : 'opacity-85'
-                      } pointer-events-none`}
-                    />
-                    {!courseColor && (
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/40 to-black/25 pointer-events-none" />
-                    )}
-                  </>
-                ) : (
-                  !courseColor && (
-                    <div className="absolute inset-0 bg-gradient-to-br from-slate-700 to-slate-900 dark:from-slate-800 dark:to-slate-950 pointer-events-none" />
-                  )
-                )}
-
-                <div className="flex items-center justify-between text-white relative z-10">
-                  <span className="px-2.5 py-0.5 text-[10px] font-sans font-bold bg-black/40 backdrop-blur-md rounded-md border border-white/10">
-                    {courseCode || 'CODE 101'} • {courseSection || 'SEC 1'}
-                  </span>
-                  {published ? (
-                    <span className="px-2 py-0.5 text-[10px] font-sans font-bold bg-emerald-950/80 text-emerald-300 rounded-md border border-emerald-700/50">
-                      PUBLISHED
-                    </span>
-                  ) : (
-                    <span className="px-2 py-0.5 text-[10px] font-sans font-bold bg-zinc-900/80 text-zinc-300 rounded-md border border-zinc-700/50">
-                      DRAFT
-                    </span>
-                  )}
-                </div>
-
-                <h4 className="text-white font-bold text-sm leading-tight relative z-10 line-clamp-1">
-                  {courseTitle || 'Untitled Subject Shell'}
-                </h4>
-              </div>
-
-              <div className="p-4 space-y-3">
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <div className="flex items-center space-x-2">
-                    <img
-                      src={activeUser.avatar}
-                      alt={activeUser.name}
-                      className="w-6 h-6 rounded-full object-cover border border-border shrink-0"
-                    />
-                    <div>
-                      <span className="font-bold text-foreground text-xs block leading-none">
-                        {activeUser.name}
-                      </span>
-                      <span className="text-[10px] font-sans text-muted-foreground">Instructor</span>
-                    </div>
-                  </div>
-                  <span className="font-sans text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
-                    1 Enrolled
-                  </span>
-                </div>
-
-                <div className="pt-2 border-t border-border flex items-center justify-between text-[11px] text-muted-foreground font-sans">
-                  <span>{courseTerm}</span>
-                  <span className="text-primary font-semibold">Ready to Teach →</span>
-                </div>
               </div>
             </div>
           </div>
