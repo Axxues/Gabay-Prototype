@@ -35,6 +35,13 @@ export const JoinCourseModal: React.FC<JoinCourseModalProps> = ({
     return (activeUser.enrolledCourseIds || []).includes(matchedCourse.id);
   }, [matchedCourse, activeUser.enrolledCourseIds]);
 
+  const isAlreadyPending = useMemo(() => {
+    if (!matchedCourse) return false;
+    return db.enrollmentRequests.some(
+      r => r.studentId === activeUser.id && r.courseId === matchedCourse.id && r.status === 'pending'
+    );
+  }, [matchedCourse, activeUser.id, db.enrollmentRequests]);
+
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -55,14 +62,10 @@ export const JoinCourseModal: React.FC<JoinCourseModalProps> = ({
 
     onClose();
     showAlert({
-      title: 'Enrolled in Course',
+      title: 'Join Request Sent',
       message: res.message,
       type: 'success'
     });
-
-    if (res.course && onNavigateCourse) {
-      onNavigateCourse(res.course.id, 'modules');
-    }
   };
 
   return (
@@ -114,10 +117,12 @@ export const JoinCourseModal: React.FC<JoinCourseModalProps> = ({
                 </div>
                 <div className="text-[11px] text-muted-foreground mt-0.5 flex items-center justify-between">
                   <span>Instructor: {matchedCourse.instructorName}</span>
-                  {isAlreadyEnrolled ? (
+                  {isAlreadyPending ? (
+                    <span className="font-bold text-amber-600 dark:text-amber-400">Request Pending</span>
+                  ) : isAlreadyEnrolled ? (
                     <span className="font-bold text-amber-600 dark:text-amber-400">Already Joined</span>
                   ) : (
-                    <span className="font-bold text-emerald-600 dark:text-emerald-400">Ready to Enroll</span>
+                    <span className="font-bold text-emerald-600 dark:text-emerald-400">Ready to Request</span>
                   )}
                 </div>
               </div>
@@ -142,9 +147,9 @@ export const JoinCourseModal: React.FC<JoinCourseModalProps> = ({
               </button>
               <button
                 type="submit"
-                disabled={!code.trim() || isAlreadyEnrolled}
+                disabled={!code.trim() || isAlreadyEnrolled || isAlreadyPending}
                 className={`px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center space-x-1.5 ${
-                  !code.trim() || isAlreadyEnrolled
+                  !code.trim() || isAlreadyEnrolled || isAlreadyPending
                     ? 'bg-muted text-muted-foreground cursor-not-allowed'
                     : 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-primary-sm cursor-pointer'
                 }`}
