@@ -12,6 +12,7 @@ const COURSE_ICONS: Record<string, React.ReactNode> = {
   announcements: <Megaphone className="h-4 w-4" />, assignments: <FileCheck2 className="h-4 w-4" />,
   quizzes: <QuizIcon className="h-4 w-4" />, files: <Folder className="h-4 w-4" />,
   grades: <Award className="h-4 w-4" />, people: <Users className="h-4 w-4" />,
+  'pending-requests': <Users className="h-4 w-4" />,
 };
 export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: string; onNavigateTab: (t: string) => void; onSelectCourseTab: (t: string) => void; onNavigateCourse: (id: string, sub?: string) => void }> = (p) => {
   const { db, activeCourseId, activeRole, activeUser } = useLMS();

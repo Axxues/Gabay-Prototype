@@ -9,9 +9,10 @@ import { AnnouncementsView } from './AnnouncementsView';
 import { FilesView } from './FilesView';
 import { FacultyGradebook } from '../components/grading/FacultyGradebook';
 import { StudentGradebook } from '../components/grading/StudentGradebook';
+import { SectionSelectionPage } from './SectionSelectionPage';
+import { PendingRequestsPage } from './PendingRequestsPage';
 
 import { JoinCourseModal } from '../components/common/JoinCourseModal';
-import { PageHeader } from '../components/common/PageHeader';
 import { COURSE_CHILDREN, isVisible } from '../config/navigation';
 
 interface CoursesPageProps {
@@ -19,7 +20,7 @@ interface CoursesPageProps {
 }
 
 export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modules' }) => {
-  const { activeCourseId, setActiveCourseId, db, activeRole, activeUser } = useLMS();
+  const { activeCourseId, setActiveCourseId, db, activeRole, activeUser, getUnreadNotificationCount } = useLMS();
 
   const [subTab, setSubTab] = useState(initialSubTab);
   const [returnToTab, setReturnToTab] = useState<string | null>(null);
@@ -34,7 +35,14 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
   const activeCourse = availableCourses.find(c => c.id === activeCourseId) || availableCourses[0] || db.courses[0];
 
   useEffect(() => {
+    setSubTab(initialSubTab);
+  }, [initialSubTab]);
+
+  useEffect(() => {
     if (activeRole === 'student' && subTab === 'people') {
+      setSubTab('modules');
+    }
+    if (activeRole === 'student' && subTab === 'pending-requests') {
       setSubTab('modules');
     }
   }, [activeRole, subTab]);
@@ -48,7 +56,6 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
             <button key={tab.id} type="button" onClick={() => { setSubTab(tab.id); setReturnToTab(null); }} className={`shrink-0 rounded-full px-3 py-1.5 text-[11px] font-bold cursor-pointer ${subTab === tab.id ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground border border-border'}`}>{tab.label}</button>
           ))}
         </div>
-        <PageHeader title={`${activeCourse?.code ?? 'Course'} — ${subTab}`} description={activeCourse?.title} />
         {subTab === 'modules' && (
           <ModulesView
             courseId={activeCourse.id}
@@ -114,6 +121,17 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
         )}
 
         {subTab === 'people' && <PeopleView courseId={activeCourse.id} />}
+
+        {subTab === 'section-selection' && activeRole === 'student' && (
+          <SectionSelectionPage
+            courseId={activeCourse.id}
+            onSectionSelected={() => setSubTab('modules')}
+          />
+        )}
+
+        {subTab === 'pending-requests' && activeRole === 'faculty' && (
+          <PendingRequestsPage courseId={activeCourse.id} />
+        )}
       </main>
 
       <JoinCourseModal

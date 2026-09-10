@@ -1,5 +1,5 @@
 import type { UserRole } from '../types/lms';
-export type NavIcon = 'dashboard'|'courses'|'calendar'|'inbox'|'history'|'help'|'modules'|'syllabus'|'announcements'|'activities'|'quizzes'|'files'|'grades'|'people'|'accounts'|'page1'|'page2'|'page3';
+export type NavIcon = 'dashboard'|'courses'|'calendar'|'inbox'|'history'|'help'|'modules'|'syllabus'|'announcements'|'activities'|'quizzes'|'files'|'grades'|'people'|'accounts'|'page1'|'page2'|'page3'|'pending-requests';
 export interface NavItem { id: string; label: string; icon: NavIcon; roles: UserRole[] }
 const ALL: UserRole[] = ['admin','faculty','student','staff'];
 const NO_STAFF: UserRole[] = ['admin','faculty','student'];
@@ -27,5 +27,6 @@ export const COURSE_CHILDREN: NavItem[] = [
   { id: 'files', label: 'Files', icon: 'files', roles: ALL },
   { id: 'grades', label: 'Grades', icon: 'grades', roles: ALL },
   { id: 'people', label: 'People', icon: 'people', roles: NO_STAFF },
+  { id: 'pending-requests', label: 'Pending Requests', icon: 'pending-requests', roles: ['faculty'] },
 ];
 export function isVisible(item: NavItem, role: UserRole): boolean { return item.roles.includes(role); }
