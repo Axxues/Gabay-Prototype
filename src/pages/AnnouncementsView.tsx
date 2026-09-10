@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { useLMS } from '../context/LMSContext';
 import { ModalPortal } from '../components/common/ModalPortal';
 import type { Announcement } from '../types/lms';
@@ -12,18 +12,16 @@ import {
   Send,
   Trash2,
   Lock,
-  Upload,
   FileText,
   Eye,
   ExternalLink,
   ChevronDown,
-  Loader2,
   X
 } from 'lucide-react';
-import { uploadFileToPublic, isImageFile } from '../utils/fileUploader';
+import { isImageFile } from '../utils/fileUploader';
 import { PageHeader } from '../components/common/PageHeader';
 import { EmptyState } from '../components/common/EmptyState';
-import { DialogFrame } from '../components/common/DialogFrame';
+import { CreateAnnouncementPage } from './CreateAnnouncementPage';
 
 interface AnnouncementsViewProps {
   courseId: string;
@@ -45,22 +43,9 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
   } = useLMS();
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [isComposeOpen, setIsComposeOpen] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
   const [selectedAnnouncementId, setSelectedAnnouncementId] = useState<string | null>(null);
   const [previewingAttachment, setPreviewingAttachment] = useState<{ name: string; size: string; url?: string } | null>(null);
-
-  // Compose Form State
-  const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
-  const [delayPosting, setDelayPosting] = useState(false);
-  const [delayedDate, setDelayedDate] = useState('');
-  const [allowComments, setAllowComments] = useState(true);
-  const [allowLiking, setAllowLiking] = useState(true);
-  const [pinned, setPinned] = useState(false);
-  const [attachedFile, setAttachedFile] = useState<{ name: string; size: string; url?: string } | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const [isUploadingFile, setIsUploadingFile] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Reply state for currently expanded thread
   const [replyText, setReplyText] = useState('');
@@ -75,42 +60,21 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
     return `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="600" height="340" viewBox="0 0 600 340" fill="none"><rect width="600" height="340" rx="16" fill="%231e293b"/><circle cx="300" cy="130" r="44" fill="%23ec4899" fill-opacity="0.15"/><path d="M280 142l14-14 26 26 12-12 18 18H270l10-18z" fill="%23ec4899"/><circle cx="286" cy="120" r="6" fill="%23f472b6"/><text x="300" y="220" fill="%23f8fafc" font-size="15" font-family="system-ui, sans-serif" font-weight="600" text-anchor="middle">${encodedName}</text><text x="300" y="245" fill="%2394a3b8" font-size="12" font-family="system-ui, sans-serif" text-anchor="middle">Image Attachment</text></svg>`;
   };
 
-  const processFile = async (file: File) => {
-    setIsUploadingFile(true);
-    try {
-      const result = await uploadFileToPublic(file);
-      setAttachedFile({
-        name: result.name,
-        size: result.size,
-        url: result.url
-      });
-    } catch (err) {
-      console.error('Failed to upload file to public directory:', err);
-    } finally {
-      setIsUploadingFile(false);
-    }
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      processFile(file);
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) {
-      processFile(file);
-    }
-  };
-
   const course = db.courses.find(c => c.id === courseId);
-  const announcements = (db.announcements || []).filter(
-    a => a.courseId === courseId || a.courseId === 'all'
-  );
+  const studentSectionId = activeUser.courseSections?.[courseId];
+
+  const announcements = (db.announcements || []).filter(a => {
+    if (a.courseId !== courseId && a.courseId !== 'all') return false;
+
+    // Faculty sees all announcements
+    if (activeRole === 'faculty') return true;
+
+    // Student filtering: show "All Sections" or matching their section
+    if (!a.sectionRestriction || a.sectionRestriction === 'All Sections') return true;
+    const matchingSection = db.courseSections.find(s => s.id === studentSectionId);
+    if (matchingSection && a.sectionRestriction === matchingSection.name) return true;
+    return false;
+  });
 
   // Filtered announcements
   const filteredAnnouncements = announcements
@@ -125,48 +89,6 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
 
-  const handleCreateSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!title.trim() || !content.trim()) {
-      showAlert({
-        title: 'Missing Required Fields',
-        message: 'Please provide both a topic title and announcement content.',
-        type: 'warning'
-      });
-      return;
-    }
-
-    const attachments = attachedFile
-      ? [{ name: attachedFile.name, size: attachedFile.size, url: attachedFile.url }]
-      : [];
-
-    createAnnouncement({
-      courseId,
-      title: title.trim(),
-      content: content.trim(),
-      sectionRestriction: 'All Sections',
-      delayedUntil: delayPosting && delayedDate ? delayedDate : undefined,
-      allowComments,
-      usersMustPostBeforeReplies: false,
-      allowLiking,
-      pinned,
-      attachments
-    });
-
-    showAlert({
-      title: 'Announcement Published',
-      message: `Announcement "${title.trim()}" has been posted successfully.`,
-      type: 'success'
-    });
-
-    // Reset
-    setTitle('');
-    setContent('');
-    setAttachedFile(null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-    setIsComposeOpen(false);
-  };
-
   const handleSelectAnnouncement = (ann: Announcement) => {
     markAnnouncementRead(ann.id);
     setSelectedAnnouncementId(prev => (prev === ann.id ? null : ann.id));
@@ -179,6 +101,16 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
   };
 
   const canCreate = activeRole === 'faculty';
+
+  if (isCreating) {
+    return (
+      <CreateAnnouncementPage
+        courseId={courseId}
+        onBack={() => setIsCreating(false)}
+        onAnnouncementCreated={() => setIsCreating(false)}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -194,7 +126,7 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
             {canCreate && (
               <button
                 type="button"
-                onClick={() => setIsComposeOpen(true)}
+                onClick={() => setIsCreating(true)}
                 className="px-4 py-2 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all shadow-primary-sm flex items-center space-x-2 cursor-pointer active:scale-[0.98]"
               >
                 <Plus className="w-4 h-4" />
@@ -228,211 +160,6 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
         </div>
       </div>
 
-      {/* Compose Announcement Modal */}
-      {isComposeOpen && (
-        <ModalPortal>
-          <DialogFrame
-            title="Create Course Announcement"
-            onClose={() => setIsComposeOpen(false)}
-          >
-              <form onSubmit={handleCreateSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-bold text-foreground mb-1">
-                    Topic Title *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={title}
-                    onChange={e => setTitle(e.target.value)}
-                    placeholder="e.g. Schedule for Midterm Examination & Lab Exercises"
-                    className="w-full px-3.5 py-2.5 bg-background border border-border rounded-xl text-xs font-sans text-foreground outline-none focus:ring-2 focus:ring-primary/20"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-foreground mb-1">
-                    Announcement Body *
-                  </label>
-                  <textarea
-                    required
-                    rows={5}
-                    value={content}
-                    onChange={e => setContent(e.target.value)}
-                    placeholder="Draft your announcement message. Markdown, bullet points, and guidelines..."
-                    className="w-full px-3.5 py-2.5 bg-background border border-border rounded-xl text-xs font-sans text-foreground outline-none focus:ring-2 focus:ring-primary/20 resize-y"
-                  />
-                </div>
-
-                <div className="pt-2 border-t border-border space-y-2">
-                  <label className="block text-xs font-bold text-foreground">
-                    Attach File / Handout
-                  </label>
-
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    onChange={handleFileChange}
-                    className="hidden"
-                  />
-
-                  {attachedFile ? (
-                    <div className="p-3 bg-muted/40 border border-border rounded-xl flex items-center justify-between">
-                      <div className="flex items-center space-x-3 overflow-hidden">
-                        {isImageFileName(attachedFile.name, attachedFile.url) ? (
-                          <div className="w-10 h-10 rounded-lg overflow-hidden border border-border shrink-0 bg-black/10 flex items-center justify-center">
-                            <img
-                              src={getImageSrc(attachedFile)}
-                              alt="preview"
-                              className="w-full h-full object-cover"
-                            />
-                          </div>
-                        ) : (
-                          <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                            <FileText className="w-4 h-4" />
-                          </div>
-                        )}
-                        <div className="truncate">
-                          <p className="text-xs font-bold text-foreground truncate">{attachedFile.name}</p>
-                          <p className="text-[10px] text-muted-foreground">{attachedFile.size}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-1 shrink-0 ml-2">
-                        <button
-                          type="button"
-                          onClick={() => fileInputRef.current?.click()}
-                          className="px-2.5 py-1 text-[11px] font-bold text-primary hover:bg-primary/10 rounded-lg transition-colors cursor-pointer"
-                        >
-                          Change
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setAttachedFile(null);
-                            if (fileInputRef.current) fileInputRef.current.value = '';
-                          }}
-                          className="p-1.5 text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
-                          title="Remove attachment"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div
-                      onClick={() => fileInputRef.current?.click()}
-                      onDragOver={e => {
-                        e.preventDefault();
-                        setIsDragging(true);
-                      }}
-                      onDragLeave={() => setIsDragging(false)}
-                      onDrop={handleDrop}
-                      className={`p-4 border-2 border-dashed rounded-xl text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-1.5 ${isDragging
-                          ? 'border-primary bg-primary/5 scale-[1.01]'
-                          : 'border-border hover:border-primary/50 hover:bg-muted/30 bg-muted/10'
-                        }`}
-                    >
-                      {isUploadingFile ? (
-                        <>
-                          <Loader2 className="w-6 h-6 text-primary animate-spin" />
-                          <span className="text-xs font-bold text-foreground">Saving file to /public/uploads/...</span>
-                        </>
-                      ) : (
-                        <>
-                          <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
-                            <Upload className="w-4 h-4" />
-                          </div>
-                          <div className="text-xs font-bold text-foreground">
-                            Click to upload or drag & drop handout file
-                          </div>
-                          <p className="text-[11px] text-muted-foreground">
-                            PDF, DOCX, PPTX, ZIP, or media files (saved permanently to /public/uploads/)
-                          </p>
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Options & Permissions Toggles */}
-                <div className="p-4 bg-muted/40 rounded-xl border border-border space-y-2.5 text-xs">
-                  <span className="font-bold text-foreground block font-sans text-[11px] uppercase tracking-wider">
-                    Options & Permissions
-                  </span>
-
-                  <label className="flex items-center space-x-2.5 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={allowComments}
-                      onChange={e => setAllowComments(e.target.checked)}
-                      className="w-4 h-4 accent-primary rounded"
-                    />
-                    <span className="text-foreground font-medium">Allow users to comment</span>
-                  </label>
-
-                  <label className="flex items-center space-x-2.5 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={allowLiking}
-                      onChange={e => setAllowLiking(e.target.checked)}
-                      className="w-4 h-4 accent-primary rounded"
-                    />
-                    <span className="text-foreground font-medium">Allow liking</span>
-                  </label>
-
-                  <label className="flex items-center space-x-2.5 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={pinned}
-                      onChange={e => setPinned(e.target.checked)}
-                      className="w-4 h-4 accent-primary rounded"
-                    />
-                    <span className="text-foreground font-medium">Pin announcement to top</span>
-                  </label>
-
-                  <div className="pt-2 border-t border-border">
-                    <label className="flex items-center space-x-2.5 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={delayPosting}
-                        onChange={e => setDelayPosting(e.target.checked)}
-                        className="w-4 h-4 accent-primary rounded"
-                      />
-                      <span className="text-foreground font-medium">Delay posting (Schedule release)</span>
-                    </label>
-                    {delayPosting && (
-                      <div className="mt-2 pl-6">
-                        <input
-                          type="datetime-local"
-                          value={delayedDate}
-                          onChange={e => setDelayedDate(e.target.value)}
-                          className="px-3 py-1.5 bg-background border border-border rounded-lg text-xs font-sans text-foreground"
-                        />
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-end space-x-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsComposeOpen(false)}
-                    className="px-4 py-2 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-accent rounded-xl transition-colors cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-5 py-2 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all shadow-primary-sm cursor-pointer"
-                  >
-                    Publish Announcement
-                  </button>
-                </div>
-              </form>
-          </DialogFrame>
-        </ModalPortal>
-      )}
-
       {/* Feed List */}
       {filteredAnnouncements.length === 0 ? (
         <EmptyState
@@ -443,7 +170,7 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
               : 'There are no active announcements posted in this course yet.'
           }
           actionLabel={canCreate && !searchQuery ? '+ Post First Announcement' : undefined}
-          onAction={canCreate && !searchQuery ? () => setIsComposeOpen(true) : undefined}
+          onAction={canCreate && !searchQuery ? () => setIsCreating(true) : undefined}
         />
       ) : (
         <div className="space-y-4">
@@ -494,9 +221,11 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
                             NEW
                           </span>
                         )}
-                        <span className="px-2 py-0.5 text-[10px] font-sans rounded bg-muted text-muted-foreground border border-border">
-                          {ann.sectionRestriction}
-                        </span>
+                        {ann.sectionRestriction && ann.sectionRestriction !== 'All Sections' && (
+                          <span className="text-[10px] font-bold bg-purple-500/10 text-purple-600 px-1.5 py-0.5 rounded-full">
+                            {ann.sectionRestriction}
+                          </span>
+                        )}
                       </div>
 
                       <div className="flex items-center space-x-3 text-xs text-muted-foreground font-sans">
