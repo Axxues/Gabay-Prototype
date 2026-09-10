@@ -18,22 +18,33 @@ interface PeopleViewProps {
 }
 
 export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
-  const { db, activeRole, enrollStudentsInCourse, regenerateCourseJoinCode, showAlert } = useLMS();
+  const { db, activeRole, activeUser, enrollStudentsInCourse, regenerateCourseJoinCode, getPendingRequestsForCourse, getCourseSections, approveEnrollmentRequests, rejectEnrollmentRequests, showAlert, showConfirm } = useLMS();
   const course = db.courses.find(c => c.id === courseId);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [copiedCode, setCopiedCode] = useState(false);
+  const [activeTab, setActiveTab] = useState<'roster' | 'pending'>('roster');
+  const [selectedSectionFilter, setSelectedSectionFilter] = useState<string>('all');
+
+  const courseSections = getCourseSections(courseId);
+  const pendingRequests = getPendingRequestsForCourse(courseId);
+  const pendingCount = pendingRequests.length;
 
   // Enroll modal state
   const [isEnrollModalOpen, setIsEnrollModalOpen] = useState(false);
   const [modalSearchQuery, setModalSearchQuery] = useState('');
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
 
-  const students = db.users.filter(u =>
-    u.role === 'student' &&
-    (!u.enrolledCourseIds || u.enrolledCourseIds.includes(courseId))
-  );
+  const students = db.users.filter(u => {
+    if (u.role !== 'student') return false;
+    if (!u.enrolledCourseIds || !u.enrolledCourseIds.includes(courseId)) return false;
+    if (selectedSectionFilter !== 'all') {
+      const studentSection = u.courseSections?.[courseId];
+      if (studentSection !== selectedSectionFilter) return false;
+    }
+    return true;
+  });
   const instructors = db.users.filter(u => u.role === 'faculty' || u.id === course?.instructorId);
 
   const allPeople = [...instructors, ...students].filter(u => {
@@ -157,6 +168,29 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
 
       {/* Search & Role Filter Toolbar */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+        {/* Tab Toggle */}
+        <div className="flex gap-2">
+          <button
+            onClick={() => setActiveTab('roster')}
+            className={`px-3 py-1.5 text-xs font-bold rounded-xl cursor-pointer ${
+              activeTab === 'roster' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+            }`}
+          >
+            Roster
+          </button>
+          <button
+            onClick={() => setActiveTab('pending')}
+            className={`px-3 py-1.5 text-xs font-bold rounded-xl cursor-pointer relative ${
+              activeTab === 'pending' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+            }`}
+          >
+            Pending Requests
+            {pendingCount > 0 && (
+              <span className="ml-1.5 bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">{pendingCount}</span>
+            )}
+          </button>
+        </div>
+
         <div className="relative w-full sm:w-80">
           <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-3" />
           <input
@@ -184,60 +218,161 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
         </div>
       </div>
 
-      {/* Roster Table */}
-      <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-subtle">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
-            <thead>
-              <tr className="border-b border-border bg-muted/40 font-sans text-muted-foreground">
-                <th className="p-3.5">User Name</th>
-                <th className="p-3.5">Student / Staff ID</th>
-                <th className="p-3.5">Email</th>
-                <th className="p-3.5">Role Scope</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {allPeople.map(u => {
-                const isInst = u.role === 'faculty' || u.role === 'admin';
-                return (
-                  <tr
-                    key={u.id}
-                    className={`hover:bg-muted/30 transition-colors ${isInst ? 'bg-primary/5' : ''
-                      }`}
-                  >
-                    <td className="p-3.5 flex items-center space-x-3 font-semibold text-foreground">
-                      <img
-                        src={u.avatar}
-                        alt={u.name}
-                        className="w-8 h-8 rounded-full object-cover border border-border shadow-soft shrink-0"
-                      />
-                      <div>
-                        <div className="font-bold">{u.name}</div>
-                        <div className="text-[10px] text-muted-foreground font-sans">{u.department}</div>
-                      </div>
-                    </td>
-                    <td className="p-3.5 font-sans text-muted-foreground">
-                      {u.studentId || '2026-FAC-0012'}
-                    </td>
-                    <td className="p-3.5 font-sans text-foreground">{u.email}</td>
-                    <td className="p-3.5">
-                      <span
-                        className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-md text-[10px] font-sans font-bold border ${u.role === 'faculty' || u.role === 'admin'
-                          ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20'
-                          : 'bg-primary/10 text-primary border-primary/20'
+      {/* Roster Tab */}
+      {activeTab === 'roster' && (
+        <>
+          {/* Section Filter */}
+          {courseSections.length > 0 && (
+            <div className="flex gap-2 mb-4">
+              <button
+                onClick={() => setSelectedSectionFilter('all')}
+                className={`px-2.5 py-1 text-[11px] font-bold rounded-lg cursor-pointer ${
+                  selectedSectionFilter === 'all' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+                }`}
+              >
+                All Sections
+              </button>
+              {courseSections.map(s => (
+                <button
+                  key={s.id}
+                  onClick={() => setSelectedSectionFilter(s.id)}
+                  className={`px-2.5 py-1 text-[11px] font-bold rounded-lg cursor-pointer ${
+                    selectedSectionFilter === s.id ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+                  }`}
+                >
+                  {s.name} ({s.enrolledCount}/{s.capacity})
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Roster Table */}
+          <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-subtle">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-border bg-muted/40 font-sans text-muted-foreground">
+                    <th className="p-3.5">User Name</th>
+                    <th className="p-3.5">Student / Staff ID</th>
+                    <th className="p-3.5">Email</th>
+                    <th className="p-3.5">Section</th>
+                    <th className="p-3.5">Role Scope</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {allPeople.map(u => {
+                    const isInst = u.role === 'faculty' || u.role === 'admin';
+                    return (
+                      <tr
+                        key={u.id}
+                        className={`hover:bg-muted/30 transition-colors ${isInst ? 'bg-primary/5' : ''
                           }`}
                       >
-                        <Shield className="w-3 h-3" />
-                        <span>{u.role.toUpperCase()}</span>
-                      </span>
-                    </td>
-                  </tr>
+                        <td className="p-3.5 flex items-center space-x-3 font-semibold text-foreground">
+                          <img
+                            src={u.avatar}
+                            alt={u.name}
+                            className="w-8 h-8 rounded-full object-cover border border-border shadow-soft shrink-0"
+                          />
+                          <div>
+                            <div className="font-bold">{u.name}</div>
+                            <div className="text-[10px] text-muted-foreground font-sans">{u.department}</div>
+                          </div>
+                        </td>
+                        <td className="p-3.5 font-sans text-muted-foreground">
+                          {u.studentId || '2026-FAC-0012'}
+                        </td>
+                        <td className="p-3.5 font-sans text-foreground">{u.email}</td>
+                        <td className="p-3.5">
+                          <span className="text-[10px] font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded">
+                            {db.courseSections.find(s => s.id === u.courseSections?.[courseId])?.name || 'No Section'}
+                          </span>
+                        </td>
+                        <td className="p-3.5">
+                          <span
+                            className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-md text-[10px] font-sans font-bold border ${u.role === 'faculty' || u.role === 'admin'
+                              ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20'
+                              : 'bg-primary/10 text-primary border-primary/20'
+                              }`}
+                          >
+                            <Shield className="w-3 h-3" />
+                            <span>{u.role.toUpperCase()}</span>
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Pending Requests Tab */}
+      {activeTab === 'pending' && (
+        <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-subtle">
+          {pendingRequests.length === 0 ? (
+            <div className="p-8 text-center text-sm text-muted-foreground font-sans">
+              <p className="font-semibold text-foreground mb-1">No Pending Requests</p>
+              <p className="text-xs">All enrollment requests have been processed.</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-border">
+              {pendingRequests.map(req => {
+                const student = db.users.find(u => u.id === req.studentId);
+                return (
+                  <div key={req.id} className="p-4 flex items-center justify-between gap-4 hover:bg-muted/30 transition-colors">
+                    <div className="flex items-center space-x-3">
+                      <img
+                        src={student?.avatar || 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80'}
+                        alt={student?.name || 'Student'}
+                        className="w-10 h-10 rounded-full object-cover border border-border shrink-0"
+                      />
+                      <div>
+                        <div className="text-xs font-bold text-foreground">{student?.name || 'Unknown Student'}</div>
+                        <div className="text-[10px] text-muted-foreground font-sans">{student?.email} • Requested {new Date(req.requestedAt).toLocaleDateString()}</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => {
+                          showConfirm(
+                            `Approve enrollment for ${student?.name || 'this student'}?`,
+                            () => {
+                              approveEnrollmentRequests([req.id]);
+                              showAlert({ title: 'Request Approved', message: `${student?.name || 'Student'} has been enrolled.`, type: 'success' });
+                            },
+                            'Approve Enrollment'
+                          );
+                        }}
+                        className="px-3 py-1.5 text-[11px] font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20 rounded-lg transition-colors cursor-pointer"
+                      >
+                        Approve
+                      </button>
+                      <button
+                        onClick={() => {
+                          showConfirm(
+                            `Reject enrollment for ${student?.name || 'this student'}?`,
+                            () => {
+                              rejectEnrollmentRequests([req.id]);
+                              showAlert({ title: 'Request Rejected', message: `Enrollment request from ${student?.name || 'student'} has been rejected.`, type: 'warning' });
+                            },
+                            'Reject Enrollment'
+                          );
+                        }}
+                        className="px-3 py-1.5 text-[11px] font-bold bg-red-500/10 text-red-700 dark:text-red-400 hover:bg-red-500/20 rounded-lg transition-colors cursor-pointer"
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </div>
                 );
               })}
-            </tbody>
-          </table>
+            </div>
+          )}
         </div>
-      </div>
+      )}
 
       {/* Modal: Enroll Person */}
       <AnimatedModal
