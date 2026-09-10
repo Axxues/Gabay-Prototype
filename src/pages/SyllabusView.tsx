@@ -374,10 +374,10 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
     const chosenFaculty = facultyUsers.find(u => u.id === selectedFacultyId) || activeUser;
 
     return (
-      <div className="space-y-6 max-w-6xl mx-auto animate-fade-in pb-20 font-sans">
-        {/* Header Navigation Bar */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-border">
-          <div className="flex items-center space-x-3">
+      <div className="space-y-5 max-w-5xl mx-auto animate-fade-in pb-20 font-sans">
+        {/* Verification strip — identity, confidence and actions in one place */}
+        <div className="lg:sticky lg:top-0 z-10 py-2 bg-background/95 backdrop-blur">
+          <div className="flex flex-wrap items-center gap-3 p-3 bg-card border border-border rounded-2xl shadow-subtle">
             <button
               type="button"
               onClick={() => {
@@ -388,135 +388,100 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               title="Return to Syllabus"
             >
               <ArrowLeft className="w-4 h-4" />
-              <span className="hidden sm:inline">Back to Syllabus</span>
+              <span className="hidden sm:inline">Back</span>
             </button>
-            <div>
-              <div className="flex items-center space-x-2">
-                <h2 className="text-xl font-bold tracking-tight text-foreground">
-                  Syllabus Document Verification
+            <div className="min-w-0 flex-1 basis-48">
+              <div className="flex items-center gap-2 min-w-0">
+                <h2 className="text-base font-bold tracking-tight text-foreground truncate">
+                  Verify scanned syllabus
                 </h2>
-                <span className="px-2 py-0.5 text-[10px] font-bold bg-primary/10 text-primary rounded-full">
-                  Step 2: Review & Assign Faculty
+                <span className="px-2 py-0.5 text-[10px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 rounded-full shrink-0">
+                  {scanResult.validation.confidence}% match
                 </span>
               </div>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Review extracted institutional content, verified outcomes, and assign the course instructor for {currentCourse?.code || 'this course'}.
+              <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                {scanResult.fileName} · {scanResult.fileSize} · {scanResult.fileType.toUpperCase()} — parsed for {currentCourse?.code || 'this course'}
               </p>
             </div>
-          </div>
-
-          <div className="flex items-center space-x-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => {
-                setScanResult(null);
-                setScanError(null);
-                setIsUploadModalOpen(true);
-              }}
-              className="px-3.5 py-2 text-xs font-bold bg-muted hover:bg-accent text-foreground border border-border rounded-xl transition-all shadow-subtle cursor-pointer flex items-center space-x-1.5"
-            >
-              <RotateCcw className="w-3.5 h-3.5 text-muted-foreground" />
-              <span>Scan Another File</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleApplySyllabus}
-              className="px-4 py-2 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all shadow-primary-sm cursor-pointer flex items-center space-x-1.5"
-            >
-              <Check className="w-3.5 h-3.5" />
-              <span>Apply & Update Syllabus</span>
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setScanResult(null);
+                  setScanError(null);
+                  setIsUploadModalOpen(true);
+                }}
+                className="px-3 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted border border-transparent hover:border-border rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Scan another</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleApplySyllabus}
+                className="px-4 py-2 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all shadow-primary-sm cursor-pointer flex items-center gap-1.5"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>Apply syllabus</span>
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Success Banner */}
-        <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-center justify-between gap-4">
-          <div className="flex items-center space-x-3.5">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
-              <CheckCircle2 className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
-                Syllabus Analysis & Extraction Successful
-              </div>
-              <div className="text-xs text-muted-foreground mt-0.5">
-                Document parsed against CHED & DMMMSU curriculum standards. Ready to synchronize with {currentCourse?.code || 'course'}.
-              </div>
-            </div>
-          </div>
-          <div className="hidden md:flex items-center space-x-2 text-xs text-muted-foreground">
-            <span className="font-semibold text-foreground">{scanResult.fileName}</span>
-            <span>•</span>
-            <span>{scanResult.fileSize}</span>
-          </div>
+        {/* Status line — quiet confirmation, not a second header */}
+        <div className="flex items-start gap-2.5 px-1">
+          <CheckCircle2 className="w-4 h-4 mt-0.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            <span className="font-semibold text-foreground">Ready to review.</span>{' '}
+            Document parsed against DMMMSU curriculum standards
+            {scanResult.validation.isScannedImage ? ' from an image-based PDF (metadata signals)' : ''}.
+            Confirm the instructor and extracted details below, then apply.
+          </p>
         </div>
 
-        {/* Quick Statistics Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
-          <div className="p-4 bg-card border border-border rounded-2xl shadow-subtle">
-            <div className="flex items-center justify-between text-muted-foreground text-xs mb-1">
-              <span>Learning Weeks</span>
-              <Calendar className="w-4 h-4 text-primary" />
-            </div>
-            <div className="text-2xl font-black text-foreground">
+        {/* Extraction summary — one strip, not four competing cards */}
+        <dl className="grid grid-cols-4 divide-x divide-border bg-card border border-border rounded-2xl shadow-subtle overflow-hidden">
+          <div className="px-3 sm:px-4 py-3">
+            <dt className="text-xs text-muted-foreground truncate">Learning weeks</dt>
+            <dd className="text-xl font-bold text-foreground leading-tight">
               {scanResult.stats.learningWeeksCount}
-            </div>
-            <span className="text-[10px] text-muted-foreground">18-Week Full Term Plan</span>
+            </dd>
           </div>
-
-          <div className="p-4 bg-card border border-border rounded-2xl shadow-subtle">
-            <div className="flex items-center justify-between text-muted-foreground text-xs mb-1">
-              <span>Course Outcomes</span>
-              <Award className="w-4 h-4 text-primary" />
-            </div>
-            <div className="text-2xl font-black text-foreground">
+          <div className="px-3 sm:px-4 py-3">
+            <dt className="text-xs text-muted-foreground truncate">Outcomes</dt>
+            <dd className="text-xl font-bold text-foreground leading-tight">
               {scanResult.stats.outcomesCount}
-            </div>
-            <span className="text-[10px] text-muted-foreground">Mapped to Program Outcomes</span>
+            </dd>
           </div>
-
-          <div className="p-4 bg-card border border-border rounded-2xl shadow-subtle">
-            <div className="flex items-center justify-between text-muted-foreground text-xs mb-1">
-              <span>Rubric Dimensions</span>
-              <FileSpreadsheet className="w-4 h-4 text-primary" />
-            </div>
-            <div className="text-2xl font-black text-foreground">
+          <div className="px-3 sm:px-4 py-3">
+            <dt className="text-xs text-muted-foreground truncate">Rubrics</dt>
+            <dd className="text-xl font-bold text-foreground leading-tight">
               {scanResult.stats.rubricsCount}
-            </div>
-            <span className="text-[10px] text-muted-foreground">Capstone & Project Criteria</span>
+            </dd>
           </div>
-
-          <div className="p-4 bg-card border border-border rounded-2xl shadow-subtle">
-            <div className="flex items-center justify-between text-muted-foreground text-xs mb-1">
-              <span>References & Textbooks</span>
-              <BookOpen className="w-4 h-4 text-primary" />
-            </div>
-            <div className="text-2xl font-black text-foreground">
+          <div className="px-3 sm:px-4 py-3">
+            <dt className="text-xs text-muted-foreground truncate">References</dt>
+            <dd className="text-xl font-bold text-foreground leading-tight">
               {scanResult.stats.referencesCount}
-            </div>
-            <span className="text-[10px] text-muted-foreground">Accredited Citations</span>
+            </dd>
           </div>
-        </div>
+        </dl>
 
-        {/* 2-Column Wide Content Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-          {/* Main 2-column section */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Faculty Detection & Course Assignment Card */}
-            <div className="p-5 bg-card border border-border rounded-2xl shadow-subtle space-y-4">
-              <div className="flex items-center justify-between border-b border-border pb-3">
-                <div className="flex items-center space-x-2.5">
-                  <div className="w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-                    <GraduationCap className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-sm text-foreground">
-                      Course Faculty Assignment
-                    </h3>
-                    <p className="text-[11px] text-muted-foreground">
-                      Assign the single instructor who created and teaches this course section.
-                    </p>
-                  </div>
+        {/* Review flow — numbered steps down the main column, actions pinned right */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-5 items-start">
+          {/* Main review column */}
+          <div className="space-y-5 min-w-0">
+            {/* 01 — Faculty assignment */}
+            <section className="p-5 bg-card border border-border rounded-2xl shadow-subtle space-y-4">
+              <div className="flex items-center gap-3 pb-3 border-b border-border">
+                <span className="text-xs font-bold text-primary bg-primary/10 rounded-lg px-2 py-1 shrink-0">01</span>
+                <div>
+                  <h3 className="font-bold text-sm text-foreground">
+                    Assign the course instructor
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    The instructor who teaches {currentCourse?.code || 'this course'} section.
+                  </p>
                 </div>
               </div>
 
@@ -606,134 +571,84 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                   </div>
                 </div>
               )}
-            </div>
+            </section>
 
-            {/* Extracted Course Information Card */}
-            <div className="p-5 bg-card border border-border rounded-2xl shadow-subtle space-y-4">
-              <div className="flex items-center justify-between border-b border-border pb-3">
-                <div className="flex items-center space-x-2.5">
-                  <div className="w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-                    <Layers className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-sm text-foreground">
-                      Course Curriculum Specifications
-                    </h3>
-                    <p className="text-[11px] text-muted-foreground">
-                      Institutional metadata extracted from the uploaded document.
-                    </p>
-                  </div>
+            {/* 02 — Extracted details */}
+            <section className="p-5 bg-card border border-border rounded-2xl shadow-subtle space-y-4">
+              <div className="flex items-center gap-3 pb-3 border-b border-border">
+                <span className="text-xs font-bold text-primary bg-primary/10 rounded-lg px-2 py-1 shrink-0">02</span>
+                <div>
+                  <h3 className="font-bold text-sm text-foreground">
+                    Check extracted details
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Metadata read from the uploaded document.
+                  </p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 text-xs">
-                <div className="p-3 bg-muted/20 border border-border rounded-xl">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
-                    Course Code & Title
-                  </span>
-                  <div className="font-bold text-foreground mt-0.5">
-                    {scanResult.detectedCourseCode} &bull; {scanResult.detectedCourseTitle}
-                  </div>
+              <dl className="divide-y divide-border text-xs">
+                <div className="flex items-baseline justify-between gap-4 py-2.5">
+                  <dt className="text-muted-foreground shrink-0">Course</dt>
+                  <dd className="font-semibold text-foreground text-right">
+                    {scanResult.detectedCourseCode} · {scanResult.detectedCourseTitle}
+                  </dd>
                 </div>
 
-                <div className="p-3 bg-muted/20 border border-border rounded-xl">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
-                    Institutional Form Code
-                  </span>
-                  <div className="font-bold text-foreground mt-0.5">
+                <div className="flex items-baseline justify-between gap-4 py-2.5">
+                  <dt className="text-muted-foreground shrink-0">Form code</dt>
+                  <dd className="font-semibold text-foreground text-right">
                     {scanResult.detectedFormCode}
-                  </div>
+                  </dd>
                 </div>
 
-                <div className="p-3 bg-muted/20 border border-border rounded-xl">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
-                    Term Grading Formula
-                  </span>
-                  <div className="font-bold text-foreground mt-0.5">
+                <div className="flex items-baseline justify-between gap-4 py-2.5">
+                  <dt className="text-muted-foreground shrink-0">Term formula</dt>
+                  <dd className="font-semibold text-foreground text-right">
                     {scanResult.syllabus.gradingSystem.termFormula}
-                  </div>
+                  </dd>
                 </div>
 
-                <div className="p-3 bg-muted/20 border border-border rounded-xl">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
-                    Final Grade Computation
-                  </span>
-                  <div className="font-bold text-foreground mt-0.5">
+                <div className="flex items-baseline justify-between gap-4 py-2.5">
+                  <dt className="text-muted-foreground shrink-0">Final grade</dt>
+                  <dd className="font-semibold text-foreground text-right">
                     {scanResult.syllabus.gradingSystem.finalFormula}
-                  </div>
+                  </dd>
                 </div>
-              </div>
-            </div>
+              </dl>
+            </section>
 
-            {/* Course Outcomes List */}
-            <div className="p-5 bg-card border border-border rounded-2xl shadow-subtle space-y-3">
-              <h3 className="font-bold text-sm text-foreground flex items-center space-x-2">
-                <Award className="w-4 h-4 text-primary" />
-                <span>Extracted Course Outcomes (COs)</span>
-              </h3>
-              <div className="space-y-2">
+            {/* 03 — Outcomes */}
+            <section className="p-5 bg-card border border-border rounded-2xl shadow-subtle space-y-3">
+              <div className="flex items-center gap-3 pb-3 border-b border-border">
+                <span className="text-xs font-bold text-primary bg-primary/10 rounded-lg px-2 py-1 shrink-0">03</span>
+                <h3 className="font-bold text-sm text-foreground">
+                  Confirm course outcomes ({scanResult.syllabus.courseOutcomes.length})
+                </h3>
+              </div>
+              <ol className="space-y-2">
                 {scanResult.syllabus.courseOutcomes.map((co, idx) => (
-                  <div key={idx} className="p-3 rounded-xl bg-muted/20 border border-border flex items-start space-x-3 text-xs">
-                    <span className="px-2 py-0.5 bg-primary/10 text-primary font-bold rounded-md shrink-0">
+                  <li key={idx} className="flex items-start gap-3 text-xs">
+                    <span className="px-1.5 py-0.5 bg-muted text-muted-foreground font-semibold rounded-md shrink-0">
                       CO {co.number}
                     </span>
                     <span className="text-foreground leading-relaxed">{co.statement}</span>
-                  </div>
+                  </li>
                 ))}
-              </div>
-            </div>
+              </ol>
+            </section>
           </div>
 
-          {/* Right Sidebar Column */}
-          <div className="space-y-6">
-            {/* File Information Card */}
-            <div className="p-5 bg-card border border-border rounded-2xl shadow-subtle space-y-3">
-              <h3 className="font-bold text-sm text-foreground flex items-center space-x-2">
-                <FileText className="w-4 h-4 text-primary" />
-                <span>Source File Details</span>
-              </h3>
-              <div className="p-3 bg-muted/20 border border-border rounded-xl space-y-2 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground text-[11px]">Filename:</span>
-                  <span className="font-bold text-foreground truncate max-w-[150px]">{scanResult.fileName}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground text-[11px]">File Size:</span>
-                  <span className="font-bold text-foreground">{scanResult.fileSize}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground text-[11px]">Format:</span>
-                  <span className="font-bold uppercase text-primary">{scanResult.fileType}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground text-[11px]">Status:</span>
-                  <span className="font-bold text-emerald-600 dark:text-emerald-400">Verified & Ready</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Extracted Text Stream Preview Card */}
-            <div className="p-5 bg-card border border-border rounded-2xl shadow-subtle space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="font-bold text-xs uppercase tracking-wider text-muted-foreground">
-                  Document Stream Preview
-                </h3>
-                <span className="text-[10px] text-muted-foreground">Raw OCR/Text</span>
-              </div>
-              <pre className="text-[11px] font-sans text-muted-foreground bg-muted/30 p-3 rounded-xl border border-border whitespace-pre-wrap leading-relaxed max-h-56 overflow-y-auto">
-                {scanResult.rawTextPreview}
-              </pre>
-            </div>
-
-            {/* Bottom Actions Card */}
-            <div className="p-5 bg-card border border-border rounded-2xl shadow-subtle space-y-2.5">
+          {/* Action rail — pinned on desktop */}
+          <aside className="space-y-4 lg:sticky lg:top-24">
+            <div className="p-4 bg-card border border-border rounded-2xl shadow-subtle space-y-2.5">
               <button
                 type="button"
                 onClick={handleApplySyllabus}
                 className="w-full py-2.5 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all shadow-primary-sm cursor-pointer flex items-center justify-center space-x-2"
               >
                 <Check className="w-4 h-4" />
-                <span>Apply & Update Syllabus</span>
+                <span>Apply syllabus</span>
               </button>
               <button
                 type="button"
@@ -741,12 +656,28 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                   setScanResult(null);
                   setScanError(null);
                 }}
-                className="w-full py-2.5 text-xs font-bold bg-muted hover:bg-accent text-muted-foreground hover:text-foreground rounded-xl transition-all cursor-pointer text-center"
+                className="w-full py-2 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-all cursor-pointer text-center"
               >
-                Cancel / Return to Syllabus
+                Discard scan
               </button>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                Applying replaces the course syllabus and assigns the instructor above.
+              </p>
             </div>
-          </div>
+
+            <details className="bg-card border border-border rounded-2xl shadow-subtle text-xs">
+              <summary className="px-4 py-3 font-semibold text-foreground cursor-pointer list-none flex items-center justify-between">
+                <span>Source file</span>
+                <span className="text-muted-foreground font-normal">{scanResult.fileSize} · {scanResult.fileType.toUpperCase()}</span>
+              </summary>
+              <div className="px-4 pb-4 space-y-3">
+                <p className="text-muted-foreground break-all">{scanResult.fileName}</p>
+                <pre className="text-[11px] font-sans text-muted-foreground bg-muted/30 p-3 rounded-xl border border-border whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto">
+                  {scanResult.rawTextPreview}
+                </pre>
+              </div>
+            </details>
+          </aside>
         </div>
       </div>
     );
@@ -982,7 +913,6 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                           </div>
                         ))}
                       </div>
-                    </div>
 
                     <div className="pt-2 border-t border-border/60 flex items-center justify-between text-xs">
                       <span className="text-muted-foreground text-[11px] flex items-center space-x-1">
@@ -991,6 +921,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                       </span>
                       <span className="font-bold text-foreground text-[11px]">{fac.consultation}</span>
                     </div>
+                  </div>
                   </div>
                 ))}
               </div>

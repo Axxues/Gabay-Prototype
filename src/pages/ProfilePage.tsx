@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useLMS } from '../context/LMSContext';
+import { useLMS, ACCENT_PRESETS } from '../context/LMSContext';
 import {
   Building,
   UserCheck,
@@ -17,7 +17,10 @@ import {
   Sliders,
   ExternalLink,
   Edit3,
-  Save
+  Save,
+  Palette,
+  RotateCcw,
+  Check
 } from 'lucide-react';
 import { FilesView } from './FilesView';
 
@@ -30,7 +33,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
   onNavigateCourse,
   onNavigateTab
 }) => {
-  const { activeUser, activeRole, db, logout, showConfirm } = useLMS();
+  const { activeUser, activeRole, db, logout, showConfirm, accent, customAccentHex, setAccent, setCustomAccentHex, resetAccent, theme } = useLMS();
 
   // Active tab within the profile page
   const [profileTab, setProfileTab] = useState<'overview' | 'courses' | 'files' | 'preferences' | 'security'>('overview');
@@ -451,6 +454,76 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
           </div>
 
           <div className="space-y-4 text-xs">
+            <div className="p-4 bg-muted/30 rounded-xl border border-border space-y-3">
+              <div className="flex items-start space-x-3">
+                <Palette className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <div className="font-bold text-foreground">System Accent Color</div>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed mt-0.5">
+                    Applies instantly across buttons, sidebar highlights, and focus rings — in both light and dark mode.
+                  </p>
+                </div>
+                {accent !== 'pink' && (
+                  <button
+                    type="button"
+                    onClick={resetAccent}
+                    title="Reset to default color"
+                    className="flex items-center space-x-1 px-2 py-1 text-[11px] font-semibold text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-all cursor-pointer shrink-0"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Reset</span>
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-2.5 pl-7">
+                {ACCENT_PRESETS.map(preset => {
+                  const isActive = accent === preset.id;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => setAccent(preset.id)}
+                      title={preset.label}
+                      aria-label={`Use ${preset.label} accent`}
+                      aria-pressed={isActive}
+                      className={`w-8 h-8 rounded-full flex items-center justify-center transition-all cursor-pointer shrink-0 ${
+                        isActive
+                          ? 'ring-2 ring-primary ring-offset-2 ring-offset-card scale-105'
+                          : 'hover:scale-105 ring-1 ring-border'
+                      }`}
+                      style={{ backgroundColor: preset.swatch }}
+                    >
+                      {isActive && <Check className="w-4 h-4 text-white stroke-[3]" />}
+                    </button>
+                  );
+                })}
+                <label
+                  title="Custom color"
+                  className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-all cursor-pointer shrink-0 overflow-hidden ${
+                    accent === 'custom'
+                      ? 'ring-2 ring-primary ring-offset-2 ring-offset-card scale-105'
+                      : 'hover:scale-105 ring-1 ring-border ring-dashed'
+                  }`}
+                  style={{ backgroundColor: customAccentHex }}
+                >
+                  <span className="text-white text-sm font-bold leading-none select-none">+</span>
+                  <input
+                    type="color"
+                    value={/^#[0-9a-f]{6}$/i.test(customAccentHex) ? customAccentHex : '#0E7A5C'}
+                    onChange={e => setCustomAccentHex(e.target.value)}
+                    aria-label="Pick a custom accent color"
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                  />
+                </label>
+                <span className="text-[11px] text-muted-foreground ml-1">
+                  {accent === 'custom'
+                    ? `Custom ${customAccentHex}`
+                    : ACCENT_PRESETS.find(p => p.id === accent)?.label ?? ''}
+                  {` · ${theme === 'dark' ? 'Dark' : 'Light'} mode`}
+                </span>
+              </div>
+            </div>
+
             <div className="flex items-center justify-between p-4 bg-muted/30 rounded-xl border border-border">
               <div className="flex items-start space-x-3">
                 <Bell className="w-4 h-4 text-primary shrink-0 mt-0.5" />

@@ -30,6 +30,11 @@ import type { OfficialSyllabusData } from '../data/syllabusData';
 interface LMSContextType {
   theme: 'dark' | 'light';
   toggleTheme: () => void;
+  accent: AccentId;
+  customAccentHex: string;
+  setAccent: (id: AccentId) => void;
+  setCustomAccentHex: (hex: string) => void;
+  resetAccent: () => void;
   
   // Authentication & Session
   isAuthenticated: boolean;
@@ -198,6 +203,90 @@ const safeSetLocalStorage = (key: string, value: string): boolean => {
 
 const LMSContext = createContext<LMSContextType | undefined>(undefined);
 
+/** Selectable system accent. Presets ship hand-tuned light/dark HSL triples. */
+export type AccentId = 'pink' | 'emerald' | 'navy' | 'gold' | 'custom';
+
+export interface AccentTheme {
+  id: Exclude<AccentId, 'custom'>;
+  label: string;
+  /** Representative dot color for the swatch UI. */
+  swatch: string;
+  light: { primary: string; ring: string; sidebarActive: string };
+  dark: { primary: string; ring: string; sidebarActive: string };
+}
+
+export const ACCENT_PRESETS: AccentTheme[] = [
+  {
+    id: 'pink',
+    label: 'College Pink',
+    swatch: '#DB2777',
+    light: { primary: '335 78% 46%', ring: '335 78% 46%', sidebarActive: '335 78% 46%' },
+    dark: { primary: '335 85% 60%', ring: '335 85% 60%', sidebarActive: '335 85% 60%' }
+  },
+  {
+    id: 'emerald',
+    label: 'Emerald',
+    swatch: '#0E7A5C',
+    light: { primary: '162 65% 30%', ring: '162 65% 30%', sidebarActive: '162 65% 30%' },
+    dark: { primary: '160 50% 55%', ring: '160 50% 55%', sidebarActive: '160 50% 55%' }
+  },
+  {
+    id: 'navy',
+    label: 'Navy',
+    swatch: '#2B3F8C',
+    light: { primary: '222 60% 34%', ring: '222 60% 34%', sidebarActive: '222 60% 34%' },
+    dark: { primary: '220 55% 68%', ring: '220 55% 68%', sidebarActive: '220 55% 68%' }
+  },
+  {
+    id: 'gold',
+    label: 'Gold',
+    swatch: '#B45309',
+    light: { primary: '36 90% 34%', ring: '36 90% 34%', sidebarActive: '36 90% 34%' },
+    dark: { primary: '42 95% 58%', ring: '42 95% 58%', sidebarActive: '42 95% 58%' }
+  }
+];
+
+export const DEFAULT_ACCENT: AccentId = 'pink';
+const DEFAULT_CUSTOM_HEX = '#0E7A5C';
+
+const STORAGE_KEY_ACCENT = 'gabay_accent_v1';
+const STORAGE_KEY_ACCENT_CUSTOM = 'gabay_accent_custom_v1';
+
+/** '#rrggbb' -> [h, s, l] with h 0-360, s/l 0-100. Returns null for invalid input. */
+export function hexToHsl(hex: string): [number, number, number] | null {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  const r = ((n >> 16) & 255) / 255;
+  const g = ((n >> 8) & 255) / 255;
+  const b = (n & 255) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  if (max === min) return [0, 0, Math.round(l * 100)];
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  let h = 0;
+  if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+  else if (max === g) h = ((b - r) / d + 2) / 6;
+  else h = ((r - g) / d + 4) / 6;
+  return [Math.round(h * 360), Math.round(s * 100), Math.round(l * 100)];
+}
+
+/** Derive theme-ready primary/ring/sidebar triple from a custom hex color. */
+export function customAccentVars(hex: string, theme: 'dark' | 'light'): { primary: string; ring: string; sidebarActive: string } {
+  const hsl = hexToHsl(hex);
+  if (!hsl) {
+    const fallback = ACCENT_PRESETS[0][theme];
+    return { ...fallback };
+  }
+  const [h, s] = hsl;
+  const sat = Math.max(s, 30);
+  const light = theme === 'dark' ? 60 : 35;
+  const triple = `${h} ${sat}% ${light}%`;
+  return { primary: triple, ring: triple, sidebarActive: triple };
+}
+
 export const generateCourseJoinCode = (existingCourses: Course[] = [], prefix?: string): string => {
   const chars = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
   const cleanPrefix = (prefix || 'GBY')
@@ -241,6 +330,51 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const toggleTheme = () => {
     setTheme(prev => (prev === 'dark' ? 'light' : 'dark'));
   };
+
+  // System accent color (user-selectable brand color)
+  const [accent, setAccentState] = useState<AccentId>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_ACCENT);
+      if (saved === 'pink' || saved === 'emerald' || saved === 'navy' || saved === 'gold' || saved === 'custom') {
+        return saved;
+      }
+      return DEFAULT_ACCENT;
+    } catch (_) {
+      return DEFAULT_ACCENT;
+    }
+  });
+
+  const [customAccentHex, setCustomAccentHexState] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_ACCENT_CUSTOM);
+      return hexToHsl(saved ?? '') ? (saved as string) : DEFAULT_CUSTOM_HEX;
+    } catch (_) {
+      return DEFAULT_CUSTOM_HEX;
+    }
+  });
+
+  useEffect(() => {
+    const vars =
+      accent === 'custom'
+        ? customAccentVars(customAccentHex, theme)
+        : { ...ACCENT_PRESETS.find(p => p.id === accent)![theme] };
+    const root = document.documentElement;
+    root.style.setProperty('--primary', vars.primary);
+    root.style.setProperty('--ring', vars.ring);
+    root.style.setProperty('--sidebar-active', vars.sidebarActive);
+    safeSetLocalStorage(STORAGE_KEY_ACCENT, accent);
+    safeSetLocalStorage(STORAGE_KEY_ACCENT_CUSTOM, customAccentHex);
+  }, [accent, customAccentHex, theme]);
+
+  const setAccent = (id: AccentId) => setAccentState(id);
+
+  const setCustomAccentHex = (hex: string) => {
+    if (!hexToHsl(hex)) return;
+    setCustomAccentHexState(hex);
+    setAccentState('custom');
+  };
+
+  const resetAccent = () => setAccentState(DEFAULT_ACCENT);
 
   // Database State
   const [db, setDb] = useState<MockDatabase>(() => {
@@ -2063,6 +2197,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       value={{
         theme,
         toggleTheme,
+        accent,
+        customAccentHex,
+        setAccent,
+        setCustomAccentHex,
+        resetAccent,
         isAuthenticated,
         currentUser,
         activeUser,
