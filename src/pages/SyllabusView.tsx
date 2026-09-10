@@ -1970,6 +1970,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
           <DialogFrame
             title="Upload & Scan Course Syllabus"
             subtitle="Upload an official college syllabus document. Gabay will automatically parse the curriculum, 18-week learning plan, outcomes, and grading rubrics."
+            wide
             onClose={() => {
               if (!isScanning) setIsUploadModalOpen(false);
             }}

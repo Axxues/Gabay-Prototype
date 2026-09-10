@@ -978,7 +978,6 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
           {currentFolders.length === 0 && currentFiles.length === 0 && (
             <EmptyState
               title="This folder is currently empty."
-              body=""
               actionLabel={canManage ? 'Upload a file now' : undefined}
               onAction={canManage ? () => fileInputRef.current?.click() : undefined}
             />

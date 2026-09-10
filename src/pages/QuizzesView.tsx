@@ -600,7 +600,6 @@ export const QuizzesView: React.FC<QuizzesViewProps> = ({
         {courseQuizzes.length === 0 ? (
           <EmptyState
             title="No quizzes published for this course yet."
-            body=""
             actionLabel={activeRole === 'faculty' ? 'Create your first quiz now' : undefined}
             onAction={activeRole === 'faculty' ? () => setIsCreatingQuiz(true) : undefined}
           />

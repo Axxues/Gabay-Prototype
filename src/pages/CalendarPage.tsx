@@ -507,7 +507,6 @@ export const CalendarPage: React.FC = () => {
               {selectedDayEvents.length === 0 ? (
                 <EmptyState
                   title="No events scheduled for this day."
-                  body=""
                   actionLabel={!isReadOnlyCalendar ? '+ Click here to add an event' : undefined}
                   onAction={!isReadOnlyCalendar ? () => openAddEvent(selectedDay) : undefined}
                 />

@@ -342,7 +342,6 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
         {sortedModules.length === 0 ? (
           <EmptyState
             title="No modules available for this course section yet."
-            body=""
           />
         ) : (
           sortedModules.map(mod => {

@@ -145,7 +145,6 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
           {courseAssignments.length === 0 ? (
             <EmptyState
               title="No activities published for this course yet."
-              body=""
             />
           ) : (
             courseAssignments.map(asg => {
