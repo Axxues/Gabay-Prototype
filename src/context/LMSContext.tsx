@@ -23,7 +23,8 @@ import type {
   CourseStudentGrade,
   ChatGroup,
   Notification,
-  CourseSection
+  CourseSection,
+  EnrollmentRequest
 } from '../types/lms';
 import initialMockData from '../data/mockData.json';
 import { AlertModal, type AlertModalOptions } from '../components/common/AlertModal';
@@ -168,6 +169,15 @@ interface LMSContextType {
   deleteSection: (sectionId: string) => void;
   getCourseSections: (courseId: string) => CourseSection[];
   getStudentSection: (courseId: string) => CourseSection | null;
+
+  // Enrollment Requests
+  createEnrollmentRequest: (courseId: string, type: 'self_join' | 'faculty_enroll') => EnrollmentRequest;
+  approveEnrollmentRequests: (requestIds: string[]) => void;
+  rejectEnrollmentRequests: (requestIds: string[]) => void;
+  studentApproveInvitation: (requestId: string) => void;
+  selectSection: (courseId: string, sectionId: string) => void;
+  getPendingRequestsForCourse: (courseId: string) => EnrollmentRequest[];
+  getPendingRequestsForStudent: () => EnrollmentRequest[];
 
   logHistory: (path: string, title: string) => void;
   clearHistory: () => void;
@@ -1141,38 +1151,32 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const targetCourseId = courseId || activeCourseId;
     if (!targetCourseId || studentIds.length === 0) return;
 
-    setDb(prev => {
-      let newlyEnrolledCount = 0;
-      const updatedUsers = prev.users.map(u => {
-        if (studentIds.includes(u.id)) {
-          const currentCourses = u.enrolledCourseIds || [];
-          if (!currentCourses.includes(targetCourseId)) {
-            newlyEnrolledCount++;
-            return {
-              ...u,
-              enrolledCourseIds: [...currentCourses, targetCourseId]
-            };
-          }
-        }
-        return u;
-      });
+    for (const studentId of studentIds) {
+      const student = db.users.find(u => u.id === studentId);
+      if (!student) continue;
 
-      const updatedCourses = prev.courses.map(c => {
-        if (c.id === targetCourseId) {
-          return {
-            ...c,
-            enrolledCount: (c.enrolledCount || 0) + newlyEnrolledCount
-          };
-        }
-        return c;
-      });
+      const alreadyEnrolled = (student.enrolledCourseIds || []).includes(targetCourseId);
+      const alreadyPending = db.enrollmentRequests.find(
+        r => r.studentId === studentId && r.courseId === targetCourseId && r.status === 'pending'
+      );
 
-      return {
-        ...prev,
-        users: updatedUsers,
-        courses: updatedCourses
-      };
-    });
+      if (!alreadyEnrolled && !alreadyPending) {
+        const newRequest: EnrollmentRequest = {
+          id: `req-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+          courseId: targetCourseId,
+          studentId: student.id,
+          studentName: student.name,
+          type: 'faculty_enroll',
+          status: 'pending',
+          requestedAt: new Date().toISOString()
+        };
+
+        setDb(prev => ({
+          ...prev,
+          enrollmentRequests: [...prev.enrollmentRequests, newRequest]
+        }));
+      }
+    }
   };
 
   const createUser = (userData: Partial<User>): User => {
@@ -1263,28 +1267,22 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }
 
-    const updatedEnrolled = [...currentEnrolled, targetCourse.id];
-    const updatedUser: User = {
-      ...activeUser,
-      enrolledCourseIds: updatedEnrolled
-    };
+    const existingPending = db.enrollmentRequests.find(
+      r => r.studentId === activeUser.id && r.courseId === targetCourse.id && r.status === 'pending'
+    );
+    if (existingPending) {
+      return {
+        success: false,
+        message: `You already have a pending join request for ${targetCourse.code}.`,
+        course: targetCourse
+      };
+    }
 
-    setCurrentUser(updatedUser);
-    safeSetLocalStorage(STORAGE_KEY_SESSION, JSON.stringify(updatedUser));
-
-    setDb(prev => ({
-      ...prev,
-      users: prev.users.map(u => (u.id === activeUser.id ? updatedUser : u)),
-      courses: prev.courses.map(c =>
-        c.id === targetCourse.id ? { ...c, enrolledCount: (c.enrolledCount || 0) + 1 } : c
-      )
-    }));
-
-    setActiveCourseId(targetCourse.id);
+    createEnrollmentRequest(targetCourse.id, 'self_join');
 
     return {
       success: true,
-      message: `Successfully joined ${targetCourse.code} - ${targetCourse.title}!`,
+      message: `Join request sent for ${targetCourse.code} - ${targetCourse.title}. Waiting for instructor approval.`,
       course: targetCourse
     };
   };
@@ -1840,6 +1838,85 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // ==========================================
+  // NOTIFICATIONS
+  // ==========================================
+
+  const createNotification = (notificationData: Partial<Notification>): Notification => {
+    const newNotification: Notification = {
+      id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      type: notificationData.type || 'module_comment_reply',
+      recipientId: notificationData.recipientId || activeUser.id,
+      actorId: notificationData.actorId || activeUser.id,
+      actorName: notificationData.actorName || activeUser.name,
+      actorAvatar: notificationData.actorAvatar || activeUser.avatar,
+      relatedId: notificationData.relatedId || '',
+      relatedTitle: notificationData.relatedTitle || '',
+      content: notificationData.content || '',
+      read: false,
+      createdAt: new Date().toISOString()
+    };
+
+    setNotifications(prev => [newNotification, ...prev]);
+
+    // Also persist to db.notifications if available
+    setDb(prev => {
+      const notifications = (prev.notifications || []).concat(newNotification);
+      return { ...prev, notifications };
+    });
+
+    return newNotification;
+  };
+
+  const getUnreadNotificationCount = (userId: string, type?: string): number => {
+    const userNotifications = (notifications || [])
+      .filter(n => n.recipientId === userId && !n.read);
+
+    if (!type) return userNotifications.length;
+
+    return userNotifications.filter(n => n.type === type).length;
+  };
+
+  const markNotificationRead = (id: string) => {
+    setNotifications(prev =>
+      prev.map(n => (n.id === id ? { ...n, read: true } : n))
+    );
+
+    setDb(prev => ({
+      ...prev,
+      notifications: (prev.notifications || []).map(n =>
+        n.id === id ? { ...n, read: true } : n
+      )
+    }));
+  };
+
+  const markAllNotificationsRead = (userId: string, type?: string) => {
+    setNotifications(prev =>
+      prev.map(n =>
+        n.recipientId === userId && (!type || n.type === type ? { ...n, read: true } : n)
+      )
+    );
+
+    setDb(prev => ({
+      ...prev,
+      notifications: (prev.notifications || []).map(n =>
+        n.recipientId === userId && (!type || n.type === type ? { ...n, read: true } : n)
+      )
+    }));
+  };
+
+  const getNotifications = (userId: string, type?: string, limit?: number): Notification[] => {
+    const userNotifications = (notifications || [])
+      .filter(n => n.recipientId === userId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    if (type) {
+      return userNotifications.filter(n => n.type === type).slice(0, limit);
+    }
+
+    return userNotifications.slice(0, limit);
+  };
+
+  // ==========================================
   // DISCUSSIONS CRUD
   // ==========================================
 
@@ -2294,6 +2371,162 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return db.courseSections.find(s => s.id === sectionId) || null;
   };
 
+  // ==========================================
+  // ENROLLMENT REQUEST WORKFLOW
+  // ==========================================
+
+  const createEnrollmentRequest = (courseId: string, type: 'self_join' | 'faculty_enroll'): EnrollmentRequest => {
+    const newRequest: EnrollmentRequest = {
+      id: `req-${Date.now().toString(36)}`,
+      courseId,
+      studentId: activeUser.id,
+      studentName: activeUser.name,
+      type,
+      status: 'pending',
+      requestedAt: new Date().toISOString()
+    };
+
+    setDb(prev => ({
+      ...prev,
+      enrollmentRequests: [...prev.enrollmentRequests, newRequest]
+    }));
+
+    return newRequest;
+  };
+
+  const approveEnrollmentRequests = (requestIds: string[]) => {
+    setDb(prev => {
+      const now = new Date().toISOString();
+      const requestsToApprove = prev.enrollmentRequests.filter(
+        r => requestIds.includes(r.id) && r.status === 'pending'
+      );
+
+      const studentIds = requestsToApprove.map(r => r.studentId);
+      const courseIds = [...new Set(requestsToApprove.map(r => r.courseId))];
+
+      let updatedUsers = prev.users;
+      let updatedCourses = prev.courses;
+
+      for (const courseId of courseIds) {
+        const courseStudents = studentIds.filter(sid =>
+          requestsToApprove.find(r => r.studentId === sid && r.courseId === courseId)
+        );
+
+        updatedUsers = updatedUsers.map(u => {
+          if (courseStudents.includes(u.id)) {
+            const currentCourses = u.enrolledCourseIds || [];
+            if (!currentCourses.includes(courseId)) {
+              return { ...u, enrolledCourseIds: [...currentCourses, courseId] };
+            }
+          }
+          return u;
+        });
+
+        updatedCourses = updatedCourses.map(c => {
+          if (c.id === courseId) {
+            return { ...c, enrolledCount: (c.enrolledCount || 0) + courseStudents.length };
+          }
+          return c;
+        });
+      }
+
+      return {
+        ...prev,
+        users: updatedUsers,
+        courses: updatedCourses,
+        enrollmentRequests: prev.enrollmentRequests.map(r =>
+          requestIds.includes(r.id) && r.status === 'pending'
+            ? { ...r, status: 'approved' as const, resolvedAt: now, resolvedBy: activeUser.id }
+            : r
+        )
+      };
+    });
+  };
+
+  const rejectEnrollmentRequests = (requestIds: string[]) => {
+    setDb(prev => ({
+      ...prev,
+      enrollmentRequests: prev.enrollmentRequests.map(r =>
+        requestIds.includes(r.id) && r.status === 'pending'
+          ? { ...r, status: 'rejected' as const, resolvedAt: new Date().toISOString(), resolvedBy: activeUser.id }
+          : r
+      )
+    }));
+  };
+
+  const studentApproveInvitation = (requestId: string) => {
+    setDb(prev => {
+      const request = prev.enrollmentRequests.find(r => r.id === requestId);
+      if (!request || request.studentId !== activeUser.id) return prev;
+
+      const updatedUser = {
+        ...activeUser,
+        enrolledCourseIds: [...(activeUser.enrolledCourseIds || []), request.courseId]
+      };
+      setCurrentUser(updatedUser);
+      safeSetLocalStorage(STORAGE_KEY_SESSION, JSON.stringify(updatedUser));
+
+      return {
+        ...prev,
+        users: prev.users.map(u => u.id === activeUser.id ? updatedUser : u),
+        courses: prev.courses.map(c =>
+          c.id === request.courseId
+            ? { ...c, enrolledCount: (c.enrolledCount || 0) + 1 }
+            : c
+        ),
+        enrollmentRequests: prev.enrollmentRequests.map(r =>
+          r.id === requestId ? { ...r, status: 'approved' as const, resolvedAt: new Date().toISOString() } : r
+        )
+      };
+    });
+  };
+
+  const selectSection = (courseId: string, sectionId: string) => {
+    const section = db.courseSections.find(s => s.id === sectionId);
+    if (!section || section.enrolledCount >= section.capacity) return;
+
+    const oldSectionId = activeUser.courseSections?.[courseId];
+
+    setDb(prev => {
+      let updatedSections = prev.courseSections;
+
+      if (oldSectionId) {
+        updatedSections = updatedSections.map(s =>
+          s.id === oldSectionId ? { ...s, enrolledCount: Math.max(0, s.enrolledCount - 1) } : s
+        );
+      }
+
+      updatedSections = updatedSections.map(s =>
+        s.id === sectionId ? { ...s, enrolledCount: s.enrolledCount + 1 } : s
+      );
+
+      return {
+        ...prev,
+        courseSections: updatedSections
+      };
+    });
+
+    const updatedSections = { ...(activeUser.courseSections || {}), [courseId]: sectionId };
+    const updatedUser = { ...activeUser, courseSections: updatedSections };
+    setCurrentUser(updatedUser);
+    safeSetLocalStorage(STORAGE_KEY_SESSION, JSON.stringify(updatedUser));
+
+    setDb(prev => ({
+      ...prev,
+      users: prev.users.map(u => u.id === activeUser.id ? updatedUser : u)
+    }));
+  };
+
+  const getPendingRequestsForCourse = (courseId: string): EnrollmentRequest[] => {
+    return db.enrollmentRequests.filter(r => r.courseId === courseId && r.status === 'pending');
+  };
+
+  const getPendingRequestsForStudent = (): EnrollmentRequest[] => {
+    return db.enrollmentRequests.filter(
+      r => r.studentId === activeUser.id && r.status === 'pending' && r.type === 'faculty_enroll'
+    );
+  };
+
   const resetData = () => {
     localStorage.removeItem(STORAGE_KEY_DB);
     localStorage.removeItem(STORAGE_KEY_SESSION);
@@ -2398,6 +2631,13 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteSection,
         getCourseSections,
         getStudentSection,
+        createEnrollmentRequest,
+        approveEnrollmentRequests,
+        rejectEnrollmentRequests,
+        studentApproveInvitation,
+        selectSection,
+        getPendingRequestsForCourse,
+        getPendingRequestsForStudent,
         logHistory,
         clearHistory,
         resetData
