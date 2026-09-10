@@ -118,7 +118,8 @@
       "enrolledCount": 38,
       "credits": 3,
       "chedComplianceCode": "CHED CMO 25 s. 2015 - Sec 8.2",
-      "joinCode": "CMSC-131A"
+      "joinCode": "CMSC-131A",
+      "sectionIds": ["sec-cmsc131-a", "sec-cmsc131-b"]
     },
     {
       "id": "crs-cmsc150",
@@ -134,7 +135,8 @@
       "enrolledCount": 34,
       "credits": 3,
       "chedComplianceCode": "CHED CMO 25 s. 2015 - Sec 8.1",
-      "joinCode": "CMSC-150B"
+      "joinCode": "CMSC-150B",
+      "sectionIds": ["sec-cmsc150-a", "sec-cmsc150-b"]
     },
     {
       "id": "crs-cmsc170",
@@ -150,7 +152,8 @@
       "enrolledCount": 40,
       "credits": 3,
       "chedComplianceCode": "CHED CMO 25 s. 2015 - Sec 9.4",
-      "joinCode": "CMSC-170C"
+      "joinCode": "CMSC-170C",
+      "sectionIds": ["sec-cmsc170-a", "sec-cmsc170-b"]
     },
     {
       "id": "crs-cmsc190",
@@ -166,7 +169,8 @@
       "enrolledCount": 22,
       "credits": 3,
       "chedComplianceCode": "CHED CMO 25 s. 2015 - Sec 11.0",
-      "joinCode": "CMSC-190D"
+      "joinCode": "CMSC-190D",
+      "sectionIds": ["sec-cmsc190-a"]
     },
     {
       "id": "crs-cspc112",
@@ -182,7 +186,8 @@
       "enrolledCount": 36,
       "credits": 3,
       "chedComplianceCode": "CHED CMO 25 s. 2015 - Sec 8.3",
-      "joinCode": "CSPC-112E"
+      "joinCode": "CSPC-112E",
+      "sectionIds": ["sec-cspc112-a", "sec-cspc112-b"]
     }
   ],
   "modules": [
@@ -802,5 +807,89 @@
       "createdAt": "2026-09-10T08:00:00Z",
       "createdBy": "usr-fac-1"
     }
-  ]
+  ],
+  "courseSections": [
+    {
+      "id": "sec-cmsc131-a",
+      "courseId": "crs-cmsc131",
+      "name": "Section A",
+      "capacity": 40,
+      "enrolledCount": 38,
+      "schedule": "MWF 10:00-11:30",
+      "location": "Room 301"
+    },
+    {
+      "id": "sec-cmsc131-b",
+      "courseId": "crs-cmsc131",
+      "name": "Section B",
+      "capacity": 40,
+      "enrolledCount": 0,
+      "schedule": "TTh 1:00-2:30",
+      "location": "Room 205"
+    },
+    {
+      "id": "sec-cmsc150-a",
+      "courseId": "crs-cmsc150",
+      "name": "Section A",
+      "capacity": 40,
+      "enrolledCount": 34,
+      "schedule": "MWF 2:00-3:30",
+      "location": "Room 202"
+    },
+    {
+      "id": "sec-cmsc150-b",
+      "courseId": "crs-cmsc150",
+      "name": "Section B",
+      "capacity": 40,
+      "enrolledCount": 0,
+      "schedule": "TTh 10:00-11:30",
+      "location": "Room 305"
+    },
+    {
+      "id": "sec-cmsc170-a",
+      "courseId": "crs-cmsc170",
+      "name": "Section A",
+      "capacity": 45,
+      "enrolledCount": 40,
+      "schedule": "MWF 9:00-10:30",
+      "location": "Room 301"
+    },
+    {
+      "id": "sec-cmsc170-b",
+      "courseId": "crs-cmsc170",
+      "name": "Section B",
+      "capacity": 45,
+      "enrolledCount": 0,
+      "schedule": "TTh 2:00-3:30",
+      "location": "Room 405"
+    },
+    {
+      "id": "sec-cmsc190-a",
+      "courseId": "crs-cmsc190",
+      "name": "Section A",
+      "capacity": 25,
+      "enrolledCount": 22,
+      "schedule": "TTh 9:00-10:30",
+      "location": "Room 401"
+    },
+    {
+      "id": "sec-cspc112-a",
+      "courseId": "crs-cspc112",
+      "name": "Section A",
+      "capacity": 40,
+      "enrolledCount": 36,
+      "schedule": "MWF 11:00-12:30",
+      "location": "Room 202"
+    },
+    {
+      "id": "sec-cspc112-b",
+      "courseId": "crs-cspc112",
+      "name": "Section B",
+      "capacity": 40,
+      "enrolledCount": 0,
+      "schedule": "TTh 11:00-12:30",
+      "location": "Room 305"
+    }
+  ],
+  "enrollmentRequests": []
 }

@@ -11,6 +11,7 @@ export interface User {
   title: string;
   password?: string;
   enrolledCourseIds?: string[];
+  courseSections?: Record<string, string>;
 }
 
 // Runtime export stubs to guarantee Vite ESM dev imports and browser runtime never fail
@@ -34,9 +35,33 @@ export interface Course {
   image?: string;
   syllabus?: OfficialSyllabusData | null;
   joinCode?: string;
+  sectionIds?: string[];
 }
 
 export const Course = {} as unknown as Course;
+
+export interface CourseSection {
+  id: string;
+  courseId: string;
+  name: string;
+  capacity: number;
+  enrolledCount: number;
+  schedule?: string;
+  location?: string;
+}
+
+export interface EnrollmentRequest {
+  id: string;
+  courseId: string;
+  studentId: string;
+  studentName: string;
+  type: 'self_join' | 'faculty_enroll';
+  status: 'pending' | 'approved' | 'rejected';
+  requestedAt: string;
+  resolvedAt?: string;
+  resolvedBy?: string;
+  sectionId?: string;
+}
 
 export interface ModuleItem {
   id: string;
@@ -73,6 +98,20 @@ export interface ModuleComment {
   editedAt?: string;
   isDeleted?: boolean;
   deletedAt?: string;
+}
+
+export interface Notification {
+  id: string;
+  type: 'module_comment_reply' | 'announcement_reply' | 'quiz_draft_saved' | 'assignment_submitted';
+  recipientId: string;
+  actorId: string;
+  actorName: string;
+  actorAvatar: string;
+  relatedId: string; // moduleId or announcementId or quizId or assignmentId
+  relatedTitle: string;
+  content: string;
+  read: boolean;
+  createdAt: string;
 }
 
 export interface Module {
@@ -390,4 +429,6 @@ export interface MockDatabase {
   courseFolders?: CourseFolder[];
   courseGrades?: CourseStudentGrade[];
   chatGroups?: ChatGroup[];
+  courseSections?: CourseSection[];
+  enrollmentRequests?: EnrollmentRequest[];
 }
