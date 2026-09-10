@@ -18,6 +18,9 @@ export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: strin
   const { db, activeCourseId, activeRole, activeUser } = useLMS();
   const [copied, setCopied] = React.useState(false);
   const unread = db.messages.filter(m => m.recipientId === activeUser.id && !m.read).length;
+  const studentSection = activeRole === 'student' && activeCourseId
+    ? db.courseSections.find(s => s.id === activeUser.courseSections?.[activeCourseId])
+    : null;
   const lmsNav = (
     <>
       <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Learning Management</div>
@@ -42,7 +45,12 @@ export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: strin
           <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Course Navigation</div>
           <div className="mb-2 flex items-center gap-2.5 rounded-xl border border-border bg-card p-3">
             <span className="h-8 w-1.5 rounded-full" style={{ backgroundColor: course?.color ?? '#64748b' }} />
-            <div className="min-w-0"><div className="truncate text-xs font-extrabold">{course?.code}</div><div className="truncate text-[11px] text-muted-foreground">{course?.title}</div></div>
+            <div className="min-w-0"><div className="truncate text-xs font-extrabold">{course?.code}</div><div className="truncate text-[11px] text-muted-foreground">{course?.title}</div>
+              {activeRole === 'student' && studentSection && (
+                <div className="text-[10px] text-primary font-bold mt-0.5">
+                  {studentSection.name}
+                </div>
+              )}</div>
           </div>
           {course?.joinCode && <button type="button" onClick={() => { try { navigator.clipboard.writeText(course.joinCode ?? ''); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch {} }} className="mb-2 flex w-full items-center justify-between rounded-xl border border-border bg-card px-3 py-2 font-mono text-[11px] font-bold cursor-pointer">{course.joinCode}{copied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5 text-muted-foreground" />}</button>}
           <nav className="space-y-1">
