@@ -5,7 +5,7 @@
 @layer base {
   :root {
     /* Cellwego Light Mode design tokens */
-    --background: 220 14% 97.5%;
+    --background: 220 14% 98.5%;
     --foreground: 222.2 84% 5%;
     --card: 0 0% 100%;
     --card-foreground: 222.2 84% 5%;
