@@ -419,3 +419,54 @@ model Notification {
   read        Boolean  @default(false)
   createdAt   DateTime @default(now())
 }
+
+model CourseFolder {
+  id        String         @id @db.NVarChar(64)
+  courseId  String         @db.NVarChar(64)
+  parentId  String?        @db.NVarChar(64)
+  parent    CourseFolder?  @relation("FolderChildren", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  children  CourseFolder[] @relation("FolderChildren")
+  name      String         @db.NVarChar(256)
+  updatedAt DateTime       @updatedAt
+  autoKey   String?        @db.NVarChar(128)
+  files     CourseFile[]
+}
+
+model CourseFile {
+  id            String       @id @db.NVarChar(64)
+  courseId      String       @db.NVarChar(64)
+  folderId      String?      @db.NVarChar(64)
+  folder        CourseFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  name          String       @db.NVarChar(256)
+  size          Int          @default(0)
+  formattedSize String       @db.NVarChar(32)
+  type          String       @db.NVarChar(32)
+  visibility    String       @db.NVarChar(32)
+  updatedAt     DateTime     @updatedAt
+  uploadedBy    String       @db.NVarChar(64)
+  uploadedByName String      @db.NVarChar(128)
+  content       String?      @db.NVarChar(Max)
+  url           String?      @db.NVarChar(1024)
+  fileUrl       String?      @db.NVarChar(1024)
+  sourceArea    String?      @db.NVarChar(32)
+  sourceId      String?      @db.NVarChar(64)
+}
+
+model HistoryLog {
+  id        String   @id @db.NVarChar(64)
+  path      String   @db.NVarChar(512)
+  title     String   @db.NVarChar(256)
+  timestamp DateTime @default(now())
+}
+
+model CommonsTemplate {
+  id            String  @id @db.NVarChar(64)
+  title         String  @db.NVarChar(256)
+  category      String  @db.NVarChar(128)
+  description   String  @db.NVarChar(Max)
+  author        String  @db.NVarChar(128)
+  downloads     Int     @default(0)
+  rating        Float   @default(0)
+  tags          String  @db.NVarChar(Max)
+  chedAlignment String  @db.NVarChar(512)
+}
