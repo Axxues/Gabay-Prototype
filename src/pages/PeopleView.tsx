@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { AnimatedModal } from '../components/common/ModalPortal';
 import { PageHeader } from '../components/common/PageHeader';
+import { canPickSection } from '../utils/sections';
 
 interface PeopleViewProps {
   courseId: string;
@@ -321,6 +322,10 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
             <div className="divide-y divide-border">
               {pendingRequests.map(req => {
                 const student = db.users.find(u => u.id === req.studentId);
+                const typeLabel = req.type === 'self_join' ? 'Join' : req.type === 'faculty_enroll' ? 'Invite' : 'Switch';
+                const targetSectionName = req.type === 'section_switch' && req.targetSectionId
+                  ? (db.courseSections || []).find((s: any) => s.id === req.targetSectionId)?.name
+                  : null;
                 return (
                   <div key={req.id} className="p-4 flex items-center justify-between gap-4 hover:bg-muted/30 transition-colors">
                     <div className="flex items-center space-x-3">
@@ -332,11 +337,26 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
                       <div>
                         <div className="text-xs font-bold text-foreground">{student?.name || 'Unknown Student'}</div>
                         <div className="text-[10px] text-muted-foreground font-sans">{student?.email} • Requested {new Date(req.requestedAt).toLocaleDateString()}</div>
+                        <div className="text-[10px] font-sans mt-0.5">
+                          <span className="font-bold text-primary">{typeLabel}</span>
+                          {targetSectionName && <span className="text-muted-foreground"> → {targetSectionName}</span>}
+                        </div>
                       </div>
                     </div>
                     <div className="flex items-center space-x-2">
                       <button
                         onClick={() => {
+                          if (req.type === 'section_switch' && req.targetSectionId) {
+                            const target = (db.courseSections || []).find((s: any) => s.id === req.targetSectionId);
+                            if (target && !canPickSection(target)) {
+                              showAlert({
+                                title: 'Section Full',
+                                message: `Cannot approve — ${target.name} is full. The request is still pending.`,
+                                type: 'warning'
+                              });
+                              return;
+                            }
+                          }
                           showConfirm(
                             `Approve enrollment for ${student?.name || 'this student'}?`,
                             () => {

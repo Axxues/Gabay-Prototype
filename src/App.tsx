@@ -74,6 +74,7 @@ export const AppContent: React.FC = () => {
       <Topbar
         currentTab={currentTab}
         onNavigateTab={handleNavigateTab}
+        onNavigateCourse={handleNavigateCourse}
         onOpenSearch={() => setSearchOpen(true)}
         onOpenSidebar={() => setSidebarOpen(true)}
       />

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLMS } from '../../context/LMSContext';
+import { NotificationBell } from '../common/NotificationBell';
 import {
   Menu,
   Search,
@@ -12,13 +13,13 @@ import {
   User,
   Shield,
   LogOut,
-  Users,
-  Bell
+   Users,
 } from 'lucide-react';
 
 interface TopbarProps {
   currentTab: string;
   onNavigateTab?: (tab: string) => void;
+  onNavigateCourse?: (courseId: string, subTab?: string) => void;
   onOpenSearch: () => void;
   onOpenSidebar?: () => void;
 }
@@ -26,6 +27,7 @@ interface TopbarProps {
 export const Topbar: React.FC<TopbarProps> = ({
   currentTab,
   onNavigateTab,
+  onNavigateCourse,
   onOpenSearch,
   onOpenSidebar
 }) => {
@@ -36,8 +38,7 @@ export const Topbar: React.FC<TopbarProps> = ({
     toggleTheme,
     setIsRoleModalOpen,
     logout,
-    showConfirm,
-    getUnreadNotificationCount
+    showConfirm
   } = useLMS();
 
   const [profileOpen, setProfileOpen] = useState(false);
@@ -153,21 +154,7 @@ export const Topbar: React.FC<TopbarProps> = ({
           </button>
 
           {/* Notification Bell with Unread Count */}
-          <button
-            onClick={() => onNavigateTab && onNavigateTab('inbox')}
-            title="Notifications"
-            className={`relative hidden sm:flex h-9 w-9 items-center justify-center rounded-xl border transition-all cursor-pointer shadow-subtle ${currentTab === 'inbox'
-                ? 'bg-primary text-primary-foreground border-primary'
-                : 'text-muted-foreground hover:text-foreground hover:bg-accent border-border bg-background'
-              }`}
-          >
-            <Bell className="h-4 w-4 text-primary" />
-            <span
-              className={`absolute -top-0.5 -right-0.5 rounded-full bg-primary text-xs text-primary-foreground h-4 w-4 flex items-center justify-center ${getUnreadNotificationCount(activeUser.id) > 0 ? '' : 'hidden'}`}
-            >
-              {getUnreadNotificationCount(activeUser.id)}
-            </span>
-          </button>
+          <NotificationBell onNavigateTab={onNavigateTab} onNavigateCourse={onNavigateCourse} />
 
           {/* User Profile Pill & Dropdown (Cellwego Layout) */}
           <div className="relative" ref={profileRef}>
