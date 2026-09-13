@@ -23,7 +23,6 @@ import {
   Check
 } from 'lucide-react';
 import { ModalPortal } from '../components/common/ModalPortal';
-import { resolveModuleReplyRecipient } from '../utils/notifiers';
 import { PageHeader } from '../components/common/PageHeader';
 import { EmptyState } from '../components/common/EmptyState';
 import { AddModuleItemPage } from './AddModuleItemPage';
@@ -53,7 +52,6 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
     editModuleComment,
     deleteModuleComment,
     toggleLikeModuleComment,
-    createNotification,
     markModuleCommentsRead
   } = useLMS();
 
@@ -114,13 +112,17 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
     setExpandedComments(prev => ({ ...prev, [modId]: !prev[modId] }));
   };
 
-  const handleCreateModule = (e: React.FormEvent) => {
+  const handleCreateModule = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newModuleTitle.trim()) return;
 
-    createModule(courseId, newModuleTitle.trim());
-    setNewModuleTitle('');
-    setIsAddModuleOpen(false);
+    try {
+      await createModule(courseId, newModuleTitle.trim());
+      setNewModuleTitle('');
+      setIsAddModuleOpen(false);
+    } catch {
+      // Context already surfaced the failure alert.
+    }
   };
 
   const handleStartEditModule = (mod: Module, e?: React.MouseEvent) => {
@@ -129,16 +131,20 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
     setEditModuleTitle(mod.title);
   };
 
-  const handleSaveEditModule = (e: React.FormEvent) => {
+  const handleSaveEditModule = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingModule || !editModuleTitle.trim()) return;
-    updateModule(editingModule.id, { title: editModuleTitle.trim() });
-    showAlert({
-      title: 'Module Updated',
-      message: `Module title updated to "${editModuleTitle.trim()}".`,
-      type: 'success'
-    });
-    setEditingModule(null);
+    try {
+      await updateModule(editingModule.id, { title: editModuleTitle.trim() });
+      showAlert({
+        title: 'Module Updated',
+        message: `Module title updated to "${editModuleTitle.trim()}".`,
+        type: 'success'
+      });
+      setEditingModule(null);
+    } catch {
+      // Context already surfaced the failure alert.
+    }
   };
 
   const handleDeleteModule = (mod: Module, e?: React.MouseEvent) => {
@@ -146,15 +152,20 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
     showConfirm(
       `Are you sure you want to delete module "${mod.title}" and all its learning resources?`,
       () => {
-        deleteModule(mod.id);
-        if (editingModule?.id === mod.id) {
-          setEditingModule(null);
-        }
-        showAlert({
-          title: 'Module Deleted',
-          message: `Module "${mod.title}" has been deleted.`,
-          type: 'success'
-        });
+        const deletedTitle = mod.title;
+        const deletedId = mod.id;
+        deleteModule(mod.id)
+          .then(() => {
+            if (editingModule?.id === deletedId) {
+              setEditingModule(null);
+            }
+            showAlert({
+              title: 'Module Deleted',
+              message: `Module "${deletedTitle}" has been deleted.`,
+              type: 'success'
+            });
+          })
+          .catch(() => {});
       },
       'Delete Module'
     );
@@ -165,15 +176,20 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
     showConfirm(
       `Are you sure you want to remove "${item.title}" from ${mod.title}?`,
       () => {
-        deleteModuleItem(mod.id, item.id);
-        if (previewItem?.id === item.id) {
-          setPreviewItem(null);
-        }
-        showAlert({
-          title: 'Item Removed',
-          message: `"${item.title}" has been removed from the module.`,
-          type: 'success'
-        });
+        const removedTitle = item.title;
+        const removedId = item.id;
+        deleteModuleItem(mod.id, item.id)
+          .then(() => {
+            if (previewItem?.id === removedId) {
+              setPreviewItem(null);
+            }
+            showAlert({
+              title: 'Item Removed',
+              message: `"${removedTitle}" has been removed from the module.`,
+              type: 'success'
+            });
+          })
+          .catch(() => {});
       },
       'Remove Item'
     );
@@ -358,12 +374,12 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
               >
                 {/* Header Bar - Full Panel Clickable */}
                 <div
-                  onClick={() => {
-                    if (editingModule?.id !== mod.id) {
-                      toggleExpand(mod.id);
-                      markModuleCommentsRead(mod.id);
-                    }
-                  }}
+                    onClick={() => {
+                      if (editingModule?.id !== mod.id) {
+                        toggleExpand(mod.id);
+                        void markModuleCommentsRead(mod.id).catch(() => {});
+                      }
+                    }}
                   className={`px-5 py-3.5 bg-muted/40 hover:bg-muted/60 border-b border-border flex items-center justify-between transition-colors select-none group ${editingModule?.id === mod.id ? 'cursor-default' : 'cursor-pointer'
                     }`}
                 >
@@ -736,7 +752,9 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                                                   type: 'confirm',
                                                   confirmText: 'Delete',
                                                   cancelText: 'Cancel',
-                                                  onConfirm: () => deleteModuleComment(mod.id, c.id)
+                                                  onConfirm: () => {
+                                                    void deleteModuleComment(mod.id, c.id).catch(() => {});
+                                                  }
                                                 });
                                               }}
                                               className="text-muted-foreground hover:text-destructive p-1 rounded-lg hover:bg-muted transition-colors cursor-pointer"
@@ -777,8 +795,9 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                                               type="button"
                                               onClick={() => {
                                                 if (editingContent.trim()) {
-                                                  editModuleComment(mod.id, c.id, editingContent);
-                                                  setEditingCommentId(null);
+                                                  void editModuleComment(mod.id, c.id, editingContent)
+                                                    .then(() => setEditingCommentId(null))
+                                                    .catch(() => {});
                                                 }
                                               }}
                                               disabled={!editingContent.trim()}
@@ -807,7 +826,9 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                                         <div className="flex items-center space-x-3 pl-8 pt-0.5">
                                           <button
                                             type="button"
-                                            onClick={() => toggleLikeModuleComment(mod.id, c.id)}
+                                            onClick={() => {
+                                              void toggleLikeModuleComment(mod.id, c.id).catch(() => {});
+                                            }}
                                             className={`flex items-center space-x-1 text-[11px] font-bold font-sans transition-colors cursor-pointer ${isLiked
                                               ? 'text-rose-600 dark:text-rose-400'
                                               : 'text-muted-foreground hover:text-foreground'
@@ -830,21 +851,10 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                               e.preventDefault();
                               const text = (commentInputs[mod.id] || '').trim();
                               if (!text) return;
-                              addModuleComment(mod.id, text);
-                              const recipientId = resolveModuleReplyRecipient(mod, activeUser);
-                              if (recipientId) {
-                                createNotification({
-                                  type: 'module_comment_reply',
-                                  recipientId,
-                                  actorId: activeUser.id,
-                                  actorName: activeUser.name,
-                                  actorAvatar: activeUser.avatar,
-                                  relatedId: mod.id,
-                                  relatedTitle: mod.title,
-                                  content: text,
-                                });
-                              }
-                              setCommentInputs(prev => ({ ...prev, [mod.id]: '' }));
+                              // Server creates the reply notification inline.
+                              void addModuleComment(mod.id, text)
+                                .then(() => setCommentInputs(prev => ({ ...prev, [mod.id]: '' })))
+                                .catch(() => {});
                             }}
                             className="flex items-center space-x-2.5 p-1.5 pb-2"
                           >

@@ -216,7 +216,7 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
     });
   };
 
-  const handleSave = (addAnother: boolean = false) => {
+  const handleSave = async (addAnother: boolean = false) => {
     if (!title.trim()) {
       showAlert({
         title: 'Missing Resource Title',
@@ -229,42 +229,51 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
     const savedTitle = title.trim();
 
     if (isEditing && editingItem) {
-      updateModuleItem(
-        moduleId,
-        editingItem.id,
-        {
-          title: savedTitle,
-          type: itemType,
-          content: content.trim() || 'Unit resource instructions aligned with syllabus requirements.',
-          fileName: attachedFileName || undefined,
-          fileSize: attachedFileSize || undefined,
-          fileType: attachedFileType || undefined,
-          fileUrl: attachedFileUrl || undefined
-        },
-        targetModuleId
-      );
+      try {
+        await updateModuleItem(
+          moduleId,
+          editingItem.id,
+          {
+            title: savedTitle,
+            type: itemType,
+            content: content.trim() || 'Unit resource instructions aligned with syllabus requirements.',
+            fileName: attachedFileName || undefined,
+            fileSize: attachedFileSize || undefined,
+            fileType: attachedFileType || undefined,
+            fileUrl: attachedFileUrl || undefined
+          },
+          targetModuleId
+        );
 
-      showAlert({
-        title: 'Module Item Updated',
-        message: `"${savedTitle}" has been updated successfully.`,
-        type: 'success'
-      });
-      onBack();
+        showAlert({
+          title: 'Module Item Updated',
+          message: `"${savedTitle}" has been updated successfully.`,
+          type: 'success'
+        });
+        onBack();
+      } catch {
+        // Context already surfaced the failure alert.
+      }
       return;
     }
 
-    addModuleItem(targetModuleId, {
-      title: savedTitle,
-      type: itemType,
-      content: content.trim() || 'Unit resource instructions aligned with syllabus requirements.',
-      published: true,
-      required: false,
-      completionCondition: 'view',
-      fileName: attachedFileName || undefined,
-      fileSize: attachedFileSize || undefined,
-      fileType: attachedFileType || undefined,
-      fileUrl: attachedFileUrl || undefined
-    });
+    try {
+      await addModuleItem(targetModuleId, {
+        title: savedTitle,
+        type: itemType,
+        content: content.trim() || 'Unit resource instructions aligned with syllabus requirements.',
+        published: true,
+        required: false,
+        completionCondition: 'view',
+        fileName: attachedFileName || undefined,
+        fileSize: attachedFileSize || undefined,
+        fileType: attachedFileType || undefined,
+        fileUrl: attachedFileUrl || undefined
+      });
+    } catch {
+      // Context already surfaced the failure alert.
+      return;
+    }
 
     if (addAnother) {
       showAlert({
@@ -287,7 +296,7 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    handleSave(false);
+    void handleSave(false);
   };
 
   const getFileIcon = (type: string, name: string) => {
@@ -692,7 +701,9 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
           {!isEditing && (
             <button
               type="button"
-              onClick={() => handleSave(true)}
+              onClick={() => {
+                void handleSave(true);
+              }}
               className="px-5 py-2.5 text-xs font-bold bg-muted hover:bg-muted/80 text-foreground border border-border rounded-xl transition-all shadow-xs cursor-pointer active:scale-[0.98] flex items-center justify-center space-x-1.5"
             >
               <Plus className="w-3.5 h-3.5 text-primary" />

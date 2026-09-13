@@ -32,6 +32,7 @@ import type { Activity } from '../types/lms';
 import { activityPointsPossible, scoreActivityQuestions } from '../utils/activities';
 import { areaFolderAutoKey, areaFolderName, dedupeFileName, findFolderByAutoKey, moduleFolderAutoKey } from '../utils/autoFolder';
 import initialMockData from '../data/mockData.json';
+import { commonsTemplates } from '../data/commonsTemplates';
 import { AlertModal, type AlertModalOptions } from '../components/common/AlertModal';
 import { canPickSection } from '../utils/sections';
 import type { OfficialSyllabusData } from '../data/syllabusData';
@@ -85,12 +86,12 @@ interface LMSContextType {
   createCourse: (course: Partial<Course>) => Promise<Course>;
   createAssignment: (asg: Partial<Assignment>) => Assignment;
   deleteAssignment: (asgId: string) => void;
-  createModule: (courseId: string, title: string) => Module;
-  updateModule: (moduleId: string, updates: Partial<Module>) => void;
-  deleteModule: (moduleId: string) => void;
-  addModuleItem: (moduleId: string, item: Partial<ModuleItem>) => void;
-  updateModuleItem: (currentModuleId: string, itemId: string, updates: Partial<ModuleItem>, targetModuleId?: string) => void;
-  deleteModuleItem: (moduleId: string, itemId: string) => void;
+  createModule: (courseId: string, title: string) => Promise<Module>;
+  updateModule: (moduleId: string, updates: Partial<Module>) => Promise<void>;
+  deleteModule: (moduleId: string) => Promise<void>;
+  addModuleItem: (moduleId: string, item: Partial<ModuleItem>) => Promise<void>;
+  updateModuleItem: (currentModuleId: string, itemId: string, updates: Partial<ModuleItem>, targetModuleId?: string) => Promise<void>;
+  deleteModuleItem: (moduleId: string, itemId: string) => Promise<void>;
   createQuiz: (quiz: Partial<Quiz>) => Quiz;
   recordQuizSubmission: (quizId: string, studentId: string, score: number, answers: Record<string, string>) => void;
   createActivity: (data: Partial<Activity>) => Activity;
@@ -106,7 +107,7 @@ interface LMSContextType {
   updateSyllabus: (courseId: string, updates: Partial<Course>) => void;
   updateCourseSyllabus: (courseId: string, syllabus: OfficialSyllabusData) => void;
   removeCourseSyllabus: (courseId: string) => void;
-  importCommonsTemplate: (templateId: string, targetCourseId: string) => { success: boolean; message: string };
+  importCommonsTemplate: (templateId: string, targetCourseId: string) => Promise<{ success: boolean; message: string }>;
 
   gradeSubmission: (
     submissionId: string,
@@ -122,10 +123,10 @@ interface LMSContextType {
   ) => void;
   toggleModulePublish: (moduleId: string) => void;
   toggleItemCompletion: (moduleId: string, itemId: string) => void;
-  addModuleComment: (moduleId: string, content: string) => void;
-  editModuleComment: (moduleId: string, commentId: string, newContent: string) => void;
-  deleteModuleComment: (moduleId: string, commentId: string) => void;
-  toggleLikeModuleComment: (moduleId: string, commentId: string) => void;
+  addModuleComment: (moduleId: string, content: string) => Promise<void>;
+  editModuleComment: (moduleId: string, commentId: string, newContent: string) => Promise<void>;
+  deleteModuleComment: (moduleId: string, commentId: string) => Promise<void>;
+  toggleLikeModuleComment: (moduleId: string, commentId: string) => Promise<void>;
   sendMessage: (recipientId: string, subject: string, body: string, courseId?: string, attachmentName?: string, attachmentSize?: string, isGroup?: boolean, groupId?: string) => void;
   createChatGroup: (name: string, memberIds: string[], courseId?: string) => ChatGroup;
   markThreadAsRead: (partnerId: string) => void;
@@ -137,12 +138,12 @@ interface LMSContextType {
   deleteCalendarEvent: (id: string) => void;
 
   // Announcements CRUD
-  createAnnouncement: (data: Partial<Announcement>) => Announcement;
-  deleteAnnouncement: (id: string) => void;
-  togglePinAnnouncement: (id: string) => void;
-  toggleLikeAnnouncement: (id: string) => void;
-  addAnnouncementReply: (announcementId: string, content: string) => void;
-  markAnnouncementRead: (id: string) => void;
+  createAnnouncement: (data: Partial<Announcement>) => Promise<Announcement>;
+  deleteAnnouncement: (id: string) => Promise<void>;
+  togglePinAnnouncement: (id: string) => Promise<void>;
+  toggleLikeAnnouncement: (id: string) => Promise<void>;
+  addAnnouncementReply: (announcementId: string, content: string) => Promise<void>;
+  markAnnouncementRead: (id: string) => Promise<void>;
 
   // Notifications
   notifications: Notification[];
@@ -151,16 +152,16 @@ interface LMSContextType {
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: (userId: string, type?: string) => void;
   markTabVisited: (tab: string, courseId?: string) => void;
-  markModuleCommentsRead: (moduleId: string) => void;
+  markModuleCommentsRead: (moduleId: string) => Promise<void>;
   getNotifications: (userId: string, type?: string, limit?: number) => Notification[];
 
   // Discussions CRUD
-  createDiscussion: (data: Partial<Discussion>) => Discussion;
-  deleteDiscussion: (id: string) => void;
-  togglePinDiscussion: (id: string) => void;
-  toggleLockDiscussion: (id: string) => void;
-  addDiscussionReply: (discussionId: string, content: string, parentId?: string, attachment?: { name: string; url?: string }) => void;
-  toggleLikeDiscussionReply: (discussionId: string, replyId: string) => void;
+  createDiscussion: (data: Partial<Discussion>) => Promise<Discussion>;
+  deleteDiscussion: (id: string) => Promise<void>;
+  togglePinDiscussion: (id: string) => Promise<void>;
+  toggleLockDiscussion: (id: string) => Promise<void>;
+  addDiscussionReply: (discussionId: string, content: string, parentId?: string, attachment?: { name: string; url?: string }) => Promise<void>;
+  toggleLikeDiscussionReply: (discussionId: string, replyId: string) => Promise<void>;
 
   // Course Files & Folders CRUD
   createCourseFolder: (courseId: string, name: string, parentId?: string | null, autoKey?: string) => CourseFolder;
@@ -1040,199 +1041,182 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   };
 
-  const createModule = (courseId: string, title: string): Module => {
-    const newModule: Module = {
-      id: `mod-${Date.now().toString(36)}`,
-      courseId,
-      title,
-      order: db.modules.filter(m => m.courseId === courseId).length + 1,
-      published: true,
-      authorId: activeUser.id,
-      authorName: activeUser.name,
-      items: []
-    };
-
-    setDb(prev => ({
-      ...prev,
-      modules: [...prev.modules, newModule]
-    }));
-
-    return newModule;
-  };
-
-  const updateModule = (moduleId: string, updates: Partial<Module>) => {
-    setDb(prev => {
-      const mod = (prev.modules || []).find(m => m.id === moduleId);
-      const newTitle = updates.title !== undefined && mod && updates.title !== mod.title ? updates.title : null;
-      return {
-        ...prev,
-        modules: (prev.modules || []).map(m => (m.id === moduleId ? { ...m, ...updates } : m)),
-        courseFolders: newTitle
-          ? (prev.courseFolders || []).map(f =>
-              f.autoKey === moduleFolderAutoKey(moduleId)
-                ? { ...f, name: newTitle, updatedAt: new Date().toISOString() }
-                : f
-            )
-          : prev.courseFolders
+  const createModule = async (courseId: string, title: string): Promise<Module> => {
+    try {
+      const { module } = await apiFetch<{ module: Module }>(
+        `/api/courses/${encodeURIComponent(courseId)}/modules`,
+        { method: 'POST', body: { title } }
+      );
+      // Server defaults order to 0 — keep the client's append-at-end ordering.
+      const merged: Module = {
+        ...module,
+        order: module.order || db.modules.filter(m => m.courseId === courseId).length + 1,
+        items: module.items || [],
+        comments: (module as Module).comments || []
       };
-    });
-  };
-
-  const deleteModule = (moduleId: string) => {
-    setDb(prev => ({
-      ...prev,
-      modules: (prev.modules || []).filter(m => m.id !== moduleId)
-    }));
-  };
-
-  const addModuleItem = (moduleId: string, itemData: Partial<ModuleItem>) => {
-    const newItem: ModuleItem = {
-      id: `item-${Date.now().toString(36)}`,
-      title: itemData.title || 'New Learning Resource',
-      type: itemData.type || 'page',
-      published: itemData.published ?? true,
-      required: itemData.required ?? false,
-      completionCondition: itemData.completionCondition || 'view',
-      content: itemData.content || 'Content guidelines aligned with course syllabus objectives.',
-      assignmentId: itemData.assignmentId,
-      quizId: itemData.quizId,
-      fileUrl: itemData.fileUrl,
-      fileName: itemData.fileName,
-      fileSize: itemData.fileSize,
-      fileType: itemData.fileType,
-      authorId: itemData.authorId || activeUser.id,
-      authorName: itemData.authorName || activeUser.name,
-      completed: false
-    };
-
-    setDb(prev => ({
-      ...prev,
-      modules: prev.modules.map(mod => {
-        if (mod.id === moduleId) {
-          return {
-            ...mod,
-            items: [...mod.items, newItem]
-          };
-        }
-        return mod;
-      })
-    }));
-
-    if (newItem.fileName || newItem.fileUrl) {
-      const mod = db.modules.find(m => m.id === moduleId);
-      fileUploadToArea({
-        courseId: mod?.courseId || activeCourseId || 'crs-cmsc131',
-        area: 'modules',
-        sourceId: newItem.id,
-        moduleId,
-        moduleTitle: mod?.title || 'Module',
-        name: newItem.fileName || newItem.title,
-        url: newItem.fileUrl,
-        fileUrl: newItem.fileUrl,
-        formattedSize: newItem.fileSize,
-        visibility: newItem.published ? 'published' : 'unpublished',
-        type: (['pdf', 'document', 'slide', 'code', 'archive', 'image'] as string[]).includes(newItem.fileType || '')
-          ? (newItem.fileType as CourseFile['type'])
-          : 'document',
-      });
+      setDb(prev => ({
+        ...prev,
+        modules: [...prev.modules, merged]
+      }));
+      return merged;
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to create module.';
+      setLastError(message);
+      showAlert(message, 'Create Module Failed');
+      throw err;
     }
   };
 
-  const updateModuleItem = (
+  const updateModule = async (moduleId: string, updates: Partial<Module>): Promise<void> => {
+    // Folder renames ride along server-side (module:<id> autoKey); no client
+    // courseFolders bookkeeping needed.
+    const body: Record<string, string | boolean | number> = {};
+    if (updates.title !== undefined) body.title = updates.title;
+    if (updates.published !== undefined) body.published = updates.published;
+    if (updates.order !== undefined) body.order = updates.order;
+    try {
+      const { module } = await apiFetch<{ module: Module }>(
+        `/api/modules/${encodeURIComponent(moduleId)}`,
+        { method: 'PATCH', body }
+      );
+      setDb(prev => ({
+        ...prev,
+        modules: (prev.modules || []).map(m =>
+          m.id === moduleId
+            ? { ...m, ...module, items: m.items, comments: m.comments }
+            : m
+        )
+      }));
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to update module.';
+      setLastError(message);
+      showAlert(message, 'Update Module Failed');
+      throw err;
+    }
+  };
+
+  const deleteModule = async (moduleId: string): Promise<void> => {
+    // No-cascade semantics live server-side (filed CourseFile rows stay).
+    try {
+      await apiFetch<{ ok: true }>(`/api/modules/${encodeURIComponent(moduleId)}`, {
+        method: 'DELETE'
+      });
+      setDb(prev => ({
+        ...prev,
+        modules: (prev.modules || []).filter(m => m.id !== moduleId)
+      }));
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to delete module.';
+      setLastError(message);
+      showAlert(message, 'Delete Module Failed');
+      throw err;
+    }
+  };
+
+  const addModuleItem = async (moduleId: string, itemData: Partial<ModuleItem>): Promise<void> => {
+    // File fields pass through; the server files them (area/modules folders).
+    const body: Record<string, string | boolean> = {};
+    if (itemData.title !== undefined) body.title = itemData.title;
+    if (itemData.type !== undefined) body.type = itemData.type;
+    if (itemData.published !== undefined) body.published = itemData.published;
+    if (itemData.required !== undefined) body.required = itemData.required;
+    if (itemData.completionCondition !== undefined) body.completionCondition = itemData.completionCondition;
+    if (itemData.content !== undefined && itemData.content !== null) body.content = itemData.content;
+    if (itemData.assignmentId !== undefined && itemData.assignmentId !== null) body.assignmentId = itemData.assignmentId;
+    if (itemData.quizId !== undefined && itemData.quizId !== null) body.quizId = itemData.quizId;
+    if (itemData.fileUrl !== undefined && itemData.fileUrl !== null) body.fileUrl = itemData.fileUrl;
+    if (itemData.fileName !== undefined && itemData.fileName !== null) body.fileName = itemData.fileName;
+    if (itemData.fileSize !== undefined && itemData.fileSize !== null) body.fileSize = itemData.fileSize;
+    if (itemData.fileType !== undefined && itemData.fileType !== null) body.fileType = itemData.fileType;
+    try {
+      const { item } = await apiFetch<{ item: ModuleItem }>(
+        `/api/modules/${encodeURIComponent(moduleId)}/items`,
+        { method: 'POST', body }
+      );
+      setDb(prev => ({
+        ...prev,
+        modules: prev.modules.map(mod =>
+          mod.id === moduleId ? { ...mod, items: [...mod.items, item as ModuleItem] } : mod
+        )
+      }));
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to add module item.';
+      setLastError(message);
+      showAlert(message, 'Add Item Failed');
+      throw err;
+    }
+  };
+
+  const updateModuleItem = async (
     currentModuleId: string,
     itemId: string,
     updates: Partial<ModuleItem>,
     targetModuleId?: string
-  ) => {
-    const prevItem = db.modules.find(m => m.id === currentModuleId)?.items.find(i => i.id === itemId);
-    const hadFile = !!(prevItem?.fileName || prevItem?.fileUrl);
-    setDb(prev => {
-      const destModuleId = targetModuleId || currentModuleId;
-
-      // If item stays in the same module
-      if (destModuleId === currentModuleId) {
-        return {
-          ...prev,
-          modules: (prev.modules || []).map(mod => {
-            if (mod.id === currentModuleId) {
-              return {
-                ...mod,
-                items: mod.items.map(it => (it.id === itemId ? { ...it, ...updates } : it))
-              };
-            }
-            return mod;
-          })
-        };
+  ): Promise<void> => {
+    const destModuleId = targetModuleId || currentModuleId;
+    try {
+      if (destModuleId !== currentModuleId) {
+        // No cross-module move endpoint: recreate under the target module
+        // (new id) then delete the source row.
+        const prevItem = db.modules
+          .find(m => m.id === currentModuleId)?.items.find(i => i.id === itemId);
+        const mergedFields: Partial<ModuleItem> = { ...(prevItem || {}), ...updates };
+        delete (mergedFields as Record<string, unknown>).id;
+        delete (mergedFields as Record<string, unknown>).completed;
+        await addModuleItem(destModuleId, mergedFields);
+        await deleteModuleItem(currentModuleId, itemId);
+        return;
       }
-
-      // If moving item to another module
-      let movedItem: ModuleItem | null = null;
-      const modulesWithItemRemoved = (prev.modules || []).map(mod => {
-        if (mod.id === currentModuleId) {
-          const item = mod.items.find(it => it.id === itemId);
-          if (item) {
-            movedItem = { ...item, ...updates };
-          }
-          return {
-            ...mod,
-            items: mod.items.filter(it => it.id !== itemId)
-          };
-        }
-        return mod;
-      });
-
-      if (!movedItem) return prev;
-
-      return {
+      const body: Record<string, string | boolean | number> = {};
+      const stringFields = [
+        'title', 'type', 'completionCondition', 'content', 'assignmentId',
+        'quizId', 'fileUrl', 'fileName', 'fileSize', 'fileType'
+      ] as const;
+      for (const key of stringFields) {
+        const value = updates[key];
+        if (value !== undefined && value !== null) body[key] = value;
+      }
+      if (updates.published !== undefined) body.published = updates.published;
+      if (updates.required !== undefined) body.required = updates.required;
+      if (updates.minScore !== undefined) body.minScore = updates.minScore;
+      const { item } = await apiFetch<{ item: ModuleItem }>(
+        `/api/modules/${encodeURIComponent(currentModuleId)}/items/${encodeURIComponent(itemId)}`,
+        { method: 'PATCH', body }
+      );
+      setDb(prev => ({
         ...prev,
-        modules: modulesWithItemRemoved.map(mod => {
-          if (mod.id === destModuleId) {
-            return {
-              ...mod,
-              items: [...mod.items, movedItem!]
-            };
-          }
-          return mod;
-        })
-      };
-    });
-
-    const willHaveFile = !!((updates.fileName ?? prevItem?.fileName) || (updates.fileUrl ?? prevItem?.fileUrl));
-    const alreadyFiled = (db.courseFiles || []).some(f => f.sourceId === itemId);
-    if (!hadFile && willHaveFile && !alreadyFiled) {
-      const destId = targetModuleId || currentModuleId;
-      const destMod = db.modules.find(m => m.id === destId);
-      fileUploadToArea({
-        courseId: destMod?.courseId || activeCourseId || 'crs-cmsc131',
-        area: 'modules',
-        sourceId: itemId,
-        moduleId: destId,
-        moduleTitle: destMod?.title || 'Module',
-        name: updates.fileName || prevItem?.fileName || prevItem?.title || 'Module file',
-        url: updates.fileUrl ?? prevItem?.fileUrl,
-        fileUrl: updates.fileUrl ?? prevItem?.fileUrl,
-        formattedSize: updates.fileSize ?? prevItem?.fileSize,
-        visibility: ((updates.published ?? prevItem?.published) ? 'published' : 'unpublished'),
-        type: (['pdf', 'document', 'slide', 'code', 'archive', 'image'] as string[]).includes((updates.fileType ?? prevItem?.fileType) || '')
-          ? ((updates.fileType ?? prevItem?.fileType) as CourseFile['type'])
-          : 'document',
-      });
+        modules: (prev.modules || []).map(mod =>
+          mod.id === currentModuleId
+            ? { ...mod, items: mod.items.map(it => (it.id === itemId ? { ...it, ...(item as ModuleItem) } : it)) }
+            : mod
+        )
+      }));
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to update module item.';
+      setLastError(message);
+      showAlert(message, 'Update Item Failed');
+      throw err;
     }
   };
 
-  const deleteModuleItem = (moduleId: string, itemId: string) => {
-    setDb(prev => ({
-      ...prev,
-      modules: (prev.modules || []).map(mod => {
-        if (mod.id === moduleId) {
-          return {
-            ...mod,
-            items: mod.items.filter(it => it.id !== itemId)
-          };
-        }
-        return mod;
-      })
-    }));
+  const deleteModuleItem = async (moduleId: string, itemId: string): Promise<void> => {
+    try {
+      await apiFetch<{ ok: true }>(
+        `/api/modules/${encodeURIComponent(moduleId)}/items/${encodeURIComponent(itemId)}`,
+        { method: 'DELETE' }
+      );
+      setDb(prev => ({
+        ...prev,
+        modules: (prev.modules || []).map(mod =>
+          mod.id === moduleId ? { ...mod, items: mod.items.filter(it => it.id !== itemId) } : mod
+        )
+      }));
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to delete module item.';
+      setLastError(message);
+      showAlert(message, 'Delete Item Failed');
+      throw err;
+    }
   };
 
   const createQuiz = (quizData: Partial<Quiz>): Quiz => {
@@ -1696,26 +1680,34 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   };
 
-  const importCommonsTemplate = (templateId: string, targetCourseId: string): { success: boolean; message: string } => {
-    const tmpl = db.commonsTemplates.find(t => t.id === templateId);
+  const importCommonsTemplate = async (templateId: string, targetCourseId: string): Promise<{ success: boolean; message: string }> => {
+    // Template ships from the static catalog (copy of mockData.json array);
+    // the module + blueprint item persist via the modules endpoints.
+    const tmpl = commonsTemplates.find(t => t.id === templateId);
     const targetCourse = db.courses.find(c => c.id === targetCourseId);
-    
+
     if (!tmpl || !targetCourse) {
       return { success: false, message: 'Invalid template or course target' };
     }
 
-    // Create a new module based on the imported template
-    const newMod = createModule(targetCourseId, `[Imported] ${tmpl.title}`);
-    addModuleItem(newMod.id, {
-      title: `${tmpl.title} Blueprint & Rubric Guidelines`,
-      type: 'page',
-      content: `${tmpl.description}\n\nAlignment: ${tmpl.chedAlignment}\nTags: ${tmpl.tags.join(', ')}`
-    });
+    try {
+      const newMod = await createModule(targetCourseId, `[Imported] ${tmpl.title}`);
+      await addModuleItem(newMod.id, {
+        title: `${tmpl.title} Blueprint & Rubric Guidelines`,
+        type: 'page',
+        content: `${tmpl.description}\n\nAlignment: ${tmpl.chedAlignment}\nTags: ${tmpl.tags.join(', ')}`
+      });
 
-    return { 
-      success: true, 
-      message: `Successfully imported "${tmpl.title}" into ${targetCourse.code} (${targetCourse.section})!` 
-    };
+      return {
+        success: true,
+        message: `Successfully imported "${tmpl.title}" into ${targetCourse.code} (${targetCourse.section})!`
+      };
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to import template.';
+      setLastError(message);
+      showAlert(message, 'Import Failed');
+      return { success: false, message };
+    }
   };
 
   const gradeSubmission = (
@@ -1822,37 +1814,33 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   };
 
-  const addModuleComment = (moduleId: string, content: string) => {
+  const addModuleComment = async (moduleId: string, content: string): Promise<void> => {
     if (!content.trim()) return;
-    const newComment: ModuleComment = {
-      id: `mcom-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-      moduleId,
-      authorId: activeUser.id,
-      authorName: activeUser.name,
-      authorAvatar: activeUser.avatar,
-      authorRole: activeRole,
-      content: content.trim(),
-      createdAt: new Date().toISOString(),
-      likes: 0,
-      likedBy: []
-    };
-
-    setDb(prev => ({
-      ...prev,
-      modules: prev.modules.map(mod => {
-        if (mod.id === moduleId) {
-          return {
-            ...mod,
-            comments: [...(mod.comments || []), newComment]
-          };
-        }
-        return mod;
-      })
-    }));
+    // Server creates the reply notification inline (no client call needed).
+    try {
+      const { comment } = await apiFetch<{ comment: ModuleComment }>(
+        `/api/modules/${encodeURIComponent(moduleId)}/comments`,
+        { method: 'POST', body: { content: content.trim() } }
+      );
+      setDb(prev => ({
+        ...prev,
+        modules: prev.modules.map(mod =>
+          mod.id === moduleId
+            ? { ...mod, comments: [...(mod.comments || []), comment] }
+            : mod
+        )
+      }));
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to post comment.';
+      setLastError(message);
+      showAlert(message, 'Comment Failed');
+      throw err;
+    }
   };
 
-  const editModuleComment = (moduleId: string, commentId: string, newContent: string) => {
+  const editModuleComment = async (moduleId: string, commentId: string, newContent: string): Promise<void> => {
     if (!newContent.trim()) return;
+    // No server PATCH comment endpoint committed — local cache update only.
     setDb(prev => ({
       ...prev,
       modules: prev.modules.map(mod => {
@@ -1879,34 +1867,32 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   };
 
-  const deleteModuleComment = (moduleId: string, commentId: string) => {
-    setDb(prev => ({
-      ...prev,
-      modules: prev.modules.map(mod => {
-        if (mod.id === moduleId) {
-          return {
-            ...mod,
-            comments: (mod.comments || []).map(c => {
-              if (c.id === commentId) {
-                // Authority check: only author can delete
-                if (c.authorId !== activeUser.id) return c;
-                return {
-                  ...c,
-                  isDeleted: true,
-                  deletedAt: new Date().toISOString(),
-                  content: 'This comment has been deleted by the author.'
-                };
-              }
-              return c;
-            })
-          };
-        }
-        return mod;
-      })
-    }));
+  const deleteModuleComment = async (moduleId: string, commentId: string): Promise<void> => {
+    // Server hard-deletes the row, so the cache drops it (replacing the old
+    // client soft-delete placeholder).
+    try {
+      await apiFetch<{ ok: true }>(
+        `/api/modules/${encodeURIComponent(moduleId)}/comments/${encodeURIComponent(commentId)}`,
+        { method: 'DELETE' }
+      );
+      setDb(prev => ({
+        ...prev,
+        modules: prev.modules.map(mod =>
+          mod.id === moduleId
+            ? { ...mod, comments: (mod.comments || []).filter(c => c.id !== commentId) }
+            : mod
+        )
+      }));
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to delete comment.';
+      setLastError(message);
+      showAlert(message, 'Delete Comment Failed');
+      throw err;
+    }
   };
 
-  const toggleLikeModuleComment = (moduleId: string, commentId: string) => {
+  const toggleLikeModuleComment = async (moduleId: string, commentId: string): Promise<void> => {
+    // No server comment-like endpoint committed — local cache toggle only.
     setDb(prev => ({
       ...prev,
       modules: prev.modules.map(mod => {
@@ -2105,46 +2091,85 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // ANNOUNCEMENTS CRUD
   // ==========================================
 
-  const createAnnouncement = (data: Partial<Announcement>): Announcement => {
-    const newAnn: Announcement = {
-      id: `ann-${Date.now().toString(36)}`,
-      courseId: data.courseId || activeCourseId || 'crs-cmsc131',
-      title: data.title || 'Untitled Announcement',
-      content: data.content || '',
-      authorId: activeUser.id,
-      authorName: activeUser.name,
-      authorAvatar: activeUser.avatar,
-      authorRole: activeRole,
-      createdAt: new Date().toISOString(),
-      sectionId: data.sectionId || 'all',
-      sectionRestriction: data.sectionRestriction || 'All Sections',
-      delayedUntil: data.delayedUntil,
-      allowComments: data.allowComments ?? true,
-      usersMustPostBeforeReplies: data.usersMustPostBeforeReplies ?? false,
-      allowLiking: data.allowLiking ?? true,
-      likes: 0,
-      likedBy: [],
-      pinned: data.pinned ?? false,
-      attachments: data.attachments || [],
-      replies: [],
-      readBy: [activeUser.id]
-    };
-
-    setDb(prev => ({
-      ...prev,
-      announcements: [newAnn, ...(prev.announcements || [])]
-    }));
-    return newAnn;
+  const createAnnouncement = async (data: Partial<Announcement>): Promise<Announcement> => {
+    const courseId = data.courseId || activeCourseId || 'crs-cmsc131';
+    // Server persists title/content/sectionId/attachments (+ files them);
+    // client-only flags (pinned, allowComments, allowLiking, delayedUntil,
+    // usersMustPostBeforeReplies) ride along in the cache.
+    try {
+      const { announcement } = await apiFetch<{ announcement: Announcement }>(
+        `/api/courses/${encodeURIComponent(courseId)}/announcements`,
+        {
+          method: 'POST',
+          body: {
+            title: data.title || 'Untitled Announcement',
+            content: data.content || '',
+            ...(data.sectionId !== undefined ? { sectionId: data.sectionId } : {}),
+            ...((data.attachments || []).length > 0
+              ? {
+                attachments: (data.attachments || []).map(a => ({
+                  name: a.name,
+                  size: a.size,
+                  ...(a.url !== undefined ? { url: a.url } : {})
+                }))
+              }
+              : {})
+          }
+        }
+      );
+      const merged: Announcement = {
+        ...announcement,
+        courseId,
+        sectionId: data.sectionId || (announcement as Announcement).sectionId || 'all',
+        sectionRestriction: data.sectionRestriction || 'All Sections',
+        delayedUntil: data.delayedUntil,
+        allowComments: data.allowComments ?? true,
+        usersMustPostBeforeReplies: data.usersMustPostBeforeReplies ?? false,
+        allowLiking: data.allowLiking ?? true,
+        likes: announcement.likes ?? 0,
+        likedBy: (announcement as Announcement).likedBy || [],
+        pinned: data.pinned ?? false,
+        attachments: ((announcement as Announcement).attachments || []).map(a => ({
+          name: a.name,
+          size: a.size,
+          ...(a.url !== undefined && a.url !== null ? { url: a.url } : {})
+        })),
+        replies: [],
+        readBy: [activeUser.id]
+      };
+      setDb(prev => ({
+        ...prev,
+        announcements: [merged, ...(prev.announcements || [])]
+      }));
+      return merged;
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to create announcement.';
+      setLastError(message);
+      showAlert(message, 'Create Announcement Failed');
+      throw err;
+    }
   };
 
-  const deleteAnnouncement = (id: string) => {
-    setDb(prev => ({
-      ...prev,
-      announcements: (prev.announcements || []).filter(a => a.id !== id)
-    }));
+  const deleteAnnouncement = async (id: string): Promise<void> => {
+    // No-cascade semantics live server-side (filed CourseFile copies stay).
+    try {
+      await apiFetch<{ ok: true }>(`/api/announcements/${encodeURIComponent(id)}`, {
+        method: 'DELETE'
+      });
+      setDb(prev => ({
+        ...prev,
+        announcements: (prev.announcements || []).filter(a => a.id !== id)
+      }));
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to delete announcement.';
+      setLastError(message);
+      showAlert(message, 'Delete Announcement Failed');
+      throw err;
+    }
   };
 
-  const togglePinAnnouncement = (id: string) => {
+  const togglePinAnnouncement = async (id: string): Promise<void> => {
+    // No server pin endpoint committed — local cache toggle only.
     setDb(prev => ({
       ...prev,
       announcements: (prev.announcements || []).map(a =>
@@ -2153,49 +2178,63 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   };
 
-  const toggleLikeAnnouncement = (id: string) => {
-    setDb(prev => ({
-      ...prev,
-      announcements: (prev.announcements || []).map(a => {
-        if (a.id !== id) return a;
-        const liked = (a.likedBy || []).includes(activeUser.id);
-        const newLikedBy = liked
-          ? (a.likedBy || []).filter(uid => uid !== activeUser.id)
-          : [...(a.likedBy || []), activeUser.id];
-        return {
-          ...a,
-          likedBy: newLikedBy,
-          likes: newLikedBy.length
-        };
-      })
-    }));
+  const toggleLikeAnnouncement = async (id: string): Promise<void> => {
+    try {
+      const { likes, liked } = await apiFetch<{ likes: number; liked: boolean }>(
+        `/api/announcements/${encodeURIComponent(id)}/like`,
+        { method: 'POST' }
+      );
+      setDb(prev => ({
+        ...prev,
+        announcements: (prev.announcements || []).map(a => {
+          if (a.id !== id) return a;
+          const likedBy = liked
+            ? [...new Set([...(a.likedBy || []), activeUser.id])]
+            : (a.likedBy || []).filter(uid => uid !== activeUser.id);
+          return { ...a, likedBy, likes };
+        })
+      }));
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to toggle like.';
+      setLastError(message);
+      showAlert(message, 'Like Failed');
+      throw err;
+    }
   };
 
-  const addAnnouncementReply = (announcementId: string, content: string) => {
-    const newReply: AnnouncementReply = {
-      id: `rep-${Date.now().toString(36)}`,
-      announcementId,
-      authorId: activeUser.id,
-      authorName: activeUser.name,
-      authorAvatar: activeUser.avatar,
-      authorRole: activeRole,
-      content,
-      createdAt: new Date().toISOString(),
-      likes: 0,
-      likedBy: []
-    };
-
-    setDb(prev => ({
-      ...prev,
-      announcements: (prev.announcements || []).map(a =>
-        a.id === announcementId
-          ? { ...a, replies: [...a.replies, newReply] }
-          : a
-      )
-    }));
+  const addAnnouncementReply = async (announcementId: string, content: string): Promise<void> => {
+    // Server notifies the announcement author inline (no client call needed).
+    try {
+      const { reply } = await apiFetch<{ reply: AnnouncementReply }>(
+        `/api/announcements/${encodeURIComponent(announcementId)}/replies`,
+        { method: 'POST', body: { content } }
+      );
+      setDb(prev => ({
+        ...prev,
+        announcements: (prev.announcements || []).map(a =>
+          a.id === announcementId
+            ? { ...a, replies: [...a.replies, reply] }
+            : a
+        )
+      }));
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to post reply.';
+      setLastError(message);
+      showAlert(message, 'Reply Failed');
+      throw err;
+    }
   };
 
-  const markAnnouncementRead = (id: string) => {
+  const markAnnouncementRead = async (id: string): Promise<void> => {
+    try {
+      await apiFetch<{ ok: true }>(`/api/announcements/${encodeURIComponent(id)}/read`, {
+        method: 'POST'
+      });
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to mark announcement read.';
+      setLastError(message);
+      // Read path: stay silent (no modal), still update the local cache.
+    }
     setDb(prev => ({
       ...prev,
       announcements: (prev.announcements || []).map(a => {
@@ -2300,7 +2339,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   };
 
-  const markModuleCommentsRead = (moduleId: string) => {
+  const markModuleCommentsRead = async (moduleId: string): Promise<void> => {
+    // Mark matching cached rows locally, then mark each server-side per id
+    // (no bulk/type call — client semantics clear only this module's rows).
+    const targets = (notifications || []).filter(
+      n => n.recipientId === activeUser.id && n.relatedId === moduleId && !n.read
+    );
     setNotifications(prev =>
       prev.map(n =>
         n.recipientId === activeUser.id && n.relatedId === moduleId && !n.read
@@ -2316,6 +2360,14 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           : n
       )
     }));
+    await Promise.allSettled(
+      targets.map(n =>
+        apiFetch<{ notification: Notification }>(
+          `/api/notifications/${encodeURIComponent(n.id)}/read`,
+          { method: 'POST' }
+        )
+      )
+    );
   };
 
   const getNotifications = (userId: string, type?: string, limit?: number): Notification[] => {
@@ -2334,112 +2386,161 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // DISCUSSIONS CRUD
   // ==========================================
 
-  const createDiscussion = (data: Partial<Discussion>): Discussion => {
-    const newDisc: Discussion = {
-      id: `disc-${Date.now().toString(36)}`,
-      courseId: data.courseId || activeCourseId || 'crs-cmsc131',
-      title: data.title || 'Untitled Discussion Topic',
-      prompt: data.prompt || '',
-      authorId: activeUser.id,
-      authorName: activeUser.name,
-      authorAvatar: activeUser.avatar,
-      authorRole: activeRole,
-      createdAt: new Date().toISOString(),
-      isGraded: data.isGraded ?? false,
-      pointsPossible: data.pointsPossible,
-      dueDate: data.dueDate,
-      pinned: data.pinned ?? false,
-      locked: data.locked ?? false,
-      usersMustPostBeforeReplies: data.usersMustPostBeforeReplies ?? false,
-      groupAssignment: data.groupAssignment || 'All Students',
-      replies: []
-    };
-
-    setDb(prev => ({
-      ...prev,
-      discussions: [newDisc, ...(prev.discussions || [])]
-    }));
-    return newDisc;
+  const createDiscussion = async (data: Partial<Discussion>): Promise<Discussion> => {
+    const courseId = data.courseId || activeCourseId || 'crs-cmsc131';
+    // Server persists title/prompt; client-only flags ride along in cache.
+    try {
+      const { discussion } = await apiFetch<{ discussion: Discussion }>(
+        `/api/courses/${encodeURIComponent(courseId)}/discussions`,
+        {
+          method: 'POST',
+          body: {
+            title: data.title || 'Untitled Discussion Topic',
+            prompt: data.prompt || ''
+          }
+        }
+      );
+      const merged: Discussion = {
+        ...discussion,
+        courseId,
+        isGraded: data.isGraded ?? false,
+        pointsPossible: data.pointsPossible,
+        dueDate: data.dueDate,
+        pinned: (discussion as Discussion).pinned ?? data.pinned ?? false,
+        locked: (discussion as Discussion).locked ?? data.locked ?? false,
+        usersMustPostBeforeReplies: data.usersMustPostBeforeReplies ?? false,
+        groupAssignment: data.groupAssignment || 'All Students',
+        replies: []
+      };
+      setDb(prev => ({
+        ...prev,
+        discussions: [merged, ...(prev.discussions || [])]
+      }));
+      return merged;
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to create discussion.';
+      setLastError(message);
+      showAlert(message, 'Create Discussion Failed');
+      throw err;
+    }
   };
 
-  const deleteDiscussion = (id: string) => {
+  const deleteDiscussion = async (id: string): Promise<void> => {
+    // No server DELETE discussion endpoint committed — local cache removal only.
     setDb(prev => ({
       ...prev,
       discussions: (prev.discussions || []).filter(d => d.id !== id)
     }));
   };
 
-  const togglePinDiscussion = (id: string) => {
-    setDb(prev => ({
-      ...prev,
-      discussions: (prev.discussions || []).map(d =>
-        d.id === id ? { ...d, pinned: !d.pinned } : d
-      )
-    }));
+  const togglePinDiscussion = async (id: string): Promise<void> => {
+    const current = (db.discussions || []).find(d => d.id === id);
+    try {
+      const { discussion } = await apiFetch<{ discussion: Discussion }>(
+        `/api/discussions/${encodeURIComponent(id)}`,
+        { method: 'PATCH', body: { pinned: !(current?.pinned ?? false) } }
+      );
+      setDb(prev => ({
+        ...prev,
+        discussions: (prev.discussions || []).map(d =>
+          d.id === id ? { ...d, ...(discussion as Discussion), replies: d.replies } : d
+        )
+      }));
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to toggle pin.';
+      setLastError(message);
+      showAlert(message, 'Pin Failed');
+      throw err;
+    }
   };
 
-  const toggleLockDiscussion = (id: string) => {
-    setDb(prev => ({
-      ...prev,
-      discussions: (prev.discussions || []).map(d =>
-        d.id === id ? { ...d, locked: !d.locked } : d
-      )
-    }));
+  const toggleLockDiscussion = async (id: string): Promise<void> => {
+    const current = (db.discussions || []).find(d => d.id === id);
+    try {
+      const { discussion } = await apiFetch<{ discussion: Discussion }>(
+        `/api/discussions/${encodeURIComponent(id)}`,
+        { method: 'PATCH', body: { locked: !(current?.locked ?? false) } }
+      );
+      setDb(prev => ({
+        ...prev,
+        discussions: (prev.discussions || []).map(d =>
+          d.id === id ? { ...d, ...(discussion as Discussion), replies: d.replies } : d
+        )
+      }));
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to toggle lock.';
+      setLastError(message);
+      showAlert(message, 'Lock Failed');
+      throw err;
+    }
   };
 
-  const addDiscussionReply = (
+  const addDiscussionReply = async (
     discussionId: string,
     content: string,
     parentId?: string,
     attachment?: { name: string; url?: string }
-  ) => {
-    const newReply: DiscussionReply = {
-      id: `drep-${Date.now().toString(36)}`,
-      discussionId,
-      parentId,
-      authorId: activeUser.id,
-      authorName: activeUser.name,
-      authorAvatar: activeUser.avatar,
-      authorRole: activeRole,
-      content,
-      createdAt: new Date().toISOString(),
-      likes: 0,
-      likedBy: [],
-      attachments: attachment ? [attachment] : []
-    };
-
-    setDb(prev => ({
-      ...prev,
-      discussions: (prev.discussions || []).map(d =>
-        d.id === discussionId
-          ? { ...d, replies: [...d.replies, newReply] }
-          : d
-      )
-    }));
+  ): Promise<void> => {
+    // Server has no reply-attachment field — the attachment rides in cache only.
+    // Server notifies the discussion author inline (no client call needed).
+    try {
+      const { reply } = await apiFetch<{ reply: DiscussionReply }>(
+        `/api/discussions/${encodeURIComponent(discussionId)}/replies`,
+        {
+          method: 'POST',
+          body: {
+            content,
+            ...(parentId !== undefined ? { parentId } : {})
+          }
+        }
+      );
+      const merged: DiscussionReply = attachment
+        ? { ...reply, attachments: [attachment] }
+        : reply;
+      setDb(prev => ({
+        ...prev,
+        discussions: (prev.discussions || []).map(d =>
+          d.id === discussionId
+            ? { ...d, replies: [...d.replies, merged] }
+            : d
+        )
+      }));
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to post reply.';
+      setLastError(message);
+      showAlert(message, 'Reply Failed');
+      throw err;
+    }
   };
 
-  const toggleLikeDiscussionReply = (discussionId: string, replyId: string) => {
-    setDb(prev => ({
-      ...prev,
-      discussions: (prev.discussions || []).map(d => {
-        if (d.id !== discussionId) return d;
-        return {
-          ...d,
-          replies: d.replies.map(r => {
-            if (r.id !== replyId) return r;
-            const liked = (r.likedBy || []).includes(activeUser.id);
-            const newLikedBy = liked
-              ? (r.likedBy || []).filter(uid => uid !== activeUser.id)
-              : [...(r.likedBy || []), activeUser.id];
-            return {
-              ...r,
-              likedBy: newLikedBy,
-              likes: newLikedBy.length
-            };
-          })
-        };
-      })
-    }));
+  const toggleLikeDiscussionReply = async (discussionId: string, replyId: string): Promise<void> => {
+    try {
+      const { likes, liked } = await apiFetch<{ likes: number; liked: boolean }>(
+        `/api/discussions/${encodeURIComponent(discussionId)}/replies/${encodeURIComponent(replyId)}/like`,
+        { method: 'POST' }
+      );
+      setDb(prev => ({
+        ...prev,
+        discussions: (prev.discussions || []).map(d => {
+          if (d.id !== discussionId) return d;
+          return {
+            ...d,
+            replies: d.replies.map(r => {
+              if (r.id !== replyId) return r;
+              const likedBy = liked
+                ? [...new Set([...(r.likedBy || []), activeUser.id])]
+                : (r.likedBy || []).filter(uid => uid !== activeUser.id);
+              return { ...r, likedBy, likes };
+            })
+          };
+        })
+      }));
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to toggle like.';
+      setLastError(message);
+      showAlert(message, 'Like Failed');
+      throw err;
+    }
   };
 
   // ==========================================

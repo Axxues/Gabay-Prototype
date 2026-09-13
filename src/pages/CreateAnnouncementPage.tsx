@@ -16,7 +16,7 @@ import {
   FolderOpen
 } from 'lucide-react';
 import { FilePickerModal } from '../components/common/FilePickerModal';
-import { detectFileType, type AggregatedCourseFile } from '../hooks/useCourseFiles';
+import type { AggregatedCourseFile } from '../hooks/useCourseFiles';
 
 interface CreateAnnouncementPageProps {
   courseId: string;
@@ -29,7 +29,7 @@ export const CreateAnnouncementPage: React.FC<CreateAnnouncementPageProps> = ({
   onBack,
   onAnnouncementCreated
 }) => {
-  const { db, createAnnouncement, fileUploadToArea, showAlert } = useLMS();
+  const { db, createAnnouncement, showAlert } = useLMS();
   const course = db.courses.find(c => c.id === courseId);
 
   const [title, setTitle] = useState('');
@@ -100,7 +100,7 @@ export const CreateAnnouncementPage: React.FC<CreateAnnouncementPageProps> = ({
     });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !content.trim()) {
       showAlert({
@@ -115,31 +115,24 @@ export const CreateAnnouncementPage: React.FC<CreateAnnouncementPageProps> = ({
       ? [{ name: attachedFile.name, size: attachedFile.size, url: attachedFile.url }]
       : [];
 
-    const ann = createAnnouncement({
-      courseId,
-      title: title.trim(),
-      content: content.trim(),
-      sectionId: sectionRestriction === 'all' ? 'all' : sectionRestriction,
-      sectionRestriction: sectionRestriction === 'all' ? 'All Sections' : sectionRestriction,
-      delayedUntil: delayPosting && delayedDate ? delayedDate : undefined,
-      allowComments,
-      usersMustPostBeforeReplies: false,
-      allowLiking,
-      pinned,
-      attachments
-    });
-
-    if (attachedFile) {
-      fileUploadToArea({
+    try {
+      // Server files attachments automatically (area:announcements).
+      await createAnnouncement({
         courseId,
-        area: 'announcements',
-        sourceId: ann.id,
-        name: attachedFile.name,
-        url: attachedFile.url,
-        fileUrl: attachedFile.url,
-        formattedSize: attachedFile.size,
-        type: detectFileType(attachedFile.name),
+        title: title.trim(),
+        content: content.trim(),
+        sectionId: sectionRestriction === 'all' ? 'all' : sectionRestriction,
+        sectionRestriction: sectionRestriction === 'all' ? 'All Sections' : sectionRestriction,
+        delayedUntil: delayPosting && delayedDate ? delayedDate : undefined,
+        allowComments,
+        usersMustPostBeforeReplies: false,
+        allowLiking,
+        pinned,
+        attachments
       });
+    } catch {
+      // Context already surfaced the failure alert.
+      return;
     }
 
     showAlert({

@@ -19,7 +19,6 @@ import {
   X
 } from 'lucide-react';
 import { isImageFile } from '../utils/fileUploader';
-import { resolveAnnouncementReplyRecipient } from '../utils/notifiers';
 import { isAnnouncementVisibleToViewer } from '../utils/sections';
 import { PageHeader } from '../components/common/PageHeader';
 import { EmptyState } from '../components/common/EmptyState';
@@ -39,8 +38,7 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
     toggleLikeAnnouncement,
     addAnnouncementReply,
     markAnnouncementRead,
-    showConfirm,
-    createNotification
+    showConfirm
   } = useLMS();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -100,30 +98,17 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
     });
 
   const handleSelectAnnouncement = (ann: Announcement) => {
-    markAnnouncementRead(ann.id);
+    void markAnnouncementRead(ann.id).catch(() => {});
     setSelectedAnnouncementId(prev => (prev === ann.id ? null : ann.id));
   };
 
   const handleSendReply = (announcementId: string) => {
     if (!replyText.trim()) return;
-    addAnnouncementReply(announcementId, replyText.trim());
-    const ann = (db.announcements || []).find(a => a.id === announcementId);
-    if (ann) {
-      const recipientId = resolveAnnouncementReplyRecipient(ann, activeUser);
-      if (recipientId) {
-        createNotification({
-          type: 'announcement_reply',
-          recipientId,
-          actorId: activeUser.id,
-          actorName: activeUser.name,
-          actorAvatar: activeUser.avatar,
-          relatedId: announcementId,
-          relatedTitle: ann.title,
-          content: replyText.trim(),
-        });
-      }
-    }
-    setReplyText('');
+    const text = replyText.trim();
+    // Server notifies the announcement author inline.
+    void addAnnouncementReply(announcementId, text)
+      .then(() => setReplyText(''))
+      .catch(() => {});
   };
 
   const canCreate = activeRole === 'faculty';
@@ -316,7 +301,9 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
                     {ann.allowLiking && (
                       <button
                         type="button"
-                        onClick={() => toggleLikeAnnouncement(ann.id)}
+                        onClick={() => {
+                          void toggleLikeAnnouncement(ann.id).catch(() => {});
+                        }}
                         className={`flex items-center space-x-1 px-2.5 py-1 rounded-lg border transition-colors cursor-pointer ${isLiked
                             ? 'bg-rose-500/10 text-rose-600 border-rose-500/20 font-bold'
                             : 'bg-muted/40 border-border hover:text-foreground'
@@ -336,7 +323,9 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
                       <div className="flex items-center space-x-1">
                         <button
                           type="button"
-                          onClick={() => togglePinAnnouncement(ann.id)}
+                          onClick={() => {
+                            void togglePinAnnouncement(ann.id).catch(() => {});
+                          }}
                           title={ann.pinned ? 'Unpin' : 'Pin to top'}
                           className="p-1.5 text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted cursor-pointer"
                         >
@@ -347,7 +336,9 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
                           onClick={() =>
                             showConfirm(
                               `Are you sure you want to delete "${ann.title}"?`,
-                              () => deleteAnnouncement(ann.id),
+                              () => {
+                                void deleteAnnouncement(ann.id).catch(() => {});
+                              },
                               'Delete Announcement'
                             )
                           }
