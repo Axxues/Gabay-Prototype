@@ -153,7 +153,9 @@ CREATE TABLE [dbo].[Assignment] (
 -- CreateTable
 CREATE TABLE [dbo].[Submission] (
     [id] NVARCHAR(64) NOT NULL,
-    [assignmentId] NVARCHAR(64) NOT NULL,
+    [assignmentId] NVARCHAR(64),
+    [quizId] NVARCHAR(64),
+    [activityId] NVARCHAR(64),
     [courseId] NVARCHAR(64) NOT NULL,
     [studentId] NVARCHAR(64) NOT NULL,
     [studentName] NVARCHAR(128) NOT NULL,
@@ -510,7 +512,10 @@ ALTER TABLE [dbo].[ModuleComment] ADD CONSTRAINT [ModuleComment_moduleId_fkey] F
 ALTER TABLE [dbo].[ModuleCommentLike] ADD CONSTRAINT [ModuleCommentLike_commentId_fkey] FOREIGN KEY ([commentId]) REFERENCES [dbo].[ModuleComment]([id]) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE [dbo].[Submission] ADD CONSTRAINT [Submission_assignmentId_fkey] FOREIGN KEY ([assignmentId]) REFERENCES [dbo].[Assignment]([id]) ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE [dbo].[Submission] ADD CONSTRAINT [Submission_quizId_fkey] FOREIGN KEY ([quizId]) REFERENCES [dbo].[Quiz]([id]) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE [dbo].[Submission] ADD CONSTRAINT [Submission_activityId_fkey] FOREIGN KEY ([activityId]) REFERENCES [dbo].[Activity]([id]) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE [dbo].[SubmissionComment] ADD CONSTRAINT [SubmissionComment_submissionId_fkey] FOREIGN KEY ([submissionId]) REFERENCES [dbo].[Submission]([id]) ON DELETE CASCADE ON UPDATE CASCADE;

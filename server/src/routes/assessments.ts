@@ -416,12 +416,18 @@ function buildAssessmentRouter(kind: AssessmentKind) {
       const submission = existing
         ? await prisma.submission.update({
             where: { id: existing.id },
-            data: { content, status: 'submitted', submittedAt: new Date() },
+            data: {
+              content,
+              status: 'submitted',
+              submittedAt: new Date(),
+              ...(isQuiz ? { quizId: row.id } : { activityId: row.id }),
+            },
           })
         : await prisma.submission.create({
             data: {
               id: newId('sub'),
               assignmentId,
+              ...(isQuiz ? { quizId: row.id } : { activityId: row.id }),
               courseId: course.id,
               studentId: auth.sub,
               studentName: me?.name ?? '',

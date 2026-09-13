@@ -303,6 +303,7 @@ assignmentsRouter.post(
       where: { id: req.params.submissionId },
     });
     if (!submission) throw new ApiError(404, 'not_found', 'Submission not found.');
+    if (!submission.assignmentId) throw new ApiError(404, 'not_found', 'Assignment not found.');
     const assignment = await loadAssignmentOr404(submission.assignmentId);
     const course = await loadCourseOr404(assignment.courseId);
     assertCourseOwner(course, auth);
@@ -358,6 +359,7 @@ assignmentsRouter.post(
       where: { id: req.params.submissionId },
     });
     if (!submission) throw new ApiError(404, 'not_found', 'Submission not found.');
+    if (!submission.assignmentId) throw new ApiError(404, 'not_found', 'Assignment not found.');
     const assignment = await loadAssignmentOr404(submission.assignmentId);
     const course = await loadCourseOr404(assignment.courseId);
     if (auth.role === 'faculty' || auth.role === 'admin') {

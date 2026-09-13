@@ -143,13 +143,15 @@ model Assignment {
   availableFrom    DateTime?
   availableUntil   DateTime?
   sectionRestriction String? @db.NVarChar(128)
-  submissions      Submission[]
 }
 
 model Submission {
   id            String              @id @db.NVarChar(64)
-  assignmentId  String              @db.NVarChar(64)
-  assignment    Assignment          @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  assignmentId  String?             @db.NVarChar(64)
+  quizId        String?             @db.NVarChar(64)
+  quiz          Quiz?               @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  activityId    String?             @db.NVarChar(64)
+  activity      Activity?           @relation(fields: [activityId], references: [id], onDelete: Cascade)
   courseId      String              @db.NVarChar(64)
   studentId     String              @db.NVarChar(64)
   studentName   String              @db.NVarChar(128)
@@ -191,6 +193,7 @@ model Quiz {
   fileUrl          String?        @db.NVarChar(1024)
   fileSize         String?        @db.NVarChar(32)
   questions        QuizQuestion[]
+  submissions      Submission[]
 }
 
 model QuizQuestion {
@@ -221,6 +224,7 @@ model Activity {
   dueDate        DateTime?
   published      Boolean        @default(false)
   questions      QuizQuestion[]
+  submissions    Submission[]
 }
 
 model Announcement {
