@@ -89,7 +89,9 @@ export const SectionSelectionPage: React.FC<SectionSelectionPageProps> = ({
                 )}
                 <span className="flex items-center gap-1">
                   <Users className="w-3.5 h-3.5" />
-                  {section.enrolledCount}/{section.capacity} enrolled
+                  {section.capacity === undefined
+                    ? `${section.enrolledCount} enrolled · Uncapped`
+                    : `${section.enrolledCount}/${section.capacity} enrolled`}
                   {!isFull && section.capacity !== undefined && <span className="text-emerald-600">({slotsLeft} slots left)</span>}
                 </span>
               </div>
