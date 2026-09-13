@@ -16,6 +16,7 @@ import {
   termGrade,
 } from '../../utils/spr';
 import type { SPRColumn } from '../../types/lms';
+import { SPRConfigModal } from './SPRConfigModal';
 
 interface FacultyGradebookProps {
   courseId: string;
@@ -50,6 +51,7 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) 
 
   const [postingPolicy, setPostingPolicy] = useState<'manual' | 'automatic'>('manual');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isConfigOpen, setIsConfigOpen] = useState(false);
 
   const filteredStudents = students.filter(
     s =>
@@ -125,7 +127,7 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) 
   const isEmptySPR = !sprConfig || (mtColumns.length === 0 && ftColumns.length === 0);
 
   const onConfigure = () => {
-    showAlert({ title: 'Configure SPR', message: 'Column configuration arrives in the next update.', type: 'info' });
+    setIsConfigOpen(true);
   };
 
   const onCellChange = async (studentId: string, term: 'midterm' | 'final', key: string, raw: string, perfect: number) => {
@@ -296,6 +298,15 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) 
                   <span>Policy: Automatic Posting</span>
                 </>
               )}
+            </button>
+
+            <button
+              type="button"
+              data-testid="spr-configure"
+              onClick={onConfigure}
+              className="px-3.5 py-2 rounded-xl border border-border text-xs font-bold flex items-center space-x-2 transition-all bg-card text-foreground hover:bg-muted shadow-subtle active:scale-98 cursor-pointer"
+            >
+              <span>Configure</span>
             </button>
 
             <button
@@ -649,6 +660,7 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) 
           </div>
         </div>
       )}
+      {isConfigOpen ? <SPRConfigModal courseId={courseId} onClose={() => setIsConfigOpen(false)} /> : null}
     </div>
   );
 };
