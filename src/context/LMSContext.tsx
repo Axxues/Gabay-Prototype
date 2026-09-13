@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import type {
   User,
   UserRole,
@@ -25,10 +25,19 @@ import type {
   ChatGroup,
   Notification,
   CourseSection,
-  EnrollmentRequest
+  EnrollmentRequest,
+  SPRConfig,
+  SPRColumn
 } from '../types/lms';
 import type { Activity } from '../types/lms';
 import { activityPointsPossible } from '../utils/activities';
+import {
+  autoScoreFraction,
+  classStandingPercent,
+  resolveSPRWeights,
+  round2,
+  termGrade,
+} from '../utils/spr';
 import { commonsTemplates } from '../data/commonsTemplates';
 import { AlertModal, type AlertModalOptions } from '../components/common/AlertModal';
 import { canPickSection } from '../utils/sections';
@@ -176,6 +185,24 @@ interface LMSContextType {
     type: 'midterm' | 'final',
     score: number | null
   ) => Promise<void>;
+
+  // SPR gradebook store (Tasks 4 and 5 consume these)
+  getSPRConfig: (courseId: string) => SPRConfig | null;
+  saveSPRConfig: (courseId: string, config: Omit<SPRConfig, 'courseId'>) => Promise<void>;
+  setSPRCell: (
+    courseId: string,
+    studentId: string,
+    term: 'midterm' | 'final',
+    key: string,
+    value: number | null
+  ) => Promise<void>;
+  resetSPRCell: (
+    courseId: string,
+    studentId: string,
+    term: 'midterm' | 'final',
+    key: string
+  ) => Promise<void>;
+  bulkImportSPRColumns: (courseId: string, term: 'midterm' | 'final') => Promise<void>;
 
   // Sections CRUD
   createSection: (courseId: string, data: Partial<CourseSection>) => Promise<CourseSection>;
@@ -406,6 +433,83 @@ const normalizeCourseGrade = (raw: any): CourseStudentGrade => ({
   updatedAt: raw.updatedAt ? toIsoString(raw.updatedAt) : undefined,
 });
 
+type SPRStudentCells = {
+  midterm: Record<string, number | null>;
+  mtExam: number | null;
+  final: Record<string, number | null>;
+  ftExam: number | null;
+};
+
+const stripNullMap = (value: unknown): Record<string, number> => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof v === 'number' && !Number.isNaN(v)) out[k] = v;
+  }
+  return out;
+};
+
+const asExamOrNull = (value: unknown): number | null =>
+  typeof value === 'number' && !Number.isNaN(value) ? value : null;
+
+/** Server sprCells shape { midtermScores, mtExam, finalScores, ftExam }
+ *  (JSON string or object) -> client manual-cell model. Returns null when
+ *  the row carries no manual cells. */
+const parseSPRCells = (raw: unknown): SPRStudentCells | null => {
+  if (raw === null || raw === undefined) return null;
+  let parsed: any = raw;
+  if (typeof raw === 'string') {
+    if (!raw) return null;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+  if (!parsed || typeof parsed !== 'object') return null;
+  const midterm = stripNullMap(parsed.midtermScores);
+  const final = stripNullMap(parsed.finalScores);
+  const mtExam = asExamOrNull(parsed.mtExam);
+  const ftExam = asExamOrNull(parsed.ftExam);
+  if (Object.keys(midterm).length === 0 && Object.keys(final).length === 0 && mtExam === null && ftExam === null) {
+    return null;
+  }
+  return { midterm, mtExam, final, ftExam };
+};
+
+/** Union-merge per-course manual-cell maps (incoming student rows win). */
+const mergeSPRCourseMaps = (
+  prev: Record<string, Record<string, SPRStudentCells>> | undefined,
+  incoming: Record<string, Record<string, SPRStudentCells>>,
+): Record<string, Record<string, SPRStudentCells>> => {
+  const out: Record<string, Record<string, SPRStudentCells>> = { ...(prev ?? {}) };
+  for (const [courseId, students] of Object.entries(incoming)) {
+    out[courseId] = { ...(out[courseId] ?? {}), ...students };
+  }
+  return out;
+};
+
+/** Union-merge grade rows by course+student (incoming rows win). */
+const mergeSPRGrades = (
+  prev: CourseStudentGrade[] | undefined,
+  incoming: CourseStudentGrade[],
+): CourseStudentGrade[] => {
+  if (incoming.length === 0) return prev ?? [];
+  const merged = [...(prev ?? [])];
+  const index = new Map(merged.map((g, i) => [`${g.courseId}:${g.studentId}`, i]));
+  for (const g of incoming) {
+    const key = `${g.courseId}:${g.studentId}`;
+    const at = index.get(key);
+    if (at === undefined) {
+      index.set(key, merged.length);
+      merged.push(g);
+    } else {
+      merged[at] = g;
+    }
+  }
+  return merged;
+};
+
 /** Task 5: the server stores Course.syllabus as a JSON string (nullable);
  *  the client cache holds the parsed OfficialSyllabusData object. */
 const normalizeCourseSyllabus = (raw: any): Course => {
@@ -507,6 +611,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     courseFiles: [],
     courseFolders: [],
     courseGrades: [],
+    sprConfigs: {},
+    sprScores: {},
     chatGroups: [],
     notifications: [],
     courseSections: [],
@@ -520,10 +626,20 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
+  // SPR lazy-hydration guard: config/cells are fetched once per course per
+  // session so getSPRConfig-triggered fills never refetch in a loop.
+  const sprHydratedRef = useRef<Set<string>>(new Set());
+  // SPR actions run async across awaits — this mirror always holds the
+  // latest committed db snapshot for recompute without stale closures.
+  const dbRef = useRef(db);
+  useEffect(() => {
+    dbRef.current = db;
+  }, [db]);
 
   const refreshAll = async (user: User): Promise<void> => {
     setIsLoading(true);
     setLastError(null);
+    sprHydratedRef.current.clear();
     try {
       const coursesPath =
         user.role === 'student'
@@ -662,7 +778,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 apiFetch<{ activities: Activity[] }>(`/api/activities?courseId=${encodeURIComponent(course.id)}`),
                 apiFetch<{ grades: CourseStudentGrade[] }>(`/api/courses/${encodeURIComponent(course.id)}/grades`),
               ]);
-            return { assignmentsSettled, quizzesSettled, activitiesSettled, gradesSettled };
+            return { courseId: course.id, assignmentsSettled, quizzesSettled, activitiesSettled, gradesSettled };
           })()
         )
       );
@@ -670,6 +786,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const allQuizzes: Quiz[] = [];
       const allActivities: Activity[] = [];
       const allGrades: CourseStudentGrade[] = [];
+      const allSPRScores: Record<string, Record<string, SPRStudentCells>> = {};
       for (const r of assessmentResults) {
         if (r.assignmentsSettled.status === 'fulfilled') {
           for (const a of r.assignmentsSettled.value.assignments) allAssignments.push(normalizeAssignment(a));
@@ -681,8 +798,40 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           for (const a of r.activitiesSettled.value.activities) allActivities.push(normalizeActivity(a));
         }
         if (r.gradesSettled.status === 'fulfilled') {
-          for (const g of r.gradesSettled.value.grades) allGrades.push(normalizeCourseGrade(g));
+          for (const g of r.gradesSettled.value.grades) {
+            allGrades.push(normalizeCourseGrade(g));
+            // Grade rows carry the server-side sprCells payload — hydrate the
+            // manual-cell map from it so cells survive reload with no extra
+            // endpoint round-trip.
+            const cells = parseSPRCells((g as any).sprCells);
+            if (cells && typeof (g as any).studentId === 'string') {
+              if (!allSPRScores[r.courseId]) allSPRScores[r.courseId] = {};
+              allSPRScores[r.courseId][(g as any).studentId] = cells;
+            }
+          }
         }
+      }
+      // SPR config hydration: GET /api/courses/:id/spr per visible course
+      // after grades load. Per-course failures are tolerated; sync getters
+      // read whatever the cache holds and ensureSPRCourse retries lazily.
+      const sprConfigResults = await Promise.all(
+        coursesRes.courses.map(course =>
+          (async () => {
+            try {
+              const { config } = await apiFetch<{ config: SPRConfig | null }>(
+                `/api/courses/${encodeURIComponent(course.id)}/spr`
+              );
+              return { courseId: course.id, config: config ?? null };
+            } catch {
+              return { courseId: course.id, config: null };
+            }
+          })()
+        )
+      );
+      const allSPRConfigs: Record<string, SPRConfig> = {};
+      for (const r of sprConfigResults) {
+        sprHydratedRef.current.add(r.courseId);
+        if (r.config) allSPRConfigs[r.courseId] = r.config;
       }
       // Submissions ride per assignment / quiz / activity (role-scoped
       // server-side). Per-list failures are tolerated (403-tolerant); sync
@@ -729,6 +878,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       fresh.quizzes = allQuizzes;
       fresh.activities = allActivities;
       fresh.courseGrades = allGrades;
+      fresh.sprConfigs = allSPRConfigs;
+      fresh.sprScores = allSPRScores;
       // Task 5 files bootstrap: folders + direct CourseFile rows for each of
       // the user's courses (virtual aggregation in useCourseFiles reads these
       // rows plus module/announcement/assignment sources). Per-course
@@ -811,6 +962,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const logout = () => {
     clearToken();
+    sprHydratedRef.current.clear();
     setCurrentUser(null);
     setDb(emptyDb());
     setIsUserProfileModalOpen(false);
@@ -3099,6 +3251,232 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // ==========================================
+  // SPR GRADEBOOK STORE
+  // ==========================================
+
+  // Lazy per-course fill: config + manual cells (parsed from the course
+  // grade rows' sprCells payload — no dedicated cells endpoint exists).
+  // Ref-guarded so first-access triggers never refetch in a loop.
+  const ensureSPRCourse = async (courseId: string): Promise<void> => {
+    if (sprHydratedRef.current.has(courseId)) return;
+    sprHydratedRef.current.add(courseId);
+    try {
+      const [{ config }, gradesRes] = await Promise.all([
+        apiFetch<{ config: SPRConfig | null }>(`/api/courses/${encodeURIComponent(courseId)}/spr`),
+        apiFetch<{ grades: any[] }>(`/api/courses/${encodeURIComponent(courseId)}/grades`),
+      ]);
+      const cells: Record<string, SPRStudentCells> = {};
+      const grades: CourseStudentGrade[] = [];
+      for (const g of gradesRes.grades || []) {
+        grades.push(normalizeCourseGrade(g));
+        const parsed = parseSPRCells((g as any).sprCells);
+        if (parsed && typeof (g as any).studentId === 'string') cells[(g as any).studentId] = parsed;
+      }
+      setDb(prev => ({
+        ...prev,
+        sprConfigs: config ? { ...(prev.sprConfigs ?? {}), [courseId]: config } : (prev.sprConfigs ?? {}),
+        sprScores: mergeSPRCourseMaps(prev.sprScores, Object.keys(cells).length > 0 ? { [courseId]: cells } : {}),
+        courseGrades: mergeSPRGrades(prev.courseGrades, grades),
+      }));
+    } catch (err) {
+      // Lazy-only failure: never pop an alert over the workspace; sync
+      // getters read whatever the cache holds.
+      console.warn('[ensureSPRCourse] background sync failed:', err instanceof ApiError ? err.message : err);
+    }
+  };
+
+  const getSPRConfig = (courseId: string): SPRConfig | null => {
+    // Lazy fill on first Grades-tab access for this course.
+    void ensureSPRCourse(courseId);
+    return db.sprConfigs?.[courseId] ?? null;
+  };
+
+  const saveSPRConfig = async (courseId: string, config: Omit<SPRConfig, 'courseId'>): Promise<void> => {
+    try {
+      const { config: saved } = await apiFetch<{ config: SPRConfig }>(
+        `/api/courses/${encodeURIComponent(courseId)}/spr`,
+        { method: 'PUT', body: { config: { ...config, courseId } } }
+      );
+      setDb(prev => ({
+        ...prev,
+        sprConfigs: { ...(prev.sprConfigs ?? {}), [courseId]: saved },
+      }));
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to save SPR config.';
+      setLastError(message);
+      showAlert(message, 'Save SPR Config Failed');
+      throw err;
+    }
+  };
+
+  // Recompute both term grades for a student from the given snapshot
+  // (manual map entry wins, else Task 1 autoScoreFraction) and sync them
+  // through the existing term-grade path. Sync failures propagate with the
+  // existing setCourseStudentGrade alert; the cell write is NOT rolled back.
+  const recomputeAndSyncSPR = async (
+    snapshot: LMSDatabase,
+    courseId: string,
+    studentId: string
+  ): Promise<void> => {
+    const config = snapshot.sprConfigs?.[courseId];
+    if (!config) return;
+    const course = snapshot.courses.find(c => c.id === courseId);
+    const weights = resolveSPRWeights(course?.syllabus?.gradingSystem ?? null);
+    const cells = snapshot.sprScores?.[courseId]?.[studentId];
+    const resolveTerm = (term: 'midterm' | 'final'): number | null => {
+      const columns = term === 'midterm' ? config.midtermColumns : config.finalColumns;
+      const examPerfect = term === 'midterm' ? config.mtExamPerfect : config.ftExamPerfect;
+      const manual = term === 'midterm' ? cells?.midterm ?? {} : cells?.final ?? {};
+      const scores: Array<number | null> = [];
+      const perfects: number[] = [];
+      for (const col of columns) {
+        const manualValue = manual[col.id];
+        if (typeof manualValue === 'number') {
+          scores.push(manualValue);
+        } else {
+          const fraction = autoScoreFraction({
+            column: col,
+            studentId,
+            submissions: snapshot.submissions,
+            assignments: snapshot.assignments,
+            activities: snapshot.activities ?? [],
+            quizzes: snapshot.quizzes,
+          });
+          scores.push(fraction === null ? null : fraction * col.perfectScore);
+        }
+        perfects.push(col.perfectScore);
+      }
+      const cs = classStandingPercent(scores, perfects);
+      const exam = term === 'midterm' ? cells?.mtExam ?? null : cells?.ftExam ?? null;
+      return termGrade(cs, exam, examPerfect, weights);
+    };
+    const mtGrade = resolveTerm('midterm');
+    const ftGrade = resolveTerm('final');
+    await setCourseStudentGrade(courseId, studentId, 'midterm', mtGrade === null ? null : round2(mtGrade));
+    await setCourseStudentGrade(courseId, studentId, 'final', ftGrade === null ? null : round2(ftGrade));
+  };
+
+  const setSPRCell = async (
+    courseId: string,
+    studentId: string,
+    term: 'midterm' | 'final',
+    key: string,
+    value: number | null
+  ): Promise<void> => {
+    const snapshot = dbRef.current;
+    const prevCell = snapshot.sprScores?.[courseId]?.[studentId];
+    const nextCell: SPRStudentCells = {
+      midterm: { ...(prevCell?.midterm ?? {}) },
+      mtExam: prevCell?.mtExam ?? null,
+      final: { ...(prevCell?.final ?? {}) },
+      ftExam: prevCell?.ftExam ?? null,
+    };
+    if (key === '__mtExam') {
+      nextCell.mtExam = value;
+    } else if (key === '__ftExam') {
+      nextCell.ftExam = value;
+    } else {
+      // Store ONLY explicit manual numbers — a null/reset deletes the map
+      // entry so auto resolution wins again (manual tagging).
+      const map = term === 'midterm' ? nextCell.midterm : nextCell.final;
+      if (value === null) delete map[key];
+      else map[key] = value;
+    }
+    try {
+      await apiFetch(
+        `/api/courses/${encodeURIComponent(courseId)}/spr/${encodeURIComponent(studentId)}`,
+        {
+          method: 'PUT',
+          body: {
+            midtermScores: { ...nextCell.midterm },
+            mtExam: nextCell.mtExam,
+            finalScores: { ...nextCell.final },
+            ftExam: nextCell.ftExam,
+          },
+        }
+      );
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to save SPR cell.';
+      setLastError(message);
+      showAlert(message, 'Save SPR Cell Failed');
+      throw err;
+    }
+    const nextDb: LMSDatabase = {
+      ...snapshot,
+      sprScores: mergeSPRCourseMaps(snapshot.sprScores, { [courseId]: { [studentId]: nextCell } }),
+    };
+    setDb(prev => ({
+      ...prev,
+      sprScores: mergeSPRCourseMaps(prev.sprScores, { [courseId]: { [studentId]: nextCell } }),
+    }));
+    await recomputeAndSyncSPR(nextDb, courseId, studentId);
+  };
+
+  const resetSPRCell = async (
+    courseId: string,
+    studentId: string,
+    term: 'midterm' | 'final',
+    key: string
+  ): Promise<void> => {
+    await setSPRCell(courseId, studentId, term, key, null);
+  };
+
+  const bulkImportSPRColumns = async (courseId: string, term: 'midterm' | 'final'): Promise<void> => {
+    const snapshot = dbRef.current;
+    const base = snapshot.sprConfigs?.[courseId];
+    const config: SPRConfig = base ?? {
+      courseId,
+      midtermColumns: [],
+      finalColumns: [],
+      mtExamPerfect: 100,
+      ftExamPerfect: 100,
+    };
+    // Sources already linked in EITHER term list are skipped.
+    const linked = new Set<string>();
+    for (const col of [...config.midtermColumns, ...config.finalColumns]) {
+      if (col.linkedSource) linked.add(`${col.linkedSource.kind}:${col.linkedSource.sourceId}`);
+    }
+    const next: SPRColumn[] = [...(term === 'midterm' ? config.midtermColumns : config.finalColumns)];
+    for (const a of snapshot.assignments) {
+      if (a.courseId !== courseId || linked.has(`assignment:${a.id}`)) continue;
+      linked.add(`assignment:${a.id}`);
+      next.push({
+        id: crypto.randomUUID(),
+        title: a.title,
+        perfectScore: a.pointsPossible,
+        linkedSource: { kind: 'assignment', sourceId: a.id },
+      });
+    }
+    for (const a of snapshot.activities ?? []) {
+      if (a.courseId !== courseId || linked.has(`activity:${a.id}`)) continue;
+      linked.add(`activity:${a.id}`);
+      next.push({
+        id: crypto.randomUUID(),
+        title: a.title,
+        perfectScore: a.pointsPossible,
+        linkedSource: { kind: 'activity', sourceId: a.id },
+      });
+    }
+    for (const q of snapshot.quizzes) {
+      if (q.courseId !== courseId || !q.published || linked.has(`quiz:${q.id}`)) continue;
+      linked.add(`quiz:${q.id}`);
+      const points = (q.questions || []).reduce((sum, qq) => sum + (qq.points ?? 0), 0);
+      next.push({
+        id: crypto.randomUUID(),
+        title: q.title,
+        perfectScore: Math.max(1, points),
+        linkedSource: { kind: 'quiz', sourceId: q.id },
+      });
+    }
+    await saveSPRConfig(courseId, {
+      midtermColumns: term === 'midterm' ? next : config.midtermColumns,
+      finalColumns: term === 'final' ? next : config.finalColumns,
+      mtExamPerfect: config.mtExamPerfect,
+      ftExamPerfect: config.ftExamPerfect,
+    });
+  };
+
   const clearHistory = () => {
     setDb(prev => ({
       ...prev,
@@ -3714,6 +4092,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateFileVisibility,
         renameCourseFile,
         setCourseStudentGrade,
+        getSPRConfig,
+        saveSPRConfig,
+        setSPRCell,
+        resetSPRCell,
+        bulkImportSPRColumns,
         createSection,
         updateSection,
         deleteSection,
