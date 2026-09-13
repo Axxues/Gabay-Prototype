@@ -463,6 +463,16 @@ model HistoryLog {
   timestamp DateTime @default(now())
 }
 
+model CourseGrade {
+  courseId     String   @db.NVarChar(64)
+  studentId    String   @db.NVarChar(64)
+  midtermGrade Float?
+  finalGrade   Float?
+  updatedAt    DateTime @updatedAt
+
+  @@id([courseId, studentId])
+}
+
 model CommonsTemplate {
   id            String  @id @db.NVarChar(64)
   title         String  @db.NVarChar(256)

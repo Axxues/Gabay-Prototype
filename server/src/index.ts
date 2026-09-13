@@ -1,4 +1,5 @@
 import express from 'express';
+import path from 'node:path';
 import { errorMiddleware } from './utils/errors.js';
 import { authRouter } from './routes/auth.js';
 import { usersRouter } from './routes/users.js';
@@ -12,6 +13,8 @@ import { discussionsRouter } from './routes/discussions.js';
 import { messagesRouter, groupsRouter } from './routes/messages.js';
 import { calendarRouter, advisingRouter } from './routes/calendar.js';
 import { notificationsRouter } from './routes/notifications.js';
+import { filesRouter } from './routes/files.js';
+import { gradesRouter } from './routes/grades.js';
 
 const app = express();
 app.use(express.json({ limit: '2mb' }));
@@ -36,6 +39,12 @@ app.use('/api/groups', groupsRouter);
 app.use('/api/calendar', calendarRouter);
 app.use('/api/advising', advisingRouter);
 app.use('/api/notifications', notificationsRouter);
+app.use('/api', filesRouter);
+app.use('/api', gradesRouter);
+
+const uploadsDir =
+  process.cwd().endsWith('server') ? path.resolve('uploads') : path.resolve('server/uploads');
+app.use('/uploads', express.static(uploadsDir));
 
 app.use(errorMiddleware);
 

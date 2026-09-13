@@ -480,6 +480,16 @@ CREATE TABLE [dbo].[HistoryLog] (
 );
 
 -- CreateTable
+CREATE TABLE [dbo].[CourseGrade] (
+    [courseId] NVARCHAR(64) NOT NULL,
+    [studentId] NVARCHAR(64) NOT NULL,
+    [midtermGrade] FLOAT(53),
+    [finalGrade] FLOAT(53),
+    [updatedAt] DATETIME2 NOT NULL,
+    CONSTRAINT [CourseGrade_pkey] PRIMARY KEY CLUSTERED ([courseId],[studentId])
+);
+
+-- CreateTable
 CREATE TABLE [dbo].[CommonsTemplate] (
     [id] NVARCHAR(64) NOT NULL,
     [title] NVARCHAR(256) NOT NULL,
