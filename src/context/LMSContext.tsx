@@ -920,18 +920,44 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           for (const g of r.gradesSettled.value.grades) allGrades.push(normalizeCourseGrade(g));
         }
       }
-      // Submissions ride per assignment (role-scoped server-side). Quiz /
-      // activity submissions have no list endpoint — session submits merge
-      // into the cache via their POST responses.
+      // Submissions ride per assignment / quiz / activity (role-scoped
+      // server-side). Per-list failures are tolerated (403-tolerant); sync
+      // getters read the cache.
       const submissionResults = await Promise.allSettled(
         allAssignments.map(a =>
           apiFetch<{ submissions: any[] }>(`/api/assignments/${encodeURIComponent(a.id)}/submissions`)
         )
       );
       const allSubmissions: Submission[] = [];
+      const seenSubmissionIds = new Set<string>();
       for (const r of submissionResults) {
         if (r.status === 'fulfilled') {
-          for (const s of r.value.submissions) allSubmissions.push(normalizeSubmission(s));
+          for (const s of r.value.submissions) {
+            const merged = normalizeSubmission(s);
+            if (seenSubmissionIds.has(merged.id)) continue;
+            seenSubmissionIds.add(merged.id);
+            allSubmissions.push(merged);
+          }
+        }
+      }
+      const quizSubmissionResults = await Promise.allSettled(
+        allQuizzes.map(q =>
+          apiFetch<{ submissions: any[] }>(`/api/quizzes/${encodeURIComponent(q.id)}/submissions`)
+        )
+      );
+      const activitySubmissionResults = await Promise.allSettled(
+        allActivities.map(a =>
+          apiFetch<{ submissions: any[] }>(`/api/activities/${encodeURIComponent(a.id)}/submissions`)
+        )
+      );
+      for (const r of [...quizSubmissionResults, ...activitySubmissionResults]) {
+        if (r.status === 'fulfilled') {
+          for (const s of r.value.submissions) {
+            const merged = normalizeSubmission(s);
+            if (seenSubmissionIds.has(merged.id)) continue;
+            seenSubmissionIds.add(merged.id);
+            allSubmissions.push(merged);
+          }
         }
       }
       fresh.assignments = allAssignments;
