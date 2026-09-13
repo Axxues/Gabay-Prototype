@@ -134,4 +134,59 @@ describe('courses router', () => {
     expect(res.status).toBe(403);
     expect(res.body.error.code).toBe('forbidden');
   });
+
+  it('POST /api/courses without joinCode → creates with generated 6-char code', async () => {
+    (prisma.course.create as ReturnType<typeof vi.fn>).mockImplementation(
+      (args: { data: Record<string, unknown> }) =>
+        Promise.resolve({ id: 'c1', ...args.data })
+    );
+    const res = await (await import('supertest'))
+      .default(app())
+      .post('/api/courses')
+      .set('Authorization', 'Bearer x')
+      .send({ code: 'CS101', title: 'Intro', section: 'A', term: '2026-1' });
+    expect(res.status).toBe(201);
+    const create = prisma.course.create as ReturnType<typeof vi.fn>;
+    expect(create).toHaveBeenCalledTimes(1);
+    const joinCode = create.mock.calls[0][0].data.joinCode as unknown;
+    expect(typeof joinCode).toBe('string');
+    expect(joinCode as string).toMatch(/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/);
+  });
+
+  it('POST /api/courses retries once on P2002 joinCode collision then succeeds', async () => {
+    const collision = Object.assign(new Error('Unique constraint failed'), {
+      code: 'P2002',
+      meta: { target: ['joinCode'] },
+    });
+    (prisma.course.create as ReturnType<typeof vi.fn>)
+      .mockRejectedValueOnce(collision)
+      .mockImplementation((args: { data: Record<string, unknown> }) =>
+        Promise.resolve({ id: 'c1', ...args.data })
+      );
+    const res = await (await import('supertest'))
+      .default(app())
+      .post('/api/courses')
+      .set('Authorization', 'Bearer x')
+      .send({ code: 'CS101', title: 'Intro', section: 'A', term: '2026-1' });
+    expect(res.status).toBe(201);
+    expect(prisma.course.create).toHaveBeenCalledTimes(2);
+  });
+
+  it('POST /api/courses with client-supplied joinCode passes it through untouched', async () => {
+    (prisma.course.create as ReturnType<typeof vi.fn>).mockImplementation(
+      (args: { data: Record<string, unknown> }) =>
+        Promise.resolve({ id: 'c1', ...args.data })
+    );
+    const res = await (await import('supertest'))
+      .default(app())
+      .post('/api/courses')
+      .set('Authorization', 'Bearer x')
+      .send({ code: 'CS101', title: 'Intro', section: 'A', term: '2026-1', joinCode: 'MYCODE1' });
+    expect(res.status).toBe(201);
+    expect(res.body.course.joinCode).toBe('MYCODE1');
+    expect(prisma.course.create).toHaveBeenCalledTimes(1);
+    expect(prisma.course.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ joinCode: 'MYCODE1' }) })
+    );
+  });
 });

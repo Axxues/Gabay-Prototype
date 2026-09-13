@@ -11,6 +11,24 @@ function newId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+const JOIN_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+
+function generateJoinCode(): string {
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += JOIN_CODE_ALPHABET[Math.floor(Math.random() * JOIN_CODE_ALPHABET.length)];
+  }
+  return code;
+}
+
+function isJoinCodeConflict(err: unknown): boolean {
+  if ((err as { code?: unknown })?.code !== 'P2002') return false;
+  const target = (err as { meta?: { target?: unknown } })?.meta?.target;
+  if (target === undefined) return true;
+  const targets = Array.isArray(target) ? target : [target];
+  return targets.some((t) => typeof t === 'string' && t.includes('joinCode'));
+}
+
 interface CourseRow {
   id: string;
   instructorId: string;
@@ -82,25 +100,51 @@ coursesRouter.post(
       throw new ApiError(400, 'bad_request', 'Fields code, title, section, term are required.');
     }
     const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
-    const course = await prisma.course.create({
-      data: {
-        id: newId('c'),
-        code,
-        title,
-        section,
-        term,
-        instructorId: auth.sub,
-        instructorName: str(body.instructorName) ?? '',
-        published: typeof body.published === 'boolean' ? body.published : false,
-        color: str(body.color) ?? null,
-        image: str(body.image) ?? null,
-        credits: typeof body.credits === 'number' ? body.credits : null,
-        chedComplianceCode: str(body.chedComplianceCode) ?? null,
-        joinCode: str(body.joinCode) ?? null,
-        syllabus: str(body.syllabus) ?? null,
-      },
-    });
-    res.status(201).json({ course });
+    const suppliedJoinCode = str(body.joinCode);
+    const baseData = {
+      id: newId('c'),
+      code,
+      title,
+      section,
+      term,
+      instructorId: auth.sub,
+      instructorName: str(body.instructorName) ?? '',
+      published: typeof body.published === 'boolean' ? body.published : false,
+      color: str(body.color) ?? null,
+      image: str(body.image) ?? null,
+      credits: typeof body.credits === 'number' ? body.credits : null,
+      chedComplianceCode: str(body.chedComplianceCode) ?? null,
+      syllabus: str(body.syllabus) ?? null,
+    };
+    if (typeof suppliedJoinCode === 'string' && suppliedJoinCode !== '') {
+      const course = await prisma.course.create({
+        data: { ...baseData, joinCode: suppliedJoinCode },
+      });
+      res.status(201).json({ course });
+      return;
+    }
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        const course = await prisma.course.create({
+          data: { ...baseData, joinCode: generateJoinCode() },
+        });
+        res.status(201).json({ course });
+        return;
+      } catch (err) {
+        if (!isJoinCodeConflict(err)) throw err;
+        lastErr = err;
+      }
+    }
+    if (lastErr) {
+      // Exhausted retries; surface the last collision only if it is still a
+      // joinCode conflict, otherwise let the original error propagate.
+      if (isJoinCodeConflict(lastErr)) {
+        throw new ApiError(409, 'conflict', 'Join code collision, please retry.');
+      }
+      throw lastErr;
+    }
+    throw new ApiError(409, 'conflict', 'Join code collision, please retry.');
   })
 );
 
