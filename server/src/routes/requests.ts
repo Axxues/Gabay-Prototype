@@ -30,6 +30,18 @@ async function loadRequestOr404(requestId: string) {
 }
 
 requestsRouter.get(
+  '/requests/mine',
+  authenticateToken,
+  asyncHandler(async (req, res) => {
+    const requests = await prisma.enrollmentRequest.findMany({
+      where: { studentId: req.auth!.sub },
+      orderBy: { requestedAt: 'desc' },
+    });
+    res.json({ requests });
+  })
+);
+
+requestsRouter.get(
   '/courses/:id/requests',
   authenticateToken,
   requireRole('faculty', 'admin'),
@@ -173,7 +185,10 @@ requestsRouter.post(
     const membership = await prisma.enrollmentRequest.findFirst({
       where: { courseId: course.id, studentId: auth.sub, status: 'approved' },
     });
-    if (!membership) {
+    // Faculty/admin pick sections without an approved membership row
+    // (students still require one).
+    const bypass = !membership && (auth.role === 'faculty' || auth.role === 'admin');
+    if (!membership && !bypass) {
       throw new ApiError(403, 'forbidden', 'Only enrolled students can choose a section.');
     }
     const section = await prisma.courseSection.findUnique({ where: { id: sectionId } });
@@ -183,8 +198,28 @@ requestsRouter.post(
     if (section.capacity != null && section.enrolledCount >= section.capacity) {
       throw new ApiError(409, 'section_full', 'Section has reached capacity.');
     }
+    if (bypass) {
+      const me = await prisma.user.findUnique({ where: { id: auth.sub } });
+      const request = await prisma.enrollmentRequest.create({
+        data: {
+          id: newId('req'),
+          courseId: course.id,
+          studentId: auth.sub,
+          studentName: me?.name ?? '',
+          type: 'faculty_enroll',
+          status: 'approved',
+          targetSectionId: section.id,
+        },
+      });
+      await prisma.courseSection.update({
+        where: { id: section.id },
+        data: { enrolledCount: { increment: 1 } },
+      });
+      res.json({ request });
+      return;
+    }
     const request = await prisma.enrollmentRequest.update({
-      where: { id: membership.id },
+      where: { id: membership!.id },
       data: { targetSectionId: section.id },
     });
     await prisma.courseSection.update({
