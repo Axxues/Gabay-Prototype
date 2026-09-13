@@ -1,6 +1,7 @@
 import React from 'react';
 import { useLMS } from '../context/LMSContext';
 import type { CourseSection } from '../types/lms';
+import { canPickSection } from '../utils/sections';
 import { BookOpen, MapPin, Clock, Users, Check, ArrowLeft } from 'lucide-react';
 
 interface SectionSelectionPageProps {
@@ -12,7 +13,7 @@ export const SectionSelectionPage: React.FC<SectionSelectionPageProps> = ({
   courseId,
   onSectionSelected
 }) => {
-  const { db, activeUser, selectSection, showAlert } = useLMS();
+  const { db, activeUser, activeRole, selectSection, requestSectionSwitch, showAlert } = useLMS();
   const course = db.courses.find(c => c.id === courseId);
   const sections: CourseSection[] = (db.courseSections || []).filter((s: CourseSection) => s.courseId === courseId);
 
@@ -22,9 +23,29 @@ export const SectionSelectionPage: React.FC<SectionSelectionPageProps> = ({
     const section = (db.courseSections || []).find((s: CourseSection) => s.id === sectionId);
     if (!section) return;
 
-    if (section.capacity !== undefined && section.enrolledCount >= section.capacity) {
-      showAlert({ title: 'Section Full', message: 'This section has reached its maximum capacity.', type: 'warning' });
+    if (!canPickSection(section)) {
+      showAlert('This section is full. Please choose another section.', 'Section Full');
       return;
+    }
+
+    const bypassGate = activeRole === 'faculty' || activeRole === 'admin';
+    if (!bypassGate) {
+      const hasApproval = (db.enrollmentRequests || []).some(
+        r => r.studentId === activeUser.id && r.courseId === courseId && r.status === 'approved'
+      );
+      if (!hasApproval) {
+        showAlert(
+          'You need an approved enrollment request before selecting a section.',
+          'Section Selection Blocked'
+        );
+        return;
+      }
+
+      if (currentSectionId && currentSectionId !== sectionId) {
+        requestSectionSwitch(courseId, sectionId);
+        showAlert({ title: 'Switch Requested', message: 'Switch requested — waiting for faculty approval.', type: 'info' });
+        return;
+      }
     }
 
     selectSection(courseId, sectionId);

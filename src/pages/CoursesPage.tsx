@@ -47,6 +47,20 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
     }
   }, [activeRole, subTab]);
 
+  useEffect(() => {
+    if (activeRole !== 'student') return;
+    if (!activeCourse) return;
+    if (subTab === 'section-selection') return;
+    const sections = (db.courseSections || []).filter(s => s.courseId === activeCourse.id);
+    if (sections.length === 0) return;
+    const hasApproval = (db.enrollmentRequests || []).some(
+      r => r.studentId === activeUser.id && r.courseId === activeCourse.id && r.status === 'approved'
+    );
+    if (!hasApproval) return;
+    if (activeUser.courseSections?.[activeCourse.id]) return;
+    setSubTab('section-selection');
+  }, [activeRole, subTab, activeCourse, db.courseSections, db.enrollmentRequests, activeUser]);
+
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Main Content Area */}

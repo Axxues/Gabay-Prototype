@@ -179,6 +179,7 @@ interface LMSContextType {
   studentApproveInvitation: (requestId: string) => void;
   studentDeclineInvitation: (requestId: string) => void;
   selectSection: (courseId: string, sectionId: string) => void;
+  requestSectionSwitch: (courseId: string, targetSectionId: string) => void;
   getPendingRequestsForCourse: (courseId: string) => EnrollmentRequest[];
   getPendingRequestsForStudent: () => EnrollmentRequest[];
   requestJoinCourse: (courseId: string) => void;
@@ -2339,7 +2340,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `sec-${Date.now().toString(36)}`,
       courseId,
       name: data.name || 'New Section',
-      capacity: data.capacity || 40,
+      capacity: data.capacity ?? undefined,
       enrolledCount: 0,
       schedule: data.schedule || '',
       location: data.location || ''
@@ -2435,15 +2436,23 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         (r: EnrollmentRequest) => requestIds.includes(r.id) && r.status === 'pending'
       );
 
-      const studentIds = requestsToApprove.map((r: EnrollmentRequest) => r.studentId);
-      const courseIds = [...new Set(requestsToApprove.map((r: EnrollmentRequest) => r.courseId))];
+      const enrollmentApprovals = requestsToApprove.filter(
+        (r: EnrollmentRequest) => r.type !== 'section_switch'
+      );
+      const switchApprovals = requestsToApprove.filter(
+        (r: EnrollmentRequest) => r.type === 'section_switch'
+      );
+
+      const studentIds = enrollmentApprovals.map((r: EnrollmentRequest) => r.studentId);
+      const courseIds = [...new Set(enrollmentApprovals.map((r: EnrollmentRequest) => r.courseId))];
 
       let updatedUsers = prev.users;
       let updatedCourses = prev.courses;
+      let updatedSections = prev.courseSections || [];
 
       for (const courseId of courseIds) {
         const courseStudents = studentIds.filter((sid: string) =>
-          requestsToApprove.find((r: EnrollmentRequest) => r.studentId === sid && r.courseId === courseId)
+          enrollmentApprovals.find((r: EnrollmentRequest) => r.studentId === sid && r.courseId === courseId)
         );
 
         updatedUsers = updatedUsers.map(u => {
@@ -2464,12 +2473,46 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
       }
 
+      const skippedSwitchIds: string[] = [];
+
+      for (const req of switchApprovals) {
+        const target = (updatedSections || []).find((s: CourseSection) => s.id === req.targetSectionId);
+        if (!target || !canPickSection(target)) {
+          skippedSwitchIds.push(req.id);
+          continue;
+        }
+        const student = updatedUsers.find(u => u.id === req.studentId);
+        const oldSectionId = student?.courseSections?.[req.courseId];
+        if (oldSectionId && oldSectionId !== req.targetSectionId) {
+          updatedSections = updatedSections.map((s: CourseSection) =>
+            s.id === oldSectionId ? { ...s, enrolledCount: Math.max(0, s.enrolledCount - 1) } : s
+          );
+          updatedSections = updatedSections.map((s: CourseSection) =>
+            s.id === req.targetSectionId ? { ...s, enrolledCount: s.enrolledCount + 1 } : s
+          );
+        } else if (!oldSectionId) {
+          updatedSections = updatedSections.map((s: CourseSection) =>
+            s.id === req.targetSectionId ? { ...s, enrolledCount: s.enrolledCount + 1 } : s
+          );
+        }
+        if (oldSectionId !== req.targetSectionId) {
+          updatedUsers = updatedUsers.map(u =>
+            u.id === req.studentId
+              ? { ...u, courseSections: { ...(u.courseSections || {}), [req.courseId]: req.targetSectionId as string } }
+              : u
+          );
+        }
+      }
+
+      const skippedSet = new Set(skippedSwitchIds);
+
       return {
         ...prev,
         users: updatedUsers,
         courses: updatedCourses,
+        courseSections: updatedSections,
         enrollmentRequests: existingRequests.map((r: EnrollmentRequest) =>
-          requestIds.includes(r.id) && r.status === 'pending'
+          requestIds.includes(r.id) && r.status === 'pending' && !skippedSet.has(r.id)
             ? { ...r, status: 'approved' as const, resolvedAt: now, resolvedBy: activeUser.id }
             : r
         )
@@ -2581,6 +2624,36 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setDb(prev => ({
       ...prev,
       users: prev.users.map(u => u.id === activeUser.id ? updatedUser : u)
+    }));
+  };
+
+  const requestSectionSwitch = (courseId: string, targetSectionId: string): void => {
+    if (activeRole === 'faculty' || activeRole === 'admin') return;
+    const currentSectionId = activeUser.courseSections?.[courseId];
+    if (currentSectionId === targetSectionId) return;
+    const duplicate = (db.enrollmentRequests || []).some(
+      (r: EnrollmentRequest) =>
+        r.studentId === activeUser.id &&
+        r.courseId === courseId &&
+        r.type === 'section_switch' &&
+        r.targetSectionId === targetSectionId &&
+        r.status === 'pending'
+    );
+    if (duplicate) return;
+    const newRequest: EnrollmentRequest = {
+      id: `req-${Date.now().toString(36)}`,
+      courseId,
+      studentId: activeUser.id,
+      studentName: activeUser.name,
+      type: 'section_switch',
+      status: 'pending',
+      requestedAt: new Date().toISOString(),
+      targetSectionId
+    };
+
+    setDb(prev => ({
+      ...prev,
+      enrollmentRequests: [...(prev.enrollmentRequests || []), newRequest]
     }));
   };
 
@@ -2730,6 +2803,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         studentApproveInvitation,
         studentDeclineInvitation,
         selectSection,
+        requestSectionSwitch,
         getPendingRequestsForCourse,
         getPendingRequestsForStudent,
         requestJoinCourse,
