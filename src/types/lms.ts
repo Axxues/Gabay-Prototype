@@ -44,7 +44,7 @@ export interface CourseSection {
   id: string;
   courseId: string;
   name: string;
-  capacity: number;
+  capacity?: number;
   enrolledCount: number;
   schedule?: string;
   location?: string;
@@ -55,12 +55,13 @@ export interface EnrollmentRequest {
   courseId: string;
   studentId: string;
   studentName: string;
-  type: 'self_join' | 'faculty_enroll';
+  type: 'self_join' | 'faculty_enroll' | 'section_switch';
   status: 'pending' | 'approved' | 'rejected';
   requestedAt: string;
   resolvedAt?: string;
   resolvedBy?: string;
   sectionId?: string;
+  targetSectionId?: string;
 }
 
 export interface ModuleItem {
@@ -335,6 +336,7 @@ export interface Announcement {
   authorRole: UserRole;
   createdAt: string;
   delayedUntil?: string; // scheduled release date
+  sectionId?: string; // 'all' default or a section id
   sectionRestriction?: string; // 'All Sections' | 'BSCS 4-1' etc.
   allowComments: boolean;
   usersMustPostBeforeReplies?: boolean;

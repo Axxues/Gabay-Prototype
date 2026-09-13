@@ -2499,7 +2499,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setDb(prev => {
       const section = (prev.courseSections || []).find((s: CourseSection) => s.id === sectionId);
-      if (!section || section.enrolledCount >= section.capacity) return prev;
+      if (!section || (section.capacity !== undefined && section.enrolledCount >= section.capacity)) return prev;
 
       let updatedSections = prev.courseSections || [];
 

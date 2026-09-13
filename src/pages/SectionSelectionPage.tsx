@@ -22,7 +22,7 @@ export const SectionSelectionPage: React.FC<SectionSelectionPageProps> = ({
     const section = (db.courseSections || []).find((s: CourseSection) => s.id === sectionId);
     if (!section) return;
 
-    if (section.enrolledCount >= section.capacity) {
+    if (section.capacity !== undefined && section.enrolledCount >= section.capacity) {
       showAlert({ title: 'Section Full', message: 'This section has reached its maximum capacity.', type: 'warning' });
       return;
     }
@@ -48,9 +48,9 @@ export const SectionSelectionPage: React.FC<SectionSelectionPageProps> = ({
 
       <div className="grid gap-4">
         {sections.map(section => {
-          const isFull = section.enrolledCount >= section.capacity;
+          const isFull = section.capacity !== undefined && section.enrolledCount >= section.capacity;
           const isSelected = currentSectionId === section.id;
-          const slotsLeft = section.capacity - section.enrolledCount;
+          const slotsLeft = section.capacity !== undefined ? section.capacity - section.enrolledCount : 0;
 
           return (
             <button
@@ -90,7 +90,7 @@ export const SectionSelectionPage: React.FC<SectionSelectionPageProps> = ({
                 <span className="flex items-center gap-1">
                   <Users className="w-3.5 h-3.5" />
                   {section.enrolledCount}/{section.capacity} enrolled
-                  {!isFull && <span className="text-emerald-600">({slotsLeft} slots left)</span>}
+                  {!isFull && section.capacity !== undefined && <span className="text-emerald-600">({slotsLeft} slots left)</span>}
                 </span>
               </div>
             </button>
