@@ -452,6 +452,12 @@ export interface CourseStudentGrade {
   updatedAt?: string;
 }
 
+export interface SPRSourceLink { kind: 'assignment' | 'activity' | 'quiz'; sourceId: string }
+export interface SPRColumn { id: string; title: string; perfectScore: number; linkedSource?: SPRSourceLink }
+export interface SPRConfig { courseId: string; midtermColumns: SPRColumn[]; finalColumns: SPRColumn[]; mtExamPerfect: number; ftExamPerfect: number }
+export type SPRCellMap = Record<string, Record<string, number | null>>;
+export interface SPRWeights { csWeight: number; examWeight: number; mtWeight: number; ftWeight: number; formulaLabel: string }
+
 export interface LMSDatabase {
   users: User[];
   courses: Course[];
@@ -470,6 +476,8 @@ export interface LMSDatabase {
   courseFiles?: CourseFile[];
   courseFolders?: CourseFolder[];
   courseGrades?: CourseStudentGrade[];
+  sprConfigs?: Record<string, SPRConfig>;
+  sprScores?: Record<string, Record<string, { midterm: Record<string, number | null>; mtExam: number | null; final: Record<string, number | null>; ftExam: number | null }>>;
   chatGroups?: ChatGroup[];
   notifications?: Notification[];
   courseSections?: CourseSection[];
