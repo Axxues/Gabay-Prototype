@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useLMS } from '../../context/LMSContext';
 import { PageHeader } from '../common/PageHeader';
 import {
@@ -8,6 +8,14 @@ import {
   Globe,
   Calculator
 } from 'lucide-react';
+import {
+  autoScoreFraction,
+  classStandingPercent,
+  finalPercent,
+  resolveSPRWeights,
+  termGrade,
+} from '../../utils/spr';
+import type { SPRColumn } from '../../types/lms';
 
 interface FacultyGradebookProps {
   courseId: string;
@@ -33,7 +41,7 @@ export const getTransmutedGrade = (
 };
 
 export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) => {
-  const { db, activeRole, setCourseStudentGrade, showAlert } = useLMS();
+  const { db, activeRole, showAlert, getSPRConfig, setSPRCell, resetSPRCell } = useLMS();
 
   const course = db.courses.find(c => c.id === courseId);
   const students = db.users.filter(
@@ -49,18 +57,6 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) 
       (s.studentId && s.studentId.toLowerCase().includes(searchQuery.toLowerCase())) ||
       s.email.toLowerCase().includes(searchQuery.toLowerCase())
   );
-
-  const handleGradeChange = async (studentId: string, type: 'midterm' | 'final', value: string) => {
-    if (activeRole === 'admin') return; // Read-only audit for admin
-    if (value === '') {
-      await setCourseStudentGrade(courseId, studentId, type, null).catch(() => {});
-      return;
-    }
-    const num = Number(value);
-    if (isNaN(num)) return;
-    const clamped = Math.max(0, Math.min(100, num));
-    await setCourseStudentGrade(courseId, studentId, type, clamped).catch(() => {});
-  };
 
   const handleExportCSV = () => {
     const headers = ['Student ID', 'Student Name', 'Email', 'Midterm Grade (40%)', 'Final Grade (60%)', 'Calculated Total (%)', 'Equivalent Grade', 'Remarks'];
@@ -115,6 +111,161 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) 
     });
   };
 
+  const sprConfig = getSPRConfig(courseId);
+
+  const weights = useMemo(
+    () => resolveSPRWeights(course?.syllabus?.gradingSystem ?? null),
+    [course]
+  );
+
+  const mtColumns: SPRColumn[] = sprConfig?.midtermColumns ?? [];
+  const ftColumns: SPRColumn[] = sprConfig?.finalColumns ?? [];
+  const mtExamPerfect = sprConfig?.mtExamPerfect ?? 100;
+  const ftExamPerfect = sprConfig?.ftExamPerfect ?? 100;
+  const isEmptySPR = !sprConfig || (mtColumns.length === 0 && ftColumns.length === 0);
+
+  const onConfigure = () => {
+    showAlert({ title: 'Configure SPR', message: 'Column configuration arrives in the next update.', type: 'info' });
+  };
+
+  const onCellChange = async (studentId: string, term: 'midterm' | 'final', key: string, raw: string, perfect: number) => {
+    if (raw === '') {
+      await setSPRCell(courseId, studentId, term, key, null);
+      return;
+    }
+    const num = Number(raw);
+    if (Number.isNaN(num)) return;
+    if (num < 0 || num > perfect) {
+      showAlert({ title: 'Score out of range', message: `Enter 0–${perfect}.`, type: 'warning' });
+      return;
+    }
+    await setSPRCell(courseId, studentId, term, key, num);
+  };
+
+  const getSourceTitle = (column: SPRColumn): string | null => {
+    const link = column.linkedSource;
+    if (!link) return null;
+    if (link.kind === 'assignment') {
+      return db.assignments.find(a => a.id === link.sourceId)?.title ?? null;
+    }
+    if (link.kind === 'activity') {
+      return (db.activities ?? []).find(a => a.id === link.sourceId)?.title ?? null;
+    }
+    return db.quizzes.find(q => q.id === link.sourceId)?.title ?? null;
+  };
+
+  interface SPRRowCell {
+    score: number | null;
+    isManual: boolean;
+    sourceTitle: string | null;
+  }
+
+  interface SPRRow {
+    studentId: string;
+    mtCells: SPRRowCell[];
+    mtExam: number | null;
+    mtGrade: number | null;
+    ftCells: SPRRowCell[];
+    ftExam: number | null;
+    ftGrade: number | null;
+    final: number | null;
+  }
+
+  const sprRows: SPRRow[] = useMemo(() => {
+    if (!sprConfig) return [];
+    return filteredStudents.map(student => {
+      const cells = db.sprScores?.[courseId]?.[student.id];
+      const manualMid = cells?.midterm ?? {};
+      const manualFinal = cells?.final ?? {};
+      const mtExam = cells?.mtExam ?? null;
+      const ftExam = cells?.ftExam ?? null;
+
+      const mtScores: Array<number | null> = [];
+      const mtPerfects: number[] = [];
+      const mtCells: SPRRowCell[] = mtColumns.map(col => {
+        const manualValue = manualMid[col.id];
+        if (typeof manualValue === 'number') {
+          mtScores.push(manualValue);
+          mtPerfects.push(col.perfectScore);
+          return { score: manualValue, isManual: true, sourceTitle: null };
+        }
+        const fraction = autoScoreFraction({
+          column: col,
+          studentId: student.id,
+          submissions: db.submissions,
+          assignments: db.assignments,
+          activities: db.activities ?? [],
+          quizzes: db.quizzes,
+        });
+        const sourceTitle = getSourceTitle(col);
+        if (fraction === null) {
+          mtScores.push(null);
+          mtPerfects.push(col.perfectScore);
+          return { score: null, isManual: false, sourceTitle };
+        }
+        const score = fraction * col.perfectScore;
+        mtScores.push(score);
+        mtPerfects.push(col.perfectScore);
+        return { score, isManual: false, sourceTitle };
+      });
+
+      const ftScores: Array<number | null> = [];
+      const ftPerfects: number[] = [];
+      const ftCells: SPRRowCell[] = ftColumns.map(col => {
+        const manualValue = manualFinal[col.id];
+        if (typeof manualValue === 'number') {
+          ftScores.push(manualValue);
+          ftPerfects.push(col.perfectScore);
+          return { score: manualValue, isManual: true, sourceTitle: null };
+        }
+        const fraction = autoScoreFraction({
+          column: col,
+          studentId: student.id,
+          submissions: db.submissions,
+          assignments: db.assignments,
+          activities: db.activities ?? [],
+          quizzes: db.quizzes,
+        });
+        const sourceTitle = getSourceTitle(col);
+        if (fraction === null) {
+          ftScores.push(null);
+          ftPerfects.push(col.perfectScore);
+          return { score: null, isManual: false, sourceTitle };
+        }
+        const score = fraction * col.perfectScore;
+        ftScores.push(score);
+        ftPerfects.push(col.perfectScore);
+        return { score, isManual: false, sourceTitle };
+      });
+
+      const mtCS = classStandingPercent(mtScores, mtPerfects);
+      const ftCS = classStandingPercent(ftScores, ftPerfects);
+      const mtGrade = termGrade(mtCS, mtExam, mtExamPerfect, weights);
+      const ftGrade = termGrade(ftCS, ftExam, ftExamPerfect, weights);
+      const final = finalPercent(mtGrade, ftGrade, weights);
+
+      return {
+        studentId: student.id,
+        mtCells,
+        mtExam,
+        mtGrade,
+        ftCells,
+        ftExam,
+        ftGrade,
+        final,
+      };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredStudents, sprConfig, db.sprScores, db.submissions, db.assignments, db.activities, db.quizzes, weights, courseId, mtColumns, ftColumns, mtExamPerfect, ftExamPerfect]);
+
+  const sprRowById = useMemo(() => {
+    const map = new Map<string, SPRRow>();
+    for (const r of sprRows) map.set(r.studentId, r);
+    return map;
+  }, [sprRows]);
+
+  const totalColumns = 1 + mtColumns.length + 1 + 1 + ftColumns.length + 1 + 1 + 1 + 1;
+
   return (
     <div className="space-y-6 animate-fade-in font-sans">
       {/* Header Controls */}
@@ -126,7 +277,7 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) 
             {/* Formula Badge */}
             <div className="hidden md:flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-primary/10 border border-primary/20 text-primary text-xs font-bold shadow-xs">
               <Calculator className="w-3.5 h-3.5" />
-              <span>Total = 40% Midterm + 60% Final</span>
+              <span>{weights.formulaLabel}</span>
             </div>
 
             <button
@@ -187,195 +338,317 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) 
         </div>
       </div>
 
-      {/* Spreadsheet Matrix Table */}
-      <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-subtle">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
-            <thead>
-              <tr className="border-b border-border bg-muted/40 text-muted-foreground">
-                <th className="p-3.5 border-r border-border min-w-[220px]">
-                  Student Roster Name & ID
-                </th>
-                <th className="p-3.5 border-r border-border text-center min-w-[150px]">
-                  <div className="font-bold text-foreground flex items-center justify-center space-x-1">
-                    <span>Midterm Grade</span>
-                    <span className="px-1.5 py-0.2 bg-primary/10 text-primary rounded text-[10px] font-extrabold border border-primary/20">
-                      40%
-                    </span>
-                  </div>
-                  <div className="text-[10px] text-muted-foreground font-normal mt-0.5">
-                    Score (0 - 100)
-                  </div>
-                </th>
-                <th className="p-3.5 border-r border-border text-center min-w-[150px]">
-                  <div className="font-bold text-foreground flex items-center justify-center space-x-1">
-                    <span>Final Grade</span>
-                    <span className="px-1.5 py-0.2 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 rounded text-[10px] font-extrabold border border-emerald-500/20">
-                      60%
-                    </span>
-                  </div>
-                  <div className="text-[10px] text-muted-foreground font-normal mt-0.5">
-                    Score (0 - 100)
-                  </div>
-                </th>
-                <th className="p-3.5 border-r border-border text-center min-w-[160px] font-bold text-primary">
-                  Calculated Total
-                  <div className="text-[10px] text-muted-foreground font-normal mt-0.5">
-                    (40% Midterm + 60% Final)
-                  </div>
-                </th>
-                <th className="p-3.5 text-center min-w-[120px] font-bold text-foreground">
-                  Equivalent
-                  <div className="text-[10px] text-muted-foreground font-normal mt-0.5">
-                    1.00 - 5.00 Scale
-                  </div>
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {filteredStudents.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="p-8 text-center text-muted-foreground">
-                    No student records found matching "{searchQuery}".
-                  </td>
+      {isEmptySPR ? (
+        <div data-testid="spr-empty-state" className="bg-card border border-border rounded-2xl p-8 text-center shadow-subtle">
+          <div className="mx-auto max-w-md space-y-3">
+            <h3 className="text-sm font-bold text-foreground">Student Performance Record not set up yet</h3>
+            <p className="text-xs text-muted-foreground">
+              Define midterm and final columns to auto-fill scores from activities, quizzes, and assignments.
+              Blank cells count as 0 in computation. Term grades use 60% class standing + 40% exam, and the
+              final grade uses 40% midterm + 60% final term.
+            </p>
+            <button
+              type="button"
+              onClick={onConfigure}
+              className="px-4 py-2 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all shadow-subtle active:scale-98 cursor-pointer"
+            >
+              Configure SPR
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-subtle">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="border-b border-border bg-muted/40 text-muted-foreground">
+                  <th className="p-3.5 border-r border-border min-w-[220px] sticky left-0 bg-muted/40 z-10">
+                    Student Roster Name & ID
+                  </th>
+                  {mtColumns.map(col => (
+                    <th key={col.id} className="p-3 border-r border-border text-center min-w-[110px]">
+                      <div className="font-bold text-foreground truncate max-w-[140px] mx-auto" title={col.title}>
+                        {col.title}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground font-normal mt-0.5">
+                        / {col.perfectScore}
+                      </div>
+                    </th>
+                  ))}
+                  <th className="p-3 border-r border-border text-center min-w-[110px]">
+                    <div className="font-bold text-foreground">MT Exam</div>
+                    <div className="text-[10px] text-muted-foreground font-normal mt-0.5">
+                      / {mtExamPerfect}
+                    </div>
+                  </th>
+                  <th className="p-3 border-r border-border text-center min-w-[100px] font-bold text-primary">
+                    MT Grade
+                  </th>
+                  {ftColumns.map(col => (
+                    <th key={col.id} className="p-3 border-r border-border text-center min-w-[110px]">
+                      <div className="font-bold text-foreground truncate max-w-[140px] mx-auto" title={col.title}>
+                        {col.title}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground font-normal mt-0.5">
+                        / {col.perfectScore}
+                      </div>
+                    </th>
+                  ))}
+                  <th className="p-3 border-r border-border text-center min-w-[110px]">
+                    <div className="font-bold text-foreground">FT Exam</div>
+                    <div className="text-[10px] text-muted-foreground font-normal mt-0.5">
+                      / {ftExamPerfect}
+                    </div>
+                  </th>
+                  <th className="p-3 border-r border-border text-center min-w-[100px] font-bold text-emerald-700 dark:text-emerald-400">
+                    FT Grade
+                  </th>
+                  <th className="p-3 border-r border-border text-center min-w-[100px] font-bold text-primary">
+                    Final %
+                  </th>
+                  <th className="p-3 text-center min-w-[110px] font-bold text-foreground">
+                    Numerical
+                    <div className="text-[10px] text-muted-foreground font-normal mt-0.5">
+                      1.00 - 5.00 Scale
+                    </div>
+                  </th>
                 </tr>
-              ) : (
-                filteredStudents.map(student => {
-                  const gradeRecord = db.courseGrades?.find(
-                    g => g.courseId === courseId && g.studentId === student.id
-                  );
-                  const midtermScore = gradeRecord?.midtermGrade;
-                  const finalScore = gradeRecord?.finalGrade;
-
-                  const hasMidterm = midtermScore !== undefined && midtermScore !== null;
-                  const hasFinal = finalScore !== undefined && finalScore !== null;
-
-                  let totalPercentage: number | null = null;
-                  if (hasMidterm && hasFinal) {
-                    totalPercentage = Math.round((midtermScore * 0.40) + (finalScore * 0.60));
-                  } else if (hasMidterm) {
-                    // Partial calculation
-                    totalPercentage = null;
-                  }
-
-                  const transmuted = getTransmutedGrade(totalPercentage);
-
-                  return (
-                    <tr key={student.id} className="hover:bg-muted/30 transition-colors">
-                      {/* Student info */}
-                      <td className="p-3.5 border-r border-border font-bold text-foreground">
-                        <div className="flex items-center space-x-2.5">
-                          <img
-                            src={student.avatar}
-                            alt={student.name}
-                            className="w-7 h-7 rounded-full object-cover border border-border shadow-soft shrink-0"
-                          />
-                          <div className="min-w-0">
-                            <div className="truncate">{student.name}</div>
-                            <div className="text-[10px] text-muted-foreground font-normal">
-                              {student.studentId || '2021-SLUC-0492'} &bull; {student.email}
+              </thead>
+              <tbody className="divide-y divide-border">
+                {filteredStudents.length === 0 ? (
+                  <tr>
+                    <td colSpan={totalColumns} className="p-8 text-center text-muted-foreground">
+                      No student records found matching &quot;{searchQuery}&quot;.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredStudents.map(student => {
+                    const row = sprRowById.get(student.id);
+                    const transmuted = getTransmutedGrade(row?.final ?? null);
+                    return (
+                      <tr key={student.id} className="hover:bg-muted/30 transition-colors">
+                        <td className="p-3.5 border-r border-border font-bold text-foreground sticky left-0 bg-card z-10">
+                          <div className="flex items-center space-x-2.5">
+                            <img
+                              src={student.avatar}
+                              alt={student.name}
+                              className="w-7 h-7 rounded-full object-cover border border-border shadow-soft shrink-0"
+                            />
+                            <div className="min-w-0">
+                              <div className="truncate">{student.name}</div>
+                              <div className="text-[10px] text-muted-foreground font-normal">
+                                {student.studentId || '2021-SLUC-0492'} &bull; {student.email}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </td>
+                        </td>
 
-                      {/* Midterm Grade Input (40%) */}
-                      <td className="p-3 border-r border-border text-center">
-                        <div className="flex items-center justify-center space-x-1.5">
-                          <input
-                            type="number"
-                            min={0}
-                            max={100}
-                            step={1}
-                            disabled={activeRole === 'admin'}
-                            value={midtermScore ?? ''}
-                            onChange={e => handleGradeChange(student.id, 'midterm', e.target.value)}
-                            placeholder="—"
-                            className={`w-18 p-1.5 bg-background border border-border rounded-xl text-center text-xs font-bold text-foreground shadow-subtle ${
-                              activeRole === 'admin' ? 'opacity-80 cursor-not-allowed bg-muted/40' : 'focus:outline-hidden focus:ring-2 focus:ring-primary/30'
-                            }`}
-                          />
-                          <span className="text-[11px] text-muted-foreground">%</span>
-                        </div>
-                        {hasMidterm && (
-                          <div className="text-[10px] text-primary font-semibold mt-1">
-                            Contrib: {(midtermScore * 0.40).toFixed(1)}%
+                        {mtColumns.map((col, idx) => {
+                          const cell = row?.mtCells[idx];
+                          const score = cell?.score ?? null;
+                          const isManual = cell?.isManual ?? false;
+                          const isBlank = score === null;
+                          const autoTitle = cell?.sourceTitle ?? null;
+                          return (
+                            <td key={col.id} className="p-2 border-r border-border text-center">
+                              <div className="flex items-center justify-center space-x-1">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={col.perfectScore}
+                                  step={0.25}
+                                  disabled={activeRole === 'admin'}
+                                  value={score ?? ''}
+                                  onChange={e => onCellChange(student.id, 'midterm', col.id, e.target.value, col.perfectScore)}
+                                  title={!isManual && autoTitle ? `Auto from ${autoTitle}` : undefined}
+                                  placeholder="—"
+                                  className={`w-20 p-1.5 bg-background border border-border rounded-xl text-center text-xs font-bold text-foreground shadow-subtle ${
+                                    activeRole === 'admin' ? 'opacity-80 cursor-not-allowed bg-muted/40' : 'focus:outline-hidden focus:ring-2 focus:ring-primary/30'
+                                  } ${isBlank ? 'ring-1 ring-amber-500/60 placeholder:text-amber-600' : ''}`}
+                                />
+                                {!isManual && autoTitle && !isBlank ? (
+                                  <span data-testid="spr-auto-dot" title={`Auto from ${autoTitle}`} className="w-1.5 h-1.5 rounded-full bg-sky-500 shrink-0" />
+                                ) : null}
+                                {isManual ? (
+                                  <button
+                                    type="button"
+                                    data-testid="spr-reset-cell"
+                                    title="Reset to auto"
+                                    disabled={activeRole === 'admin'}
+                                    onClick={() => {
+                                      void resetSPRCell(courseId, student.id, 'midterm', col.id);
+                                    }}
+                                    className="text-[10px] text-muted-foreground hover:text-primary transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                  >
+                                    ↺
+                                  </button>
+                                ) : null}
+                              </div>
+                            </td>
+                          );
+                        })}
+
+                        <td className="p-2 border-r border-border text-center">
+                          <div className="flex items-center justify-center space-x-1">
+                            <input
+                              type="number"
+                              min={0}
+                              max={mtExamPerfect}
+                              step={0.25}
+                              disabled={activeRole === 'admin'}
+                              value={row?.mtExam ?? ''}
+                              onChange={e => onCellChange(student.id, 'midterm', '__mtExam', e.target.value, mtExamPerfect)}
+                              placeholder="—"
+                              className={`w-20 p-1.5 bg-background border border-border rounded-xl text-center text-xs font-bold text-foreground shadow-subtle ${
+                                activeRole === 'admin' ? 'opacity-80 cursor-not-allowed bg-muted/40' : 'focus:outline-hidden focus:ring-2 focus:ring-primary/30'
+                              } ${(row?.mtExam ?? null) === null ? 'ring-1 ring-amber-500/60 placeholder:text-amber-600' : ''}`}
+                            />
+                            {(row?.mtExam ?? null) !== null ? (
+                              <button
+                                type="button"
+                                data-testid="spr-reset-cell"
+                                title="Reset to auto"
+                                disabled={activeRole === 'admin'}
+                                onClick={() => {
+                                  void resetSPRCell(courseId, student.id, 'midterm', '__mtExam');
+                                }}
+                                className="text-[10px] text-muted-foreground hover:text-primary transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                ↺
+                              </button>
+                            ) : null}
                           </div>
-                        )}
-                      </td>
+                        </td>
 
-                      {/* Final Grade Input (60%) */}
-                      <td className="p-3 border-r border-border text-center">
-                        <div className="flex items-center justify-center space-x-1.5">
-                          <input
-                            type="number"
-                            min={0}
-                            max={100}
-                            step={1}
-                            disabled={activeRole === 'admin'}
-                            value={finalScore ?? ''}
-                            onChange={e => handleGradeChange(student.id, 'final', e.target.value)}
-                            placeholder="—"
-                            className={`w-18 p-1.5 bg-background border border-border rounded-xl text-center text-xs font-bold text-foreground shadow-subtle ${
-                              activeRole === 'admin' ? 'opacity-80 cursor-not-allowed bg-muted/40' : 'focus:outline-hidden focus:ring-2 focus:ring-emerald-500/30'
-                            }`}
-                          />
-                          <span className="text-[11px] text-muted-foreground">%</span>
-                        </div>
-                        {hasFinal && (
-                          <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold mt-1">
-                            Contrib: {(finalScore * 0.60).toFixed(1)}%
+                        <td className="p-3 border-r border-border text-center">
+                          {row?.mtGrade !== null && row?.mtGrade !== undefined ? (
+                            <span className="inline-block px-2.5 py-0.5 rounded-lg text-xs font-black border text-primary bg-primary/10 border-primary/20">
+                              {row.mtGrade}%
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground font-normal">—</span>
+                          )}
+                        </td>
+
+                        {ftColumns.map((col, idx) => {
+                          const cell = row?.ftCells[idx];
+                          const score = cell?.score ?? null;
+                          const isManual = cell?.isManual ?? false;
+                          const isBlank = score === null;
+                          const autoTitle = cell?.sourceTitle ?? null;
+                          return (
+                            <td key={col.id} className="p-2 border-r border-border text-center">
+                              <div className="flex items-center justify-center space-x-1">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={col.perfectScore}
+                                  step={0.25}
+                                  disabled={activeRole === 'admin'}
+                                  value={score ?? ''}
+                                  onChange={e => onCellChange(student.id, 'final', col.id, e.target.value, col.perfectScore)}
+                                  title={!isManual && autoTitle ? `Auto from ${autoTitle}` : undefined}
+                                  placeholder="—"
+                                  className={`w-20 p-1.5 bg-background border border-border rounded-xl text-center text-xs font-bold text-foreground shadow-subtle ${
+                                    activeRole === 'admin' ? 'opacity-80 cursor-not-allowed bg-muted/40' : 'focus:outline-hidden focus:ring-2 focus:ring-emerald-500/30'
+                                  } ${isBlank ? 'ring-1 ring-amber-500/60 placeholder:text-amber-600' : ''}`}
+                                />
+                                {!isManual && autoTitle && !isBlank ? (
+                                  <span data-testid="spr-auto-dot" title={`Auto from ${autoTitle}`} className="w-1.5 h-1.5 rounded-full bg-sky-500 shrink-0" />
+                                ) : null}
+                                {isManual ? (
+                                  <button
+                                    type="button"
+                                    data-testid="spr-reset-cell"
+                                    title="Reset to auto"
+                                    disabled={activeRole === 'admin'}
+                                    onClick={() => {
+                                      void resetSPRCell(courseId, student.id, 'final', col.id);
+                                    }}
+                                    className="text-[10px] text-muted-foreground hover:text-primary transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                  >
+                                    ↺
+                                  </button>
+                                ) : null}
+                              </div>
+                            </td>
+                          );
+                        })}
+
+                        <td className="p-2 border-r border-border text-center">
+                          <div className="flex items-center justify-center space-x-1">
+                            <input
+                              type="number"
+                              min={0}
+                              max={ftExamPerfect}
+                              step={0.25}
+                              disabled={activeRole === 'admin'}
+                              value={row?.ftExam ?? ''}
+                              onChange={e => onCellChange(student.id, 'final', '__ftExam', e.target.value, ftExamPerfect)}
+                              placeholder="—"
+                              className={`w-20 p-1.5 bg-background border border-border rounded-xl text-center text-xs font-bold text-foreground shadow-subtle ${
+                                activeRole === 'admin' ? 'opacity-80 cursor-not-allowed bg-muted/40' : 'focus:outline-hidden focus:ring-2 focus:ring-emerald-500/30'
+                              } ${(row?.ftExam ?? null) === null ? 'ring-1 ring-amber-500/60 placeholder:text-amber-600' : ''}`}
+                            />
+                            {(row?.ftExam ?? null) !== null ? (
+                              <button
+                                type="button"
+                                data-testid="spr-reset-cell"
+                                title="Reset to auto"
+                                disabled={activeRole === 'admin'}
+                                onClick={() => {
+                                  void resetSPRCell(courseId, student.id, 'final', '__ftExam');
+                                }}
+                                className="text-[10px] text-muted-foreground hover:text-primary transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                ↺
+                              </button>
+                            ) : null}
                           </div>
-                        )}
-                      </td>
+                        </td>
 
-                      {/* Calculated Total Column (40% Midterm + 60% Final) */}
-                      <td className="p-3 border-r border-border text-center font-extrabold text-sm">
-                        {totalPercentage !== null ? (
-                          <div>
+                        <td className="p-3 border-r border-border text-center">
+                          {row?.ftGrade !== null && row?.ftGrade !== undefined ? (
+                            <span className="inline-block px-2.5 py-0.5 rounded-lg text-xs font-black border text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20">
+                              {row.ftGrade}%
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground font-normal">—</span>
+                          )}
+                        </td>
+
+                        <td className="p-3 border-r border-border text-center font-extrabold text-sm">
+                          {row?.final !== null && row?.final !== undefined ? (
                             <span
                               className={
-                                totalPercentage >= 75
+                                row.final >= 75
                                   ? 'text-emerald-600 dark:text-emerald-400'
                                   : 'text-rose-600 dark:text-rose-400'
                               }
                             >
-                              {totalPercentage}%
+                              {row.final}%
                             </span>
-                            <div className="text-[10px] font-normal text-muted-foreground">
-                              {(midtermScore! * 0.40).toFixed(1)} + {(finalScore! * 0.60).toFixed(1)}
-                            </div>
-                          </div>
-                        ) : hasMidterm ? (
-                          <div className="space-y-0.5">
-                            <span className="text-xs text-muted-foreground font-bold">
-                              {(midtermScore * 0.40).toFixed(1)}%
-                            </span>
-                            <div className="text-[9px] text-amber-600 dark:text-amber-400 font-medium">
-                              Final Pending (60%)
-                            </div>
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground font-normal">—</span>
-                        )}
-                      </td>
+                          ) : (
+                            <span className="text-muted-foreground font-normal">—</span>
+                          )}
+                        </td>
 
-                      {/* Equivalent Grade (1.00 - 5.00 Scale) */}
-                      <td className="p-3 text-center">
-                        <span
-                          className={`inline-block px-2.5 py-0.5 rounded-lg text-xs font-black border ${transmuted.color}`}
-                        >
-                          {transmuted.grade}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                        <td className="p-3 text-center">
+                          <span
+                            className={`inline-block px-2.5 py-0.5 rounded-lg text-xs font-black border ${transmuted.color}`}
+                          >
+                            {transmuted.grade}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };
