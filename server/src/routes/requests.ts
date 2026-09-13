@@ -70,7 +70,7 @@ requestsRouter.post(
         courseId: course.id,
         studentId,
         studentName: student?.name ?? '',
-        type: 'faculty_invite',
+        type: 'faculty_enroll',
         status: 'pending',
       },
     });
