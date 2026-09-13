@@ -50,16 +50,16 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) 
       s.email.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const handleGradeChange = (studentId: string, type: 'midterm' | 'final', value: string) => {
+  const handleGradeChange = async (studentId: string, type: 'midterm' | 'final', value: string) => {
     if (activeRole === 'admin') return; // Read-only audit for admin
     if (value === '') {
-      setCourseStudentGrade(courseId, studentId, type, null);
+      await setCourseStudentGrade(courseId, studentId, type, null).catch(() => {});
       return;
     }
     const num = Number(value);
     if (isNaN(num)) return;
     const clamped = Math.max(0, Math.min(100, num));
-    setCourseStudentGrade(courseId, studentId, type, clamped);
+    await setCourseStudentGrade(courseId, studentId, type, clamped).catch(() => {});
   };
 
   const handleExportCSV = () => {

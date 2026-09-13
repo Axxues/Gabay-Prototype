@@ -60,18 +60,22 @@ export const SpeedGraderModal: React.FC = () => {
     setGradeInput(total);
   };
 
-  const handleSaveGrade = (e: React.FormEvent) => {
+  const handleSaveGrade = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isAdmin) return;
-    gradeSubmission(
-      currentSubmission.id,
-      Number(gradeInput),
-      rubricScores,
-      newComment.trim() ? newComment : undefined
-    );
-    setNewComment('');
-    setIsSaved(true);
-    setTimeout(() => setIsSaved(false), 2000);
+    try {
+      await gradeSubmission(
+        currentSubmission.id,
+        Number(gradeInput),
+        rubricScores,
+        newComment.trim() ? newComment : undefined
+      );
+      setNewComment('');
+      setIsSaved(true);
+      setTimeout(() => setIsSaved(false), 2000);
+    } catch {
+      // gradeSubmission already surfaced the alert.
+    }
   };
 
   return (

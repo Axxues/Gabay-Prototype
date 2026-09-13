@@ -346,7 +346,7 @@ export const CreateQuizPage: React.FC<CreateQuizPageProps> = ({
   ).length;
   const totalPages = items.filter(i => i.type === 'page_break').length + 1;
 
-  const handleSaveQuiz = (published: boolean) => {
+  const handleSaveQuiz = async (published: boolean) => {
     if (!title.trim()) {
       showAlert({
         title: 'Missing Quiz Title',
@@ -467,7 +467,7 @@ export const CreateQuizPage: React.FC<CreateQuizPageProps> = ({
       };
     });
 
-    const created = createQuiz({
+    const created = await createQuiz({
       courseId,
       title: title.trim(),
       instructions: instructions.trim() || 'Answer all questions carefully within the allotted time limit.',

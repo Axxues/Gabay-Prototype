@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useLMS } from '../context/LMSContext';
+import type { ActivityScore } from '../utils/activities';
+import { scoreActivityQuestions } from '../utils/activities';
 import type { QuizQuestion, Submission } from '../types/lms';
 import {
   ArrowLeft,
@@ -70,10 +72,14 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
   const [isCreating, setIsCreating] = useState(false);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [result, setResult] = useState<Submission | null>(null);
+  // Instant-feedback score from the client scorer — the server row stays
+  // 'submitted' until faculty grades in SpeedGrader.
+  const [clientScore, setClientScore] = useState<ActivityScore | null>(null);
 
   useEffect(() => {
     setAnswers({});
     setResult(null);
+    setClientScore(null);
   }, [activityId]);
 
   const courseActivities = (db.activities || []).filter(a => a.courseId === courseId);
@@ -87,8 +93,9 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
     showConfirm(
       'Are you sure you want to delete this question set and all associated student submissions?',
       () => {
-        deleteActivity(id);
-        onSelectActivity(null);
+        deleteActivity(id)
+          .then(() => onSelectActivity(null))
+          .catch(() => {});
       },
       'Delete Question Set'
     );
@@ -256,10 +263,17 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
       ? activitySubmissions.find(s => s.studentId === activeUser.id)
       : undefined;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const submission = recordActivitySubmission(activity.id, activeUser.id, answers);
-    setResult(submission);
+    try {
+      const serverSub = await recordActivitySubmission(activity.id, activeUser.id, answers);
+      // Instant feedback keeps using the client scorer; the cached server
+      // row records the submission for SpeedGrader/gradebook.
+      setClientScore(scoreActivityQuestions(activity.questions, answers));
+      setResult(serverSub);
+    } catch {
+      // recordActivitySubmission already surfaced the alert.
+    }
   };
 
   return (
@@ -522,7 +536,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
       {/* ---------- Student result panel ---------- */}
       {activeRole === 'student' && result && (
         <div className="space-y-5">
-          {result.status === 'submitted' ? (
+          {(clientScore?.needsReview ?? result.status === 'submitted') ? (
             <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-xs text-amber-700 dark:text-amber-300 flex items-center space-x-3">
               <Clock className="w-5 h-5 shrink-0" />
               <div>
@@ -537,7 +551,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
             <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-xs text-emerald-700 dark:text-emerald-300 flex items-center space-x-3">
               <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-600" />
               <div>
-                <span className="font-bold">Activity Completed &amp; Auto-Scored ({result.grade}%)</span>
+                <span className="font-bold">Activity Completed &amp; Auto-Scored ({clientScore?.percent ?? result.grade}%)</span>
                 <p className="text-[11px] opacity-80 mt-0.5">
                   Your responses have been recorded and evaluated against the answer key.
                 </p>

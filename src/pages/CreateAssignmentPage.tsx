@@ -118,7 +118,7 @@ export const CreateAssignmentPage: React.FC<CreateAssignmentPageProps> = ({
     });
   };
 
-  const handleSave = (publish: boolean) => {
+  const handleSave = async (publish: boolean) => {
     if (!title.trim()) {
       showAlert({
         title: 'Missing Title',
@@ -141,7 +141,7 @@ export const CreateAssignmentPage: React.FC<CreateAssignmentPageProps> = ({
       return;
     }
 
-    const created = createAssignment({
+    const created = await createAssignment({
       courseId,
       title: title.trim(),
       instructions: instructions.trim() || 'Complete the activity guidelines aligned with course syllabus objectives.',

@@ -11,6 +11,7 @@ import type {
   MockDatabase,
   CalendarEvent,
   Submission,
+  SubmissionComment,
   Message,
   AdvisingSlot,
   HistoryLog,
@@ -29,7 +30,7 @@ import type {
   FileAreaInput
 } from '../types/lms';
 import type { Activity } from '../types/lms';
-import { activityPointsPossible, scoreActivityQuestions } from '../utils/activities';
+import { activityPointsPossible } from '../utils/activities';
 import { areaFolderAutoKey, areaFolderName, dedupeFileName, findFolderByAutoKey, moduleFolderAutoKey } from '../utils/autoFolder';
 import initialMockData from '../data/mockData.json';
 import { commonsTemplates } from '../data/commonsTemplates';
@@ -84,19 +85,19 @@ interface LMSContextType {
 
   // Real CRUD & Interactive Actions
   createCourse: (course: Partial<Course>) => Promise<Course>;
-  createAssignment: (asg: Partial<Assignment>) => Assignment;
-  deleteAssignment: (asgId: string) => void;
+  createAssignment: (asg: Partial<Assignment>) => Promise<Assignment>;
+  deleteAssignment: (asgId: string) => Promise<void>;
   createModule: (courseId: string, title: string) => Promise<Module>;
   updateModule: (moduleId: string, updates: Partial<Module>) => Promise<void>;
   deleteModule: (moduleId: string) => Promise<void>;
   addModuleItem: (moduleId: string, item: Partial<ModuleItem>) => Promise<void>;
   updateModuleItem: (currentModuleId: string, itemId: string, updates: Partial<ModuleItem>, targetModuleId?: string) => Promise<void>;
   deleteModuleItem: (moduleId: string, itemId: string) => Promise<void>;
-  createQuiz: (quiz: Partial<Quiz>) => Quiz;
-  recordQuizSubmission: (quizId: string, studentId: string, score: number, answers: Record<string, string>) => void;
-  createActivity: (data: Partial<Activity>) => Activity;
-  recordActivitySubmission: (activityId: string, studentId: string, answers: Record<string, string>) => Submission;
-  deleteActivity: (activityId: string) => void;
+  createQuiz: (quiz: Partial<Quiz>) => Promise<Quiz>;
+  recordQuizSubmission: (quizId: string, studentId: string, answers: Record<string, string>) => Promise<Submission>;
+  createActivity: (data: Partial<Activity>) => Promise<Activity>;
+  recordActivitySubmission: (activityId: string, studentId: string, answers: Record<string, string>) => Promise<Submission>;
+  deleteActivity: (activityId: string) => Promise<void>;
   enrollPerson: (person: Partial<User>, courseId?: string) => Promise<boolean>;
   enrollStudentsInCourse: (studentIds: string[], courseId: string) => Promise<boolean>;
   createUser: (userData: Partial<User>) => Promise<User>;
@@ -114,13 +115,13 @@ interface LMSContextType {
     grade: number,
     rubricScores: Record<string, number>,
     commentText?: string
-  ) => void;
+  ) => Promise<void>;
   submitAssignment: (
     assignmentId: string,
     submissionType: 'file' | 'online_text',
     content?: string,
     fileName?: string
-  ) => void;
+  ) => Promise<void>;
   toggleModulePublish: (moduleId: string) => Promise<void>;
   toggleItemCompletion: (moduleId: string, itemId: string) => Promise<void>;
   addModuleComment: (moduleId: string, content: string) => Promise<void>;
@@ -180,7 +181,7 @@ interface LMSContextType {
     studentId: string,
     type: 'midterm' | 'final',
     score: number | null
-  ) => void;
+  ) => Promise<void>;
 
   // Sections CRUD
   createSection: (courseId: string, data: Partial<CourseSection>) => Promise<CourseSection>;
@@ -364,6 +365,83 @@ export const mergeEnrollmentRequest = (prev: MockDatabase, request: EnrollmentRe
   }
   return { ...prev, enrollmentRequests: [...existing, request] };
 };
+
+/** Task 4: server rows arrive with Dates serialized as ISO strings and
+ *  null-able optionals — normalize them to the client shapes. */
+const toIsoString = (value: unknown): string => {
+  if (value instanceof Date) return value.toISOString();
+  return String(value);
+};
+
+const toOptionalIso = (value: unknown): string | undefined => {
+  if (value === null || value === undefined) return undefined;
+  return toIsoString(value);
+};
+
+const normalizeAssignment = (raw: any): Assignment => ({
+  ...raw,
+  dueDate: toIsoString(raw.dueDate),
+  submissionTypes: Array.isArray(raw.submissionTypes) ? raw.submissionTypes : [],
+  rubric: Array.isArray(raw.rubric) ? raw.rubric : [],
+  fileName: raw.fileName ?? undefined,
+  fileUrl: raw.fileUrl ?? undefined,
+  fileSize: raw.fileSize ?? undefined,
+  availableFrom: toOptionalIso(raw.availableFrom),
+  availableUntil: toOptionalIso(raw.availableUntil),
+  sectionRestriction: raw.sectionRestriction ?? undefined,
+});
+
+const normalizeQuiz = (raw: any): Quiz => ({
+  ...raw,
+  delayedUntil: toOptionalIso(raw.delayedUntil),
+  dueDate: toOptionalIso(raw.dueDate),
+  fileName: raw.fileName ?? undefined,
+  fileUrl: raw.fileUrl ?? undefined,
+  fileSize: raw.fileSize ?? undefined,
+  questions: Array.isArray(raw.questions) ? raw.questions : [],
+});
+
+const normalizeActivity = (raw: any): Activity => ({
+  ...raw,
+  dueDate: toOptionalIso(raw.dueDate),
+  questions: Array.isArray(raw.questions) ? raw.questions : [],
+});
+
+const normalizeSubmissionComment = (raw: any): SubmissionComment => ({
+  ...raw,
+  createdAt: raw.createdAt ? toIsoString(raw.createdAt) : new Date().toISOString(),
+});
+
+const normalizeSubmission = (raw: any): Submission => ({
+  id: raw.id,
+  assignmentId: raw.assignmentId ?? '',
+  courseId: raw.courseId,
+  studentId: raw.studentId,
+  studentName: raw.studentName ?? '',
+  studentAvatar: raw.studentAvatar ?? '',
+  submittedAt: raw.submittedAt ? toIsoString(raw.submittedAt) : new Date().toISOString(),
+  submissionType: raw.submissionType === 'file' ? 'file' : 'online_text',
+  content: raw.content ?? undefined,
+  fileUrl: raw.fileUrl ?? undefined,
+  fileName: raw.fileName ?? undefined,
+  grade: raw.grade ?? undefined,
+  gradedAt: toOptionalIso(raw.gradedAt),
+  gradedBy: raw.gradedBy ?? undefined,
+  status: raw.status === 'graded' ? 'graded' : raw.status === 'missing' ? 'missing' : 'submitted',
+  rubricScores:
+    raw.rubricScores && typeof raw.rubricScores === 'object' && !Array.isArray(raw.rubricScores)
+      ? raw.rubricScores
+      : {},
+  comments: Array.isArray(raw.comments) ? raw.comments.map(normalizeSubmissionComment) : [],
+});
+
+const normalizeCourseGrade = (raw: any): CourseStudentGrade => ({
+  courseId: raw.courseId,
+  studentId: raw.studentId,
+  midtermGrade: raw.midtermGrade ?? null,
+  finalGrade: raw.finalGrade ?? null,
+  updatedAt: raw.updatedAt ? toIsoString(raw.updatedAt) : undefined,
+});
 
 export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Theme state
@@ -803,6 +881,64 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       fresh.modules = allModules;
       fresh.announcements = allAnnouncements;
       fresh.discussions = allDiscussions;
+      // Task 4 assessment bootstrap: assignments (+ per-assignment
+      // submissions — the server scopes rows by role, so faculty see all
+      // course submissions while students see their own), quizzes
+      // (+questions; the server strips answer keys for students),
+      // activities (+questions), and course grades (faculty all rows /
+      // student own row). Per-course failures are tolerated
+      // (403-tolerant); sync getters read the cache.
+      const assessmentResults = await Promise.all(
+        coursesRes.courses.map(course =>
+          (async () => {
+            const [assignmentsSettled, quizzesSettled, activitiesSettled, gradesSettled] =
+              await Promise.allSettled([
+                apiFetch<{ assignments: Assignment[] }>(`/api/courses/${encodeURIComponent(course.id)}/assignments`),
+                apiFetch<{ quizzes: Quiz[] }>(`/api/quizzes?courseId=${encodeURIComponent(course.id)}`),
+                apiFetch<{ activities: Activity[] }>(`/api/activities?courseId=${encodeURIComponent(course.id)}`),
+                apiFetch<{ grades: CourseStudentGrade[] }>(`/api/courses/${encodeURIComponent(course.id)}/grades`),
+              ]);
+            return { assignmentsSettled, quizzesSettled, activitiesSettled, gradesSettled };
+          })()
+        )
+      );
+      const allAssignments: Assignment[] = [];
+      const allQuizzes: Quiz[] = [];
+      const allActivities: Activity[] = [];
+      const allGrades: CourseStudentGrade[] = [];
+      for (const r of assessmentResults) {
+        if (r.assignmentsSettled.status === 'fulfilled') {
+          for (const a of r.assignmentsSettled.value.assignments) allAssignments.push(normalizeAssignment(a));
+        }
+        if (r.quizzesSettled.status === 'fulfilled') {
+          for (const q of r.quizzesSettled.value.quizzes) allQuizzes.push(normalizeQuiz(q));
+        }
+        if (r.activitiesSettled.status === 'fulfilled') {
+          for (const a of r.activitiesSettled.value.activities) allActivities.push(normalizeActivity(a));
+        }
+        if (r.gradesSettled.status === 'fulfilled') {
+          for (const g of r.gradesSettled.value.grades) allGrades.push(normalizeCourseGrade(g));
+        }
+      }
+      // Submissions ride per assignment (role-scoped server-side). Quiz /
+      // activity submissions have no list endpoint — session submits merge
+      // into the cache via their POST responses.
+      const submissionResults = await Promise.allSettled(
+        allAssignments.map(a =>
+          apiFetch<{ submissions: any[] }>(`/api/assignments/${encodeURIComponent(a.id)}/submissions`)
+        )
+      );
+      const allSubmissions: Submission[] = [];
+      for (const r of submissionResults) {
+        if (r.status === 'fulfilled') {
+          for (const s of r.value.submissions) allSubmissions.push(normalizeSubmission(s));
+        }
+      }
+      fresh.assignments = allAssignments;
+      fresh.submissions = allSubmissions;
+      fresh.quizzes = allQuizzes;
+      fresh.activities = allActivities;
+      fresh.courseGrades = allGrades;
       setDb(fresh);
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to load data.';
@@ -1004,73 +1140,103 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const createAssignment = (asgData: Partial<Assignment>): Assignment => {
-    const newAssignment: Assignment = {
-      id: `asg-${Date.now().toString(36)}`,
-      courseId: asgData.courseId || activeCourseId || 'crs-cmsc131',
-      title: asgData.title || 'New Course Assignment',
-      instructions: asgData.instructions || 'Please review the guidelines and submit your work before the deadline.',
-      pointsPossible: asgData.pointsPossible || 100,
-      dueDate: asgData.dueDate || new Date(Date.now() + 7 * 86400000).toISOString(),
-      submissionTypes: asgData.submissionTypes || ['file', 'online_text'],
-      published: asgData.published ?? true,
-      category: asgData.category || 'Laboratory',
-      weight: asgData.weight || 20,
-      rubric: asgData.rubric || [
+  const createAssignment = async (asgData: Partial<Assignment>): Promise<Assignment> => {
+    const courseId = asgData.courseId || activeCourseId || 'crs-cmsc131';
+    // Server persists array/blob fields as JSON (parsed back on read);
+    // client-only calendar mirroring stays local.
+    try {
+      const { assignment } = await apiFetch<{ assignment: Assignment }>(
+        `/api/courses/${encodeURIComponent(courseId)}/assignments`,
         {
-          id: `rub-${Date.now()}-1`,
-          title: 'CHED Learning Outcome Alignment',
-          description: 'Demonstrates deep understanding of theoretical and practical concepts',
-          points: 50,
-          ratings: [
-            { points: 50, description: 'Exemplary Mastery' },
-            { points: 35, description: 'Proficient' },
-            { points: 20, description: 'Needs Revision' }
-          ]
-        },
-        {
-          id: `rub-${Date.now()}-2`,
-          title: 'Code Quality & Technical Execution',
-          description: 'Follows clean code conventions, modular structure, and documentation',
-          points: 50,
-          ratings: [
-            { points: 50, description: 'Industry Standards' },
-            { points: 35, description: 'Adequate Quality' },
-            { points: 20, description: 'Deficient' }
-          ]
+          method: 'POST',
+          body: {
+            title: asgData.title || 'New Course Assignment',
+            instructions: asgData.instructions || 'Please review the guidelines and submit your work before the deadline.',
+            pointsPossible: asgData.pointsPossible ?? 100,
+            dueDate: asgData.dueDate || new Date(Date.now() + 7 * 86400000).toISOString(),
+            submissionTypes: asgData.submissionTypes || ['file', 'online_text'],
+            published: asgData.published ?? true,
+            category: asgData.category || 'Laboratory',
+            weight: asgData.weight ?? 20,
+            rubric: asgData.rubric || [
+              {
+                id: `rub-${Date.now()}-1`,
+                title: 'CHED Learning Outcome Alignment',
+                description: 'Demonstrates deep understanding of theoretical and practical concepts',
+                points: 50,
+                ratings: [
+                  { points: 50, description: 'Exemplary Mastery' },
+                  { points: 35, description: 'Proficient' },
+                  { points: 20, description: 'Needs Revision' }
+                ]
+              },
+              {
+                id: `rub-${Date.now()}-2`,
+                title: 'Code Quality & Technical Execution',
+                description: 'Follows clean code conventions, modular structure, and documentation',
+                points: 50,
+                ratings: [
+                  { points: 50, description: 'Industry Standards' },
+                  { points: 35, description: 'Adequate Quality' },
+                  { points: 20, description: 'Deficient' }
+                ]
+              }
+            ],
+            ...(asgData.fileName !== undefined ? { fileName: asgData.fileName } : {}),
+            ...(asgData.fileUrl !== undefined ? { fileUrl: asgData.fileUrl } : {}),
+            ...(asgData.fileSize !== undefined ? { fileSize: asgData.fileSize } : {}),
+            ...(asgData.availableFrom !== undefined ? { availableFrom: asgData.availableFrom } : {}),
+            ...(asgData.availableUntil !== undefined ? { availableUntil: asgData.availableUntil } : {}),
+            ...(asgData.sectionRestriction !== undefined ? { sectionRestriction: asgData.sectionRestriction } : {})
+          }
         }
-      ]
-    };
+      );
+      const merged = normalizeAssignment(assignment);
+      setDb(prev => ({
+        ...prev,
+        assignments: [merged, ...prev.assignments]
+      }));
 
-    setDb(prev => ({
-      ...prev,
-      assignments: [newAssignment, ...prev.assignments]
-    }));
+      // Also auto-create a corresponding calendar event
+      const newCalEvent: CalendarEvent = {
+        id: `evt-${Date.now()}`,
+        title: `Due: ${merged.title}`,
+        date: merged.dueDate.split('T')[0],
+        time: '11:59 PM',
+        courseId: merged.courseId,
+        type: 'assignment',
+        description: `Course assignment submission deadline for ${merged.title}`
+      };
+      setDb(prev => ({
+        ...prev,
+        calendarEvents: [...prev.calendarEvents, newCalEvent]
+      }));
 
-    // Also auto-create a corresponding calendar event
-    const newCalEvent: CalendarEvent = {
-      id: `evt-${Date.now()}`,
-      title: `Due: ${newAssignment.title}`,
-      date: newAssignment.dueDate.split('T')[0],
-      time: '11:59 PM',
-      courseId: newAssignment.courseId,
-      type: 'assignment',
-      description: `Course assignment submission deadline for ${newAssignment.title}`
-    };
-    setDb(prev => ({
-      ...prev,
-      calendarEvents: [...prev.calendarEvents, newCalEvent]
-    }));
-
-    return newAssignment;
+      return merged;
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to create assignment.';
+      setLastError(message);
+      showAlert(message, 'Create Assignment Failed');
+      throw err;
+    }
   };
 
-  const deleteAssignment = (asgId: string) => {
-    setDb(prev => ({
-      ...prev,
-      assignments: prev.assignments.filter(a => a.id !== asgId),
-      submissions: prev.submissions.filter(s => s.assignmentId !== asgId)
-    }));
+  const deleteAssignment = async (asgId: string): Promise<void> => {
+    try {
+      await apiFetch<{ ok: true }>(`/api/assignments/${encodeURIComponent(asgId)}`, {
+        method: 'DELETE'
+      });
+      setDb(prev => ({
+        ...prev,
+        assignments: prev.assignments.filter(a => a.id !== asgId),
+        submissions: prev.submissions.filter(s => s.assignmentId !== asgId)
+      }));
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to delete assignment.';
+      setLastError(message);
+      showAlert(message, 'Delete Assignment Failed');
+      throw err;
+    }
   };
 
   const createModule = async (courseId: string, title: string): Promise<Module> => {
@@ -1262,167 +1428,165 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const createQuiz = (quizData: Partial<Quiz>): Quiz => {
-    const newQuiz: Quiz = {
-      id: `quiz-${Date.now().toString(36)}`,
-      courseId: quizData.courseId || activeCourseId || 'crs-cmsc131',
-      title: quizData.title || 'New Assessment Quiz',
-      instructions: quizData.instructions || 'Answer all questions carefully. Time limit strictly enforced.',
-      timeLimitMinutes: quizData.timeLimitMinutes || 30,
-      published: quizData.published ?? true,
-      questions: quizData.questions || [
-        {
-          id: `q-${Date.now()}-1`,
-          text: 'Which architectural pattern is recommended for modern web applications?',
-          type: 'multiple_choice',
-          options: ['Component-based (e.g. React)', 'Monolithic CGI', 'FTP Server', 'Telnet Terminal'],
-          correctAnswer: 'Component-based (e.g. React)',
-          points: 10
+  const createQuiz = async (quizData: Partial<Quiz>): Promise<Quiz> => {
+    const courseId = quizData.courseId || activeCourseId || 'crs-cmsc131';
+    // Questions pass through (server parses option blobs; students get the
+    // key stripped on read while faculty keep it).
+    try {
+      const { quiz } = await apiFetch<{ quiz: Quiz }>('/api/quizzes', {
+        method: 'POST',
+        body: {
+          courseId,
+          title: quizData.title || 'New Assessment Quiz',
+          instructions: quizData.instructions || 'Answer all questions carefully. Time limit strictly enforced.',
+          published: quizData.published ?? true,
+          questions: quizData.questions || [
+            {
+              id: `q-${Date.now()}-1`,
+              text: 'Which architectural pattern is recommended for modern web applications?',
+              type: 'multiple_choice',
+              options: ['Component-based (e.g. React)', 'Monolithic CGI', 'FTP Server', 'Telnet Terminal'],
+              correctAnswer: 'Component-based (e.g. React)',
+              points: 10
+            }
+          ],
+          ...(quizData.timeLimitMinutes !== undefined ? { timeLimitMinutes: quizData.timeLimitMinutes } : {}),
+          ...(quizData.delayedUntil !== undefined ? { delayedUntil: quizData.delayedUntil } : {}),
+          ...(quizData.dueDate !== undefined ? { dueDate: quizData.dueDate } : {}),
+          ...(quizData.fileName !== undefined ? { fileName: quizData.fileName } : {}),
+          ...(quizData.fileUrl !== undefined ? { fileUrl: quizData.fileUrl } : {}),
+          ...(quizData.fileSize !== undefined ? { fileSize: quizData.fileSize } : {})
         }
-      ]
-    };
-
-    setDb(prev => ({
-      ...prev,
-      quizzes: [newQuiz, ...prev.quizzes]
-    }));
-
-    return newQuiz;
+      });
+      const merged = normalizeQuiz(quiz);
+      setDb(prev => ({
+        ...prev,
+        quizzes: [merged, ...prev.quizzes]
+      }));
+      return merged;
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to create quiz.';
+      setLastError(message);
+      showAlert(message, 'Create Quiz Failed');
+      throw err;
+    }
   };
 
-  const recordQuizSubmission = (quizId: string, studentId: string, score: number, answers: Record<string, string>) => {
-    const quiz = db.quizzes.find(q => q.id === quizId);
-    if (!quiz) return;
-
-    // Create or update a submission record for grading
-    const mockAssignmentId = `asg-quiz-${quizId}`;
-    const existingSubIndex = db.submissions.findIndex(s => s.assignmentId === mockAssignmentId && s.studentId === studentId);
-
-    const submissionRecord: Submission = {
-      id: existingSubIndex >= 0 ? db.submissions[existingSubIndex].id : `sub-quiz-${Date.now()}`,
-      assignmentId: mockAssignmentId,
-      courseId: quiz.courseId,
-      studentId: studentId,
-      studentName: activeUser.name,
-      studentAvatar: activeUser.avatar,
-      submittedAt: new Date().toISOString(),
-      submissionType: 'online_text',
-      content: `Automated Quiz Assessment Result: Score: ${score}%. Answers recorded: ${JSON.stringify(answers)}`,
-      grade: score,
-      gradedAt: new Date().toISOString(),
-      gradedBy: 'GABAY Quiz Auto-Evaluator',
-      status: 'graded',
-      rubricScores: { 'automated_eval': score },
-      comments: [
-        {
-          id: `comm-${Date.now()}`,
-          authorId: 'sys-auto-grader',
-          authorName: 'GABAY Evaluation Engine',
-          authorRole: 'admin',
-          createdAt: new Date().toISOString(),
-          text: `Automatic grading completed. Student achieved ${score}% in assessment "${quiz.title}".`
+  const recordQuizSubmission = async (
+    quizId: string,
+    studentId: string,
+    answers: Record<string, string>
+  ): Promise<Submission> => {
+    // Client computes nothing new: POST the answers, cache the server row.
+    // Instant-feedback scoring stays in QuizzesView's client scorer; the
+    // gradebook reads the server row.
+    try {
+      const { submission } = await apiFetch<{ submission: any }>(
+        `/api/quizzes/${encodeURIComponent(quizId)}/submit`,
+        { method: 'POST', body: { answers } }
+      );
+      const merged = normalizeSubmission(submission);
+      setDb(prev => {
+        const idx = prev.submissions.findIndex(
+          s => s.assignmentId === merged.assignmentId && s.studentId === studentId
+        );
+        if (idx >= 0) {
+          const updatedSubs = [...prev.submissions];
+          updatedSubs[idx] = merged;
+          return { ...prev, submissions: updatedSubs };
         }
-      ]
-    };
-
-    setDb(prev => {
-      let updatedSubs: Submission[];
-      if (existingSubIndex >= 0) {
-        updatedSubs = [...prev.submissions];
-        updatedSubs[existingSubIndex] = submissionRecord;
-      } else {
-        updatedSubs = [submissionRecord, ...prev.submissions];
-      }
-      return { ...prev, submissions: updatedSubs };
-    });
+        return { ...prev, submissions: [merged, ...prev.submissions] };
+      });
+      return merged;
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to submit quiz.';
+      setLastError(message);
+      showAlert(message, 'Submit Quiz Failed');
+      throw err;
+    }
   };
 
-  const createActivity = (data: Partial<Activity>): Activity => {
+  const createActivity = async (data: Partial<Activity>): Promise<Activity> => {
+    const courseId = data.courseId || activeCourseId || 'crs-cmsc131';
     const questions = data.questions || [];
-    const newActivity: Activity = {
-      id: `act-${Date.now().toString(36)}`,
-      courseId: data.courseId || activeCourseId || 'crs-cmsc131',
-      title: data.title?.trim() || 'New Question-Set Activity',
-      instructions: data.instructions || 'Answer all questions carefully.',
-      questions,
-      pointsPossible: data.pointsPossible ?? activityPointsPossible(questions),
-      dueDate: data.dueDate,
-      published: data.published ?? true
-    };
-
-    setDb(prev => ({
-      ...prev,
-      activities: [newActivity, ...(prev.activities || [])]
-    }));
-
-    return newActivity;
+    try {
+      const { activity } = await apiFetch<{ activity: Activity }>('/api/activities', {
+        method: 'POST',
+        body: {
+          courseId,
+          title: data.title?.trim() || 'New Question-Set Activity',
+          instructions: data.instructions || 'Answer all questions carefully.',
+          pointsPossible: data.pointsPossible ?? activityPointsPossible(questions),
+          ...(data.dueDate !== undefined ? { dueDate: data.dueDate } : {}),
+          published: data.published ?? true,
+          questions
+        }
+      });
+      const merged = normalizeActivity(activity);
+      setDb(prev => ({
+        ...prev,
+        activities: [merged, ...(prev.activities || [])]
+      }));
+      return merged;
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to create activity.';
+      setLastError(message);
+      showAlert(message, 'Create Activity Failed');
+      throw err;
+    }
   };
 
-  const recordActivitySubmission = (
+  const recordActivitySubmission = async (
     activityId: string,
     studentId: string,
     answers: Record<string, string>
-  ): Submission => {
-    const activity = (db.activities || []).find(a => a.id === activityId);
-    if (!activity) throw new Error(`Activity not found: ${activityId}`);
-
-    const result = scoreActivityQuestions(activity.questions, answers);
-    const mockAssignmentId = `asg-activity-${activityId}`;
-    const existingSubIndex = db.submissions.findIndex(
-      s => s.assignmentId === mockAssignmentId && s.studentId === studentId
-    );
-
-    const hasEssay = activity.questions.some(q => q.type === 'essay');
-    const graded = !result.needsReview;
-
-    const submissionRecord: Submission = {
-      id: existingSubIndex >= 0 ? db.submissions[existingSubIndex].id : `sub-activity-${Date.now()}`,
-      assignmentId: mockAssignmentId,
-      courseId: activity.courseId,
-      studentId,
-      studentName: activeUser.name,
-      studentAvatar: activeUser.avatar,
-      submittedAt: new Date().toISOString(),
-      submissionType: 'online_text',
-      content: `Activity Result: ${result.earned}/${result.possible} auto-scored${hasEssay ? '; essay pending faculty review' : ''}. Answers: ${JSON.stringify(answers)}`,
-      grade: graded ? result.percent : undefined,
-      gradedAt: graded ? new Date().toISOString() : undefined,
-      gradedBy: graded ? 'GABAY Activity Auto-Evaluator' : undefined,
-      status: graded ? 'graded' : 'submitted',
-      rubricScores: graded ? { automated_eval: result.percent } : {},
-      comments: graded
-        ? [
-            {
-              id: `comm-${Date.now()}`,
-              authorId: 'sys-auto-grader',
-              authorName: 'GABAY Evaluation Engine',
-              authorRole: 'admin',
-              createdAt: new Date().toISOString(),
-              text: `Automatic grading completed. Score ${result.earned}/${result.possible} (${result.percent}%) in activity "${activity.title}".`
-            }
-          ]
-        : []
-    };
-
-    setDb(prev => {
-      const updatedSubs = [...prev.submissions];
-      if (existingSubIndex >= 0) {
-        updatedSubs[existingSubIndex] = submissionRecord;
-      } else {
-        updatedSubs.unshift(submissionRecord);
-      }
-      return { ...prev, submissions: updatedSubs };
-    });
-
-    return submissionRecord;
+  ): Promise<Submission> => {
+    // Same pattern as quizzes: POST the answers, cache the server row.
+    // Essay-pending status comes from the server row (status stays
+    // 'submitted' until faculty grades in SpeedGrader).
+    try {
+      const { submission } = await apiFetch<{ submission: any }>(
+        `/api/activities/${encodeURIComponent(activityId)}/submit`,
+        { method: 'POST', body: { answers } }
+      );
+      const merged = normalizeSubmission(submission);
+      setDb(prev => {
+        const updatedSubs = [...prev.submissions];
+        const idx = updatedSubs.findIndex(
+          s => s.assignmentId === merged.assignmentId && s.studentId === studentId
+        );
+        if (idx >= 0) {
+          updatedSubs[idx] = merged;
+        } else {
+          updatedSubs.unshift(merged);
+        }
+        return { ...prev, submissions: updatedSubs };
+      });
+      return merged;
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to submit activity.';
+      setLastError(message);
+      showAlert(message, 'Submit Activity Failed');
+      throw err;
+    }
   };
 
-  const deleteActivity = (activityId: string): void => {
-    setDb(prev => ({
-      ...prev,
-      activities: (prev.activities || []).filter(a => a.id !== activityId),
-      submissions: prev.submissions.filter(s => s.assignmentId !== `asg-activity-${activityId}`)
-    }));
+  const deleteActivity = async (activityId: string): Promise<void> => {
+    try {
+      await apiFetch<{ ok: true }>(`/api/activities/${encodeURIComponent(activityId)}`, {
+        method: 'DELETE'
+      });
+      setDb(prev => ({
+        ...prev,
+        activities: (prev.activities || []).filter(a => a.id !== activityId),
+        submissions: prev.submissions.filter(s => s.assignmentId !== `asg-activity-${activityId}`)
+      }));
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to delete activity.';
+      setLastError(message);
+      showAlert(message, 'Delete Activity Failed');
+      throw err;
+    }
   };
 
   const enrollPerson = async (person: Partial<User>, courseId?: string): Promise<boolean> => {
@@ -1753,86 +1917,81 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const gradeSubmission = (
+  const gradeSubmission = async (
     submissionId: string,
     grade: number,
     rubricScores: Record<string, number>,
     commentText?: string
-  ) => {
-    setDb(prev => {
-      const updatedSubmissions = prev.submissions.map(sub => {
-        if (sub.id === submissionId) {
-          const comments = [...sub.comments];
-          if (commentText && commentText.trim()) {
-            comments.push({
-              id: `comm-${Date.now()}`,
-              authorId: activeUser.id,
-              authorName: activeUser.name,
-              authorRole: activeRole,
-              createdAt: new Date().toISOString(),
-              text: commentText.trim()
-            });
-          }
-          return {
-            ...sub,
-            grade,
-            rubricScores,
-            comments,
-            status: 'graded' as const,
-            gradedAt: new Date().toISOString(),
-            gradedBy: activeUser.name
-          };
-        }
-        return sub;
-      });
-
-      return {
+  ): Promise<void> => {
+    // Grade posts to the grade endpoint; feedback text rides the comments
+    // endpoint (the grade endpoint would duplicate it). The server stores
+    // grade/status only — rubricScores stay a client-side cache overlay.
+    try {
+      const { submission } = await apiFetch<{ submission: any }>(
+        `/api/submissions/${encodeURIComponent(submissionId)}/grade`,
+        { method: 'POST', body: { grade } }
+      );
+      let appended: SubmissionComment | null = null;
+      if (commentText && commentText.trim()) {
+        const { comment } = await apiFetch<{ comment: SubmissionComment }>(
+          `/api/submissions/${encodeURIComponent(submissionId)}/comments`,
+          { method: 'POST', body: { text: commentText.trim() } }
+        );
+        appended = normalizeSubmissionComment(comment);
+      }
+      const graded = normalizeSubmission(submission);
+      setDb(prev => ({
         ...prev,
-        submissions: updatedSubmissions
-      };
-    });
+        submissions: prev.submissions.map(sub =>
+          sub.id === submissionId
+            ? { ...graded, rubricScores, comments: [...sub.comments, ...(appended ? [appended] : [])] }
+            : sub
+        )
+      }));
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to grade submission.';
+      setLastError(message);
+      showAlert(message, 'Grade Submission Failed');
+      throw err;
+    }
   };
 
-  const submitAssignment = (
+  const submitAssignment = async (
     assignmentId: string,
     submissionType: 'file' | 'online_text',
     content?: string,
     fileName?: string
-  ) => {
-    const assignment = db.assignments.find(a => a.id === assignmentId);
-    if (!assignment) return;
-
-    const existingIndex = db.submissions.findIndex(
-      s => s.assignmentId === assignmentId && s.studentId === activeUser.id
-    );
-
-    const newSubmission: Submission = {
-      id: existingIndex >= 0 ? db.submissions[existingIndex].id : `sub-${Date.now()}`,
-      assignmentId,
-      courseId: assignment.courseId,
-      studentId: activeUser.id,
-      studentName: activeUser.name,
-      studentAvatar: activeUser.avatar,
-      submittedAt: new Date().toISOString(),
-      submissionType,
-      content,
-      fileName: fileName || (submissionType === 'file' ? 'Assignment_Submission.pdf' : undefined),
-      fileUrl: 'https://github.com/dmmmsu-sluc/gabay-lms-prototype',
-      status: 'submitted',
-      rubricScores: {},
-      comments: []
-    };
-
-    setDb(prev => {
-      let updated: Submission[];
-      if (existingIndex >= 0) {
-        updated = [...prev.submissions];
-        updated[existingIndex] = newSubmission;
-      } else {
-        updated = [newSubmission, ...prev.submissions];
-      }
-      return { ...prev, submissions: updated };
-    });
+  ): Promise<void> => {
+    try {
+      const { submission } = await apiFetch<{ submission: any }>(
+        `/api/assignments/${encodeURIComponent(assignmentId)}/submissions`,
+        {
+          method: 'POST',
+          body: {
+            submissionType,
+            ...(content !== undefined ? { content } : {}),
+            ...(fileName !== undefined ? { fileName } : {})
+          }
+        }
+      );
+      const merged = normalizeSubmission(submission);
+      setDb(prev => {
+        const idx = prev.submissions.findIndex(
+          s => s.assignmentId === assignmentId && s.studentId === merged.studentId
+        );
+        if (idx >= 0) {
+          const updated = [...prev.submissions];
+          updated[idx] = merged;
+          return { ...prev, submissions: updated };
+        }
+        return { ...prev, submissions: [merged, ...prev.submissions] };
+      });
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to submit assignment.';
+      setLastError(message);
+      showAlert(message, 'Submit Assignment Failed');
+      throw err;
+    }
   };
 
   const toggleModulePublish = async (moduleId: string): Promise<void> => {
@@ -2919,42 +3078,36 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  const setCourseStudentGrade = (
+  const setCourseStudentGrade = async (
     courseId: string,
     studentId: string,
     type: 'midterm' | 'final',
     score: number | null
-  ) => {
-    setDb(prev => {
-      const existingGrades = prev.courseGrades || [];
-      const index = existingGrades.findIndex(
-        g => g.courseId === courseId && g.studentId === studentId
+  ): Promise<void> => {
+    try {
+      const { grade } = await apiFetch<{ grade: CourseStudentGrade }>(
+        `/api/courses/${encodeURIComponent(courseId)}/grades/${encodeURIComponent(studentId)}`,
+        { method: 'PUT', body: type === 'midterm' ? { midtermGrade: score } : { finalGrade: score } }
       );
-
-      let updatedList: CourseStudentGrade[];
-      if (index >= 0) {
-        const item = { ...existingGrades[index] };
-        if (type === 'midterm') item.midtermGrade = score;
-        if (type === 'final') item.finalGrade = score;
-        item.updatedAt = new Date().toISOString();
-        updatedList = [...existingGrades];
-        updatedList[index] = item;
-      } else {
-        const newItem: CourseStudentGrade = {
-          courseId,
-          studentId,
-          midtermGrade: type === 'midterm' ? score : null,
-          finalGrade: type === 'final' ? score : null,
-          updatedAt: new Date().toISOString()
-        };
-        updatedList = [...existingGrades, newItem];
-      }
-
-      return {
-        ...prev,
-        courseGrades: updatedList
-      };
-    });
+      const merged = normalizeCourseGrade(grade);
+      setDb(prev => {
+        const existingGrades = prev.courseGrades || [];
+        const index = existingGrades.findIndex(
+          g => g.courseId === courseId && g.studentId === studentId
+        );
+        if (index >= 0) {
+          const updatedList = [...existingGrades];
+          updatedList[index] = merged;
+          return { ...prev, courseGrades: updatedList };
+        }
+        return { ...prev, courseGrades: [...existingGrades, merged] };
+      });
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to update grade.';
+      setLastError(message);
+      showAlert(message, 'Update Grade Failed');
+      throw err;
+    }
   };
 
   const clearHistory = () => {

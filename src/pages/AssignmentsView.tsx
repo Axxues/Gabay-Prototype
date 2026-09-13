@@ -60,7 +60,7 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
     ? db.submissions.find(s => s.assignmentId === selectedAssignment.id && s.studentId === activeUser.id)
     : undefined;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedAssignment) return;
 
@@ -74,28 +74,32 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
     }
 
     setIsSubmitting(true);
-    setTimeout(() => {
-      submitAssignment(
+    try {
+      await submitAssignment(
         selectedAssignment.id,
         submissionType,
         textContent,
         simulatedFileName || 'CMSC131_Lab_Submission.pdf'
       );
-      setIsSubmitting(false);
       showAlert({
         title: "Activity Submitted",
         message: "Your submission has been recorded successfully.",
         type: "success"
       });
-    }, 600);
+    } catch {
+      // submitAssignment already surfaced the alert.
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleDelete = (asgId: string) => {
     showConfirm(
       "Are you sure you want to delete this activity and all associated student submissions?",
       () => {
-        deleteAssignment(asgId);
-        onSelectAssignment(null);
+        deleteAssignment(asgId)
+          .then(() => onSelectAssignment(null))
+          .catch(() => {});
       },
       "Delete Activity"
     );

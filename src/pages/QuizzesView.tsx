@@ -107,7 +107,7 @@ export const QuizzesView: React.FC<QuizzesViewProps> = ({
     return pages;
   };
 
-  const handleSubmitQuiz = (e: React.FormEvent) => {
+  const handleSubmitQuiz = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeQuiz) return;
 
@@ -141,8 +141,13 @@ export const QuizzesView: React.FC<QuizzesViewProps> = ({
     setScore(calculatedScore);
     setQuizSubmitted(true);
 
-    // Save submission to database
-    recordQuizSubmission(activeQuiz.id, activeUser.id, calculatedScore, userAnswers);
+    // Save submission to database (instant feedback above keeps using the
+    // client-side scorer; the cached server row feeds SpeedGrader).
+    try {
+      await recordQuizSubmission(activeQuiz.id, activeUser.id, userAnswers);
+    } catch {
+      // recordQuizSubmission already surfaced the alert.
+    }
   };
 
   // If creating quiz, render full dedicated page

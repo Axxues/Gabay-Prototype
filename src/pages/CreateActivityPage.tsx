@@ -232,7 +232,7 @@ export const CreateActivityPage: React.FC<CreateActivityPageProps> = ({
   const totalPoints = items.reduce((sum, item) => sum + (Number(item.points) || 0), 0);
   const gradableCount = items.filter(i => GRADABLE.includes(i.type)).length;
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!title.trim()) {
       showAlert({
         title: 'Title required',
@@ -337,7 +337,7 @@ export const CreateActivityPage: React.FC<CreateActivityPageProps> = ({
       };
     });
 
-    const created = createActivity({
+    const created = await createActivity({
       courseId,
       title: title.trim(),
       instructions: instructions.trim() || 'Answer all questions carefully.',
