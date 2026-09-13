@@ -9,6 +9,7 @@ import { assignmentsRouter } from './routes/assignments.js';
 import { quizzesRouter, activitiesRouter } from './routes/assessments.js';
 import { announcementsRouter } from './routes/announcements.js';
 import { discussionsRouter } from './routes/discussions.js';
+import { messagesRouter, groupsRouter } from './routes/messages.js';
 
 const app = express();
 app.use(express.json({ limit: '2mb' }));
@@ -28,6 +29,8 @@ app.use('/api/quizzes', quizzesRouter);
 app.use('/api/activities', activitiesRouter);
 app.use('/api', announcementsRouter);
 app.use('/api', discussionsRouter);
+app.use('/api/messages', messagesRouter);
+app.use('/api/groups', groupsRouter);
 
 app.use(errorMiddleware);
 
