@@ -30,3 +30,8 @@ export const COURSE_CHILDREN: NavItem[] = [
   { id: 'pending-requests', label: 'Pending Requests', icon: 'pending-requests', roles: ['faculty'] },
 ];
 export function isVisible(item: NavItem, role: UserRole): boolean { return item.roles.includes(role); }
+
+// Top-level tabs that live outside the Learning Management section
+// (derived from MAIN_NAV so new top-level pages are excluded automatically).
+const NON_LMS_TOP_LEVEL_TABS: string[] = MAIN_NAV.filter(i => i.id !== 'lms').map(i => i.id);
+export function isLmsSectionTab(tab: string): boolean { return !NON_LMS_TOP_LEVEL_TABS.includes(tab); }

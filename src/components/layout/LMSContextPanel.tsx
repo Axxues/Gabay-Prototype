@@ -1,7 +1,7 @@
 import React from 'react';
 import { LayoutDashboard, BookOpen, Calendar, Inbox, History, HelpCircle, Layers, FileText, Megaphone, FileCheck2, HelpCircle as QuizIcon, Folder, Award, Users, Copy, Check } from 'lucide-react';
 import { useLMS } from '../../context/LMSContext';
-import { LMS_CHILDREN, COURSE_CHILDREN, isVisible } from '../../config/navigation';
+import { LMS_CHILDREN, COURSE_CHILDREN, isVisible, isLmsSectionTab } from '../../config/navigation';
 const LMS_ICONS: Record<string, React.ReactNode> = {
   dashboard: <LayoutDashboard className="h-4 w-4" />, courses: <BookOpen className="h-4 w-4" />,
   calendar: <Calendar className="h-4 w-4" />, inbox: <Inbox className="h-4 w-4" />,
@@ -21,6 +21,10 @@ export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: strin
   const studentSection = activeRole === 'student' && activeCourseId
     ? (db.courseSections || []).find(s => s.id === activeUser.courseSections?.[activeCourseId])
     : null;
+  // LMS navigations (Dashboard, Courses, Calendar, Inbox, History, Help) belong
+  // to the Learning Management section only — hide the whole context panel on
+  // top-level pages outside it (Page 1/2/3, Manage College Accounts).
+  if (!isLmsSectionTab(p.currentTab)) return null;
   const lmsNav = (
     <>
       <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Learning Management</div>
