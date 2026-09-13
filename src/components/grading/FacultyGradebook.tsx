@@ -16,6 +16,7 @@ import {
   termGrade,
 } from '../../utils/spr';
 import type { SPRColumn } from '../../types/lms';
+import { exportSPRToExcel } from '../../utils/sprExport';
 import { SPRConfigModal } from './SPRConfigModal';
 
 interface FacultyGradebookProps {
@@ -59,59 +60,6 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) 
       (s.studentId && s.studentId.toLowerCase().includes(searchQuery.toLowerCase())) ||
       s.email.toLowerCase().includes(searchQuery.toLowerCase())
   );
-
-  const handleExportCSV = () => {
-    const headers = ['Student ID', 'Student Name', 'Email', 'Midterm Grade (40%)', 'Final Grade (60%)', 'Calculated Total (%)', 'Equivalent Grade', 'Remarks'];
-    const rows = filteredStudents.map(student => {
-      const gradeRecord = db.courseGrades?.find(
-        g => g.courseId === courseId && g.studentId === student.id
-      );
-      const m = gradeRecord?.midtermGrade;
-      const f = gradeRecord?.finalGrade;
-
-      let totalStr = 'N/A';
-      let eqGrade = '—';
-      let remark = 'Pending';
-
-      if (m !== undefined && m !== null && f !== undefined && f !== null) {
-        const total = Math.round((m * 0.40) + (f * 0.60));
-        totalStr = `${total}%`;
-        const trans = getTransmutedGrade(total);
-        eqGrade = trans.grade;
-        remark = trans.remark;
-      } else if (m !== undefined && m !== null) {
-        totalStr = `${Math.round(m * 0.40)}% (Midterm only)`;
-      }
-
-      return [
-        `"${student.studentId || ''}"`,
-        `"${student.name}"`,
-        `"${student.email}"`,
-        m !== undefined && m !== null ? m : '',
-        f !== undefined && f !== null ? f : '',
-        `"${totalStr}"`,
-        `"${eqGrade}"`,
-        `"${remark}"`
-      ];
-    });
-
-    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `${course?.code || 'COURSE'}_Midterm_Final_Gradebook.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-
-    showAlert({
-      title: 'Export Gradebook',
-      message: `Gradebook CSV exported successfully for ${course?.code || 'course'}.`,
-      type: 'success'
-    });
-  };
 
   const sprConfig = getSPRConfig(courseId);
 
@@ -266,6 +214,35 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) 
     return map;
   }, [sprRows]);
 
+  const handleExportExcel = () => {
+    if (!course || !sprConfig) return;
+    exportSPRToExcel({
+      course,
+      roster: students,
+      config: sprConfig,
+      resolveStudent: (studentId: string) => {
+        const row = sprRowById.get(studentId);
+        const finalValue = row?.final ?? null;
+        return {
+          mtCells: row?.mtCells.map(c => c.score) ?? mtColumns.map(() => null),
+          mtExam: row?.mtExam ?? null,
+          ftCells: row?.ftCells.map(c => c.score) ?? ftColumns.map(() => null),
+          ftExam: row?.ftExam ?? null,
+          mtGrade: row?.mtGrade ?? null,
+          ftGrade: row?.ftGrade ?? null,
+          finalPercent: finalValue,
+          numerical: finalValue === null ? '' : getTransmutedGrade(finalValue).grade,
+        };
+      },
+    });
+
+    showAlert({
+      title: 'Export SPR',
+      message: `SPR Excel exported successfully for ${course.code}.`,
+      type: 'success'
+    });
+  };
+
   const totalColumns = 1 + mtColumns.length + 1 + 1 + ftColumns.length + 1 + 1 + 1 + 1;
 
   return (
@@ -311,11 +288,14 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) 
 
             <button
               type="button"
-              onClick={handleExportCSV}
-              className="px-4 py-2 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all flex items-center space-x-1.5 shadow-subtle active:scale-98 cursor-pointer"
+              data-testid="spr-export-excel"
+              onClick={handleExportExcel}
+              disabled={students.length === 0 || isEmptySPR || !course}
+              title={students.length === 0 ? 'No students enrolled to export.' : isEmptySPR ? 'Configure SPR columns before exporting.' : 'Export SPR as Excel (.xlsx)'}
+              className="px-4 py-2 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all flex items-center space-x-1.5 shadow-subtle active:scale-98 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>Export CSV</span>
+              <span>Export Excel</span>
             </button>
           </>
         }
