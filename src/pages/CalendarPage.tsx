@@ -54,8 +54,14 @@ function platformLabel(platform?: string): string {
 export const CalendarPage: React.FC = () => {
   const {
     db,
-    activeRole
+    activeRole,
+    activeCourseId,
+    markTabVisited
   } = useLMS();
+
+  React.useEffect(() => {
+    markTabVisited('calendar', activeCourseId ?? undefined);
+  }, [activeCourseId]);
 
   const isReadOnlyCalendar = activeRole === 'staff' || activeRole === 'student';
   const isAdminCalendar = activeRole === 'admin';

@@ -1,5 +1,5 @@
 import type { UserRole } from '../types/lms';
-export type NavIcon = 'dashboard'|'courses'|'calendar'|'inbox'|'history'|'help'|'modules'|'syllabus'|'announcements'|'activities'|'quizzes'|'files'|'grades'|'people'|'accounts'|'page1'|'page2'|'page3'|'pending-requests';
+export type NavIcon = 'dashboard'|'courses'|'calendar'|'inbox'|'history'|'help'|'modules'|'syllabus'|'announcements'|'activities'|'quizzes'|'files'|'grades'|'people'|'accounts'|'page1'|'page2'|'page3'|'pending-requests'|'gabay-rag';
 export interface NavItem { id: string; label: string; icon: NavIcon; roles: UserRole[] }
 const ALL: UserRole[] = ['admin','faculty','student','staff'];
 const NO_STAFF: UserRole[] = ['admin','faculty','student'];
@@ -8,6 +8,7 @@ export const MAIN_NAV: NavItem[] = [
   { id: 'page2', label: 'Page 2', icon: 'page2', roles: NO_STAFF },
   { id: 'page3', label: 'Page 3', icon: 'page3', roles: NO_STAFF },
   { id: 'lms', label: 'Learning Management', icon: 'courses', roles: ALL },
+  { id: 'gabay-rag', label: 'Gabay RAG', icon: 'gabay-rag', roles: ALL },
   { id: 'accounts', label: 'Manage College Accounts', icon: 'accounts', roles: ['admin'] },
 ];
 export const LMS_CHILDREN: NavItem[] = [

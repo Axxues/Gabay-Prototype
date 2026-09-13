@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { useLMS } from '../context/LMSContext';
 import type { QuizQuestion, QuizItemType } from '../types/lms';
+import type { QuizImportDraft } from '../utils/quizImport';
+import { applyQuizTextLimit, classifyQuizImportFile, isQuizImportTooLarge, parseQuizText } from '../utils/quizImport';
+import { extractDocxText, extractPdfText } from '../utils/quizExtract';
 import {
   ArrowLeft,
   HelpCircle,
@@ -138,6 +141,17 @@ export const CreateQuizPage: React.FC<CreateQuizPageProps> = ({
   const [isUploading, setIsUploading] = useState(false);
   const [extractedQuestions, setExtractedQuestions] = useState<QuestionDraft[]>([]);
   const [showFileSelector, setShowFileSelector] = useState(false);
+  const toQuestionDraft = (q: QuizImportDraft, idx: number): QuestionDraft => ({
+    id: `item-${Date.now()}-${idx + 1}`,
+    text: q.text,
+    type: q.type,
+    options: q.options,
+    correctAnswer: q.correctAnswer,
+    points: q.points,
+    required: true,
+  });
+  const [showPasteFallback, setShowPasteFallback] = useState(false);
+  const [pastedText, setPastedText] = useState('');
 
   const handleAddItem = (type: QuizItemType, insertAfterIndex?: number) => {
     let newItem: QuestionDraft;
@@ -474,201 +488,65 @@ export const CreateQuizPage: React.FC<CreateQuizPageProps> = ({
     onQuizCreated(created.id);
   };
 
-  const handleUploadQuizFile = (file: File) => {
-    setIsUploading(true);
-    setUploadFile(file);
-
-    const reader = new FileReader();
-    reader.onload = (e: any) => {
-      const text = e.target.result;
-      const questions = parseQuizText(text);
-      setExtractedQuestions(questions);
-      setIsUploading(false);
-      setShowFileSelector(true);
-    };
-
-    reader.onerror = () => {
+  const handleUploadQuizFile = async (file: File) => {
+    if (isQuizImportTooLarge(file.size)) {
       showAlert({
-        title: 'Error reading file',
-        message: 'Could not read the uploaded file. Please ensure it is a valid PDF or DOCX.',
+        title: 'File too large',
+        message: `"${file.name}" exceeds the 10 MB limit. Please split the document and try again.`,
         type: 'error'
       });
-      setIsUploading(false);
-    };
-
-    reader.readAsText(file);
-  };
-
-  const parseQuizText = (text: string): QuestionDraft[] => {
-    // 1. Try parsing structured JSON
-    try {
-      const parsed = JSON.parse(text);
-      const itemsList = Array.isArray(parsed)
-        ? parsed
-        : Array.isArray(parsed.questions)
-        ? parsed.questions
-        : Array.isArray(parsed.items)
-        ? parsed.items
-        : null;
-
-      if (itemsList && itemsList.length > 0) {
-        return itemsList.map((item: any, idx: number) => ({
-          id: item.id || `item-${Date.now()}-${idx + 1}`,
-          text: (item.text || item.question || item.prompt || `Question ${idx + 1}`).trim(),
-          type: (item.type as QuizItemType) || 'multiple_choice',
-          options: Array.isArray(item.options) ? item.options : item.type === 'multiple_choice' ? ['Option A', 'Option B', 'Option C', 'Option D'] : undefined,
-          correctAnswer: item.correctAnswer || (item.type === 'multiple_choice' ? 'A' : item.type === 'true_false' ? 'True' : ''),
-          points: Number(item.points) || 5,
-          description: item.description || '',
-          rubricNotes: item.rubricNotes || '',
-          required: item.required !== undefined ? item.required : true
-        }));
-      }
-    } catch {
-      // not JSON, fallback to line-by-line parser
+      return;
     }
-
-    // 2. Line by line text parsing
-    const questions: QuestionDraft[] = [];
-    const lines = text.split(/\r?\n/);
-
-    let currentType: QuizItemType = 'multiple_choice';
-    let currentText = '';
-    let currentOptions: string[] = [];
-    let currentCorrectAnswer = 'A';
-    let currentPoints = 5;
-    let currentDescription = '';
-
-    const pushQuestion = () => {
-      if (!currentText.trim()) return;
-      questions.push(finalizeQuestion(currentType, currentText, currentOptions, currentCorrectAnswer, currentPoints, currentDescription));
-      currentType = 'multiple_choice';
-      currentText = '';
-      currentOptions = [];
-      currentCorrectAnswer = 'A';
-      currentPoints = 5;
-      currentDescription = '';
-    };
-
-    for (const rawLine of lines) {
-      const trimmed = rawLine.trim();
-      if (!trimmed) {
-        if (currentText.trim() && currentOptions.length >= 2) {
-          pushQuestion();
-        }
-        continue;
-      }
-
-      // 1. Question Numbering (e.g. "1.", "1)", "Q1:", "Question 1:")
-      const qNumMatch = trimmed.match(/^(?:Q(?:uestion)?\s*\d+[:.]|\d+[\.\)])\s*(.*)/i);
-      if (qNumMatch) {
-        pushQuestion();
-        currentText = qNumMatch[1].trim() || trimmed;
-        currentType = 'multiple_choice';
-        continue;
-      }
-
-      // 2. True / False indicator
-      if (/^(?:True\s*[\/\-]\s*False|T\s*\/\s*F)\b/i.test(trimmed)) {
-        currentType = 'true_false';
-        currentOptions = ['True', 'False'];
-        currentCorrectAnswer = /true/i.test(trimmed) ? 'True' : 'False';
-        continue;
-      }
-
-      // 3. Option Match (e.g. "A.", "A)", "(A)", "[A]")
-      const optMatch = trimmed.match(/^(?:[\(\[]?([A-Fa-f])[\)\]\.\:]\s*)(.*)/);
-      if (optMatch) {
-        currentType = 'multiple_choice';
-        currentOptions.push(optMatch[2].trim());
-        continue;
-      }
-
-      // 4. Answer Key Indicator (e.g. "Answer: A" or "Ans: True")
-      const ansMatch = trimmed.match(/^(?:Answer|Ans|Key|Correct(?:\s*Answer)?)\s*[:=-]\s*(.*)/i);
-      if (ansMatch) {
-        const val = ansMatch[1].trim();
-        if (/^(?:True|False)$/i.test(val)) {
-          currentType = 'true_false';
-          currentCorrectAnswer = val.toLowerCase() === 'false' ? 'False' : 'True';
-        } else if (/^[A-Fa-f]$/.test(val)) {
-          currentCorrectAnswer = val.toUpperCase();
-        } else {
-          currentCorrectAnswer = val;
-        }
-        continue;
-      }
-
-      // 5. Points indicator (e.g. "(10 pts)" or "Points: 5")
-      const ptsMatch = trimmed.match(/(?:(?:Points?|Pts?)\s*[:=]\s*|[\(\[])\s*(\d+)\s*(?:pts|points?)?\s*[\)\]]?/i);
-      if (ptsMatch) {
-        currentPoints = parseInt(ptsMatch[1], 10) || 5;
-      }
-
-      // 6. Regular text accumulation
-      if (currentText) {
-        currentText += ' ' + trimmed;
-      } else {
-        currentText = trimmed;
-      }
-    }
-
-    pushQuestion();
-
-    // Fallback if no questions detected
-    if (questions.length === 0 && text.trim()) {
-      questions.push({
-        id: `item-${Date.now()}-1`,
-        text: text.trim().slice(0, 150),
-        type: 'identification',
-        options: [],
-        correctAnswer: '',
-        points: 5,
-        required: true
+    const kind = classifyQuizImportFile(file.name);
+    if (kind === 'unsupported') {
+      showAlert({
+        title: 'Unsupported file type',
+        message: 'Upload a PDF, DOCX, TXT, MD, JSON, or CSV file. Legacy .doc files must be re-saved as .docx first.',
+        type: 'error'
       });
+      return;
     }
-
-    return questions;
-  };
-
-  const finalizeQuestion = (
-    type: QuizItemType | null,
-    text: string,
-    options: string[],
-    correctAnswer: string,
-    points: number,
-    description: string
-  ): QuestionDraft => {
-    // Clean up text
-    const cleanText = text.replace(/^(?:Q(?:uestion)?\s*\d+[:.]|\d+[\.\)])\s*/i, '').trim();
-
-    let finalType = type || 'multiple_choice';
-    let finalOptions = [...options];
-    let finalCorrectAnswer = correctAnswer;
-    let finalPoints = points;
-
-    if (finalType === 'multiple_choice') {
-      if (finalOptions.length === 0) {
-        finalOptions = ['Option A', 'Option B', 'Option C', 'Option D'];
+    setIsUploading(true);
+    setUploadFile(file);
+    try {
+      let raw: string;
+      let truncated = false;
+      if (kind === 'pdf') {
+        const out = await extractPdfText(file);
+        raw = out.text;
+        truncated = out.truncated;
+      } else if (kind === 'docx') {
+        const out = await extractDocxText(file);
+        raw = out.text;
+        truncated = out.truncated;
+      } else {
+        const limited = applyQuizTextLimit(await file.text());
+        raw = limited.text;
+        truncated = limited.truncated;
       }
-      if (!finalCorrectAnswer || !['A', 'B', 'C', 'D', 'E', 'F'].includes(finalCorrectAnswer)) {
-        finalCorrectAnswer = 'A';
+      setExtractedQuestions(parseQuizText(raw).map(toQuestionDraft));
+      setShowPasteFallback(false);
+      if (truncated) {
+        showAlert({
+          title: 'Large document truncated',
+          message: 'Only the first portion was parsed to protect local storage. Review the drafts, then paste any remaining questions manually.',
+          type: 'warning'
+        });
       }
-    } else if (finalType === 'true_false') {
-      finalOptions = ['True', 'False'];
-      if (finalCorrectAnswer !== 'False') finalCorrectAnswer = 'True';
+    } catch (err) {
+      setExtractedQuestions([]);
+      const message = err instanceof Error ? err.message : 'Could not read the uploaded file.';
+      const needsPaste = /paste/i.test(message);
+      if (needsPaste) setShowPasteFallback(true);
+      showAlert({
+        title: needsPaste ? 'No extractable text' : 'Error reading file',
+        message,
+        type: needsPaste ? 'warning' : 'error'
+      });
+    } finally {
+      setIsUploading(false);
+      setShowFileSelector(true);
     }
-
-    return {
-      id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-      text: cleanText || 'Untitled Question',
-      type: finalType,
-      options: finalOptions,
-      correctAnswer: finalCorrectAnswer,
-      points: finalPoints,
-      description: description || undefined,
-      required: true
-    };
   };
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -847,6 +725,38 @@ export const CreateQuizPage: React.FC<CreateQuizPageProps> = ({
                   </p>
                 </div>
               )}
+
+              {!isUploading && (showPasteFallback ? (
+                <div className="p-3 bg-muted/30 rounded-xl border border-border/50 space-y-2">
+                  <p className="text-xs font-bold text-foreground">Paste question text instead</p>
+                  <textarea
+                    rows={6}
+                    value={pastedText}
+                    onChange={e => setPastedText(e.target.value)}
+                    placeholder={"1. What is 2+2?\nA) 3\nB) 4\nAnswer: B"}
+                    className="w-full px-3 py-2 text-xs bg-background border border-border rounded-xl text-foreground placeholder:text-muted-foreground font-sans focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                  <button
+                    type="button"
+                    disabled={!pastedText.trim()}
+                    onClick={() => {
+                      setExtractedQuestions(parseQuizText(pastedText).map(toQuestionDraft));
+                      setShowFileSelector(true);
+                    }}
+                    className="px-3 py-1.5 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 text-xs font-bold rounded-lg transition-all cursor-pointer disabled:cursor-not-allowed"
+                  >
+                    Parse pasted text
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowPasteFallback(true)}
+                  className="text-[11px] text-muted-foreground hover:text-primary transition-colors cursor-pointer"
+                >
+                  Or paste text instead
+                </button>
+              ))}
 
               {/* Extracted Questions Preview & Actions */}
               {extractedQuestions.length > 0 && (

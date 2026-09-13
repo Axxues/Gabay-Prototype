@@ -48,6 +48,27 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
   const unsubmittedList = db.submissions.filter(s => s.status === 'submitted');
   const studentAssignments = db.assignments.filter(a => a.published);
+  const studentActivities = (db.activities || []).filter(a => a.published);
+  const todoItems = [
+    ...studentAssignments.map(asg => ({
+      id: asg.id,
+      courseId: asg.courseId,
+      title: asg.title,
+      category: asg.category,
+      pointsLabel: `${asg.pointsPossible} pts`,
+      dueDate: asg.dueDate,
+      submitted: db.submissions.some(s => s.assignmentId === asg.id && s.studentId === activeUser.id)
+    })),
+    ...studentActivities.map(a => ({
+      id: a.id,
+      courseId: a.courseId,
+      title: a.title,
+      category: 'Question Set',
+      pointsLabel: `${a.pointsPossible} pts`,
+      dueDate: a.dueDate,
+      submitted: db.submissions.some(s => s.assignmentId === `asg-activity-${a.id}` && s.studentId === activeUser.id)
+    }))
+  ];
   const hasRightSidebar = activeRole === 'student' || activeRole === 'faculty' || activeRole === 'admin';
 
   // Dynamic Instructor Name Resolution
@@ -330,24 +351,23 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                     <span>To-Do List</span>
                   </h3>
                   <span className="text-[11px] font-sans font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-md border border-amber-500/20">
-                    {studentAssignments.length} Pending
+                    {todoItems.length} Pending
                   </span>
                 </div>
 
                 <div className="space-y-2.5">
-                  {studentAssignments.map(asg => {
-                    const sub = db.submissions.find(s => s.assignmentId === asg.id && s.studentId === activeUser.id);
+                  {todoItems.map(item => {
                     return (
                       <div
-                        key={asg.id}
-                        onClick={() => onNavigateCourse(asg.courseId, 'assignments')}
+                        key={item.id}
+                        onClick={() => onNavigateCourse(item.courseId, 'assignments')}
                         className="p-3.5 bg-muted/50 rounded-xl border border-border hover:border-primary/40 cursor-pointer transition-all space-y-1.5 shadow-soft"
                       >
                         <div className="flex items-start justify-between">
                           <h4 className="text-xs font-bold text-foreground leading-tight">
-                            {asg.title}
+                            {item.title}
                           </h4>
-                          {sub ? (
+                          {item.submitted ? (
                             <span className="px-2 py-0.5 text-[9px] font-sans font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 rounded-md border border-emerald-500/20">
                               SUBMITTED
                             </span>
@@ -358,8 +378,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                           )}
                         </div>
                         <div className="flex justify-between items-center text-[10px] font-sans text-muted-foreground">
-                          <span>{asg.category} • {asg.pointsPossible} pts</span>
-                          <span>Due {new Date(asg.dueDate).toLocaleDateString()}</span>
+                          <span>{item.category} • {item.pointsLabel}</span>
+                          <span>Due {item.dueDate ? new Date(item.dueDate).toLocaleDateString() : 'No due date'}</span>
                         </div>
                       </div>
                     );

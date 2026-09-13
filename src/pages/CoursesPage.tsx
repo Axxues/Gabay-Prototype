@@ -14,13 +14,23 @@ import { PendingRequestsPage } from './PendingRequestsPage';
 
 import { JoinCourseModal } from '../components/common/JoinCourseModal';
 import { COURSE_CHILDREN, isVisible } from '../config/navigation';
+import {
+  countNewFiles,
+  countNewGrades,
+  countPendingPeople,
+  countStudentAssessmentBadge,
+  countFacultyGradingBadge,
+  countUpcomingCalendar,
+  countUnreadAnnouncements,
+  countUnreadMessages,
+} from '../utils/notifiers';
 
 interface CoursesPageProps {
   initialSubTab?: string;
 }
 
 export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modules' }) => {
-  const { activeCourseId, setActiveCourseId, db, activeRole, activeUser, getUnreadNotificationCount } = useLMS();
+  const { activeCourseId, setActiveCourseId, db, activeRole, activeUser, getUnreadNotificationCount, markTabVisited } = useLMS();
 
   const [subTab, setSubTab] = useState(initialSubTab);
   const [returnToTab, setReturnToTab] = useState<string | null>(null);
@@ -36,6 +46,7 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
 
   useEffect(() => {
     setSubTab(initialSubTab);
+    if (activeCourse) markTabVisited(initialSubTab, activeCourse.id);
   }, [initialSubTab]);
 
   useEffect(() => {
@@ -70,15 +81,32 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
     let badge = null;
     let badgeCount = 0;
 
+    const visits = activeUser.lastVisitedAt || {};
+    const cid = activeCourse.id;
     if (tab.id === 'inbox') {
-      const unreadMessages = db.messages.filter(m => m.recipientId === activeUser.id && !m.read).length;
-      badgeCount = unreadMessages + getUnreadNotificationCount(activeUser.id, 'module_comment_reply') + getUnreadNotificationCount(activeUser.id, 'announcement_reply');
+      badgeCount = countUnreadMessages(db.messages, activeUser.id)
+        + getUnreadNotificationCount(activeUser.id, 'module_comment_reply')
+        + getUnreadNotificationCount(activeUser.id, 'announcement_reply');
     } else if (tab.id === 'modules') {
       badgeCount = getUnreadNotificationCount(activeUser.id, 'module_comment_reply');
     } else if (tab.id === 'announcements') {
-      badgeCount = getUnreadNotificationCount(activeUser.id, 'announcement_reply');
+      badgeCount = countUnreadAnnouncements(db.announcements || [], { id: activeUser.id, role: activeRole, sectionId: activeUser.courseSections?.[cid] ?? null }, cid);
+    } else if (tab.id === 'assignments') {
+      badgeCount = activeRole === 'faculty'
+        ? countFacultyGradingBadge(db.submissions.filter(s => s.courseId === cid), [...(db.assignments || []).filter(a => a.courseId === cid).map(a => a.id), ...(db.activities || []).filter(a => a.courseId === cid).map(a => `asg-activity-${a.id}`)])
+        : countStudentAssessmentBadge([...(db.assignments || []).filter(a => a.courseId === cid && a.published).map(a => a.id), ...(db.activities || []).filter(a => a.courseId === cid && a.published).map(a => `asg-activity-${a.id}`)], db.submissions.filter(s => s.courseId === cid && s.studentId === activeUser.id).map(s => s.assignmentId));
     } else if (tab.id === 'quizzes') {
-      badgeCount = getUnreadNotificationCount(activeUser.id); // general quiz notifications
+      badgeCount = activeRole === 'faculty'
+        ? countFacultyGradingBadge(db.submissions.filter(s => s.courseId === cid), (db.quizzes || []).filter(q => q.courseId === cid).map(q => `asg-quiz-${q.id}`))
+        : (db.quizzes || []).filter(q => q.courseId === cid && q.published && !db.submissions.some(s => s.assignmentId === `asg-quiz-${q.id}` && s.studentId === activeUser.id)).length;
+    } else if (tab.id === 'files') {
+      badgeCount = countNewFiles(db.courseFiles || [], cid, visits);
+    } else if (tab.id === 'grades') {
+      badgeCount = activeRole === 'student' ? countNewGrades(db.courseGrades || [], cid, activeUser.id, visits) : 0;
+    } else if (tab.id === 'people' || tab.id === 'pending-requests') {
+      badgeCount = (activeRole === 'faculty' || activeRole === 'admin') ? countPendingPeople(db.enrollmentRequests || [], cid) : 0;
+    } else if (tab.id === 'calendar') {
+      badgeCount = countUpcomingCalendar(db.calendarEvents || [], cid, visits);
     }
 
     if (badgeCount > 0) {
@@ -96,7 +124,7 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
       <button
         key={tab.id}
         type="button"
-        onClick={() => { setSubTab(tab.id); setReturnToTab(null); }}
+        onClick={() => { setSubTab(tab.id); setReturnToTab(null); markTabVisited(tab.id, activeCourse.id); }}
         className={`shrink-0 rounded-full px-3 py-1.5 text-[11px] font-bold cursor-pointer relative ${subTab === tab.id ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground border border-border'}`}
       >
         {tab.label}

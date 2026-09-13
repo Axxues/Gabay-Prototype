@@ -12,6 +12,7 @@ export interface User {
   password?: string;
   enrolledCourseIds?: string[];
   courseSections?: Record<string, string>;
+  lastVisitedAt?: Record<string, string>;
 }
 
 // Runtime export stubs to guarantee Vite ESM dev imports and browser runtime never fail
@@ -103,7 +104,7 @@ export interface ModuleComment {
 
 export interface Notification {
   id: string;
-  type: 'module_comment_reply' | 'announcement_reply' | 'quiz_draft_saved' | 'assignment_submitted';
+  type: 'module_comment_reply' | 'announcement_reply' | 'quiz_draft_saved' | 'assignment_submitted' | 'calendar_event' | 'file_uploaded' | 'grade_posted';
   recipientId: string;
   actorId: string;
   actorName: string;
@@ -228,6 +229,17 @@ export interface Quiz {
   fileSize?: string;
 }
 
+export interface Activity {
+  id: string;
+  courseId: string;
+  title: string;
+  instructions: string;
+  questions: QuizQuestion[];
+  pointsPossible: number;
+  dueDate?: string;
+  published: boolean;
+}
+
 export interface CalendarEvent {
   id: string;
   title: string;
@@ -237,6 +249,7 @@ export interface CalendarEvent {
   courseCode?: string;
   type: 'assignment' | 'milestone' | 'advising' | 'lecture' | 'exam' | 'event' | 'holiday' | 'virtual_meeting';
   description: string;
+  createdAt?: string;
   startAt?: string;
   endAt?: string;
   isAllDay?: boolean;
@@ -399,6 +412,8 @@ export interface CourseFile {
   content?: string; // for built-in previewer
   url?: string;
   fileUrl?: string;
+  sourceArea?: FileSourceArea;
+  sourceId?: string;
 }
 
 export interface CourseFolder {
@@ -407,6 +422,26 @@ export interface CourseFolder {
   parentId?: string | null;
   name: string;
   updatedAt: string;
+  autoKey?: string;
+}
+
+export type FileSourceArea = 'announcements' | 'modules' | 'syllabus';
+
+export interface FileAreaInput {
+  courseId: string;
+  area: FileSourceArea;
+  sourceId?: string;
+  moduleId?: string;
+  moduleTitle?: string;
+  name: string;
+  url?: string;
+  fileUrl?: string;
+  size?: number;
+  formattedSize?: string;
+  type?: CourseFile['type'];
+  visibility?: CourseFile['visibility'];
+  content?: string;
+  reuseExistingName?: boolean;
 }
 
 export interface CourseStudentGrade {
@@ -424,6 +459,7 @@ export interface MockDatabase {
   assignments: Assignment[];
   submissions: Submission[];
   quizzes: Quiz[];
+  activities?: Activity[];
   calendarEvents: CalendarEvent[];
   advisingSlots: AdvisingSlot[];
   messages: Message[];

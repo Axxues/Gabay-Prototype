@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, BookOpen, Calendar, Inbox, History, HelpCircle, Building, BarChart3, FileCheck2, Users, LogOut, GraduationCap } from 'lucide-react';
+import { LayoutDashboard, BookOpen, Calendar, Inbox, History, HelpCircle, Building, BarChart3, FileCheck2, Users, LogOut, GraduationCap, Sparkles } from 'lucide-react';
 import { useLMS } from '../../context/LMSContext';
 import { MAIN_NAV, isVisible, type NavIcon } from '../../config/navigation';
 const ICONS: Record<NavIcon, React.ReactNode> = {
@@ -11,6 +11,7 @@ const ICONS: Record<NavIcon, React.ReactNode> = {
   quizzes: <BookOpen className="h-5 w-5" />, files: <BookOpen className="h-5 w-5" />,
   grades: <BookOpen className="h-5 w-5" />, people: <Users className="h-5 w-5" />,
   'pending-requests': <Users className="h-5 w-5" />,
+  'gabay-rag': <Sparkles className="h-5 w-5" />,
   accounts: <Users className="h-5 w-5" />, page1: <Building className="h-5 w-5" />,
   page2: <BarChart3 className="h-5 w-5" />, page3: <FileCheck2 className="h-5 w-5" />,
 };

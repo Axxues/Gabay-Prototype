@@ -23,6 +23,7 @@ import {
   Check
 } from 'lucide-react';
 import { ModalPortal } from '../components/common/ModalPortal';
+import { resolveModuleReplyRecipient } from '../utils/notifiers';
 import { PageHeader } from '../components/common/PageHeader';
 import { EmptyState } from '../components/common/EmptyState';
 import { AddModuleItemPage } from './AddModuleItemPage';
@@ -52,7 +53,8 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
     editModuleComment,
     deleteModuleComment,
     toggleLikeModuleComment,
-    createNotification
+    createNotification,
+    markModuleCommentsRead
   } = useLMS();
 
   const courseModules = db.modules.filter(m => m.courseId === courseId);
@@ -359,6 +361,7 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                   onClick={() => {
                     if (editingModule?.id !== mod.id) {
                       toggleExpand(mod.id);
+                      markModuleCommentsRead(mod.id);
                     }
                   }}
                   className={`px-5 py-3.5 bg-muted/40 hover:bg-muted/60 border-b border-border flex items-center justify-between transition-colors select-none group ${editingModule?.id === mod.id ? 'cursor-default' : 'cursor-pointer'
@@ -828,11 +831,11 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                               const text = (commentInputs[mod.id] || '').trim();
                               if (!text) return;
                               addModuleComment(mod.id, text);
-                              const targetRecipientId = mod.authorId || (db.courses.find(c => c.id === mod.courseId)?.instructorId);
-                              if (targetRecipientId && targetRecipientId !== activeUser.id) {
+                              const recipientId = resolveModuleReplyRecipient(mod, activeUser);
+                              if (recipientId) {
                                 createNotification({
                                   type: 'module_comment_reply',
-                                  recipientId: targetRecipientId,
+                                  recipientId,
                                   actorId: activeUser.id,
                                   actorName: activeUser.name,
                                   actorAvatar: activeUser.avatar,

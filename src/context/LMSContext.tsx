@@ -24,8 +24,13 @@ import type {
   ChatGroup,
   Notification,
   CourseSection,
-  EnrollmentRequest
+  EnrollmentRequest,
+  FileSourceArea,
+  FileAreaInput
 } from '../types/lms';
+import type { Activity } from '../types/lms';
+import { activityPointsPossible, scoreActivityQuestions } from '../utils/activities';
+import { areaFolderAutoKey, areaFolderName, dedupeFileName, findFolderByAutoKey, moduleFolderAutoKey } from '../utils/autoFolder';
 import initialMockData from '../data/mockData.json';
 import { AlertModal, type AlertModalOptions } from '../components/common/AlertModal';
 import { canPickSection } from '../utils/sections';
@@ -85,6 +90,9 @@ interface LMSContextType {
   deleteModuleItem: (moduleId: string, itemId: string) => void;
   createQuiz: (quiz: Partial<Quiz>) => Quiz;
   recordQuizSubmission: (quizId: string, studentId: string, score: number, answers: Record<string, string>) => void;
+  createActivity: (data: Partial<Activity>) => Activity;
+  recordActivitySubmission: (activityId: string, studentId: string, answers: Record<string, string>) => Submission;
+  deleteActivity: (activityId: string) => void;
   enrollPerson: (person: Partial<User>, courseId?: string) => void;
   enrollStudentsInCourse: (studentIds: string[], courseId: string) => void;
   createUser: (userData: Partial<User>) => User;
@@ -139,6 +147,8 @@ interface LMSContextType {
   getUnreadNotificationCount: (userId: string, type?: string) => number;
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: (userId: string, type?: string) => void;
+  markTabVisited: (tab: string, courseId?: string) => void;
+  markModuleCommentsRead: (moduleId: string) => void;
   getNotifications: (userId: string, type?: string, limit?: number) => Notification[];
 
   // Discussions CRUD
@@ -150,8 +160,11 @@ interface LMSContextType {
   toggleLikeDiscussionReply: (discussionId: string, replyId: string) => void;
 
   // Course Files & Folders CRUD
-  createCourseFolder: (courseId: string, name: string, parentId?: string | null) => CourseFolder;
+  createCourseFolder: (courseId: string, name: string, parentId?: string | null, autoKey?: string) => CourseFolder;
   uploadCourseFile: (fileData: Partial<CourseFile>) => CourseFile;
+  ensureAreaFolder: (courseId: string, area: FileSourceArea) => CourseFolder;
+  ensureModuleFolder: (courseId: string, moduleId: string, moduleTitle: string) => CourseFolder;
+  fileUploadToArea: (input: FileAreaInput) => CourseFile;
   deleteCourseFile: (fileId: string) => void;
   deleteCourseFolder: (folderId: string) => void;
   updateFileVisibility: (fileId: string, visibility: 'published' | 'unpublished' | 'restricted') => void;
@@ -947,15 +960,21 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateModule = (moduleId: string, updates: Partial<Module>) => {
-    setDb(prev => ({
-      ...prev,
-      modules: (prev.modules || []).map(mod => {
-        if (mod.id === moduleId) {
-          return { ...mod, ...updates };
-        }
-        return mod;
-      })
-    }));
+    setDb(prev => {
+      const mod = (prev.modules || []).find(m => m.id === moduleId);
+      const newTitle = updates.title !== undefined && mod && updates.title !== mod.title ? updates.title : null;
+      return {
+        ...prev,
+        modules: (prev.modules || []).map(m => (m.id === moduleId ? { ...m, ...updates } : m)),
+        courseFolders: newTitle
+          ? (prev.courseFolders || []).map(f =>
+              f.autoKey === moduleFolderAutoKey(moduleId)
+                ? { ...f, name: newTitle, updatedAt: new Date().toISOString() }
+                : f
+            )
+          : prev.courseFolders
+      };
+    });
   };
 
   const deleteModule = (moduleId: string) => {
@@ -997,6 +1016,25 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return mod;
       })
     }));
+
+    if (newItem.fileName || newItem.fileUrl) {
+      const mod = db.modules.find(m => m.id === moduleId);
+      fileUploadToArea({
+        courseId: mod?.courseId || activeCourseId || 'crs-cmsc131',
+        area: 'modules',
+        sourceId: newItem.id,
+        moduleId,
+        moduleTitle: mod?.title || 'Module',
+        name: newItem.fileName || newItem.title,
+        url: newItem.fileUrl,
+        fileUrl: newItem.fileUrl,
+        formattedSize: newItem.fileSize,
+        visibility: newItem.published ? 'published' : 'unpublished',
+        type: (['pdf', 'document', 'slide', 'code', 'archive', 'image'] as string[]).includes(newItem.fileType || '')
+          ? (newItem.fileType as CourseFile['type'])
+          : 'document',
+      });
+    }
   };
 
   const updateModuleItem = (
@@ -1005,6 +1043,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     updates: Partial<ModuleItem>,
     targetModuleId?: string
   ) => {
+    const prevItem = db.modules.find(m => m.id === currentModuleId)?.items.find(i => i.id === itemId);
+    const hadFile = !!(prevItem?.fileName || prevItem?.fileUrl);
     setDb(prev => {
       const destModuleId = targetModuleId || currentModuleId;
 
@@ -1055,6 +1095,28 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         })
       };
     });
+
+    const willHaveFile = !!((updates.fileName ?? prevItem?.fileName) || (updates.fileUrl ?? prevItem?.fileUrl));
+    const alreadyFiled = (db.courseFiles || []).some(f => f.sourceId === itemId);
+    if (!hadFile && willHaveFile && !alreadyFiled) {
+      const destId = targetModuleId || currentModuleId;
+      const destMod = db.modules.find(m => m.id === destId);
+      fileUploadToArea({
+        courseId: destMod?.courseId || activeCourseId || 'crs-cmsc131',
+        area: 'modules',
+        sourceId: itemId,
+        moduleId: destId,
+        moduleTitle: destMod?.title || 'Module',
+        name: updates.fileName || prevItem?.fileName || prevItem?.title || 'Module file',
+        url: updates.fileUrl ?? prevItem?.fileUrl,
+        fileUrl: updates.fileUrl ?? prevItem?.fileUrl,
+        formattedSize: updates.fileSize ?? prevItem?.fileSize,
+        visibility: ((updates.published ?? prevItem?.published) ? 'published' : 'unpublished'),
+        type: (['pdf', 'document', 'slide', 'code', 'archive', 'image'] as string[]).includes((updates.fileType ?? prevItem?.fileType) || '')
+          ? ((updates.fileType ?? prevItem?.fileType) as CourseFile['type'])
+          : 'document',
+      });
+    }
   };
 
   const deleteModuleItem = (moduleId: string, itemId: string) => {
@@ -1145,6 +1207,94 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return { ...prev, submissions: updatedSubs };
     });
+  };
+
+  const createActivity = (data: Partial<Activity>): Activity => {
+    const questions = data.questions || [];
+    const newActivity: Activity = {
+      id: `act-${Date.now().toString(36)}`,
+      courseId: data.courseId || activeCourseId || 'crs-cmsc131',
+      title: data.title?.trim() || 'New Question-Set Activity',
+      instructions: data.instructions || 'Answer all questions carefully.',
+      questions,
+      pointsPossible: data.pointsPossible ?? activityPointsPossible(questions),
+      dueDate: data.dueDate,
+      published: data.published ?? true
+    };
+
+    setDb(prev => ({
+      ...prev,
+      activities: [newActivity, ...(prev.activities || [])]
+    }));
+
+    return newActivity;
+  };
+
+  const recordActivitySubmission = (
+    activityId: string,
+    studentId: string,
+    answers: Record<string, string>
+  ): Submission => {
+    const activity = (db.activities || []).find(a => a.id === activityId);
+    if (!activity) throw new Error(`Activity not found: ${activityId}`);
+
+    const result = scoreActivityQuestions(activity.questions, answers);
+    const mockAssignmentId = `asg-activity-${activityId}`;
+    const existingSubIndex = db.submissions.findIndex(
+      s => s.assignmentId === mockAssignmentId && s.studentId === studentId
+    );
+
+    const hasEssay = activity.questions.some(q => q.type === 'essay');
+    const graded = !result.needsReview;
+
+    const submissionRecord: Submission = {
+      id: existingSubIndex >= 0 ? db.submissions[existingSubIndex].id : `sub-activity-${Date.now()}`,
+      assignmentId: mockAssignmentId,
+      courseId: activity.courseId,
+      studentId,
+      studentName: activeUser.name,
+      studentAvatar: activeUser.avatar,
+      submittedAt: new Date().toISOString(),
+      submissionType: 'online_text',
+      content: `Activity Result: ${result.earned}/${result.possible} auto-scored${hasEssay ? '; essay pending faculty review' : ''}. Answers: ${JSON.stringify(answers)}`,
+      grade: graded ? result.percent : undefined,
+      gradedAt: graded ? new Date().toISOString() : undefined,
+      gradedBy: graded ? 'GABAY Activity Auto-Evaluator' : undefined,
+      status: graded ? 'graded' : 'submitted',
+      rubricScores: graded ? { automated_eval: result.percent } : {},
+      comments: graded
+        ? [
+            {
+              id: `comm-${Date.now()}`,
+              authorId: 'sys-auto-grader',
+              authorName: 'GABAY Evaluation Engine',
+              authorRole: 'admin',
+              createdAt: new Date().toISOString(),
+              text: `Automatic grading completed. Score ${result.earned}/${result.possible} (${result.percent}%) in activity "${activity.title}".`
+            }
+          ]
+        : []
+    };
+
+    setDb(prev => {
+      const updatedSubs = [...prev.submissions];
+      if (existingSubIndex >= 0) {
+        updatedSubs[existingSubIndex] = submissionRecord;
+      } else {
+        updatedSubs.unshift(submissionRecord);
+      }
+      return { ...prev, submissions: updatedSubs };
+    });
+
+    return submissionRecord;
+  };
+
+  const deleteActivity = (activityId: string): void => {
+    setDb(prev => ({
+      ...prev,
+      activities: (prev.activities || []).filter(a => a.id !== activityId),
+      submissions: prev.submissions.filter(s => s.assignmentId !== `asg-activity-${activityId}`)
+    }));
   };
 
   const enrollPerson = (person: Partial<User>, courseId?: string) => {
@@ -1875,12 +2025,25 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: new Date().toISOString()
     };
 
-    setNotifications(prev => [newNotification, ...prev]);
+    setNotifications(prev => {
+      const merged = [newNotification, ...prev];
+      const others = merged.filter(n => n.recipientId !== newNotification.recipientId);
+      const mine = merged
+        .filter(n => n.recipientId === newNotification.recipientId)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .slice(0, 200);
+      return [...others, ...mine];
+    });
 
     // Also persist to db.notifications if available
     setDb(prev => {
-      const notifications = (prev.notifications || []).concat(newNotification);
-      return { ...prev, notifications };
+      const merged = (prev.notifications || []).concat(newNotification);
+      const others = merged.filter(n => n.recipientId !== newNotification.recipientId);
+      const mine = merged
+        .filter(n => n.recipientId === newNotification.recipientId)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .slice(0, 200);
+      return { ...prev, notifications: [...others, ...mine] };
     });
 
     return newNotification;
@@ -1919,6 +2082,37 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...prev,
       notifications: (prev.notifications || []).map(n =>
         n.recipientId === userId && (!type || n.type === type) ? { ...n, read: true } : n
+      )
+    }));
+  };
+
+  const markTabVisited = (tab: string, courseId?: string) => {
+    const key = courseId ? `${tab}:${courseId}` : tab;
+    const stamp = new Date().toISOString();
+    setDb(prev => ({
+      ...prev,
+      users: prev.users.map(u =>
+        u.id === activeUser.id
+          ? { ...u, lastVisitedAt: { ...(u.lastVisitedAt || {}), [key]: stamp } }
+          : u
+      )
+    }));
+  };
+
+  const markModuleCommentsRead = (moduleId: string) => {
+    setNotifications(prev =>
+      prev.map(n =>
+        n.recipientId === activeUser.id && n.relatedId === moduleId && !n.read
+          ? { ...n, read: true }
+          : n
+      )
+    );
+    setDb(prev => ({
+      ...prev,
+      notifications: (prev.notifications || []).map(n =>
+        n.recipientId === activeUser.id && n.relatedId === moduleId && !n.read
+          ? { ...n, read: true }
+          : n
       )
     }));
   };
@@ -2051,13 +2245,14 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // COURSE FILES & FOLDERS CRUD
   // ==========================================
 
-  const createCourseFolder = (courseId: string, name: string, parentId?: string | null): CourseFolder => {
+  const createCourseFolder = (courseId: string, name: string, parentId?: string | null, autoKey?: string): CourseFolder => {
     const newFolder: CourseFolder = {
       id: `fld-${Date.now().toString(36)}`,
       courseId,
       name,
       parentId: parentId || null,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      ...(autoKey ? { autoKey } : {})
     };
     setDb(prev => ({
       ...prev,
@@ -2082,13 +2277,62 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       uploadedBy: activeUser.id,
       uploadedByName: activeUser.name,
       content: fileData.content || '',
-      url: fileData.url
+      url: fileData.url,
+      fileUrl: fileData.fileUrl,
+      sourceArea: fileData.sourceArea,
+      sourceId: fileData.sourceId
     };
     setDb(prev => ({
       ...prev,
       courseFiles: [...(prev.courseFiles || []), newFile]
     }));
     return newFile;
+  };
+
+  const ensureAreaFolder = (courseId: string, area: FileSourceArea): CourseFolder => {
+    const autoKey = areaFolderAutoKey(area);
+    const existing = findFolderByAutoKey(db.courseFolders || [], courseId, autoKey);
+    if (existing) return existing;
+    return createCourseFolder(courseId, areaFolderName(area), null, autoKey);
+  };
+
+  const ensureModuleFolder = (courseId: string, moduleId: string, moduleTitle: string): CourseFolder => {
+    const autoKey = moduleFolderAutoKey(moduleId);
+    const existing = findFolderByAutoKey(db.courseFolders || [], courseId, autoKey);
+    if (existing) return existing;
+    const parent = ensureAreaFolder(courseId, 'modules');
+    return createCourseFolder(courseId, moduleTitle, parent.id, autoKey);
+  };
+
+  const fileUploadToArea = (input: FileAreaInput): CourseFile => {
+    const areaFolder = ensureAreaFolder(input.courseId, input.area);
+    let targetFolderId = areaFolder.id;
+    if (input.area === 'modules' && input.moduleId) {
+      targetFolderId = ensureModuleFolder(input.courseId, input.moduleId, input.moduleTitle || 'Module').id;
+    }
+    const siblings = (db.courseFiles || [])
+      .filter(f => f.courseId === input.courseId && (f.folderId || null) === targetFolderId)
+      .map(f => f.name);
+    if (input.reuseExistingName) {
+      const existing = (db.courseFiles || []).find(
+        f => f.courseId === input.courseId && (f.folderId || null) === targetFolderId && f.name === input.name
+      );
+      if (existing) return existing;
+    }
+    return uploadCourseFile({
+      courseId: input.courseId,
+      folderId: targetFolderId,
+      name: dedupeFileName(input.name, siblings),
+      size: input.size,
+      formattedSize: input.formattedSize,
+      type: input.type || 'document',
+      visibility: input.visibility || 'published',
+      url: input.url,
+      fileUrl: input.fileUrl,
+      content: input.content || '',
+      sourceArea: input.area,
+      sourceId: input.sourceId,
+    });
   };
 
   const deleteCourseFile = (fileId: string) => {
@@ -2672,12 +2916,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const requestJoinCourse = (courseId: string): void => {
     if (activeRole === 'faculty' || activeRole === 'admin') return;
-    const existing = (db.enrollmentRequests || []).find(
+    const mine = (db.enrollmentRequests || []).filter(
       (r: EnrollmentRequest) => r.studentId === activeUser.id && r.courseId === courseId
     );
-    if (existing && existing.status === 'pending') return;
+    if (mine.some((r: EnrollmentRequest) => r.status === 'pending')) return;
     if (
-      existing && existing.status === 'approved' &&
+      mine.some((r: EnrollmentRequest) => r.status === 'approved') &&
       (activeUser.enrolledCourseIds || []).includes(courseId)
     ) return;
     createEnrollmentRequest(courseId, 'self_join');
@@ -2746,6 +2990,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteModuleItem,
         createQuiz,
         recordQuizSubmission,
+        createActivity,
+        recordActivitySubmission,
+        deleteActivity,
         enrollPerson,
         enrollStudentsInCourse,
         createUser,
@@ -2785,6 +3032,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         getUnreadNotificationCount,
         markNotificationRead,
         markAllNotificationsRead,
+        markTabVisited,
+        markModuleCommentsRead,
         getNotifications,
         createDiscussion,
         deleteDiscussion,
@@ -2794,6 +3043,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toggleLikeDiscussionReply,
         createCourseFolder,
         uploadCourseFile,
+        ensureAreaFolder,
+        ensureModuleFolder,
+        fileUploadToArea,
         deleteCourseFile,
         deleteCourseFolder,
         updateFileVisibility,

@@ -27,6 +27,7 @@ import { PageHeader } from '../components/common/PageHeader';
 import { EmptyState } from '../components/common/EmptyState';
 import { DialogFrame } from '../components/common/DialogFrame';
 import { useCourseFiles } from '../hooks/useCourseFiles';
+import { isFolderEmptyRecursive } from '../utils/autoFolder';
 
 interface FilesViewProps {
   courseId?: string; // If undefined or 'personal', loads account-level storage
@@ -43,8 +44,13 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
     deleteCourseFolder,
     renameCourseFile,
     showAlert,
-    showConfirm
+    showConfirm,
+    markTabVisited
   } = useLMS();
+
+  React.useEffect(() => {
+    markTabVisited('files', courseId);
+  }, [courseId]);
 
   const isPersonal = !courseId || courseId === 'personal';
   const effectiveScopeId = isPersonal ? `user-${activeUser.id}` : courseId;
@@ -83,7 +89,10 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
   const currentFolders = (sourceFilter === 'all' || sourceFilter === 'uploads')
     ? allFolders.filter(f => {
       if (searchQuery) return f.name.toLowerCase().includes(searchQuery.toLowerCase());
-      return currentFolderId ? f.parentId === currentFolderId : !f.parentId;
+      const atLevel = currentFolderId ? f.parentId === currentFolderId : !f.parentId;
+      if (!atLevel) return false;
+      if (!canManage && f.autoKey && isFolderEmptyRecursive(allFolders, db.courseFiles || [], f.id)) return false;
+      return true;
     })
     : [];
 

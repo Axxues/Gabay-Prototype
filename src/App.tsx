@@ -14,6 +14,7 @@ import { HelpPage } from './pages/HelpPage';
 import { EmptyPage } from './pages/EmptyPage';
 import { CreateCoursePage } from './pages/CreateCoursePage';
 import { ManageAccountsPage } from './pages/ManageAccountsPage';
+import { GabayRAGPage } from './pages/GabayRAGPage';
 import { SpeedGraderModal } from './components/grading/SpeedGraderModal';
 import { RoleSwitcherModal } from './components/common/RoleSwitcherModal';
 import { GlobalSearchDialog } from './components/common/GlobalSearchDialog';
@@ -29,7 +30,7 @@ export const AppContent: React.FC = () => {
   // Role-based active tab auto-guarding
   useEffect(() => {
     if (activeRole === 'staff') {
-      const allowedStaffTabs = ['inbox', 'calendar', 'history', 'help', 'profile'];
+      const allowedStaffTabs = ['inbox', 'calendar', 'gabay-rag', 'history', 'help', 'profile'];
       if (!allowedStaffTabs.includes(currentTab)) {
         setCurrentTab('inbox');
       }
@@ -94,8 +95,8 @@ export const AppContent: React.FC = () => {
         {sidebarOpen && <div className="fixed left-0 top-16 bottom-0 z-20 flex lg:hidden"><AppRail currentTab={currentTab} onNavigateTab={(t) => { handleNavigateTab(t); setSidebarOpen(false); }} /><LMSContextPanel currentTab={currentTab} courseSubTab={courseSubTab} onNavigateTab={(t) => { handleNavigateTab(t); setSidebarOpen(false); }} onSelectCourseTab={(t) => { setCourseSubTab(t); setSidebarOpen(false); }} onNavigateCourse={(id, sub) => { handleNavigateCourse(id, sub); setSidebarOpen(false); }} /></div>}
 
         {/* Dynamic Page Views Canvas with Cellwego Scrollbar & Container */}
-        <main className={`relative min-w-0 w-full flex-1 ${currentTab === 'courses' || currentTab === 'inbox' ? 'overflow-hidden flex flex-col' : 'overflow-y-auto custom-scrollbar'}`}>
-          <div className={currentTab === 'courses' || currentTab === 'inbox' ? "h-full flex-1 min-w-0 flex flex-col" : "p-5 sm:p-8 lg:p-10 max-w-[1600px] mx-auto animate-fade-in-up w-full"}>
+        <main className={`relative min-w-0 w-full flex-1 ${currentTab === 'courses' || currentTab === 'inbox' || currentTab === 'gabay-rag' ? 'overflow-hidden flex flex-col' : 'overflow-y-auto custom-scrollbar'}`}>
+          <div className={currentTab === 'courses' || currentTab === 'inbox' || currentTab === 'gabay-rag' ? "h-full flex-1 min-w-0 flex flex-col" : "p-5 sm:p-8 lg:p-10 max-w-[1600px] mx-auto animate-fade-in-up w-full"}>
             {currentTab === 'dashboard' && (
               <DashboardPage
                 onNavigateCourse={handleNavigateCourse}
@@ -117,6 +118,8 @@ export const AppContent: React.FC = () => {
             {currentTab === 'calendar' && <CalendarPage />}
 
             {currentTab === 'inbox' && <InboxPage />}
+
+            {currentTab === 'gabay-rag' && <GabayRAGPage />}
 
             {currentTab === 'profile' && (
               <ProfilePage

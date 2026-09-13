@@ -2,6 +2,14 @@ import React from 'react';
 import { LayoutDashboard, BookOpen, Calendar, Inbox, History, HelpCircle, Layers, FileText, Megaphone, FileCheck2, HelpCircle as QuizIcon, Folder, Award, Users, Copy, Check } from 'lucide-react';
 import { useLMS } from '../../context/LMSContext';
 import { LMS_CHILDREN, COURSE_CHILDREN, isVisible, isLmsSectionTab } from '../../config/navigation';
+import {
+  countFacultyGradingBadge,
+  countNewFiles,
+  countNewGrades,
+  countStudentAssessmentBadge,
+  countUpcomingCalendar,
+  countUnreadAnnouncements,
+} from '../../utils/notifiers';
 const LMS_ICONS: Record<string, React.ReactNode> = {
   dashboard: <LayoutDashboard className="h-4 w-4" />, courses: <BookOpen className="h-4 w-4" />,
   calendar: <Calendar className="h-4 w-4" />, inbox: <Inbox className="h-4 w-4" />,
@@ -15,7 +23,7 @@ const COURSE_ICONS: Record<string, React.ReactNode> = {
   'pending-requests': <Users className="h-4 w-4" />,
 };
 export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: string; onNavigateTab: (t: string) => void; onSelectCourseTab: (t: string) => void; onNavigateCourse: (id: string, sub?: string) => void }> = (p) => {
-  const { db, activeCourseId, activeRole, activeUser } = useLMS();
+  const { db, activeCourseId, activeRole, activeUser, getUnreadNotificationCount, getPendingRequestsForCourse } = useLMS();
   const [copied, setCopied] = React.useState(false);
   const unread = db.messages.filter(m => m.recipientId === activeUser.id && !m.read).length;
   const studentSection = activeRole === 'student' && activeCourseId
@@ -41,6 +49,49 @@ export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: strin
   );
   if (p.currentTab === 'courses') {
     const course = db.courses.find(c => c.id === activeCourseId) ?? db.courses[0];
+    const courseBadgeFor = (tabId: string): number => {
+      if (!course) return 0;
+      const cid = course.id;
+      const visits = activeUser.lastVisitedAt || {};
+      if (tabId === 'inbox') return 0;
+      if (tabId === 'modules') return getUnreadNotificationCount(activeUser.id, 'module_comment_reply');
+      if (tabId === 'announcements') {
+        const sectionId = activeUser.courseSections?.[cid] ?? null;
+        return countUnreadAnnouncements(db.announcements || [], { id: activeUser.id, role: activeRole, sectionId }, cid);
+      }
+      if (tabId === 'assignments') {
+        if (activeRole === 'faculty') {
+          const ids = [...(db.assignments || []).filter(a => a.courseId === cid).map(a => a.id),
+            ...(db.activities || []).filter(a => a.courseId === cid).map(a => `asg-activity-${a.id}`)];
+          return countFacultyGradingBadge(db.submissions.filter(s => s.courseId === cid), ids);
+        }
+        const pub = [...(db.assignments || []).filter(a => a.courseId === cid && a.published).map(a => a.id),
+          ...(db.activities || []).filter(a => a.courseId === cid && a.published).map(a => `asg-activity-${a.id}`)];
+        const mine = db.submissions.filter(s => s.courseId === cid && s.studentId === activeUser.id).map(s => s.assignmentId);
+        return countStudentAssessmentBadge(pub, mine);
+      }
+      if (tabId === 'quizzes') {
+        if (activeRole === 'faculty') {
+          const ids = (db.quizzes || []).filter(q => q.courseId === cid).map(q => `asg-quiz-${q.id}`);
+          return countFacultyGradingBadge(db.submissions.filter(s => s.courseId === cid), ids);
+        }
+        const pub = (db.quizzes || []).filter(q => q.courseId === cid && q.published).map(q => q.id);
+        const taken = db.submissions.filter(s => s.courseId === cid && s.studentId === activeUser.id && s.assignmentId.startsWith('asg-quiz-')).map(s => s.assignmentId.replace('asg-quiz-', ''));
+        const submitted = new Set(taken);
+        return pub.filter(id => !submitted.has(id)).length;
+      }
+      if (tabId === 'files') return countNewFiles(db.courseFiles || [], cid, visits);
+      if (tabId === 'grades') {
+        if (activeRole !== 'student') return 0;
+        return countNewGrades(db.courseGrades || [], cid, activeUser.id, visits);
+      }
+      if (tabId === 'people' || tabId === 'pending-requests') {
+        if (activeRole !== 'faculty' && activeRole !== 'admin') return 0;
+        return getPendingRequestsForCourse(cid).length;
+      }
+      if (tabId === 'calendar') return countUpcomingCalendar(db.calendarEvents || [], cid, visits);
+      return 0;
+    };
     return (
       <aside className="flex w-[240px] flex-shrink-0 flex-col border-r border-border/60 bg-card/50 p-3">
         <div className="custom-scrollbar flex-1 space-y-1 overflow-y-auto">
@@ -60,7 +111,14 @@ export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: strin
           <nav className="space-y-1">
             {COURSE_CHILDREN.filter(i => isVisible(i, activeRole)).map(item => (
               <button key={item.id} type="button" onClick={() => p.onSelectCourseTab(item.id)}
-                className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-xs font-bold cursor-pointer ${p.courseSubTab === item.id ? 'bg-primary text-primary-foreground shadow-primary-sm' : 'text-muted-foreground hover:bg-accent hover:text-foreground font-medium'}`}>{COURSE_ICONS[item.id]}<span>{item.label}</span></button>
+                className={`flex w-full items-center justify-between gap-2.5 rounded-xl px-3 py-2.5 text-xs font-bold cursor-pointer ${p.courseSubTab === item.id ? 'bg-primary text-primary-foreground shadow-primary-sm' : 'text-muted-foreground hover:bg-accent hover:text-foreground font-medium'}`}>{COURSE_ICONS[item.id]}<span>{item.label}</span>{(() => {
+                  const n = courseBadgeFor(item.id);
+                  return n > 0 ? (
+                    <span className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground">
+                      {n}
+                    </span>
+                  ) : null;
+                })()}</button>
             ))}
           </nav>
         </div>

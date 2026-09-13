@@ -16,7 +16,7 @@ import {
   FolderOpen
 } from 'lucide-react';
 import { FilePickerModal } from '../components/common/FilePickerModal';
-import type { AggregatedCourseFile } from '../hooks/useCourseFiles';
+import { detectFileType, type AggregatedCourseFile } from '../hooks/useCourseFiles';
 
 interface CreateAnnouncementPageProps {
   courseId: string;
@@ -29,7 +29,7 @@ export const CreateAnnouncementPage: React.FC<CreateAnnouncementPageProps> = ({
   onBack,
   onAnnouncementCreated
 }) => {
-  const { db, createAnnouncement, showAlert } = useLMS();
+  const { db, createAnnouncement, fileUploadToArea, showAlert } = useLMS();
   const course = db.courses.find(c => c.id === courseId);
 
   const [title, setTitle] = useState('');
@@ -115,7 +115,7 @@ export const CreateAnnouncementPage: React.FC<CreateAnnouncementPageProps> = ({
       ? [{ name: attachedFile.name, size: attachedFile.size, url: attachedFile.url }]
       : [];
 
-    createAnnouncement({
+    const ann = createAnnouncement({
       courseId,
       title: title.trim(),
       content: content.trim(),
@@ -128,6 +128,19 @@ export const CreateAnnouncementPage: React.FC<CreateAnnouncementPageProps> = ({
       pinned,
       attachments
     });
+
+    if (attachedFile) {
+      fileUploadToArea({
+        courseId,
+        area: 'announcements',
+        sourceId: ann.id,
+        name: attachedFile.name,
+        url: attachedFile.url,
+        fileUrl: attachedFile.url,
+        formattedSize: attachedFile.size,
+        type: detectFileType(attachedFile.name),
+      });
+    }
 
     showAlert({
       title: 'Announcement Published',

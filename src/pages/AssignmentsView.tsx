@@ -13,6 +13,7 @@ import {
   ArrowLeft
 } from 'lucide-react';
 import { CreateAssignmentPage } from './CreateAssignmentPage';
+import { ActivitiesView } from './ActivitiesView';
 import { PageHeader } from '../components/common/PageHeader';
 import { EmptyState } from '../components/common/EmptyState';
 
@@ -51,6 +52,9 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
 
   // Full Page Create Assignment State
   const [isCreatingAssignment, setIsCreatingAssignment] = useState(false);
+
+  // Selected question-set activity (null = list mode embedded below)
+  const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
 
   const currentSubmission = selectedAssignment
     ? db.submissions.find(s => s.assignmentId === selectedAssignment.id && s.studentId === activeUser.id)
@@ -107,6 +111,18 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
           setIsCreatingAssignment(false);
           onSelectAssignment(asgId);
         }}
+      />
+    );
+  }
+
+  // If a question-set activity is selected, render its runner instead of the assignment list
+  if (selectedActivityId && !selectedAssignment) {
+    return (
+      <ActivitiesView
+        courseId={courseId}
+        activityId={selectedActivityId}
+        onSelectActivity={setSelectedActivityId}
+        onBackToModules={onBackToModules}
       />
     );
   }
@@ -203,6 +219,14 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
             })
           )}
         </div>
+
+        {/* Question Sets section (Task 5) — classic assignment rendering above is untouched */}
+        <ActivitiesView
+          courseId={courseId}
+          activityId={null}
+          onSelectActivity={setSelectedActivityId}
+          onBackToModules={onBackToModules}
+        />
       </div>
     );
   }

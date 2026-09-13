@@ -43,7 +43,7 @@ interface SyllabusViewProps {
 }
 
 export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
-  const { db, activeRole, activeUser, updateCourseSyllabus, removeCourseSyllabus, showAlert } = useLMS();
+  const { db, activeRole, activeUser, updateCourseSyllabus, removeCourseSyllabus, showAlert, fileUploadToArea } = useLMS();
   const currentCourse = db.courses.find(c => c.id === courseId);
   const data = currentCourse?.syllabus || null;
   const isCustomSyllabus = Boolean(currentCourse?.syllabus);
@@ -296,6 +296,15 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
     };
 
     updateCourseSyllabus(courseId, boundSyllabus);
+    fileUploadToArea({
+      courseId,
+      area: 'syllabus',
+      sourceId: courseId,
+      name: scanResult.fileName,
+      formattedSize: scanResult.fileSize,
+      type: scanResult.fileType === 'pdf' ? 'pdf' : 'document',
+      reuseExistingName: true,
+    });
     showAlert({
       title: 'Syllabus Updated Successfully',
       message: `Course syllabus for ${currentCourse.code} synchronized with "${scanResult.fileName}". Assigned Faculty: ${chosenFaculty.name}.`,

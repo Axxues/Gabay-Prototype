@@ -15,6 +15,11 @@ const REQUEST_TYPE_LABELS: Record<EnrollmentRequest['type'], string> = {
   section_switch: 'Switch'
 };
 
+const NOTIFICATION_GROUP_LABELS: Record<string, string> = {
+  module_comment_reply: 'Module replies',
+  announcement_reply: 'Announcement replies',
+};
+
 export const NotificationBell: React.FC<NotificationBellProps> = ({
   onNavigateCourse,
   onNavigateTab
@@ -26,6 +31,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
     getUnreadNotificationCount,
     getNotifications,
     markNotificationRead,
+    markAllNotificationsRead,
     getPendingRequestsForStudent,
     approveEnrollmentRequests,
     rejectEnrollmentRequests,
@@ -262,42 +268,66 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
               Notifications
             </p>
           </div>
-          <div className="space-y-1">
-            {notifications.length === 0 ? (
-              <p className="px-3 py-3 text-xs text-muted-foreground font-sans">
-                No notifications.
-              </p>
-            ) : (
-              notifications.map(n => (
-                <button
-                  key={n.id}
-                  onClick={() => {
-                    markNotificationRead(n.id);
-                    setOpen(false);
-                  }}
-                  className={`flex w-full items-start gap-2.5 px-3 py-2 rounded-xl text-left hover:bg-accent/60 transition-colors cursor-pointer ${n.read ? 'opacity-60' : ''}`}
-                >
-                  <img
-                    src={n.actorAvatar}
-                    alt={n.actorName}
-                    className="w-7 h-7 rounded-full object-cover border border-border shrink-0"
-                  />
-                  <span className="min-w-0">
-                    <span className="block text-xs text-foreground">
-                      <span className="font-bold">{n.actorName}</span>
-                      <span className="font-sans"> {n.content}</span>
-                    </span>
-                    <span className="block text-[10px] text-muted-foreground font-sans truncate">
-                      {n.relatedTitle} • {new Date(n.createdAt).toLocaleDateString()}
-                    </span>
-                  </span>
-                  {!n.read && (
-                    <span className="ml-auto mt-1.5 h-2 w-2 rounded-full bg-primary shrink-0" />
-                  )}
-                </button>
-              ))
-            )}
-          </div>
+          {(() => {
+            const groups: Record<string, typeof notifications> = {};
+            for (const n of notifications) {
+              (groups[n.type] = groups[n.type] || []).push(n);
+            }
+            const groupTypes = Object.keys(groups);
+            if (groupTypes.length === 0) {
+              return (
+                <p className="px-3 py-3 text-xs text-muted-foreground font-sans">
+                  No notifications.
+                </p>
+              );
+            }
+            return groupTypes.map(groupType => (
+              <div key={groupType}>
+                <div className="flex items-center justify-between px-3 pt-1 pb-0.5">
+                  <p className="text-[10px] font-sans font-bold text-muted-foreground uppercase tracking-widest">
+                    {NOTIFICATION_GROUP_LABELS[groupType] ?? groupType}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => markAllNotificationsRead(activeUser.id, groupType)}
+                    className="px-2 py-0.5 text-[10px] font-bold text-primary hover:bg-primary/10 rounded-lg transition-colors cursor-pointer"
+                  >
+                    Mark all read
+                  </button>
+                </div>
+                <div className="space-y-1">
+                  {groups[groupType].map(n => (
+                    <button
+                      key={n.id}
+                      onClick={() => {
+                        markNotificationRead(n.id);
+                        setOpen(false);
+                      }}
+                      className={`flex w-full items-start gap-2.5 px-3 py-2 rounded-xl text-left hover:bg-accent/60 transition-colors cursor-pointer ${n.read ? 'opacity-60' : ''}`}
+                    >
+                      <img
+                        src={n.actorAvatar}
+                        alt={n.actorName}
+                        className="w-7 h-7 rounded-full object-cover border border-border shrink-0"
+                      />
+                      <span className="min-w-0">
+                        <span className="block text-xs text-foreground">
+                          <span className="font-bold">{n.actorName}</span>
+                          <span className="font-sans"> {n.content}</span>
+                        </span>
+                        <span className="block text-[10px] text-muted-foreground font-sans truncate">
+                          {n.relatedTitle} • {new Date(n.createdAt).toLocaleDateString()}
+                        </span>
+                      </span>
+                      {!n.read && (
+                        <span className="ml-auto mt-1.5 h-2 w-2 rounded-full bg-primary shrink-0" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ));
+          })()}
 
           <button
             onClick={() => {

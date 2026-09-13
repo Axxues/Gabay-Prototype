@@ -9,7 +9,11 @@ interface StudentGradebookProps {
 }
 
 export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) => {
-  const { db, activeUser } = useLMS();
+  const { db, activeUser, markTabVisited } = useLMS();
+
+  React.useEffect(() => {
+    markTabVisited('grades', courseId);
+  }, [courseId]);
 
   const course = db.courses.find(c => c.id === courseId);
 

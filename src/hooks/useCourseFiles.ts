@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useLMS } from '../context/LMSContext';
 import type { CourseFile } from '../types/lms';
+import { resolveFiledSourceLabel } from '../utils/autoFolder';
 
 export type AggregatedCourseFile = CourseFile & {
   source: string;
@@ -56,11 +57,14 @@ export const useCourseFiles = (courseId?: string) => {
       .filter(f =>
         isPersonal ? f.courseId === effectiveScopeId : f.courseId === courseId || f.courseId === effectiveScopeId
       )
-      .map(f => ({
-        ...f,
-        source: 'uploads',
-        sourceLabel: 'Direct Upload'
-      }));
+      .map(f => {
+        const area = (f as CourseFile).sourceArea;
+        return {
+          ...f,
+          source: area === 'announcements' ? 'announcements' : area === 'modules' ? 'modules' : 'uploads',
+          sourceLabel: resolveFiledSourceLabel(f, db.announcements || [], db.modules || [])
+        };
+      });
 
     // 2. Module uploaded files and images
     const moduleFiles: AggregatedCourseFile[] = [];

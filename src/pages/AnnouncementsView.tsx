@@ -19,6 +19,7 @@ import {
   X
 } from 'lucide-react';
 import { isImageFile } from '../utils/fileUploader';
+import { resolveAnnouncementReplyRecipient } from '../utils/notifiers';
 import { isAnnouncementVisibleToViewer } from '../utils/sections';
 import { PageHeader } from '../components/common/PageHeader';
 import { EmptyState } from '../components/common/EmptyState';
@@ -107,17 +108,20 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
     if (!replyText.trim()) return;
     addAnnouncementReply(announcementId, replyText.trim());
     const ann = (db.announcements || []).find(a => a.id === announcementId);
-    if (ann && ann.authorId !== activeUser.id) {
-      createNotification({
-        type: 'announcement_reply',
-        recipientId: ann.authorId,
-        actorId: activeUser.id,
-        actorName: activeUser.name,
-        actorAvatar: activeUser.avatar,
-        relatedId: announcementId,
-        relatedTitle: ann.title,
-        content: replyText.trim(),
-      });
+    if (ann) {
+      const recipientId = resolveAnnouncementReplyRecipient(ann, activeUser);
+      if (recipientId) {
+        createNotification({
+          type: 'announcement_reply',
+          recipientId,
+          actorId: activeUser.id,
+          actorName: activeUser.name,
+          actorAvatar: activeUser.avatar,
+          relatedId: announcementId,
+          relatedTitle: ann.title,
+          content: replyText.trim(),
+        });
+      }
     }
     setReplyText('');
   };
