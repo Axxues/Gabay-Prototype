@@ -82,7 +82,7 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
     generateCourseJoinCode(db.courses, 'CMSC 180')
   );
 
-  const [sections, setSections] = useState<Array<{ name: string; capacity: number; schedule: string; location: string }>>([
+  const [sections, setSections] = useState<Array<{ name: string; capacity: number | undefined; schedule: string; location: string }>>([
     { name: 'Section A', capacity: 40, schedule: '', location: '' }
   ]);
 
@@ -368,27 +368,31 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
                         className="text-sm font-bold bg-transparent border-none outline-none flex-1"
                         placeholder="Section name"
                       />
-                      {sections.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => setSections(prev => prev.filter((_, i) => i !== idx))}
-                          className="p-1 hover:bg-red-500/10 rounded-lg text-red-500 cursor-pointer"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => setSections(prev => prev.filter((_, i) => i !== idx))}
+                        className="p-1 hover:bg-red-500/10 rounded-lg text-red-500 cursor-pointer"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                     <div className="grid grid-cols-3 gap-2">
                       <input
                         type="number"
-                        value={section.capacity}
+                        value={section.capacity ?? ''}
                         onChange={e => {
                           const updated = [...sections];
-                          updated[idx].capacity = parseInt(e.target.value) || 40;
+                          const raw = e.target.value;
+                          if (raw === '') {
+                            updated[idx].capacity = undefined;
+                          } else {
+                            const parsed = parseInt(raw, 10);
+                            updated[idx].capacity = Number.isNaN(parsed) ? undefined : parsed;
+                          }
                           setSections(updated);
                         }}
                         className="text-xs p-2 bg-background border border-border rounded-lg"
-                        placeholder="Capacity"
+                        placeholder="40"
                         min="1"
                       />
                       <input
