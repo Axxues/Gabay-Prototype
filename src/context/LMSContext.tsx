@@ -101,7 +101,6 @@ interface LMSContextType {
   deleteUser: (userId: string) => Promise<{ success: boolean; message?: string }>;
   joinCourseByCode: (joinCode: string) => Promise<{ success: boolean; message: string; course?: Course }>;
   regenerateCourseJoinCode: (courseId: string) => Promise<string>;
-  updateSyllabus: (courseId: string, updates: Partial<Course>) => void;
   updateCourseSyllabus: (courseId: string, syllabus: OfficialSyllabusData) => Promise<void>;
   removeCourseSyllabus: (courseId: string) => Promise<void>;
   importCommonsTemplate: (templateId: string, targetCourseId: string) => Promise<{ success: boolean; message: string }>;
@@ -1651,13 +1650,6 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       showAlert(message, 'Regenerate Failed');
       return targetCourse?.joinCode || newCode;
     }
-  };
-
-  const updateSyllabus = (courseId: string, updates: Partial<Course>) => {
-    setDb(prev => ({
-      ...prev,
-      courses: prev.courses.map(c => (c.id === courseId ? { ...c, ...updates } : c))
-    }));
   };
 
   const updateCourseSyllabus = async (courseId: string, syllabus: OfficialSyllabusData): Promise<void> => {
@@ -3658,7 +3650,6 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteUser,
         joinCourseByCode,
         regenerateCourseJoinCode,
-        updateSyllabus,
         updateCourseSyllabus,
         removeCourseSyllabus,
         importCommonsTemplate,
