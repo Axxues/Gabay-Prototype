@@ -8,7 +8,7 @@ import type {
   ModuleComment,
   Assignment,
   Quiz,
-  MockDatabase,
+  LMSDatabase,
   CalendarEvent,
   Submission,
   SubmissionComment,
@@ -29,7 +29,6 @@ import type {
 } from '../types/lms';
 import type { Activity } from '../types/lms';
 import { activityPointsPossible } from '../utils/activities';
-import initialMockData from '../data/mockData.json';
 import { commonsTemplates } from '../data/commonsTemplates';
 import { AlertModal, type AlertModalOptions } from '../components/common/AlertModal';
 import { canPickSection } from '../utils/sections';
@@ -58,7 +57,7 @@ interface LMSContextType {
 
   activeCourseId: string | null;
   setActiveCourseId: (id: string | null) => void;
-  db: MockDatabase;
+  db: LMSDatabase;
   
   // SpeedGrader modal state
   activeSpeedGraderSubmissionId: string | null;
@@ -201,48 +200,17 @@ interface LMSContextType {
 
   logHistory: (path: string, title: string) => void;
   clearHistory: () => void;
-  resetData: () => void;
 }
 
-const STORAGE_KEY_DB = 'gabay_lms_db_v6';
 const STORAGE_KEY_THEME = 'gabay_theme_v1';
-
-// Aggressive cleanup of bloated past storage keys to reclaim browser quota
-const purgeOldStorageKeys = () => {
-  try {
-    const legacyKeys = [
-      'gabay_lms_db',
-      'gabay_lms_db_v1',
-      'gabay_lms_db_v2',
-      'gabay_lms_db_v3',
-      'gabay_lms_db_v4',
-      'gabay_lms_db_backup'
-    ];
-    legacyKeys.forEach(k => {
-      try {
-        localStorage.removeItem(k);
-      } catch (_) {}
-    });
-  } catch (_) {}
-};
-
-// Immediately run purge on module evaluation
-purgeOldStorageKeys();
 
 const safeSetLocalStorage = (key: string, value: string): boolean => {
   try {
     localStorage.setItem(key, value);
     return true;
   } catch (err) {
-    console.warn(`LocalStorage quota reached when setting "${key}". Purging legacy caches...`, err);
-    try {
-      purgeOldStorageKeys();
-      localStorage.setItem(key, value);
-      return true;
-    } catch (retryErr) {
-      console.warn(`LocalStorage setItem retry failed for "${key}".`, retryErr);
-      return false;
-    }
+    console.warn(`LocalStorage setItem failed for "${key}".`, err);
+    return false;
   }
 };
 
@@ -353,7 +321,7 @@ export const generateCourseJoinCode = (existingCourses: Course[] = [], prefix?: 
 };
 
 /** Upsert one enrollment request into a database snapshot (Task 2 cache scope). */
-export const mergeEnrollmentRequest = (prev: MockDatabase, request: EnrollmentRequest): MockDatabase => {
+export const mergeEnrollmentRequest = (prev: LMSDatabase, request: EnrollmentRequest): LMSDatabase => {
   const existing = prev.enrollmentRequests || [];
   if (existing.some(r => r.id === request.id)) {
     return { ...prev, enrollmentRequests: existing.map(r => (r.id === request.id ? request : r)) };
@@ -521,265 +489,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const resetAccent = () => setAccentState(DEFAULT_ACCENT);
 
-  // Database State
-  const [db, setDb] = useState<MockDatabase>(() => {
-    purgeOldStorageKeys();
-
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_DB);
-      if (saved) {
-        const parsed = JSON.parse(saved) as MockDatabase;
-        // Merge saved users with initialMockData users to ensure base accounts exist and enrolled users persist
-        const existingUserMap = new Map((parsed.users || []).map(u => [u.id, u]));
-        initialMockData.users.forEach(u => {
-          if (!existingUserMap.has(u.id)) {
-            existingUserMap.set(u.id, u as unknown as User);
-          }
-        });
-        parsed.users = Array.from(existingUserMap.values());
-        parsed.submissions = parsed.submissions || [];
-
-        // Ensure announcements, discussions, files, messages fall back to initialMockData if empty
-        const initialMock = initialMockData as unknown as MockDatabase;
-        if (!parsed.announcements || parsed.announcements.length === 0) {
-          parsed.announcements = initialMock.announcements || [];
-        }
-        if (!parsed.discussions || parsed.discussions.length === 0) {
-          parsed.discussions = initialMock.discussions || [];
-        }
-        if (!parsed.courseFiles || parsed.courseFiles.length === 0) {
-          parsed.courseFiles = initialMock.courseFiles || [];
-        }
-        if (!parsed.courseFolders || parsed.courseFolders.length === 0) {
-          parsed.courseFolders = initialMock.courseFolders || [];
-        }
-
-        // Merge messages with initialMockData messages
-        if (!parsed.messages || parsed.messages.length === 0) {
-          parsed.messages = (initialMock.messages || []) as Message[];
-        } else {
-          const initialMap = new Map(((initialMock.messages || []) as Message[]).map(m => [m.id, m]));
-          const existingMsgMap = new Map((parsed.messages || []).map(m => {
-            const initMsg = initialMap.get(m.id);
-            if (initMsg) {
-              return [m.id, { ...m, timestamp: initMsg.timestamp }];
-            }
-            return [m.id, m];
-          }));
-          ((initialMock.messages || []) as Message[]).forEach(m => {
-            if (!existingMsgMap.has(m.id)) {
-              existingMsgMap.set(m.id, m);
-            }
-          });
-          parsed.messages = Array.from(existingMsgMap.values());
-        }
-
-        // Merge chatGroups with initialMockData chatGroups
-        if (!parsed.chatGroups || parsed.chatGroups.length === 0) {
-          parsed.chatGroups = (initialMock.chatGroups || []) as ChatGroup[];
-        } else {
-          const existingGroupMap = new Map((parsed.chatGroups || []).map(g => [g.id, g]));
-          ((initialMock.chatGroups || []) as ChatGroup[]).forEach(g => {
-            if (!existingGroupMap.has(g.id)) {
-              existingGroupMap.set(g.id, g);
-            }
-          });
-          parsed.chatGroups = Array.from(existingGroupMap.values());
-        }
-
-        // Ensure announcements have persistent attachment URLs in /uploads/
-        if (parsed.announcements) {
-          const initialAnnouncements = (initialMock.announcements || []) as Announcement[];
-          parsed.announcements = parsed.announcements.map(ann => {
-            const initialAnn = initialAnnouncements.find(ia => ia.id === ann.id);
-            if (ann.attachments && ann.attachments.length > 0) {
-              const updatedAttachments = ann.attachments.map(att => {
-                if (!att.url) {
-                  const initialAtt = initialAnn?.attachments?.find(ia => ia.name === att.name);
-                  const resolvedUrl = initialAtt?.url || `/uploads/${att.name}`;
-                  return { ...att, url: resolvedUrl };
-                }
-                return att;
-              });
-              return { ...ann, attachments: updatedAttachments };
-            }
-            return ann;
-          });
-        }
-
-        // Ensure courseFiles have static /uploads/ URLs
-        if (parsed.courseFiles) {
-          parsed.courseFiles = parsed.courseFiles.map(cf => {
-            if (!cf.fileUrl) {
-              return { ...cf, fileUrl: `/uploads/${cf.name}` };
-            }
-            return cf;
-          });
-        }
-
-        // Sync sample item attachment and comments if missing in local cache
-        if (parsed.modules && parsed.modules.length > 0) {
-          const mod1 = parsed.modules.find(m => m.id === 'mod-131-1');
-          if (mod1 && (!mod1.comments || mod1.comments.length === 0)) {
-            const initialMod1 = (initialMock.modules || []).find(m => m.id === 'mod-131-1');
-            if (initialMod1?.comments) mod1.comments = initialMod1.comments;
-          }
-
-          const mod2 = parsed.modules.find(m => m.id === 'mod-131-2');
-          if (mod2) {
-            const itm = mod2.items.find(i => i.id === 'item-131-21');
-            if (itm) {
-              if (!itm.fileName) itm.fileName = 'CHED-CMO-25-Series-2015-Standards.pdf';
-              if (!itm.fileUrl) itm.fileUrl = '/uploads/CHED-CMO-25-Series-2015-Standards.pdf';
-              if (!itm.fileSize) itm.fileSize = '2.4 MB';
-              if (!itm.fileType) itm.fileType = 'pdf';
-            }
-            if (!mod2.comments || mod2.comments.length === 0) {
-              const initialMod2 = (initialMock.modules || []).find(m => m.id === 'mod-131-2');
-              if (initialMod2?.comments) mod2.comments = initialMod2.comments;
-            }
-          }
-        }
-
-        if (parsed.courses) {
-          const hasCspc = parsed.courses.some((c: Course) => c.id === 'crs-cspc112');
-          if (!hasCspc) {
-            const initialCspc = (initialMockData.courses as Course[]).find(c => c.id === 'crs-cspc112');
-            if (initialCspc) parsed.courses.push(initialCspc);
-          }
-
-          // Ensure all courses have a unique joinCode
-          const mockCourses = initialMockData.courses as Course[];
-          parsed.courses = parsed.courses.map((c: Course) => {
-            if (!c.joinCode) {
-              const fromMock = mockCourses.find(mc => mc.id === c.id);
-              return { ...c, joinCode: fromMock?.joinCode || generateCourseJoinCode(parsed.courses, c.code) };
-            }
-            return c;
-          });
-        }
-
-        if (parsed.users) {
-          const mockUsers = initialMockData.users as User[];
-          parsed.users = parsed.users.map((u: User) => {
-            if (u.role === 'student' && (!u.enrolledCourseIds || u.enrolledCourseIds.length === 0)) {
-              const fromMock = mockUsers.find(mu => mu.id === u.id);
-              return { ...u, enrolledCourseIds: fromMock?.enrolledCourseIds || ['crs-cmsc131', 'crs-cmsc150'] };
-            }
-            return u;
-          });
-        }
-
-        // Load notifications from localStorage
-        if (parsed.notifications) {
-          // Ensure notifications have proper format
-          parsed.notifications = parsed.notifications.map((n: Notification) => ({
-            ...n,
-            read: n.read !== undefined ? n.read : false
-          }));
-        } else {
-          parsed.notifications = [];
-        }
-
-        // Section defaults
-        parsed.courseSections = (parsed as any).courseSections || [];
-        parsed.enrollmentRequests = (parsed as any).enrollmentRequests || [];
-
-        // Migration: if courseSections missing, create from existing courses
-        if (!parsed.courseSections || parsed.courseSections.length === 0) {
-          const migratedSections: CourseSection[] = [];
-          const migratedCourses = parsed.courses.map(c => {
-            const sectionId = `sec-${c.id}-a`;
-            migratedSections.push({
-              id: sectionId,
-              courseId: c.id,
-              name: c.section || 'Section A',
-              capacity: 60,
-              enrolledCount: c.enrolledCount || 0,
-              schedule: 'TBD',
-              location: 'TBD'
-            });
-            return { ...c, sectionIds: [sectionId] };
-          });
-          parsed.courses = migratedCourses;
-          parsed.courseSections = migratedSections;
-        }
-        if (!parsed.enrollmentRequests) {
-          parsed.enrollmentRequests = [];
-        }
-
-        return parsed;
-      }
-    } catch (e) {
-      console.error('Failed to parse saved LMS db', e);
-    }
-
-    return initialMockData as unknown as MockDatabase;
-  });
-
-  useEffect(() => {
-    try {
-      // Sanitize database before saving: strip large data URLs from course syllabi
-      const sanitizedCourses = (db.courses || []).map(course => {
-        if (!course.syllabus) return course;
-        if (course.syllabus.sourceDocument?.fileDataUrl?.startsWith('data:')) {
-          return {
-            ...course,
-            syllabus: {
-              ...course.syllabus,
-              sourceDocument: {
-                ...course.syllabus.sourceDocument,
-                fileDataUrl: undefined
-              }
-            }
-          };
-        }
-        return course;
-      });
-
-      const payload = JSON.stringify({
-        ...db,
-        courses: sanitizedCourses
-      });
-
-      const savedOk = safeSetLocalStorage(STORAGE_KEY_DB, payload);
-      if (!savedOk) {
-        // Tier 1 fallback: Prune heavy source document data from syllabus to fit quota
-        const compactCourses = (db.courses || []).map(c => ({
-          ...c,
-          syllabus: c.syllabus ? {
-            ...c.syllabus,
-            sourceDocument: c.syllabus.sourceDocument ? {
-              fileName: c.syllabus.sourceDocument.fileName,
-              fileSize: c.syllabus.sourceDocument.fileSize,
-              fileType: c.syllabus.sourceDocument.fileType,
-              uploadedAt: c.syllabus.sourceDocument.uploadedAt
-            } : undefined
-          } : c.syllabus
-        }));
-        const compactPayload = JSON.stringify({ ...db, courses: compactCourses });
-        const retry1 = safeSetLocalStorage(STORAGE_KEY_DB, compactPayload);
-
-        if (!retry1) {
-          // Tier 2 fallback: Strip syllabus objects entirely from storage
-          const ultraTrimmed = (db.courses || []).map(c => ({
-            ...c,
-            syllabus: c.syllabus === null ? null : undefined
-          }));
-          safeSetLocalStorage(STORAGE_KEY_DB, JSON.stringify({ ...db, courses: ultraTrimmed }));
-        }
-      }
-    } catch (err: any) {
-      console.warn('LocalStorage save skipped; state maintained in memory safely:', err);
-    }
-  }, [db]);
-
-  // Authentication State (token-backed; session restores via GET /api/auth/me)
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [lastError, setLastError] = useState<string | null>(null);
-
-  const emptyDb = (): MockDatabase => ({
+  const emptyDb = (): LMSDatabase => ({
     users: [],
     courses: [],
     modules: [],
@@ -802,6 +512,14 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     courseSections: [],
     enrollmentRequests: [],
   });
+
+  // Database State (API-backed cache; starts empty, no localStorage persistence)
+  const [db, setDb] = useState<LMSDatabase>(() => emptyDb());
+
+  // Authentication State (token-backed; session restores via GET /api/auth/me)
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [lastError, setLastError] = useState<string | null>(null);
 
   const refreshAll = async (user: User): Promise<void> => {
     setIsLoading(true);
@@ -1106,7 +824,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
   useEffect(() => {
-    const stored = (db as MockDatabase).notifications;
+    const stored = (db as LMSDatabase).notifications;
     if (stored && Array.isArray(stored)) {
       setNotifications(prev => {
         if (prev.length === stored.length && prev.every((n, i) => n.id === stored[i]?.id && n.read === stored[i]?.read)) {
@@ -1991,7 +1709,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const importCommonsTemplate = async (templateId: string, targetCourseId: string): Promise<{ success: boolean; message: string }> => {
-    // Template ships from the static catalog (copy of mockData.json array);
+    // Template ships from the static catalog;
     // the module + blueprint item persist via the modules endpoints.
     const tmpl = commonsTemplates.find(t => t.id === templateId);
     const targetCourse = db.courses.find(c => c.id === targetCourseId);
@@ -3883,12 +3601,6 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return getPendingRequestsForCourse(courseId);
   };
 
-  const resetData = () => {
-    localStorage.removeItem(STORAGE_KEY_DB);
-    setDb(initialMockData as unknown as MockDatabase);
-    setCurrentUser(null);
-  };
-
   return (
     <LMSContext.Provider
       value={{
@@ -4011,8 +3723,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         getMyRequest,
         getPendingRequests,
         logHistory,
-        clearHistory,
-        resetData
+        clearHistory
       }}
     >
       {children}

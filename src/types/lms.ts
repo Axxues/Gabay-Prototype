@@ -452,7 +452,7 @@ export interface CourseStudentGrade {
   updatedAt?: string;
 }
 
-export interface MockDatabase {
+export interface LMSDatabase {
   users: User[];
   courses: Course[];
   modules: Module[];

@@ -23,7 +23,7 @@ interface HelpPageProps {
 }
 
 export const HelpPage: React.FC<HelpPageProps> = ({ onNavigateTab }) => {
-  const { resetData, showAlert, showConfirm } = useLMS();
+  const { logout, showAlert, showConfirm } = useLMS();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFaqId, setActiveFaqId] = useState<number | null>(null);
   const [resetAlert, setResetAlert] = useState(false);
@@ -64,13 +64,13 @@ export const HelpPage: React.FC<HelpPageProps> = ({ onNavigateTab }) => {
 
   const handleReset = () => {
     showConfirm(
-      "Reset prototype data back to the initial seed state? This will clear any newly created courses, submissions, or custom entries.",
+      "Sign out and clear the local session cache?",
       () => {
-        resetData();
+        logout();
         setResetAlert(true);
         setTimeout(() => setResetAlert(false), 4000);
       },
-      "Reset Database"
+      "Sign Out"
     );
   };
 
@@ -101,7 +101,7 @@ export const HelpPage: React.FC<HelpPageProps> = ({ onNavigateTab }) => {
       {resetAlert && (
         <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center space-x-2 text-xs font-sans font-bold text-emerald-700 dark:text-emerald-400 animate-fade-in shadow-soft">
           <CheckCircle2 className="w-4 h-4 shrink-0" />
-          <span>GABAY prototype seed database has been successfully reset to initial factory state!</span>
+          <span>GABAY session has been signed out and the local cache cleared!</span>
         </div>
       )}
 
@@ -330,10 +330,10 @@ export const HelpPage: React.FC<HelpPageProps> = ({ onNavigateTab }) => {
       <div className="p-6 bg-card border border-border rounded-2xl shadow-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="space-y-1">
           <h3 className="font-bold text-sm text-foreground uppercase tracking-wider text-[11px]">
-            Prototype Database Management
+            Session Management
           </h3>
           <p className="text-xs text-muted-foreground">
-            Reset mock courses, assignments, quizzes, and submissions back to initial seed data.
+            Sign out and clear the locally cached session data.
           </p>
         </div>
         <button
@@ -341,7 +341,7 @@ export const HelpPage: React.FC<HelpPageProps> = ({ onNavigateTab }) => {
           className="inline-flex items-center space-x-2 px-4 py-2.5 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all shadow-primary-sm active:scale-[0.98] cursor-pointer shrink-0"
         >
           <RefreshCw className="w-3.5 h-3.5" />
-          <span>Reset Mock Database</span>
+          <span>Sign Out & Clear Cache</span>
         </button>
       </div>
     </div>

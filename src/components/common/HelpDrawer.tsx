@@ -4,7 +4,7 @@ import { HelpCircle, X, BookOpen, Mail, RefreshCw } from 'lucide-react';
 import { ModalPortal, useModalAnimate } from './ModalPortal';
 
 export const HelpDrawer: React.FC = () => {
-  const { isHelpDrawerOpen, setIsHelpDrawerOpen, resetData, showAlert, showConfirm } = useLMS();
+  const { isHelpDrawerOpen, setIsHelpDrawerOpen, logout, showAlert, showConfirm } = useLMS();
   const drawerRef = useRef<HTMLDivElement>(null);
   const { isClosing, startClose } = useModalAnimate(() => setIsHelpDrawerOpen(false), 220);
 
@@ -102,26 +102,26 @@ export const HelpDrawer: React.FC = () => {
                 </div>
               </div>
 
-              {/* Prototype Reset */}
+              {/* Sign Out */}
               <div className="pt-4 border-t border-border space-y-2.5">
                 <h4 className="font-bold text-foreground uppercase tracking-wider text-[11px]">
-                  Reset Data
+                  Sign Out
                 </h4>
                 <p className="text-[11px]">
-                  Reset mock database back to initial seed state.
+                  Sign out and clear the local session cache.
                 </p>
                 <button
                   onClick={() => {
-                    showConfirm("Reset prototype data back to initial seed state?", () => {
-                      resetData();
+                    showConfirm("Sign out and clear the local session cache?", () => {
+                      logout();
                       startClose();
-                      showAlert({ title: "Database Reset", message: "Database reset successfully!", type: "success" });
-                    }, "Reset Database");
+                      showAlert({ title: "Signed Out", message: "Session cleared successfully!", type: "success" });
+                    }, "Sign Out");
                   }}
                   className="w-full inline-flex items-center justify-center space-x-2 px-4 py-2.5 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all shadow-primary-sm active:scale-[0.98] cursor-pointer"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
-                  <span>Reset Database</span>
+                  <span>Sign Out</span>
                 </button>
               </div>
             </div>

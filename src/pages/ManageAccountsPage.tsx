@@ -192,7 +192,7 @@ interface ManageAccountsPageProps {
 }
 
 export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = () => {
-  const { db, activeUser, activeRole, createUser, updateUser, deleteUser, showAlert, setIsRoleModalOpen, resetData } = useLMS();
+  const { db, activeUser, activeRole, createUser, updateUser, deleteUser, showAlert, setIsRoleModalOpen, logout } = useLMS();
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -698,15 +698,15 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = () => {
                     <Users className="w-8 h-8 mx-auto mb-2 opacity-40" />
                     <p className="font-semibold text-foreground">No accounts found</p>
                     <p className="text-[11px] mt-1">Try adjusting your search query or role filter.</p>
-                    {(db?.users || []).length === 0 && (
-                      <button
-                        type="button"
-                        onClick={resetData}
-                        className="mt-3 px-3.5 py-1.5 bg-primary text-primary-foreground text-xs font-bold rounded-xl shadow-primary-sm hover:bg-primary/90 transition-all cursor-pointer"
-                      >
-                        Restore Institutional Accounts
-                      </button>
-                    )}
+                      {(db?.users || []).length === 0 && (
+                        <button
+                          type="button"
+                          onClick={logout}
+                          className="mt-3 px-3.5 py-1.5 bg-primary text-primary-foreground text-xs font-bold rounded-xl shadow-primary-sm hover:bg-primary/90 transition-all cursor-pointer"
+                        >
+                          Sign Out
+                        </button>
+                      )}
                   </td>
                 </tr>
               ) : (

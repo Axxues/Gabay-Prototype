@@ -1,8 +1,7 @@
 import type { CommonsTemplate } from '../types/lms';
 
-// Static Commons catalog. Verbatim copy of the `commonsTemplates` array from
-// `src/data/mockData.json` (Task 3 duplicates it intentionally; Task 6 deletes
-// the JSON and this file becomes the sole source).
+// Static Commons catalog. This file is the sole source of the commons
+// templates (previously duplicated from the legacy seed JSON).
 export const commonsTemplates: CommonsTemplate[] = [
   {
     id: 'com-1',
