@@ -82,7 +82,7 @@ interface LMSContextType {
   closeAlert: () => void;
 
   // Real CRUD & Interactive Actions
-  createCourse: (course: Partial<Course>) => Course;
+  createCourse: (course: Partial<Course>) => Promise<Course>;
   createAssignment: (asg: Partial<Assignment>) => Assignment;
   deleteAssignment: (asgId: string) => void;
   createModule: (courseId: string, title: string) => Module;
@@ -96,13 +96,13 @@ interface LMSContextType {
   createActivity: (data: Partial<Activity>) => Activity;
   recordActivitySubmission: (activityId: string, studentId: string, answers: Record<string, string>) => Submission;
   deleteActivity: (activityId: string) => void;
-  enrollPerson: (person: Partial<User>, courseId?: string) => void;
-  enrollStudentsInCourse: (studentIds: string[], courseId: string) => void;
-  createUser: (userData: Partial<User>) => User;
-  updateUser: (userId: string, updates: Partial<User>) => void;
-  deleteUser: (userId: string) => { success: boolean; message?: string };
-  joinCourseByCode: (joinCode: string) => { success: boolean; message: string; course?: Course };
-  regenerateCourseJoinCode: (courseId: string) => string;
+  enrollPerson: (person: Partial<User>, courseId?: string) => Promise<boolean>;
+  enrollStudentsInCourse: (studentIds: string[], courseId: string) => Promise<boolean>;
+  createUser: (userData: Partial<User>) => Promise<User>;
+  updateUser: (userId: string, updates: Partial<User>) => Promise<boolean>;
+  deleteUser: (userId: string) => Promise<{ success: boolean; message?: string }>;
+  joinCourseByCode: (joinCode: string) => Promise<{ success: boolean; message: string; course?: Course }>;
+  regenerateCourseJoinCode: (courseId: string) => Promise<string>;
   updateSyllabus: (courseId: string, updates: Partial<Course>) => void;
   updateCourseSyllabus: (courseId: string, syllabus: OfficialSyllabusData) => void;
   removeCourseSyllabus: (courseId: string) => void;
@@ -182,25 +182,25 @@ interface LMSContextType {
   ) => void;
 
   // Sections CRUD
-  createSection: (courseId: string, data: Partial<CourseSection>) => CourseSection;
-  updateSection: (sectionId: string, updates: Partial<CourseSection>) => void;
-  deleteSection: (sectionId: string) => void;
+  createSection: (courseId: string, data: Partial<CourseSection>) => Promise<CourseSection>;
+  updateSection: (sectionId: string, updates: Partial<CourseSection>) => Promise<boolean>;
+  deleteSection: (sectionId: string) => Promise<boolean>;
   getCourseSections: (courseId: string) => CourseSection[];
   getStudentSection: (courseId: string) => CourseSection | null;
 
   // Enrollment Requests
-  createEnrollmentRequest: (courseId: string, type: 'self_join' | 'faculty_enroll') => EnrollmentRequest;
-  approveEnrollmentRequests: (requestIds: string[]) => void;
-  rejectEnrollmentRequests: (requestIds: string[]) => void;
-  studentApproveInvitation: (requestId: string) => void;
-  studentDeclineInvitation: (requestId: string) => void;
-  selectSection: (courseId: string, sectionId: string) => void;
-  requestSectionSwitch: (courseId: string, targetSectionId: string) => void;
-  getPendingRequestsForCourse: (courseId: string) => EnrollmentRequest[];
+  createEnrollmentRequest: (courseId: string, type: 'self_join' | 'faculty_enroll') => Promise<EnrollmentRequest>;
+  approveEnrollmentRequests: (requestIds: string[]) => Promise<boolean>;
+  rejectEnrollmentRequests: (requestIds: string[]) => Promise<boolean>;
+  studentApproveInvitation: (requestId: string) => Promise<boolean>;
+  studentDeclineInvitation: (requestId: string) => Promise<boolean>;
+  selectSection: (courseId: string, sectionId: string) => Promise<boolean>;
+  requestSectionSwitch: (courseId: string, targetSectionId: string) => Promise<boolean>;
+  getPendingRequestsForCourse: (courseId: string) => Promise<EnrollmentRequest[]>;
   getPendingRequestsForStudent: () => EnrollmentRequest[];
-  requestJoinCourse: (courseId: string) => void;
+  requestJoinCourse: (courseId: string) => Promise<boolean>;
   getMyRequest: (courseId: string) => EnrollmentRequest | null;
-  getPendingRequests: (courseId: string) => EnrollmentRequest[];
+  getPendingRequests: (courseId: string) => Promise<EnrollmentRequest[]>;
 
   logHistory: (path: string, title: string) => void;
   clearHistory: () => void;
@@ -353,6 +353,15 @@ export const generateCourseJoinCode = (existingCourses: Course[] = [], prefix?: 
     }
   }
   return `${cleanPrefix}-${Date.now().toString(36).toUpperCase().slice(-4)}`;
+};
+
+/** Upsert one enrollment request into a database snapshot (Task 2 cache scope). */
+export const mergeEnrollmentRequest = (prev: MockDatabase, request: EnrollmentRequest): MockDatabase => {
+  const existing = prev.enrollmentRequests || [];
+  if (existing.some(r => r.id === request.id)) {
+    return { ...prev, enrollmentRequests: existing.map(r => (r.id === request.id ? request : r)) };
+  }
+  return { ...prev, enrollmentRequests: [...existing, request] };
 };
 
 export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -726,6 +735,33 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       fresh.notifications = notificationsRes.notifications;
       fresh.messages = messagesRes.messages;
       fresh.calendarEvents = calendarRes.events;
+      // Task 2: fill the course/request cache scope — sections plus pending
+      // requests for each course. Per-course failures are tolerated (e.g.
+      // students get 403 on the faculty-only requests endpoint); the sync
+      // getters read whatever the cache holds.
+      const scopeResults = await Promise.all(
+        coursesRes.courses.map(course =>
+          (async () => {
+            const [sectionsSettled, requestsSettled] = await Promise.allSettled([
+              apiFetch<{ sections: CourseSection[] }>(`/api/courses/${encodeURIComponent(course.id)}/sections`),
+              apiFetch<{ requests: EnrollmentRequest[] }>(`/api/courses/${encodeURIComponent(course.id)}/requests?status=pending`),
+            ]);
+            return { sectionsSettled, requestsSettled };
+          })()
+        )
+      );
+      const sectionMap = new Map<string, CourseSection>();
+      const requestMap = new Map<string, EnrollmentRequest>();
+      for (const r of scopeResults) {
+        if (r.sectionsSettled.status === 'fulfilled') {
+          for (const s of r.sectionsSettled.value.sections) sectionMap.set(s.id, s);
+        }
+        if (r.requestsSettled.status === 'fulfilled') {
+          for (const req of r.requestsSettled.value.requests) requestMap.set(req.id, req);
+        }
+      }
+      fresh.courseSections = [...sectionMap.values()];
+      fresh.enrollmentRequests = [...requestMap.values()];
       setDb(fresh);
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to load data.';
@@ -889,35 +925,42 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // REAL CRUD ACTIONS
   // ==========================================
 
-  const createCourse = (courseData: Partial<Course>): Course => {
+  const createCourse = async (courseData: Partial<Course>): Promise<Course> => {
     const uniqueJoinCode =
       courseData.joinCode?.trim().toUpperCase() ||
       generateCourseJoinCode(db.courses, courseData.code);
 
-    const newCourse: Course = {
-      id: `crs-${Date.now().toString(36)}`,
-      code: courseData.code || 'CMSC 199',
-      title: courseData.title || 'Advanced Computer Science Topics',
-      section: courseData.section || 'BSCS 4-1',
-      term: courseData.term || '1st Sem AY 2026-2027',
-      instructorId: activeUser.id,
-      instructorName: activeUser.name,
-      published: courseData.published ?? true,
-      color: courseData.color !== undefined ? courseData.color : '',
-      enrolledCount: courseData.enrolledCount || 1,
-      credits: courseData.credits || 3,
-      chedComplianceCode: courseData.chedComplianceCode || 'CMO-25-2015',
-      image: courseData.image || '',
-      joinCode: uniqueJoinCode
-    };
+    try {
+      const { course } = await apiFetch<{ course: Course }>('/api/courses', {
+        method: 'POST',
+        body: {
+          code: courseData.code || 'CMSC 199',
+          title: courseData.title || 'Advanced Computer Science Topics',
+          section: courseData.section || 'BSCS 4-1',
+          term: courseData.term || '1st Sem AY 2026-2027',
+          instructorName: activeUser.name,
+          published: courseData.published ?? true,
+          color: courseData.color !== undefined ? courseData.color : '',
+          image: courseData.image || '',
+          credits: courseData.credits || 3,
+          chedComplianceCode: courseData.chedComplianceCode || 'CMO-25-2015',
+          joinCode: uniqueJoinCode
+        }
+      });
 
-    setDb(prev => ({
-      ...prev,
-      courses: [newCourse, ...prev.courses]
-    }));
+      setDb(prev => ({
+        ...prev,
+        courses: [course, ...prev.courses]
+      }));
 
-    setActiveCourseId(newCourse.id);
-    return newCourse;
+      setActiveCourseId(course.id);
+      return course;
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to create course.';
+      setLastError(message);
+      showAlert(message, 'Create Course Failed');
+      throw err;
+    }
   };
 
   const createAssignment = (asgData: Partial<Assignment>): Assignment => {
@@ -1347,7 +1390,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   };
 
-  const enrollPerson = (person: Partial<User>, courseId?: string) => {
+  const enrollPerson = async (person: Partial<User>, courseId?: string): Promise<boolean> => {
     const targetCourseId = courseId || activeCourseId;
     const newPerson: User = {
       id: `usr-${person.role || 'stud'}-${Date.now().toString(36)}`,
@@ -1375,45 +1418,59 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         courses: updatedCourses
       };
     });
+
+    // Mirror the invite server-side when the person references an existing
+    // account id. (No POST /api/users endpoint exists, so provisioning itself
+    // stays local.)
+    if (targetCourseId && person.id) {
+      try {
+        const { request } = await apiFetch<{ request: EnrollmentRequest }>(
+          `/api/courses/${encodeURIComponent(targetCourseId)}/invites`,
+          { method: 'POST', body: { studentId: person.id } }
+        );
+        setDb(prev => mergeEnrollmentRequest(prev, request));
+      } catch (err) {
+        const message = err instanceof ApiError ? err.message : 'Failed to send course invite.';
+        setLastError(message);
+        showAlert(message, 'Invite Failed');
+        return false;
+      }
+    }
+    return true;
   };
 
-  const enrollStudentsInCourse = (studentIds: string[], courseId: string) => {
+  const enrollStudentsInCourse = async (studentIds: string[], courseId: string): Promise<boolean> => {
     const targetCourseId = courseId || activeCourseId;
-    if (!targetCourseId || studentIds.length === 0) return;
+    if (!targetCourseId || studentIds.length === 0) return false;
 
-    for (const studentId of studentIds) {
+    try {
+      const results = await Promise.all(
+        studentIds.map(studentId =>
+          apiFetch<{ request: EnrollmentRequest }>(
+            `/api/courses/${encodeURIComponent(targetCourseId)}/invites`,
+            { method: 'POST', body: { studentId } }
+          )
+        )
+      );
       setDb(prev => {
-        const student = prev.users.find(u => u.id === studentId);
-        if (!student) return prev;
-
-        const alreadyEnrolled = (student.enrolledCourseIds || []).includes(targetCourseId);
-        const alreadyPending = (prev.enrollmentRequests || []).find(
-          r => r.studentId === studentId && r.courseId === targetCourseId && r.status === 'pending'
-        );
-
-        if (!alreadyEnrolled && !alreadyPending) {
-          const newRequest: EnrollmentRequest = {
-            id: `req-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
-            courseId: targetCourseId,
-            studentId: student.id,
-            studentName: student.name,
-            type: 'faculty_enroll',
-            status: 'pending',
-            requestedAt: new Date().toISOString()
-          };
-
-          return {
-            ...prev,
-            enrollmentRequests: [...(prev.enrollmentRequests || []), newRequest]
-          };
+        let merged = prev;
+        for (const { request } of results) {
+          merged = mergeEnrollmentRequest(merged, request);
         }
-
-        return prev;
+        return merged;
       });
+      return true;
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to enroll students.';
+      setLastError(message);
+      showAlert(message, 'Enroll Failed');
+      return false;
     }
   };
 
-  const createUser = (userData: Partial<User>): User => {
+  // Phase 2 provides no POST /api/users endpoint, so admin account
+  // provisioning stays local until the server adds user creation.
+  const createUser = async (userData: Partial<User>): Promise<User> => {
     const role = userData.role || 'student';
     const newUser: User = {
       id: userData.id || `usr-${role.slice(0, 4)}-${Date.now().toString(36)}`,
@@ -1436,14 +1493,46 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return newUser;
   };
 
-  const updateUser = (id: string, updates: Partial<User>) => {
-    setDb(prev => ({
-      ...prev,
-      users: prev.users.map(u => (u.id === id ? { ...u, ...updates } : u))
-    }));
+  const updateUser = async (id: string, updates: Partial<User>): Promise<boolean> => {
+    // Server PATCH accepts only name/avatar/department/title — other fields
+    // (email, role, password) are applied to the local cache only.
+    const patchBody: Record<string, string> = {};
+    if (updates.name !== undefined) patchBody.name = updates.name;
+    if (updates.avatar !== undefined) patchBody.avatar = updates.avatar;
+    if (updates.department !== undefined) patchBody.department = updates.department;
+    if (updates.title !== undefined) patchBody.title = updates.title;
+    const localUpdates = Object.fromEntries(
+      Object.entries(updates).filter(([, v]) => v !== undefined)
+    ) as Partial<User>;
+
+    try {
+      if (Object.keys(patchBody).length > 0) {
+        const { user } = await apiFetch<{ user: User }>(
+          `/api/users/${encodeURIComponent(id)}`,
+          { method: 'PATCH', body: patchBody }
+        );
+        setDb(prev => ({
+          ...prev,
+          users: prev.users.map(u => (u.id === id ? { ...u, ...user, ...localUpdates } : u))
+        }));
+      } else {
+        setDb(prev => ({
+          ...prev,
+          users: prev.users.map(u => (u.id === id ? { ...u, ...localUpdates } : u))
+        }));
+      }
+      return true;
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to update user.';
+      setLastError(message);
+      showAlert(message, 'Update User Failed');
+      return false;
+    }
   };
 
-  const deleteUser = (userId: string): { success: boolean; message?: string } => {
+  // Phase 2 provides no DELETE /api/users/:id endpoint, so admin account
+  // removal stays local until the server adds user deletion.
+  const deleteUser = async (userId: string): Promise<{ success: boolean; message?: string }> => {
     if (activeUser.id === userId) {
       return {
         success: false,
@@ -1468,16 +1557,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   };
 
-  const joinCourseByCode = (code: string): { success: boolean; message: string; course?: Course } => {
+  const joinCourseByCode = async (code: string): Promise<{ success: boolean; message: string; course?: Course }> => {
     const cleanCode = code.trim().toUpperCase();
     const targetCourse = db.courses.find(c => (c.joinCode || '').toUpperCase() === cleanCode);
-    
-    if (!targetCourse) {
-      return { success: false, message: `No course found matching code "${cleanCode}". Please verify with your instructor.` };
-    }
 
     const currentEnrolled = activeUser.enrolledCourseIds || [];
-    if (currentEnrolled.includes(targetCourse.id)) {
+    if (targetCourse && currentEnrolled.includes(targetCourse.id)) {
       return {
         success: false,
         message: `You are already enrolled in ${targetCourse.code} (${targetCourse.title}).`,
@@ -1485,10 +1570,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }
 
-    const existingPending = (db.enrollmentRequests || []).find(
-      r => r.studentId === activeUser.id && r.courseId === targetCourse.id && r.status === 'pending'
-    );
-    if (existingPending) {
+    const existingPending = targetCourse
+      ? (db.enrollmentRequests || []).find(
+        r => r.studentId === activeUser.id && r.courseId === targetCourse.id && r.status === 'pending'
+      )
+      : undefined;
+    if (targetCourse && existingPending) {
       return {
         success: false,
         message: `You already have a pending join request for ${targetCourse.code}.`,
@@ -1496,23 +1583,53 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }
 
-    createEnrollmentRequest(targetCourse.id, 'self_join');
+    // Server is the source of truth for the code (the course may not be in
+    // the local cache); the success shape stays { success, message, course? }.
+    try {
+      const { request } = await apiFetch<{ request: EnrollmentRequest }>('/api/courses/join', {
+        method: 'POST',
+        body: { code: cleanCode }
+      });
+      setDb(prev => mergeEnrollmentRequest(prev, request));
 
-    return {
-      success: true,
-      message: `Join request sent for ${targetCourse.code} - ${targetCourse.title}. Waiting for instructor approval.`,
-      course: targetCourse
-    };
+      return {
+        success: true,
+        message: targetCourse
+          ? `Join request sent for ${targetCourse.code} - ${targetCourse.title}. Waiting for instructor approval.`
+          : `Join request sent for code "${cleanCode}". Waiting for instructor approval.`,
+        course: targetCourse
+      };
+    } catch (err) {
+      if (err instanceof ApiError && (err.code === 'course_not_found' || err.status === 404)) {
+        return { success: false, message: `No course found matching code "${cleanCode}". Please verify with your instructor.` };
+      }
+      const message = err instanceof ApiError ? err.message : 'Failed to send join request.';
+      setLastError(message);
+      return { success: false, message };
+    }
   };
 
-  const regenerateCourseJoinCode = (courseId: string): string => {
+  const regenerateCourseJoinCode = async (courseId: string): Promise<string> => {
     const targetCourse = db.courses.find(c => c.id === courseId);
     const newCode = generateCourseJoinCode(db.courses, targetCourse?.code);
-    setDb(prev => ({
-      ...prev,
-      courses: prev.courses.map(c => (c.id === courseId ? { ...c, joinCode: newCode } : c))
-    }));
-    return newCode;
+    // Client generates the code string; the server only persists it via PATCH.
+    try {
+      const { course } = await apiFetch<{ course: Course }>(
+        `/api/courses/${encodeURIComponent(courseId)}`,
+        { method: 'PATCH', body: { joinCode: newCode } }
+      );
+      const resolved = course.joinCode || newCode;
+      setDb(prev => ({
+        ...prev,
+        courses: prev.courses.map(c => (c.id === courseId ? { ...c, joinCode: resolved } : c))
+      }));
+      return resolved;
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to regenerate join code.';
+      setLastError(message);
+      showAlert(message, 'Regenerate Failed');
+      return targetCourse?.joinCode || newCode;
+    }
   };
 
   const updateSyllabus = (courseId: string, updates: Partial<Course>) => {
@@ -2630,40 +2747,72 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // SECTIONS CRUD
   // ==========================================
 
-  const createSection = (courseId: string, data: Partial<CourseSection>): CourseSection => {
-    const newSection: CourseSection = {
-      id: `sec-${Date.now().toString(36)}`,
-      courseId,
-      name: data.name || 'New Section',
-      capacity: data.capacity ?? undefined,
-      enrolledCount: 0,
-      schedule: data.schedule || '',
-      location: data.location || ''
-    };
+  const createSection = async (courseId: string, data: Partial<CourseSection>): Promise<CourseSection> => {
+    try {
+      const { section } = await apiFetch<{ section: CourseSection }>(
+        `/api/courses/${encodeURIComponent(courseId)}/sections`,
+        {
+          method: 'POST',
+          body: {
+            name: data.name || 'New Section',
+            ...(data.capacity !== undefined ? { capacity: data.capacity } : {})
+          }
+        }
+      );
 
-    setDb(prev => ({
-      ...prev,
-      courseSections: [...(prev.courseSections || []), newSection],
-      courses: prev.courses.map(c =>
-        c.id === courseId
-          ? { ...c, sectionIds: [...(c.sectionIds || []), newSection.id] }
-          : c
-      )
-    }));
+      // Server stores name/capacity only — schedule/location ride along in cache.
+      const merged: CourseSection = {
+        ...section,
+        schedule: data.schedule || '',
+        location: data.location || ''
+      };
 
-    return newSection;
+      setDb(prev => ({
+        ...prev,
+        courseSections: [...(prev.courseSections || []), merged],
+        courses: prev.courses.map(c =>
+          c.id === courseId
+            ? { ...c, sectionIds: [...(c.sectionIds || []), merged.id] }
+            : c
+        )
+      }));
+
+      return merged;
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to create section.';
+      setLastError(message);
+      showAlert(message, 'Create Section Failed');
+      throw err;
+    }
   };
 
-  const updateSection = (sectionId: string, updates: Partial<CourseSection>) => {
-    setDb(prev => ({
-      ...prev,
-      courseSections: (prev.courseSections || []).map((s: CourseSection) =>
-        s.id === sectionId ? { ...s, ...updates } : s
-      )
-    }));
+  const updateSection = async (sectionId: string, updates: Partial<CourseSection>): Promise<boolean> => {
+    const patchBody: Record<string, string | number> = {};
+    if (updates.name !== undefined) patchBody.name = updates.name;
+    if (updates.capacity !== undefined) patchBody.capacity = updates.capacity;
+    if (updates.schedule !== undefined) patchBody.schedule = updates.schedule;
+    if (updates.location !== undefined) patchBody.location = updates.location;
+    try {
+      const { section } = await apiFetch<{ section: CourseSection }>(
+        `/api/sections/${encodeURIComponent(sectionId)}`,
+        { method: 'PATCH', body: patchBody }
+      );
+      setDb(prev => ({
+        ...prev,
+        courseSections: (prev.courseSections || []).map((s: CourseSection) =>
+          s.id === sectionId ? { ...s, ...section } : s
+        )
+      }));
+      return true;
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to update section.';
+      setLastError(message);
+      showAlert(message, 'Update Section Failed');
+      return false;
+    }
   };
 
-  const deleteSection = (sectionId: string) => {
+  const deleteSection = async (sectionId: string): Promise<boolean> => {
     const section = (db.courseSections || []).find((s: CourseSection) => s.id === sectionId);
     const isOccupied = db.users.some(u =>
       Object.values(u.courseSections || {}).includes(sectionId)
@@ -2678,16 +2827,27 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         'This section cannot be deleted because students are assigned to it or there are pending enrollment requests for this course.',
         'Delete Blocked'
       );
-      return;
+      return false;
     }
-    setDb(prev => ({
-      ...prev,
-      courseSections: (prev.courseSections || []).filter((s: CourseSection) => s.id !== sectionId),
-      courses: prev.courses.map(c => ({
-        ...c,
-        sectionIds: (c.sectionIds || []).filter(id => id !== sectionId)
-      }))
-    }));
+    try {
+      await apiFetch<{ ok: true }>(`/api/sections/${encodeURIComponent(sectionId)}`, {
+        method: 'DELETE'
+      });
+      setDb(prev => ({
+        ...prev,
+        courseSections: (prev.courseSections || []).filter((s: CourseSection) => s.id !== sectionId),
+        courses: prev.courses.map(c => ({
+          ...c,
+          sectionIds: (c.sectionIds || []).filter(id => id !== sectionId)
+        }))
+      }));
+      return true;
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to delete section.';
+      setLastError(message);
+      showAlert(message, 'Delete Section Failed');
+      return false;
+    }
   };
 
   const getCourseSections = (courseId: string): CourseSection[] => {
@@ -2704,32 +2864,59 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // ENROLLMENT REQUEST WORKFLOW
   // ==========================================
 
-  const createEnrollmentRequest = (courseId: string, type: 'self_join' | 'faculty_enroll'): EnrollmentRequest => {
-    const newRequest: EnrollmentRequest = {
-      id: `req-${Date.now().toString(36)}`,
-      courseId,
-      studentId: activeUser.id,
-      studentName: activeUser.name,
-      type,
-      status: 'pending',
-      requestedAt: new Date().toISOString()
-    };
-
-    setDb(prev => ({
-      ...prev,
-      enrollmentRequests: [...(prev.enrollmentRequests || []), newRequest]
-    }));
-
-    return newRequest;
+  const createEnrollmentRequest = async (courseId: string, type: 'self_join' | 'faculty_enroll'): Promise<EnrollmentRequest> => {
+    try {
+      if (type === 'self_join') {
+        // Join endpoint takes the course code — resolve it from cache.
+        const course = db.courses.find(c => c.id === courseId);
+        if (!course?.joinCode) {
+          throw new ApiError(400, 'bad_request', 'Join code for this course is not available.');
+        }
+        const { request } = await apiFetch<{ request: EnrollmentRequest }>('/api/courses/join', {
+          method: 'POST',
+          body: { code: course.joinCode }
+        });
+        setDb(prev => mergeEnrollmentRequest(prev, request));
+        return request;
+      }
+      const { request } = await apiFetch<{ request: EnrollmentRequest }>(
+        `/api/courses/${encodeURIComponent(courseId)}/invites`,
+        { method: 'POST', body: { studentId: activeUser.id } }
+      );
+      setDb(prev => mergeEnrollmentRequest(prev, request));
+      return request;
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to create enrollment request.';
+      setLastError(message);
+      showAlert(message, 'Request Failed');
+      throw err;
+    }
   };
 
-  const approveEnrollmentRequests = (requestIds: string[]) => {
-    if (activeRole !== 'faculty' && activeRole !== 'admin') return;
+  const approveEnrollmentRequests = async (requestIds: string[]): Promise<boolean> => {
+    if (activeRole !== 'faculty' && activeRole !== 'admin') return false;
+    const succeeded: string[] = [];
+    try {
+      // Per-id approve endpoints, in sequence per the endpoint map.
+      for (const requestId of requestIds) {
+        await apiFetch<{ request: EnrollmentRequest }>(
+          `/api/requests/${encodeURIComponent(requestId)}/approve`,
+          { method: 'POST' }
+        );
+        succeeded.push(requestId);
+      }
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to approve requests.';
+      setLastError(message);
+      showAlert(message, 'Approve Failed');
+      if (succeeded.length === 0) return false;
+    }
+    const effectiveIds = succeeded.length > 0 ? succeeded : requestIds;
     setDb(prev => {
       const now = new Date().toISOString();
       const existingRequests = prev.enrollmentRequests || [];
       const requestsToApprove = existingRequests.filter(
-        (r: EnrollmentRequest) => requestIds.includes(r.id) && r.status === 'pending'
+        (r: EnrollmentRequest) => effectiveIds.includes(r.id) && r.status === 'pending'
       );
 
       const enrollmentApprovals = requestsToApprove.filter(
@@ -2808,30 +2995,51 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         courses: updatedCourses,
         courseSections: updatedSections,
         enrollmentRequests: existingRequests.map((r: EnrollmentRequest) =>
-          requestIds.includes(r.id) && r.status === 'pending' && !skippedSet.has(r.id)
+          effectiveIds.includes(r.id) && r.status === 'pending' && !skippedSet.has(r.id)
             ? { ...r, status: 'approved' as const, resolvedAt: now, resolvedBy: activeUser.id }
             : r
         )
       };
     });
+    return true;
   };
 
-  const rejectEnrollmentRequests = (requestIds: string[]) => {
-    if (activeRole !== 'faculty' && activeRole !== 'admin') return;
+  const rejectEnrollmentRequests = async (requestIds: string[]): Promise<boolean> => {
+    if (activeRole !== 'faculty' && activeRole !== 'admin') return false;
+    const succeeded: string[] = [];
+    try {
+      for (const requestId of requestIds) {
+        await apiFetch<{ request: EnrollmentRequest }>(
+          `/api/requests/${encodeURIComponent(requestId)}/reject`,
+          { method: 'POST' }
+        );
+        succeeded.push(requestId);
+      }
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to reject requests.';
+      setLastError(message);
+      showAlert(message, 'Reject Failed');
+      if (succeeded.length === 0) return false;
+    }
+    const effective = new Set(succeeded.length > 0 ? succeeded : requestIds);
     setDb(prev => ({
       ...prev,
       enrollmentRequests: (prev.enrollmentRequests || []).map((r: EnrollmentRequest) =>
-        requestIds.includes(r.id) && r.status === 'pending'
+        effective.has(r.id) && r.status === 'pending'
           ? { ...r, status: 'rejected' as const, resolvedAt: new Date().toISOString(), resolvedBy: activeUser.id }
           : r
       )
     }));
+    return true;
   };
 
-  const studentApproveInvitation = (requestId: string) => {
-    setDb(prev => {
-      const request = (prev.enrollmentRequests || []).find((r: EnrollmentRequest) => r.id === requestId);
-      if (!request || request.studentId !== activeUser.id) return prev;
+  const studentApproveInvitation = async (requestId: string): Promise<boolean> => {
+    try {
+      const { request } = await apiFetch<{ request: EnrollmentRequest }>(
+        `/api/requests/${encodeURIComponent(requestId)}/accept`,
+        { method: 'POST' }
+      );
+      if (request.studentId !== activeUser.id) return false;
 
       const updatedUser = {
         ...activeUser,
@@ -2839,33 +3047,47 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
       setCurrentUser(updatedUser);
 
-      return {
-        ...prev,
+      setDb(prev => ({
+        ...mergeEnrollmentRequest(prev, request),
         users: prev.users.map(u => u.id === activeUser.id ? updatedUser : u),
         courses: prev.courses.map(c =>
           c.id === request.courseId
             ? { ...c, enrolledCount: (c.enrolledCount || 0) + 1 }
             : c
-        ),
-        enrollmentRequests: (prev.enrollmentRequests || []).map((r: EnrollmentRequest) =>
-          r.id === requestId ? { ...r, status: 'approved' as const, resolvedAt: new Date().toISOString() } : r
         )
-      };
-    });
+      }));
+      return true;
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to accept invitation.';
+      setLastError(message);
+      showAlert(message, 'Accept Failed');
+      return false;
+    }
   };
 
-  const studentDeclineInvitation = (requestId: string) => {
-    setDb(prev => ({
-      ...prev,
-      enrollmentRequests: (prev.enrollmentRequests || []).map((r: EnrollmentRequest) =>
-        r.id === requestId && r.studentId === activeUser.id && r.status === 'pending'
-          ? { ...r, status: 'rejected' as const, resolvedAt: new Date().toISOString(), resolvedBy: activeUser.id }
-          : r
-      )
-    }));
+  const studentDeclineInvitation = async (requestId: string): Promise<boolean> => {
+    try {
+      await apiFetch<{ ok: true }>(
+        `/api/requests/${encodeURIComponent(requestId)}/decline`,
+        { method: 'POST' }
+      );
+      // Server deletes declined invites — mirror by dropping the row from cache.
+      setDb(prev => ({
+        ...prev,
+        enrollmentRequests: (prev.enrollmentRequests || []).filter(
+          (r: EnrollmentRequest) => !(r.id === requestId && r.studentId === activeUser.id)
+        )
+      }));
+      return true;
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to decline invitation.';
+      setLastError(message);
+      showAlert(message, 'Decline Failed');
+      return false;
+    }
   };
 
-  const selectSection = (courseId: string, sectionId: string) => {
+  const selectSection = async (courseId: string, sectionId: string): Promise<boolean> => {
     const bypassGate = activeRole === 'faculty' || activeRole === 'admin';
     if (!bypassGate) {
       const hasApproval = (db.enrollmentRequests || []).some(
@@ -2877,55 +3099,72 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           'You need an approved enrollment request before selecting a section.',
           'Section Selection Blocked'
         );
-        return;
+        return false;
       }
     }
 
     const targetSection = (db.courseSections || []).find((s: CourseSection) => s.id === sectionId);
-    if (!targetSection) return;
+    if (!targetSection) return false;
     if (!canPickSection(targetSection)) {
       showAlert('This section is full. Please choose another section.', 'Section Full');
-      return;
+      return false;
     }
 
-    const oldSectionId = activeUser.courseSections?.[courseId];
-
-    setDb(prev => {
-      const section = (prev.courseSections || []).find((s: CourseSection) => s.id === sectionId);
-      if (!section || !canPickSection(section)) return prev;
-
-      let updatedSections = prev.courseSections || [];
-
-      if (oldSectionId) {
-        updatedSections = updatedSections.map((s: CourseSection) =>
-          s.id === oldSectionId ? { ...s, enrolledCount: Math.max(0, s.enrolledCount - 1) } : s
-        );
-      }
-
-      updatedSections = updatedSections.map((s: CourseSection) =>
-        s.id === sectionId ? { ...s, enrolledCount: s.enrolledCount + 1 } : s
+    try {
+      const { request } = await apiFetch<{ request: EnrollmentRequest }>(
+        `/api/courses/${encodeURIComponent(courseId)}/choose-section`,
+        { method: 'POST', body: { sectionId } }
       );
 
-      return {
-        ...prev,
-        courseSections: updatedSections
-      };
-    });
+      // Section counts are authoritative server-side — refresh them, keeping
+      // the client-only schedule/location overlay.
+      try {
+        const { sections } = await apiFetch<{ sections: CourseSection[] }>(
+          `/api/courses/${encodeURIComponent(courseId)}/sections`
+        );
+        setDb(prev => {
+          const prevById = new Map((prev.courseSections || []).map(s => [s.id, s]));
+          const refreshed = sections.map(s => ({
+            ...s,
+            schedule: s.schedule || prevById.get(s.id)?.schedule || '',
+            location: s.location || prevById.get(s.id)?.location || ''
+          }));
+          return {
+            ...prev,
+            courseSections: [
+              ...(prev.courseSections || []).filter(s => s.courseId !== courseId),
+              ...refreshed
+            ]
+          };
+        });
+      } catch {
+        // Keep cached counts when the refresh fails.
+      }
 
-    const updatedSections = { ...(activeUser.courseSections || {}), [courseId]: sectionId };
-    const updatedUser = { ...activeUser, courseSections: updatedSections };
-    setCurrentUser(updatedUser);
+      // User.courseSections stays a client-side cache, maintained from the
+      // choose-section response (current logic, API-fed).
+      const chosenId = request.targetSectionId || sectionId;
+      const updatedSections = { ...(activeUser.courseSections || {}), [courseId]: chosenId };
+      const updatedUser = { ...activeUser, courseSections: updatedSections };
+      setCurrentUser(updatedUser);
 
-    setDb(prev => ({
-      ...prev,
-      users: prev.users.map(u => u.id === activeUser.id ? updatedUser : u)
-    }));
+      setDb(prev => ({
+        ...mergeEnrollmentRequest(prev, request),
+        users: prev.users.map(u => u.id === activeUser.id ? updatedUser : u)
+      }));
+      return true;
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to select section.';
+      setLastError(message);
+      showAlert(message, 'Section Selection Failed');
+      return false;
+    }
   };
 
-  const requestSectionSwitch = (courseId: string, targetSectionId: string): void => {
-    if (activeRole === 'faculty' || activeRole === 'admin') return;
+  const requestSectionSwitch = async (courseId: string, targetSectionId: string): Promise<boolean> => {
+    if (activeRole === 'faculty' || activeRole === 'admin') return false;
     const currentSectionId = activeUser.courseSections?.[courseId];
-    if (currentSectionId === targetSectionId) return;
+    if (currentSectionId === targetSectionId) return false;
     const duplicate = (db.enrollmentRequests || []).some(
       (r: EnrollmentRequest) =>
         r.studentId === activeUser.id &&
@@ -2934,26 +3173,47 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         r.targetSectionId === targetSectionId &&
         r.status === 'pending'
     );
-    if (duplicate) return;
-    const newRequest: EnrollmentRequest = {
-      id: `req-${Date.now().toString(36)}`,
-      courseId,
-      studentId: activeUser.id,
-      studentName: activeUser.name,
-      type: 'section_switch',
-      status: 'pending',
-      requestedAt: new Date().toISOString(),
-      targetSectionId
-    };
-
-    setDb(prev => ({
-      ...prev,
-      enrollmentRequests: [...(prev.enrollmentRequests || []), newRequest]
-    }));
+    if (duplicate) return false;
+    try {
+      const { request } = await apiFetch<{ request: EnrollmentRequest }>(
+        `/api/courses/${encodeURIComponent(courseId)}/switch-section`,
+        { method: 'POST', body: { sectionId: targetSectionId } }
+      );
+      setDb(prev => mergeEnrollmentRequest(prev, request));
+      return true;
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to request section switch.';
+      setLastError(message);
+      showAlert(message, 'Switch Request Failed');
+      return false;
+    }
   };
 
-  const getPendingRequestsForCourse = (courseId: string): EnrollmentRequest[] => {
-    return (db.enrollmentRequests || []).filter((r: EnrollmentRequest) => r.courseId === courseId && r.status === 'pending');
+  const getPendingRequestsForCourse = async (courseId: string): Promise<EnrollmentRequest[]> => {
+    try {
+      const { requests } = await apiFetch<{ requests: EnrollmentRequest[] }>(
+        `/api/courses/${encodeURIComponent(courseId)}/requests?status=pending`
+      );
+      setDb(prev => {
+        const kept = (prev.enrollmentRequests || []).filter(
+          (r: EnrollmentRequest) => r.courseId !== courseId || r.status !== 'pending'
+        );
+        const known = new Set(kept.map(r => r.id));
+        const merged = [...kept];
+        for (const req of requests) {
+          if (!known.has(req.id)) {
+            known.add(req.id);
+            merged.push(req);
+          }
+        }
+        return { ...prev, enrollmentRequests: merged };
+      });
+      return requests;
+    } catch (err) {
+      // Read path: stay silent (no modal) and serve the cache.
+      setLastError(err instanceof ApiError ? err.message : 'Failed to load requests.');
+      return (db.enrollmentRequests || []).filter((r: EnrollmentRequest) => r.courseId === courseId && r.status === 'pending');
+    }
   };
 
   const getPendingRequestsForStudent = (): EnrollmentRequest[] => {
@@ -2962,17 +3222,23 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
-  const requestJoinCourse = (courseId: string): void => {
-    if (activeRole === 'faculty' || activeRole === 'admin') return;
+  const requestJoinCourse = async (courseId: string): Promise<boolean> => {
+    if (activeRole === 'faculty' || activeRole === 'admin') return false;
     const mine = (db.enrollmentRequests || []).filter(
       (r: EnrollmentRequest) => r.studentId === activeUser.id && r.courseId === courseId
     );
-    if (mine.some((r: EnrollmentRequest) => r.status === 'pending')) return;
+    if (mine.some((r: EnrollmentRequest) => r.status === 'pending')) return false;
     if (
       mine.some((r: EnrollmentRequest) => r.status === 'approved') &&
       (activeUser.enrolledCourseIds || []).includes(courseId)
-    ) return;
-    createEnrollmentRequest(courseId, 'self_join');
+    ) return false;
+    try {
+      await createEnrollmentRequest(courseId, 'self_join');
+      return true;
+    } catch {
+      // createEnrollmentRequest already surfaced the alert.
+      return false;
+    }
   };
 
   const getMyRequest = (courseId: string): EnrollmentRequest | null => {
@@ -2982,7 +3248,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return mine.length > 0 ? mine[mine.length - 1] : null;
   };
 
-  const getPendingRequests = (courseId: string): EnrollmentRequest[] => {
+  const getPendingRequests = (courseId: string): Promise<EnrollmentRequest[]> => {
     return getPendingRequestsForCourse(courseId);
   };
 

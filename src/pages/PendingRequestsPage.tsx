@@ -27,9 +27,10 @@ export const PendingRequestsPage: React.FC<PendingRequestsPageProps> = ({ course
     setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
   };
 
-  const handleApproveSelected = () => {
+  const handleApproveSelected = async () => {
     if (selectedIds.length === 0) return;
-    approveEnrollmentRequests(selectedIds);
+    const ok = await approveEnrollmentRequests(selectedIds);
+    if (!ok) return;
     showAlert({
       title: 'Requests Approved',
       message: `${selectedIds.length} student(s) approved. They can now select their section.`,
@@ -38,9 +39,10 @@ export const PendingRequestsPage: React.FC<PendingRequestsPageProps> = ({ course
     setSelectedIds([]);
   };
 
-  const handleApproveAll = () => {
+  const handleApproveAll = async () => {
     const allIds = filteredRequests.map(r => r.id);
-    approveEnrollmentRequests(allIds);
+    const ok = await approveEnrollmentRequests(allIds);
+    if (!ok) return;
     showAlert({
       title: 'All Requests Approved',
       message: `${allIds.length} student(s) approved.`,
@@ -48,8 +50,9 @@ export const PendingRequestsPage: React.FC<PendingRequestsPageProps> = ({ course
     });
   };
 
-  const handleReject = (ids: string[]) => {
-    rejectEnrollmentRequests(ids);
+  const handleReject = async (ids: string[]) => {
+    const ok = await rejectEnrollmentRequests(ids);
+    if (!ok) return;
     showAlert({ title: 'Requests Rejected', message: `${ids.length} request(s) rejected.`, type: 'warning' });
     setSelectedIds(prev => prev.filter(i => !ids.includes(i)));
   };
@@ -147,7 +150,7 @@ export const PendingRequestsPage: React.FC<PendingRequestsPageProps> = ({ course
                   <td className="p-3 text-right">
                     <div className="flex items-center justify-end gap-1">
                       <button
-                        onClick={() => approveEnrollmentRequests([req.id])}
+                        onClick={async () => { await approveEnrollmentRequests([req.id]); }}
                         className="p-1.5 hover:bg-emerald-500/10 rounded-lg text-emerald-600 cursor-pointer"
                         title="Approve"
                       >

@@ -287,16 +287,16 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                         </div>
                         <div className="flex gap-2">
                           <button
-                            onClick={() => {
-                              studentApproveInvitation(req.id);
-                              onNavigateCourse(req.courseId, 'section-selection');
+                            onClick={async () => {
+                              const ok = await studentApproveInvitation(req.id);
+                              if (ok) onNavigateCourse(req.courseId, 'section-selection');
                             }}
                             className="px-3 py-1.5 text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg cursor-pointer"
                           >
                             Accept
                           </button>
                           <button
-                            onClick={() => { studentDeclineInvitation(req.id); }}
+                            onClick={async () => { await studentDeclineInvitation(req.id); }}
                             className="px-3 py-1.5 text-[11px] font-bold bg-red-500/10 text-red-600 hover:bg-red-500/20 rounded-lg cursor-pointer"
                           >
                             Decline
@@ -314,7 +314,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                           <div className="text-[11px] text-muted-foreground">Request sent — waiting for instructor approval</div>
                         </div>
                         <button
-                          onClick={() => { studentDeclineInvitation(req.id); }}
+                          onClick={async () => { await studentDeclineInvitation(req.id); }}
                           className="px-3 py-1.5 text-[11px] font-bold bg-red-500/10 text-red-600 hover:bg-red-500/20 rounded-lg cursor-pointer"
                         >
                           Withdraw request
@@ -332,7 +332,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                           <div className="text-[11px] text-muted-foreground">Switch pending{targetName ? ` → ${targetName}` : ''}</div>
                         </div>
                         <button
-                          onClick={() => { studentDeclineInvitation(req.id); }}
+                          onClick={async () => { await studentDeclineInvitation(req.id); }}
                           className="px-3 py-1.5 text-[11px] font-bold bg-red-500/10 text-red-600 hover:bg-red-500/20 rounded-lg cursor-pointer"
                         >
                           Withdraw

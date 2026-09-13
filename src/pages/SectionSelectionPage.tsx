@@ -19,7 +19,7 @@ export const SectionSelectionPage: React.FC<SectionSelectionPageProps> = ({
 
   const currentSectionId = activeUser.courseSections?.[courseId];
 
-  const handleSelectSection = (sectionId: string) => {
+  const handleSelectSection = async (sectionId: string) => {
     const section = (db.courseSections || []).find((s: CourseSection) => s.id === sectionId);
     if (!section) return;
 
@@ -49,13 +49,16 @@ export const SectionSelectionPage: React.FC<SectionSelectionPageProps> = ({
           showAlert({ title: 'Switch Pending', message: 'Switch already requested — waiting for faculty approval.', type: 'info' });
           return;
         }
-        requestSectionSwitch(courseId, sectionId);
-        showAlert({ title: 'Switch Requested', message: 'Switch requested — waiting for faculty approval.', type: 'info' });
+        const switched = await requestSectionSwitch(courseId, sectionId);
+        if (switched) {
+          showAlert({ title: 'Switch Requested', message: 'Switch requested — waiting for faculty approval.', type: 'info' });
+        }
         return;
       }
     }
 
-    selectSection(courseId, sectionId);
+    const ok = await selectSection(courseId, sectionId);
+    if (!ok) return;
     showAlert({ title: 'Section Selected', message: `You have been assigned to ${section.name}.`, type: 'success' });
     onSectionSelected();
   };

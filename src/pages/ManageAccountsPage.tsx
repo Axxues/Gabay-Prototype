@@ -326,7 +326,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = () => {
   };
 
   // Submit Create Account
-  const handleCreateSubmit = (e: React.FormEvent) => {
+  const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanEmail = formEmail.trim();
     if (!cleanEmail) {
@@ -341,7 +341,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = () => {
     const defaultTitle = formRole === 'student' ? 'Student' : formRole === 'faculty' ? 'Faculty Instructor' : formRole === 'admin' ? 'Dean / Administrator' : 'Staff / Registrar Aide';
     const defaultAvatar = formRole === 'student' ? PRESET_AVATARS[3].url : formRole === 'faculty' ? PRESET_AVATARS[1].url : formRole === 'admin' ? PRESET_AVATARS[0].url : PRESET_AVATARS[2].url;
 
-    const created = createUser({
+    const created = await createUser({
       name: cleanEmail,
       email: cleanEmail,
       role: formRole,
@@ -361,7 +361,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = () => {
   };
 
   // Submit Edit Account
-  const handleEditSubmit = (e: React.FormEvent) => {
+  const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingUser) return;
 
@@ -377,7 +377,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = () => {
 
     const finalName = editingUser.name?.trim() || cleanEmail;
 
-    updateUser(editingUser.id, {
+    await updateUser(editingUser.id, {
       name: finalName,
       email: cleanEmail,
       role: formRole,
@@ -394,9 +394,9 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = () => {
   };
 
   // Submit Delete Account
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = async () => {
     if (!deletingUser) return;
-    const res = deleteUser(deletingUser.id);
+    const res = await deleteUser(deletingUser.id);
     setDeletingUser(null);
 
     if (res.success) {

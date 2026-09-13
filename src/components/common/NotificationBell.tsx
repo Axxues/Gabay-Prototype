@@ -68,7 +68,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
     return (db.courseSections || []).find(s => s.id === sectionId)?.name ?? null;
   };
 
-  const handleApprove = (req: EnrollmentRequest) => {
+  const handleApprove = async (req: EnrollmentRequest) => {
     if (req.type === 'section_switch' && req.targetSectionId) {
       const target = (db.courseSections || []).find(s => s.id === req.targetSectionId);
       if (target && !canPickSection(target)) {
@@ -80,13 +80,13 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
         return;
       }
     }
-    approveEnrollmentRequests([req.id]);
-    setOpen(false);
+    const ok = await approveEnrollmentRequests([req.id]);
+    if (ok) setOpen(false);
   };
 
-  const handleReject = (req: EnrollmentRequest) => {
-    rejectEnrollmentRequests([req.id]);
-    setOpen(false);
+  const handleReject = async (req: EnrollmentRequest) => {
+    const ok = await rejectEnrollmentRequests([req.id]);
+    if (ok) setOpen(false);
   };
 
   return (
@@ -183,9 +183,9 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
                             </div>
                           </div>
                           <button
-                            onClick={() => {
-                              studentDeclineInvitation(req.id);
-                              setOpen(false);
+                            onClick={async () => {
+                              const ok = await studentDeclineInvitation(req.id);
+                              if (ok) setOpen(false);
                             }}
                             className="px-2.5 py-1 text-[11px] font-bold bg-red-500/10 text-red-600 hover:bg-red-500/20 rounded-lg transition-colors cursor-pointer shrink-0"
                           >
@@ -209,8 +209,9 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
                           </div>
                           <div className="flex items-center gap-1.5 shrink-0">
                             <button
-                              onClick={() => {
-                                studentApproveInvitation(req.id);
+                              onClick={async () => {
+                                const ok = await studentApproveInvitation(req.id);
+                                if (!ok) return;
                                 setOpen(false);
                                 onNavigateCourse?.(req.courseId, 'section-selection');
                               }}
@@ -219,9 +220,9 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
                               Accept
                             </button>
                             <button
-                              onClick={() => {
-                                studentDeclineInvitation(req.id);
-                                setOpen(false);
+                              onClick={async () => {
+                                const ok = await studentDeclineInvitation(req.id);
+                                if (ok) setOpen(false);
                               }}
                               className="px-2.5 py-1 text-[11px] font-bold bg-red-500/10 text-red-600 hover:bg-red-500/20 rounded-lg transition-colors cursor-pointer"
                             >
@@ -244,9 +245,9 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
                           </div>
                         </div>
                         <button
-                          onClick={() => {
-                            studentDeclineInvitation(req.id);
-                            setOpen(false);
+                          onClick={async () => {
+                            const ok = await studentDeclineInvitation(req.id);
+                            if (ok) setOpen(false);
                           }}
                           className="px-2.5 py-1 text-[11px] font-bold bg-red-500/10 text-red-600 hover:bg-red-500/20 rounded-lg transition-colors cursor-pointer shrink-0"
                         >

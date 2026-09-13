@@ -135,7 +135,7 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!courseCode.trim() || !courseTitle.trim()) {
       showAlert({
@@ -146,30 +146,34 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
       return;
     }
 
-    const newCourse = createCourse({
-      code: courseCode.trim().toUpperCase(),
-      title: courseTitle.trim(),
-      section: courseSection.trim(),
-      color: courseColor,
-      image: courseImage.trim(),
-      instructorId: activeUser.id,
-      instructorName: activeUser.name,
-      term: courseTerm,
-      published: published,
-      joinCode: courseJoinCode
-    });
+    try {
+      const newCourse = await createCourse({
+        code: courseCode.trim().toUpperCase(),
+        title: courseTitle.trim(),
+        section: courseSection.trim(),
+        color: courseColor,
+        image: courseImage.trim(),
+        instructorId: activeUser.id,
+        instructorName: activeUser.name,
+        term: courseTerm,
+        published: published,
+        joinCode: courseJoinCode
+      });
 
-    sections.forEach(s => {
-      createSection(newCourse.id, { name: s.name, capacity: s.capacity, schedule: s.schedule, location: s.location });
-    });
+      await Promise.all(sections.map(s =>
+        createSection(newCourse.id, { name: s.name, capacity: s.capacity, schedule: s.schedule, location: s.location })
+      ));
 
-    showAlert({
-      title: 'Course Shell Created',
-      message: `Course shell "${newCourse.code} - ${newCourse.section}" has been initialized successfully with you assigned as instructor.`,
-      type: 'success'
-    });
+      showAlert({
+        title: 'Course Shell Created',
+        message: `Course shell "${newCourse.code} - ${newCourse.section}" has been initialized successfully with you assigned as instructor.`,
+        type: 'success'
+      });
 
-    onNavigateCourse(newCourse.id, 'modules');
+      onNavigateCourse(newCourse.id, 'modules');
+    } catch {
+      // createCourse/createSection already surfaced an alert.
+    }
   };
 
   return (

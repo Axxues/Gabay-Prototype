@@ -44,7 +44,7 @@ export const JoinCourseModal: React.FC<JoinCourseModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
 
@@ -54,7 +54,7 @@ export const JoinCourseModal: React.FC<JoinCourseModalProps> = ({
       return;
     }
 
-    const res = joinCourseByCode(cleanCode);
+    const res = await joinCourseByCode(cleanCode);
     if (!res.success) {
       setErrorMessage(res.message);
       return;

@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useLMS } from '../context/LMSContext';
+import type { EnrollmentRequest } from '../types/lms';
 import {
   Shield,
   Search,
@@ -29,8 +30,23 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
   const [selectedSectionFilter, setSelectedSectionFilter] = useState<string>('all');
 
   const courseSections = getCourseSections(courseId);
-  const pendingRequests = getPendingRequestsForCourse(courseId);
+  const [pendingRequests, setPendingRequests] = useState<EnrollmentRequest[]>([]);
   const pendingCount = pendingRequests.length;
+
+  const reloadPending = async () => {
+    setPendingRequests(await getPendingRequestsForCourse(courseId));
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const reqs = await getPendingRequestsForCourse(courseId);
+      if (!cancelled) setPendingRequests(reqs);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [courseId]);
 
   // Enroll modal state
   const [isEnrollModalOpen, setIsEnrollModalOpen] = useState(false);
@@ -80,10 +96,11 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
     );
   };
 
-  const handleEnrollSelectedStudents = () => {
+  const handleEnrollSelectedStudents = async () => {
     if (selectedStudentIds.length === 0) return;
 
-    enrollStudentsInCourse(selectedStudentIds, courseId);
+    const ok = await enrollStudentsInCourse(selectedStudentIds, courseId);
+    if (!ok) return;
 
     showAlert({
       title: 'Enrolled in Course',
@@ -91,6 +108,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
       type: 'success'
     });
 
+    await reloadPending();
     setIsEnrollModalOpen(false);
     setSelectedStudentIds([]);
     setModalSearchQuery('');
@@ -155,7 +173,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
               <button
                 type="button"
                 onClick={() => {
-                  regenerateCourseJoinCode(course.id);
+                  void regenerateCourseJoinCode(course.id);
                 }}
                 className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-colors cursor-pointer"
                 title="Regenerate Join Code"
@@ -359,8 +377,10 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
                           }
                           showConfirm(
                             `Approve enrollment for ${student?.name || 'this student'}?`,
-                            () => {
-                              approveEnrollmentRequests([req.id]);
+                            async () => {
+                              const ok = await approveEnrollmentRequests([req.id]);
+                              if (!ok) return;
+                              await reloadPending();
                               showAlert({ title: 'Request Approved', message: `${student?.name || 'Student'} has been enrolled.`, type: 'success' });
                             },
                             'Approve Enrollment'
@@ -374,8 +394,10 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
                         onClick={() => {
                           showConfirm(
                             `Reject enrollment for ${student?.name || 'this student'}?`,
-                            () => {
-                              rejectEnrollmentRequests([req.id]);
+                            async () => {
+                              const ok = await rejectEnrollmentRequests([req.id]);
+                              if (!ok) return;
+                              await reloadPending();
                               showAlert({ title: 'Request Rejected', message: `Enrollment request from ${student?.name || 'student'} has been rejected.`, type: 'warning' });
                             },
                             'Reject Enrollment'

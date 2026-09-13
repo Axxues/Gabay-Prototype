@@ -23,7 +23,7 @@ const COURSE_ICONS: Record<string, React.ReactNode> = {
   'pending-requests': <Users className="h-4 w-4" />,
 };
 export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: string; onNavigateTab: (t: string) => void; onSelectCourseTab: (t: string) => void; onNavigateCourse: (id: string, sub?: string) => void }> = (p) => {
-  const { db, activeCourseId, activeRole, activeUser, getUnreadNotificationCount, getPendingRequestsForCourse } = useLMS();
+  const { db, activeCourseId, activeRole, activeUser, getUnreadNotificationCount } = useLMS();
   const [copied, setCopied] = React.useState(false);
   const unread = db.messages.filter(m => m.recipientId === activeUser.id && !m.read).length;
   const studentSection = activeRole === 'student' && activeCourseId
@@ -87,7 +87,9 @@ export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: strin
       }
       if (tabId === 'people' || tabId === 'pending-requests') {
         if (activeRole !== 'faculty' && activeRole !== 'admin') return 0;
-        return getPendingRequestsForCourse(cid).length;
+        // Sync read of the request cache (bootstrap fills it per course);
+        // the async getter cannot be awaited inside this badge counter.
+        return (db.enrollmentRequests || []).filter(r => r.courseId === cid && r.status === 'pending').length;
       }
       if (tabId === 'calendar') return countUpcomingCalendar(db.calendarEvents || [], cid, visits);
       return 0;
