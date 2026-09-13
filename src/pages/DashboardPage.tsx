@@ -33,6 +33,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
   const [copiedCodeCourseId, setCopiedCodeCourseId] = useState<string | null>(null);
   const pendingInvitations = getPendingRequestsForStudent();
+  const facultyInvites = pendingInvitations.filter(req => req.type !== 'self_join');
+  const selfJoinRequests = pendingInvitations.filter(req => req.type === 'self_join');
 
   // Filter courses based on user role
   const userCourses = db.courses.filter(c => {
@@ -251,9 +253,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               {activeRole === 'student' && pendingInvitations.length > 0 && (
                 <div className="bg-card border border-border rounded-xl shadow-subtle p-5 space-y-3">
                   <h3 className="text-sm font-extrabold flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-amber-500" /> Pending Invitations
+                    <Clock className="w-4 h-4 text-amber-500" /> {facultyInvites.length > 0 ? 'Pending Invitations' : 'Pending Requests'}
                   </h3>
-                  {pendingInvitations.map(req => {
+                  {facultyInvites.map(req => {
                     const course = db.courses.find(c => c.id === req.courseId);
                     return (
                       <div key={req.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-xl">
@@ -277,6 +279,17 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                           >
                             Decline
                           </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {selfJoinRequests.map(req => {
+                    const course = db.courses.find(c => c.id === req.courseId);
+                    return (
+                      <div key={req.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-xl">
+                        <div>
+                          <div className="text-xs font-bold">{course?.code} — {course?.title}</div>
+                          <div className="text-[11px] text-muted-foreground">Request sent — waiting for instructor approval</div>
                         </div>
                       </div>
                     );
