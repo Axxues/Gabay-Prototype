@@ -10,8 +10,11 @@ import {
   FileText,
   Clock,
   Loader2,
-  Trash2
+  Trash2,
+  FolderOpen
 } from 'lucide-react';
+import { FilePickerModal } from '../components/common/FilePickerModal';
+import type { AggregatedCourseFile } from '../hooks/useCourseFiles';
 
 interface CreateAssignmentPageProps {
   courseId: string;
@@ -53,6 +56,7 @@ export const CreateAssignmentPage: React.FC<CreateAssignmentPageProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isFilePickerOpen, setIsFilePickerOpen] = useState(false);
 
   const handleFileUpload = async (file: File) => {
     if (file.size > 50 * 1024 * 1024) {
@@ -98,6 +102,20 @@ export const CreateAssignmentPage: React.FC<CreateAssignmentPageProps> = ({
     if (file) {
       handleFileUpload(file);
     }
+  };
+
+  const handleSelectExistingFile = (file: AggregatedCourseFile) => {
+    setAttachedFile({
+      name: file.name,
+      size: file.formattedSize || '',
+      url: file.url || file.fileUrl || `/public/uploads/${file.name}`
+    });
+    setIsFilePickerOpen(false);
+    showAlert({
+      title: 'File Attached',
+      message: `"${file.name}" has been attached from your uploaded course files.`,
+      type: 'success'
+    });
   };
 
   const handleSave = (publish: boolean) => {
@@ -299,6 +317,13 @@ export const CreateAssignmentPage: React.FC<CreateAssignmentPageProps> = ({
                     </button>
                     <button
                       type="button"
+                      onClick={() => setIsFilePickerOpen(true)}
+                      className="px-3 py-1.5 text-xs font-bold text-primary hover:bg-primary/10 rounded-lg transition-colors cursor-pointer"
+                    >
+                      Browse Uploaded
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => {
                         setAttachedFile(null);
                         if (fileInputRef.current) fileInputRef.current.value = '';
@@ -347,6 +372,17 @@ export const CreateAssignmentPage: React.FC<CreateAssignmentPageProps> = ({
                   )}
                 </div>
               )}
+
+              <div className="flex justify-center pt-1.5">
+                <button
+                  type="button"
+                  onClick={() => setIsFilePickerOpen(true)}
+                  className="px-3.5 py-1.5 text-xs font-bold text-primary hover:bg-primary/10 rounded-xl transition-colors cursor-pointer flex items-center space-x-1.5 border border-primary/30 bg-primary/5"
+                >
+                  <FolderOpen className="w-3.5 h-3.5" />
+                  <span>Browse Uploaded Files</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -499,6 +535,14 @@ export const CreateAssignmentPage: React.FC<CreateAssignmentPageProps> = ({
           </div>
         </div>
       </form>
+
+      {isFilePickerOpen && (
+        <FilePickerModal
+          courseId={courseId}
+          onClose={() => setIsFilePickerOpen(false)}
+          onSelect={handleSelectExistingFile}
+        />
+      )}
     </div>
   );
 };

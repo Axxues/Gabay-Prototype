@@ -32,8 +32,11 @@ import {
   Trash2,
   AlertTriangle,
   ArrowLeft,
-  Pencil
+  Pencil,
+  FolderOpen
 } from 'lucide-react';
+import { FilePickerModal } from '../components/common/FilePickerModal';
+import type { AggregatedCourseFile } from '../hooks/useCourseFiles';
 
 interface SyllabusViewProps {
   courseId: string;
@@ -71,6 +74,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
   const [scanError, setScanError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isFilePickerOpen, setIsFilePickerOpen] = useState(false);
 
   // Faculty detection & selection for syllabus scanner
   const [selectedFacultyId, setSelectedFacultyId] = useState<string>('');
@@ -182,6 +186,36 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
     const file = e.dataTransfer.files?.[0];
     if (file) {
       processFile(file);
+    }
+  };
+
+  const handleSelectExistingFile = async (file: AggregatedCourseFile) => {
+    const url = file.url || file.fileUrl;
+    if (!url) {
+      setScanError('This uploaded file cannot be scanned because it has no stored content.');
+      return;
+    }
+
+    try {
+      const lower = file.name.toLowerCase();
+      if (!lower.endsWith('.pdf') && !lower.endsWith('.docx')) {
+        setScanError('Invalid file type. Please select an uploaded syllabus as .pdf or .docx.');
+        return;
+      }
+
+      const response = await fetch(url);
+      if (!response.ok) {
+        setScanError('Could not read the selected uploaded file. It may not be available on disk.');
+        return;
+      }
+      const blob = await response.blob();
+      const reconstructed = new File([blob], file.name, {
+        type: file.type === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      });
+      setIsFilePickerOpen(false);
+      await processFile(reconstructed);
+    } catch (err: any) {
+      setScanError(err?.message || 'Failed to read the selected uploaded file.');
     }
   };
 
@@ -2178,6 +2212,18 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                     </div>
                   </div>
 
+                  {/* Browse uploaded files */}
+                  <div className="flex justify-center pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsFilePickerOpen(true)}
+                      className="px-4 py-2 text-xs font-bold text-primary hover:bg-primary/10 rounded-xl transition-colors cursor-pointer flex items-center space-x-1.5 border border-primary/30 bg-primary/5"
+                    >
+                      <FolderOpen className="w-4 h-4" />
+                      <span>Browse Uploaded Files</span>
+                    </button>
+                  </div>
+
                   {/* Expected syllabus format hint */}
                   <div className="p-3.5 bg-muted/30 border border-border rounded-xl text-[11px] text-muted-foreground leading-relaxed flex items-start gap-2.5">
                     <Shield className="w-4 h-4 text-primary shrink-0 mt-0.5" />
@@ -2243,6 +2289,14 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
             </div>
           </DialogFrame>
         </ModalPortal>
+      )}
+
+      {isFilePickerOpen && (
+        <FilePickerModal
+          courseId={courseId}
+          onClose={() => setIsFilePickerOpen(false)}
+          onSelect={handleSelectExistingFile}
+        />
       )}
     </div>
   );

@@ -18,10 +18,13 @@ import {
   FileCheck2,
   HelpCircle,
   Globe,
-  BookOpen
+  BookOpen,
+  FolderOpen
 } from 'lucide-react';
 
 import { uploadFileToPublic } from '../utils/fileUploader';
+import { FilePickerModal } from '../components/common/FilePickerModal';
+import type { AggregatedCourseFile } from '../hooks/useCourseFiles';
 
 interface AddModuleItemPageProps {
   courseId: string;
@@ -135,6 +138,7 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
   const [attachedFileUrl, setAttachedFileUrl] = useState(editingItem?.fileUrl || '');
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isFilePickerOpen, setIsFilePickerOpen] = useState(false);
 
   const selectedModule = courseModules.find(m => m.id === targetModuleId);
   const currentResourceType = RESOURCE_TYPES.find(r => r.type === itemType) || RESOURCE_TYPES[0];
@@ -190,6 +194,26 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+  };
+
+  const handleSelectExistingFile = (file: AggregatedCourseFile) => {
+    const url = file.url || file.fileUrl || `/public/uploads/${file.name}`;
+    setAttachedFileUrl(url);
+    setAttachedFileName(file.name);
+    setAttachedFileSize(file.formattedSize || '');
+    setAttachedFileType(file.type || 'file');
+
+    if (!title.trim()) {
+      const nameWithoutExt = file.name.replace(/\.[^/.]+$/, '');
+      setTitle(nameWithoutExt);
+    }
+
+    setIsFilePickerOpen(false);
+    showAlert({
+      title: 'File Attached',
+      message: `"${file.name}" has been attached from your uploaded course files.`,
+      type: 'success'
+    });
   };
 
   const handleSave = (addAnother: boolean = false) => {
@@ -593,6 +617,13 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
                   </button>
                   <button
                     type="button"
+                    onClick={() => setIsFilePickerOpen(true)}
+                    className="px-3 py-1.5 text-xs font-bold text-primary hover:bg-primary/10 rounded-lg transition-colors cursor-pointer"
+                  >
+                    Browse Uploaded
+                  </button>
+                  <button
+                    type="button"
                     onClick={handleRemoveAttachment}
                     className="p-1.5 text-muted-foreground hover:text-rose-600 rounded-lg hover:bg-rose-500/10 transition-colors cursor-pointer"
                     title="Remove attachment"
@@ -633,6 +664,18 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
                     Drag and drop file here, or click to browse (PDF, PPTX, DOCX, ZIP, Code, Media up to 50MB)
                   </p>
                 </div>
+
+                {/* Browse uploaded files */}
+                <div className="flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() => setIsFilePickerOpen(true)}
+                    className="px-3.5 py-1.5 text-xs font-bold text-primary hover:bg-primary/10 rounded-xl transition-colors cursor-pointer flex items-center space-x-1.5 border border-primary/30 bg-primary/5"
+                  >
+                    <FolderOpen className="w-3.5 h-3.5" />
+                    <span>Browse Uploaded Files</span>
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -665,6 +708,14 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
           </button>
         </div>
       </form>
+
+      {isFilePickerOpen && (
+        <FilePickerModal
+          courseId={courseId}
+          onClose={() => setIsFilePickerOpen(false)}
+          onSelect={handleSelectExistingFile}
+        />
+      )}
     </div>
   );
 };

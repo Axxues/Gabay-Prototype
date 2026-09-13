@@ -12,8 +12,11 @@ import {
   Pin,
   MessageSquare,
   Heart,
-  Calendar
+  Calendar,
+  FolderOpen
 } from 'lucide-react';
+import { FilePickerModal } from '../components/common/FilePickerModal';
+import type { AggregatedCourseFile } from '../hooks/useCourseFiles';
 
 interface CreateAnnouncementPageProps {
   courseId: string;
@@ -41,6 +44,7 @@ export const CreateAnnouncementPage: React.FC<CreateAnnouncementPageProps> = ({
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [sectionRestriction, setSectionRestriction] = useState('all');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isFilePickerOpen, setIsFilePickerOpen] = useState(false);
 
   const courseSections: CourseSection[] = (db.courseSections || []).filter((s: CourseSection) => s.courseId === courseId);
 
@@ -80,6 +84,20 @@ export const CreateAnnouncementPage: React.FC<CreateAnnouncementPageProps> = ({
     setIsDragging(false);
     const file = e.dataTransfer.files?.[0];
     if (file) processFile(file);
+  };
+
+  const handleSelectExistingFile = (file: AggregatedCourseFile) => {
+    setAttachedFile({
+      name: file.name,
+      size: file.formattedSize || '',
+      url: file.url || file.fileUrl || `/public/uploads/${file.name}`
+    });
+    setIsFilePickerOpen(false);
+    showAlert({
+      title: 'File Attached',
+      message: `"${file.name}" has been attached from your uploaded course files.`,
+      type: 'success'
+    });
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -292,6 +310,18 @@ export const CreateAnnouncementPage: React.FC<CreateAnnouncementPageProps> = ({
                 )}
               </div>
             )}
+
+            {/* Browse uploaded files */}
+            <div className="flex justify-center pt-1">
+              <button
+                type="button"
+                onClick={() => setIsFilePickerOpen(true)}
+                className="px-3.5 py-1.5 text-xs font-bold text-primary hover:bg-primary/10 rounded-xl transition-colors cursor-pointer flex items-center space-x-1.5 border border-primary/30 bg-primary/5"
+              >
+                <FolderOpen className="w-3.5 h-3.5" />
+                <span>Browse Uploaded Files</span>
+              </button>
+            </div>
           </div>
 
           <div className="p-4 bg-muted/40 rounded-xl border border-border space-y-3 text-xs">
@@ -374,6 +404,14 @@ export const CreateAnnouncementPage: React.FC<CreateAnnouncementPageProps> = ({
           </button>
         </div>
       </form>
+
+      {isFilePickerOpen && (
+        <FilePickerModal
+          courseId={courseId}
+          onClose={() => setIsFilePickerOpen(false)}
+          onSelect={handleSelectExistingFile}
+        />
+      )}
     </div>
   );
 };
