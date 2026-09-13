@@ -70,5 +70,11 @@ function fileUploadPlugin(): Plugin {
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), fileUploadPlugin()]
+  plugins: [react(), fileUploadPlugin()],
+  server: {
+    proxy: {
+      '/api': 'http://localhost:4000',
+      '/uploads': 'http://localhost:4000',
+    },
+  },
 });
