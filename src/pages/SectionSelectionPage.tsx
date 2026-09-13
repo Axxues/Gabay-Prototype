@@ -42,6 +42,13 @@ export const SectionSelectionPage: React.FC<SectionSelectionPageProps> = ({
       }
 
       if (currentSectionId && currentSectionId !== sectionId) {
+        const alreadyPending = (db.enrollmentRequests || []).some(
+          r => r.studentId === activeUser.id && r.courseId === courseId && r.type === 'section_switch' && r.targetSectionId === sectionId && r.status === 'pending'
+        );
+        if (alreadyPending) {
+          showAlert({ title: 'Switch Pending', message: 'Switch already requested — waiting for faculty approval.', type: 'info' });
+          return;
+        }
         requestSectionSwitch(courseId, sectionId);
         showAlert({ title: 'Switch Requested', message: 'Switch requested — waiting for faculty approval.', type: 'info' });
         return;

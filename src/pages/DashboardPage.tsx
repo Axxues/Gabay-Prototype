@@ -33,8 +33,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
   const [copiedCodeCourseId, setCopiedCodeCourseId] = useState<string | null>(null);
   const pendingInvitations = getPendingRequestsForStudent();
-  const facultyInvites = pendingInvitations.filter(req => req.type !== 'self_join');
+  const facultyInvites = pendingInvitations.filter(req => req.type === 'faculty_enroll');
   const selfJoinRequests = pendingInvitations.filter(req => req.type === 'self_join');
+  const switchRequests = pendingInvitations.filter(req => req.type === 'section_switch');
 
   // Filter courses based on user role
   const userCourses = db.courses.filter(c => {
@@ -296,6 +297,24 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                           className="px-3 py-1.5 text-[11px] font-bold bg-red-500/10 text-red-600 hover:bg-red-500/20 rounded-lg cursor-pointer"
                         >
                           Withdraw request
+                        </button>
+                      </div>
+                    );
+                  })}
+                  {switchRequests.map(req => {
+                    const course = db.courses.find(c => c.id === req.courseId);
+                    const targetName = (db.courseSections || []).find(s => s.id === req.targetSectionId)?.name;
+                    return (
+                      <div key={req.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-xl">
+                        <div>
+                          <div className="text-xs font-bold">{course?.code} — {course?.title}</div>
+                          <div className="text-[11px] text-muted-foreground">Switch pending{targetName ? ` → ${targetName}` : ''}</div>
+                        </div>
+                        <button
+                          onClick={() => { studentDeclineInvitation(req.id); }}
+                          className="px-3 py-1.5 text-[11px] font-bold bg-red-500/10 text-red-600 hover:bg-red-500/20 rounded-lg cursor-pointer"
+                        >
+                          Withdraw
                         </button>
                       </div>
                     );

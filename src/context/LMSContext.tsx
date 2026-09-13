@@ -2430,6 +2430,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const approveEnrollmentRequests = (requestIds: string[]) => {
+    if (activeRole !== 'faculty' && activeRole !== 'admin') return;
     setDb(prev => {
       const now = new Date().toISOString();
       const existingRequests = prev.enrollmentRequests || [];
@@ -2522,6 +2523,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const rejectEnrollmentRequests = (requestIds: string[]) => {
+    if (activeRole !== 'faculty' && activeRole !== 'admin') return;
     setDb(prev => ({
       ...prev,
       enrollmentRequests: (prev.enrollmentRequests || []).map((r: EnrollmentRequest) =>
@@ -2664,7 +2666,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const getPendingRequestsForStudent = (): EnrollmentRequest[] => {
     return (db.enrollmentRequests || []).filter(
-      (r: EnrollmentRequest) => r.studentId === activeUser.id && r.status === 'pending' && (r.type === 'faculty_enroll' || r.type === 'self_join')
+      (r: EnrollmentRequest) => r.studentId === activeUser.id && r.status === 'pending' && (r.type === 'faculty_enroll' || r.type === 'self_join' || r.type === 'section_switch')
     );
   };
 
@@ -2673,7 +2675,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const existing = (db.enrollmentRequests || []).find(
       (r: EnrollmentRequest) => r.studentId === activeUser.id && r.courseId === courseId
     );
-    if (existing) return;
+    if (existing && existing.status === 'pending') return;
+    if (
+      existing && existing.status === 'approved' &&
+      (activeUser.enrolledCourseIds || []).includes(courseId)
+    ) return;
     createEnrollmentRequest(courseId, 'self_join');
   };
 
