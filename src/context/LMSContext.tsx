@@ -35,6 +35,7 @@ import initialMockData from '../data/mockData.json';
 import { AlertModal, type AlertModalOptions } from '../components/common/AlertModal';
 import { canPickSection } from '../utils/sections';
 import type { OfficialSyllabusData } from '../data/syllabusData';
+import { apiFetch, ApiError, getToken, setToken, clearToken } from '../api/client';
 
 interface LMSContextType {
   theme: 'dark' | 'light';
@@ -53,6 +54,8 @@ interface LMSContextType {
   login: (emailOrId: string, password: string) => Promise<{ success: boolean; message?: string }>;
   logout: () => void;
   switchRole: (role: UserRole) => void; // Keep for testing convenience if needed
+  isLoading: boolean;
+  lastError: string | null;
 
   activeCourseId: string | null;
   setActiveCourseId: (id: string | null) => void;
@@ -206,7 +209,6 @@ interface LMSContextType {
 
 const STORAGE_KEY_DB = 'gabay_lms_db_v6';
 const STORAGE_KEY_THEME = 'gabay_theme_v1';
-const STORAGE_KEY_SESSION = 'gabay_auth_session_v1';
 
 // Aggressive cleanup of bloated past storage keys to reclaim browser quota
 const purgeOldStorageKeys = () => {
@@ -675,67 +677,116 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [db]);
 
-  // Authentication State
-  const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    const sessionUser = localStorage.getItem(STORAGE_KEY_SESSION);
-    if (sessionUser) {
-      try {
-        const parsed = JSON.parse(sessionUser) as User;
-        const exists = (initialMockData.users as User[]).find(u => u.id === parsed.id || u.role === parsed.role);
-        return exists || parsed;
-      } catch (e) {
-        console.error('Failed to load session user', e);
-      }
-    }
-    return null;
+  // Authentication State (token-backed; session restores via GET /api/auth/me)
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [lastError, setLastError] = useState<string | null>(null);
+
+  const emptyDb = (): MockDatabase => ({
+    users: [],
+    courses: [],
+    modules: [],
+    assignments: [],
+    submissions: [],
+    quizzes: [],
+    activities: [],
+    calendarEvents: [],
+    advisingSlots: [],
+    messages: [],
+    historyLogs: [],
+    commonsTemplates: [],
+    announcements: [],
+    discussions: [],
+    courseFiles: [],
+    courseFolders: [],
+    courseGrades: [],
+    chatGroups: [],
+    notifications: [],
+    courseSections: [],
+    enrollmentRequests: [],
   });
+
+  const refreshAll = async (user: User): Promise<void> => {
+    setIsLoading(true);
+    setLastError(null);
+    try {
+      const coursesPath =
+        user.role === 'student'
+          ? `/api/courses?enrolled=${encodeURIComponent(user.id)}`
+          : '/api/courses';
+      const [coursesRes, notificationsRes, messagesRes, calendarRes] = await Promise.all([
+        apiFetch<{ courses: Course[] }>(coursesPath),
+        apiFetch<{ notifications: Notification[] }>('/api/notifications?limit=200'),
+        apiFetch<{ messages: Message[] }>('/api/messages'),
+        apiFetch<{ events: CalendarEvent[] }>('/api/calendar'),
+      ]);
+      const fresh = emptyDb();
+      fresh.users = [user];
+      fresh.courses = coursesRes.courses;
+      fresh.notifications = notificationsRes.notifications;
+      fresh.messages = messagesRes.messages;
+      fresh.calendarEvents = calendarRes.events;
+      setDb(fresh);
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to load data.';
+      setLastError(message);
+      showAlert(message, 'Load Failed');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Session restore: token -> GET /api/auth/me -> user + bootstrap
+  useEffect(() => {
+    const token = getToken();
+    if (!token) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { user } = await apiFetch<{ user: User }>('/api/auth/me');
+        if (cancelled) return;
+        setCurrentUser(user);
+        await refreshAll(user);
+      } catch (err) {
+        if (cancelled) return;
+        if (err instanceof ApiError && err.status === 401) {
+          clearToken();
+        } else {
+          const message = err instanceof ApiError ? err.message : 'Failed to restore session.';
+          setLastError(message);
+          showAlert(message, 'Load Failed');
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const isAuthenticated = currentUser !== null;
   const activeUser = currentUser || db.users[0];
   const activeRole: UserRole = currentUser?.role || 'student';
 
   const login = async (emailOrId: string, password: string): Promise<{ success: boolean; message?: string }> => {
-    const query = emailOrId.trim().toLowerCase();
-    
-    // Find matching user by email, studentId, name (e.g. "Dean 1", "Student 1"), or role
-    const matchedUser = db.users.find(u => 
-      u.email.toLowerCase() === query || 
-      (u.studentId && u.studentId.toLowerCase() === query) ||
-      u.name.toLowerCase() === query ||
-      u.name.toLowerCase().replace(/\s+/g, '') === query.replace(/\s+/g, '') ||
-      (query === 'dean' && u.role === 'admin') ||
-      (query === 'admin' && u.role === 'admin') ||
-      (query === 'faculty' && u.role === 'faculty') ||
-      (query === 'staff' && u.role === 'staff') ||
-      (query === 'student' && u.role === 'student')
-    );
-
-    if (!matchedUser) {
-      return { 
-        success: false, 
-        message: 'No account found with this email or ID.' 
-      };
+    try {
+      const { token, user } = await apiFetch<{ token: string; user: User }>('/api/auth/login', {
+        method: 'POST',
+        body: { email: emailOrId, password },
+      });
+      setToken(token);
+      setCurrentUser(user);
+      await refreshAll(user);
+      return { success: true };
+    } catch (err) {
+      if (err instanceof ApiError) return { success: false, message: err.message };
+      return { success: false, message: 'Login failed.' };
     }
-
-    // Check password (accept "gabay2026", user's password, or any non-empty input if demo)
-    const validPassword = matchedUser.password || 'gabay2026';
-    if (password !== validPassword && password !== 'gabay2026' && password !== 'admin') {
-      return { 
-        success: false, 
-        message: 'Invalid password. (Hint: Demo password is "gabay2026")' 
-      };
-    }
-
-    setCurrentUser(matchedUser);
-    safeSetLocalStorage(STORAGE_KEY_SESSION, JSON.stringify(matchedUser));
-    return { success: true };
   };
 
   const logout = () => {
+    clearToken();
     setCurrentUser(null);
-    try {
-      localStorage.removeItem(STORAGE_KEY_SESSION);
-    } catch (_) {}
+    setDb(emptyDb());
     setIsUserProfileModalOpen(false);
     setIsRoleModalOpen(false);
   };
@@ -744,7 +795,6 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const userWithRole = db.users.find(u => u.role === role);
     if (userWithRole) {
       setCurrentUser(userWithRole);
-      safeSetLocalStorage(STORAGE_KEY_SESSION, JSON.stringify(userWithRole));
     }
   };
 
@@ -2788,7 +2838,6 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         enrolledCourseIds: [...(activeUser.enrolledCourseIds || []), request.courseId]
       };
       setCurrentUser(updatedUser);
-      safeSetLocalStorage(STORAGE_KEY_SESSION, JSON.stringify(updatedUser));
 
       return {
         ...prev,
@@ -2866,7 +2915,6 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const updatedSections = { ...(activeUser.courseSections || {}), [courseId]: sectionId };
     const updatedUser = { ...activeUser, courseSections: updatedSections };
     setCurrentUser(updatedUser);
-    safeSetLocalStorage(STORAGE_KEY_SESSION, JSON.stringify(updatedUser));
 
     setDb(prev => ({
       ...prev,
@@ -2940,7 +2988,6 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const resetData = () => {
     localStorage.removeItem(STORAGE_KEY_DB);
-    localStorage.removeItem(STORAGE_KEY_SESSION);
     setDb(initialMockData as unknown as MockDatabase);
     setCurrentUser(null);
   };
@@ -2962,6 +3009,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         login,
         logout,
         switchRole,
+        isLoading,
+        lastError,
         activeCourseId,
         setActiveCourseId,
         db,
