@@ -21,7 +21,6 @@ import {
   FolderPlus
 } from 'lucide-react';
 
-import { uploadFileToPublic } from '../utils/fileUploader';
 import { ModalPortal } from '../components/common/ModalPortal';
 import { PageHeader } from '../components/common/PageHeader';
 import { EmptyState } from '../components/common/EmptyState';
@@ -156,7 +155,8 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
       type = 'code';
 
     try {
-      const uploadRes = await uploadFileToPublic(file);
+      // Bytes go ONLY via the server upload endpoint (rawFile) — no
+      // client-side public-uploader double write.
       await uploadCourseFile({
         courseId: effectiveScopeId,
         folderId: currentFolderId,
@@ -165,14 +165,11 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
         size: file.size,
         type,
         visibility: 'published',
-        content: uploadRes.url,
-        url: uploadRes.url,
-        fileUrl: uploadRes.url
       });
 
       showAlert({
         title: 'File Uploaded',
-        message: `File "${file.name}" has been uploaded and saved to /public/uploads/.`,
+        message: `File "${file.name}" has been uploaded.`,
         type: 'success'
       });
     } catch (err) {

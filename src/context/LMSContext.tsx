@@ -1972,12 +1972,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const removeCourseSyllabus = async (courseId: string): Promise<void> => {
-    // Server PATCH accepts strings only (no null) — '' is the clear sentinel
-    // (normalized back to null on bootstrap/read).
+    // Server accepts `syllabus: null` as CLEAR (sets the column NULL).
     try {
       await apiFetch<{ course: Course }>(
         `/api/courses/${encodeURIComponent(courseId)}`,
-        { method: 'PATCH', body: { syllabus: '' } }
+        { method: 'PATCH', body: { syllabus: null } }
       );
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to remove syllabus.';
@@ -2369,13 +2368,20 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const toggleMessageReaction = async (messageId: string, reaction: string): Promise<void> => {
-    // Server SETS the reaction (no toggle-off) — the cache follows the
-    // returned row so client and server stay identical.
+    // Toggle-off: clicking the active emoji DELETEs the reaction, otherwise
+    // POST sets it. The cache follows the returned row (server truth wins).
+    const current = (db.messages || []).find(m => m.id === messageId)?.reaction;
+    const clearing = current === reaction;
     try {
-      const { message } = await apiFetch<{ message: Message }>(
-        `/api/messages/${encodeURIComponent(messageId)}/react`,
-        { method: 'POST', body: { reaction } }
-      );
+      const { message } = clearing
+        ? await apiFetch<{ message: Message }>(
+          `/api/messages/${encodeURIComponent(messageId)}/react`,
+          { method: 'DELETE' }
+        )
+        : await apiFetch<{ message: Message }>(
+          `/api/messages/${encodeURIComponent(messageId)}/react`,
+          { method: 'POST', body: { reaction } }
+        );
       setDb(prev => ({
         ...prev,
         messages: (prev.messages || []).map(m =>
@@ -3003,12 +3009,41 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     fileData: Partial<CourseFile> & { rawFile?: File | Blob; area?: string; moduleId?: string; moduleTitle?: string }
   ): Promise<CourseFile> => {
     const courseId = fileData.courseId || activeCourseId || 'crs-cmsc131';
+    // Metadata-only calls (no raw bytes) go to the JSON files endpoint —
+    // no Blob placeholders anywhere. Real bytes ride the multipart upload.
+    if (!fileData.rawFile) {
+      try {
+        const body: Record<string, unknown> = { name: fileData.name };
+        if (fileData.url !== undefined) body.url = fileData.url;
+        if (fileData.fileUrl !== undefined) body.fileUrl = fileData.fileUrl;
+        if (fileData.size !== undefined) body.size = fileData.size;
+        if (fileData.formattedSize !== undefined) body.formattedSize = fileData.formattedSize;
+        if (fileData.type !== undefined) body.type = fileData.type;
+        if (fileData.visibility !== undefined) body.visibility = fileData.visibility;
+        if (fileData.folderId !== undefined) body.folderId = fileData.folderId;
+        if (fileData.area !== undefined) body.sourceArea = fileData.area;
+        if (fileData.moduleId !== undefined) body.sourceId = fileData.moduleId;
+        if (fileData.content !== undefined) body.content = fileData.content;
+        const { file } = await apiFetch<{ file: CourseFile }>(
+          `/api/courses/${encodeURIComponent(courseId)}/files`,
+          { method: 'POST', body }
+        );
+        setDb(prev => ({
+          ...prev,
+          courseFiles: [...(prev.courseFiles || []), file]
+        }));
+        return file;
+      } catch (err) {
+        const message = err instanceof ApiError ? err.message : 'Failed to upload file.';
+        setLastError(message);
+        showAlert(message, 'Upload File Failed');
+        throw err;
+      }
+    }
     // The files endpoint is multipart (multer single `file`) — apiFetch is
     // JSON-only, so this posts FormData directly with the auth token.
-    // Metadata-only calls fall back to an empty Blob so the row still files.
-    const blob = fileData.rawFile ?? new Blob([fileData.content || ''], { type: 'application/octet-stream' });
     const form = new FormData();
-    form.append('file', blob, fileData.name || 'uploaded_asset.pdf');
+    form.append('file', fileData.rawFile, fileData.name || 'uploaded_asset.pdf');
     if (fileData.folderId) form.append('folderId', fileData.folderId);
     if (fileData.area) {
       form.append('area', fileData.area);
