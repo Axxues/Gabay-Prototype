@@ -22,6 +22,12 @@ export function errorMiddleware(err: unknown, _req: Request, res: Response, _nex
     res.status(err.status).json({ error: { code: err.code, message: err.message } });
     return;
   }
+  const status = (err as { status?: unknown })?.status;
+  const errType = (err as { type?: unknown })?.type;
+  if (status === 413 || errType === 'entity.too.large') {
+    res.status(413).json({ error: { code: 'payload_too_large', message: 'Request body too large.' } });
+    return;
+  }
   console.error(err);
   res.status(500).json({ error: { code: 'internal', message: 'Something went wrong.' } });
 }

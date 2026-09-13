@@ -18,7 +18,9 @@ import { filesRouter } from './routes/files.js';
 import { gradesRouter } from './routes/grades.js';
 
 const app = express();
-app.use(express.json({ limit: '2mb' }));
+// 12mb accommodates the client's 10MB image-upload cap (cover images ride
+// as data URLs inside JSON bodies); anything bigger gets an honest 413.
+app.use(express.json({ limit: '12mb' }));
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true });
