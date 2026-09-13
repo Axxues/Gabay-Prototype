@@ -100,4 +100,72 @@ describe('messages router', () => {
 
     expect(res.status).toBe(403);
   });
+
+  it('DELETE react clears the reaction (participant)', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'alice',
+      role: 'student',
+    });
+    (prisma.message.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'm1',
+      senderId: 'alice',
+      recipientId: 'bob',
+      groupId: null,
+      reaction: '❤️',
+    });
+    (prisma.message.update as ReturnType<typeof vi.fn>).mockImplementation(
+      (args: { where: unknown; data: Record<string, unknown> }) =>
+        Promise.resolve({ id: 'm1', ...args.data })
+    );
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .delete('/api/messages/m1/react')
+      .set('Authorization', 'Bearer x');
+
+    expect(res.status).toBe(200);
+    expect(prisma.message.update).toHaveBeenCalledWith({
+      where: { id: 'm1' },
+      data: { reaction: null },
+    });
+    expect(res.body.message.reaction).toBeNull();
+  });
+
+  it('DELETE react by non-participant → 403', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'intruder',
+      role: 'student',
+    });
+    (prisma.message.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'm1',
+      senderId: 'alice',
+      recipientId: 'bob',
+      groupId: null,
+      reaction: '❤️',
+    });
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .delete('/api/messages/m1/react')
+      .set('Authorization', 'Bearer x');
+
+    expect(res.status).toBe(403);
+    expect(prisma.message.update).not.toHaveBeenCalled();
+  });
+
+  it('DELETE react for missing message → 404', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'alice',
+      role: 'student',
+    });
+    (prisma.message.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .delete('/api/messages/nope/react')
+      .set('Authorization', 'Bearer x');
+
+    expect(res.status).toBe(404);
+    expect(prisma.message.update).not.toHaveBeenCalled();
+  });
 });

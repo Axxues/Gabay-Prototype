@@ -258,6 +258,104 @@ filesRouter.get(
   })
 );
 
+// POST /api/courses/:id/files (JSON, metadata-only — no multer, no disk
+// write; same scope guards as the multipart upload endpoint)
+const METADATA_FILE_FIELDS = [
+  'name',
+  'url',
+  'fileUrl',
+  'size',
+  'formattedSize',
+  'type',
+  'visibility',
+  'folderId',
+  'sourceArea',
+  'sourceId',
+  'content',
+] as const;
+
+filesRouter.post(
+  '/courses/:id/files',
+  authenticateToken,
+  asyncHandler(async (req, res) => {
+    const auth = req.auth!;
+    const scopeId = req.params.id;
+    const course = await loadScopeOr404(scopeId, auth);
+    await assertScopeAccess(course, auth);
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    for (const key of Object.keys(body)) {
+      if (!(METADATA_FILE_FIELDS as readonly string[]).includes(key)) {
+        throw new ApiError(
+          400,
+          'bad_request',
+          `Unknown field '${key}'. Only ${METADATA_FILE_FIELDS.map((f) => `'${f}'`).join(', ')} are allowed.`,
+        );
+      }
+    }
+    if (typeof body.name !== 'string' || !body.name.trim()) {
+      throw new ApiError(400, 'bad_request', 'Field name is required.');
+    }
+    const name = body.name.trim();
+    const visibility = body.visibility === undefined ? 'published' : body.visibility;
+    if (!(VISIBILITIES as readonly string[]).includes(visibility as string)) {
+      throw new ApiError(400, 'bad_request', 'Field visibility is not a valid visibility.');
+    }
+    const strOrNull = (v: unknown, field: string): string | null => {
+      if (v === undefined || v === null || v === '') return null;
+      if (typeof v !== 'string') {
+        throw new ApiError(400, 'bad_request', `Field '${field}' must be a string.`);
+      }
+      return v;
+    };
+    let targetFolderId: string | null = null;
+    if (body.folderId !== undefined && body.folderId !== null && body.folderId !== '') {
+      if (typeof body.folderId !== 'string') {
+        throw new ApiError(400, 'bad_request', "Field 'folderId' must be a string.");
+      }
+      const folder = await prisma.courseFolder.findUnique({ where: { id: body.folderId } });
+      if (!folder || folder.courseId !== scopeId) {
+        throw new ApiError(404, 'not_found', 'Folder not found.');
+      }
+      targetFolderId = folder.id;
+    }
+    let size = 0;
+    if (body.size !== undefined && body.size !== null) {
+      if (typeof body.size !== 'number' || !Number.isFinite(body.size) || body.size < 0) {
+        throw new ApiError(400, 'bad_request', "Field 'size' must be a non-negative number.");
+      }
+      size = Math.floor(body.size);
+    }
+    const type =
+      typeof body.type === 'string' && body.type.trim()
+        ? body.type.trim()
+        : detectFileType(name);
+    const me = await prisma.user.findUnique({ where: { id: auth.sub } });
+    const file = await prisma.courseFile.create({
+      data: {
+        id: newId('file'),
+        courseId: scopeId,
+        folderId: targetFolderId,
+        name,
+        size,
+        formattedSize:
+          typeof body.formattedSize === 'string' && body.formattedSize
+            ? body.formattedSize
+            : formatSize(size),
+        type,
+        visibility: visibility as string,
+        uploadedBy: auth.sub,
+        uploadedByName: (me as { name?: string } | null)?.name ?? '',
+        content: typeof body.content === 'string' ? body.content : '',
+        url: strOrNull(body.url, 'url'),
+        fileUrl: strOrNull(body.fileUrl, 'fileUrl'),
+        sourceArea: strOrNull(body.sourceArea, 'sourceArea'),
+        sourceId: strOrNull(body.sourceId, 'sourceId'),
+      },
+    });
+    res.status(201).json({ file });
+  })
+);
+
 // POST /api/courses/:id/files/upload (multer single `file`)
 filesRouter.post(
   '/courses/:id/files/upload',

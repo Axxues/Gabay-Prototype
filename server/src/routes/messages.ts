@@ -224,6 +224,29 @@ messagesRouter.post(
   }),
 );
 
+// DELETE /api/messages/:id/react (participant only — same guard as POST react)
+messagesRouter.delete(
+  '/:id/react',
+  authenticateToken,
+  asyncHandler(async (req, res) => {
+    const me = req.auth!.sub;
+    const message = await prisma.message.findUnique({ where: { id: req.params.id } });
+    if (!message) throw new ApiError(404, 'not_found', 'Message not found.');
+    if (message.senderId !== me && message.recipientId !== me) {
+      if (message.groupId) {
+        await assertGroupMember(message.groupId, me);
+      } else {
+        assertParticipant(message, me);
+      }
+    }
+    const updated = await prisma.message.update({
+      where: { id: message.id },
+      data: { reaction: null },
+    });
+    res.json({ message: updated });
+  }),
+);
+
 // GET /api/groups (groups I belong to)
 groupsRouter.get(
   '/',

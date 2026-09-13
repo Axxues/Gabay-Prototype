@@ -175,6 +175,12 @@ coursesRouter.patch(
     for (const key of COURSE_PATCH_STRINGS) {
       const value = body[key];
       if (value === undefined) continue;
+      // `syllabus: null` is the CLEAR sentinel (sets the column NULL);
+      // other non-string types still 400.
+      if (key === 'syllabus' && value === null) {
+        data[key] = null;
+        continue;
+      }
       if (typeof value !== 'string') {
         throw new ApiError(400, 'bad_request', `Field '${key}' must be a string.`);
       }

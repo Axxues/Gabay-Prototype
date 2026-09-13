@@ -33,6 +33,7 @@ process.env.JWT_SECRET ??= 'test-secret';
 import { prisma } from '../db.js';
 import jwt from 'jsonwebtoken';
 import express from 'express';
+import { writeFileSync } from 'node:fs';
 import { filesRouter } from './files.js';
 import { gradesRouter } from './grades.js';
 import { errorMiddleware } from '../utils/errors.js';
@@ -120,6 +121,65 @@ describe('files + grades routers', () => {
         data: expect.objectContaining({ folderId: 'fld-ann', name: 'memo.pdf' }),
       })
     );
+  });
+
+  it('metadata POST creates the row with no fs write', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-fac',
+      role: 'faculty',
+    });
+    (prisma.courseFile.create as ReturnType<typeof vi.fn>).mockImplementation(
+      (args: { data: Record<string, unknown> }) =>
+        Promise.resolve({ id: 'file-meta', ...args.data })
+    );
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .post('/api/courses/c1/files')
+      .set('Authorization', 'Bearer x')
+      .send({ name: 'syllabus.pdf', url: 'https://cdn.example/s.pdf', visibility: 'published' });
+
+    expect(res.status).toBe(201);
+    expect(prisma.courseFile.create).toHaveBeenCalledTimes(1);
+    expect(prisma.courseFile.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ name: 'syllabus.pdf', courseId: 'c1', type: 'pdf' }),
+      })
+    );
+    expect(writeFileSync).not.toHaveBeenCalled();
+    expect(res.body.file.name).toBe('syllabus.pdf');
+  });
+
+  it('metadata POST rejects unknown keys (400)', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-fac',
+      role: 'faculty',
+    });
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .post('/api/courses/c1/files')
+      .set('Authorization', 'Bearer x')
+      .send({ name: 'a.pdf', bogus: 1 });
+
+    expect(res.status).toBe(400);
+    expect(prisma.courseFile.create).not.toHaveBeenCalled();
+  });
+
+  it('metadata POST without name → 400', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-fac',
+      role: 'faculty',
+    });
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .post('/api/courses/c1/files')
+      .set('Authorization', 'Bearer x')
+      .send({ url: 'https://cdn.example/s.pdf' });
+
+    expect(res.status).toBe(400);
+    expect(prisma.courseFile.create).not.toHaveBeenCalled();
   });
 
   it('student GET grades of another student → 403', async () => {

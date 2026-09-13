@@ -75,6 +75,47 @@ describe('courses router', () => {
     expect(prisma.enrollmentRequest.create).toHaveBeenCalledTimes(1);
   });
 
+  it('PATCH syllabus null clears the column (NULL)', async () => {
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'c1',
+      instructorId: 'u-fac',
+      published: true,
+    });
+    (prisma.course.update as ReturnType<typeof vi.fn>).mockImplementation(
+      (args: { where: unknown; data: Record<string, unknown> }) =>
+        Promise.resolve({ id: 'c1', syllabus: null, ...args.data })
+    );
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .patch('/api/courses/c1')
+      .set('Authorization', 'Bearer x')
+      .send({ syllabus: null });
+
+    expect(res.status).toBe(200);
+    expect(prisma.course.update).toHaveBeenCalledWith({
+      where: { id: 'c1' },
+      data: { syllabus: null },
+    });
+  });
+
+  it('PATCH syllabus with non-string non-null still 400', async () => {
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'c1',
+      instructorId: 'u-fac',
+      published: true,
+    });
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .patch('/api/courses/c1')
+      .set('Authorization', 'Bearer x')
+      .send({ syllabus: 42 });
+
+    expect(res.status).toBe(400);
+    expect(prisma.course.update).not.toHaveBeenCalled();
+  });
+
   it('GET /api/courses/:id as non-member student → 403 forbidden', async () => {
     (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
       sub: 'u-stu',
