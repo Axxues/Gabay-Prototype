@@ -748,7 +748,7 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                                               onClick={() => {
                                                 showAlert({
                                                   title: 'Delete Comment',
-                                                  message: 'Are you sure you want to delete this comment? It will be marked as deleted.',
+                                                   message: 'Are you sure you want to delete this comment? It will be permanently deleted.',
                                                   type: 'confirm',
                                                   confirmText: 'Delete',
                                                   cancelText: 'Cancel',
