@@ -8,7 +8,8 @@ vi.mock('../db.js', () => ({
     enrollmentRequest: { findFirst: vi.fn() },
     module: { findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
     moduleItem: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
-    moduleComment: { findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn(), delete: vi.fn() },
+    moduleComment: { findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
+    moduleCommentLike: { findFirst: vi.fn(), create: vi.fn(), delete: vi.fn(), count: vi.fn() },
     courseFolder: { findFirst: vi.fn(), create: vi.fn(), updateMany: vi.fn() },
     courseFile: { findMany: vi.fn(), findFirst: vi.fn(), create: vi.fn() },
     notification: { create: vi.fn(), findMany: vi.fn(), deleteMany: vi.fn() },
@@ -139,5 +140,177 @@ describe('modules router', () => {
       where: { autoKey: 'module:m1' },
       data: { name: 'Unit 1 Renamed' },
     });
+  });
+
+  it('PATCH comment by the author 200 + sets isEdited', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-caller',
+      role: 'student',
+    });
+    (prisma.module.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(mod);
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(course);
+    (prisma.enrollmentRequest.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: 'approved',
+    });
+    (prisma.moduleComment.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'c1',
+      moduleId: 'm1',
+      authorId: 'u-caller',
+      content: 'before',
+      likedBy: [],
+    });
+    (prisma.moduleComment.update as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'c1',
+      moduleId: 'm1',
+      authorId: 'u-caller',
+      content: 'after',
+      isEdited: true,
+      likedBy: [],
+    });
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .patch('/api/modules/m1/comments/c1')
+      .set('Authorization', 'Bearer x')
+      .send({ content: 'after' });
+
+    expect(res.status).toBe(200);
+    expect(prisma.moduleComment.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'c1' },
+        data: expect.objectContaining({ content: 'after', isEdited: true }),
+      })
+    );
+    expect(res.body.comment.content).toBe('after');
+    expect(res.body.comment.likedBy).toEqual([]);
+  });
+
+  it('PATCH comment by non-author non-faculty 403', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-other',
+      role: 'student',
+    });
+    (prisma.module.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(mod);
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(course);
+    (prisma.moduleComment.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'c1',
+      moduleId: 'm1',
+      authorId: 'u-caller',
+      content: 'before',
+      likedBy: [],
+    });
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .patch('/api/modules/m1/comments/c1')
+      .set('Authorization', 'Bearer x')
+      .send({ content: 'hijack' });
+
+    expect(res.status).toBe(403);
+    expect(prisma.moduleComment.update).not.toHaveBeenCalled();
+  });
+
+  it('comment like toggle twice flips liked', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-caller',
+      role: 'student',
+    });
+    (prisma.module.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(mod);
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(course);
+    (prisma.enrollmentRequest.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: 'approved',
+    });
+    (prisma.moduleComment.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'c1',
+      moduleId: 'm1',
+      authorId: 'u-author',
+    });
+    // First toggle: like exists → delete (liked:false). Second: none → create (liked:true).
+    (prisma.moduleCommentLike.findFirst as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({ commentId: 'c1', userId: 'u-caller' })
+      .mockResolvedValueOnce(null);
+    (prisma.moduleCommentLike.count as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(1);
+
+    const request = (await import('supertest')).default(app());
+    const first = await request.post('/api/modules/m1/comments/c1/like').set('Authorization', 'Bearer x');
+    const second = await request.post('/api/modules/m1/comments/c1/like').set('Authorization', 'Bearer x');
+
+    expect(first.status).toBe(200);
+    expect(first.body.liked).toBe(false);
+    expect(second.status).toBe(200);
+    expect(second.body.liked).toBe(true);
+    expect(prisma.moduleCommentLike.delete).toHaveBeenCalledTimes(1);
+    expect(prisma.moduleCommentLike.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('item move preserves id and changes moduleId', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-fac',
+      role: 'faculty',
+    });
+    (prisma.module.findUnique as ReturnType<typeof vi.fn>).mockImplementation(
+      async (args: { where: { id: string } }) =>
+        args.where.id === 'm2'
+          ? { id: 'm2', courseId: 'c1', title: 'Unit 2' }
+          : mod
+    );
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(course);
+    (prisma.moduleItem.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'item-1',
+      moduleId: 'm1',
+      title: 'Page',
+      fileName: null,
+      fileUrl: null,
+    });
+    (prisma.moduleItem.update as ReturnType<typeof vi.fn>).mockImplementation(
+      async (args: { where: { id: string }; data: Record<string, unknown> }) => ({
+        id: args.where.id,
+        moduleId: args.data.moduleId,
+        title: 'Page',
+      })
+    );
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .patch('/api/modules/m1/items/item-1')
+      .set('Authorization', 'Bearer x')
+      .send({ targetModuleId: 'm2' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.item.id).toBe('item-1');
+    expect(res.body.item.moduleId).toBe('m2');
+    expect(prisma.moduleItem.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'item-1' } })
+    );
+  });
+
+  it('item move to an other-course module is rejected', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-fac',
+      role: 'faculty',
+    });
+    (prisma.module.findUnique as ReturnType<typeof vi.fn>).mockImplementation(
+      async (args: { where: { id: string } }) =>
+        args.where.id === 'mX' ? { id: 'mX', courseId: 'c-other', title: 'Foreign' } : mod
+    );
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(course);
+    (prisma.moduleItem.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'item-1',
+      moduleId: 'm1',
+      title: 'Page',
+      fileName: null,
+      fileUrl: null,
+    });
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .patch('/api/modules/m1/items/item-1')
+      .set('Authorization', 'Bearer x')
+      .send({ targetModuleId: 'mX' });
+
+    expect(res.status).toBe(400);
+    expect(prisma.moduleItem.update).not.toHaveBeenCalled();
   });
 });

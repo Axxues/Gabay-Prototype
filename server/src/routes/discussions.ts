@@ -206,3 +206,18 @@ discussionsRouter.patch(
     res.json({ discussion: updated });
   })
 );
+
+discussionsRouter.delete(
+  '/discussions/:id',
+  authenticateToken,
+  requireRole('faculty', 'admin'),
+  asyncHandler(async (req, res) => {
+    const auth = req.auth!;
+    const discussion = await loadDiscussionOr404(req.params.id);
+    const course = await loadCourseOr404(discussion.courseId);
+    assertCourseOwner(course, auth);
+    // Replies cascade via the schema (onDelete: Cascade).
+    await prisma.discussion.delete({ where: { id: discussion.id } });
+    res.json({ ok: true });
+  })
+);

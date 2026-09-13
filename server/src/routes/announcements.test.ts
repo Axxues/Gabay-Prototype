@@ -188,4 +188,72 @@ describe('announcements router', () => {
       .invocationCallOrder[0];
     expect(deleteOrder).toBeLessThan(createOrder);
   });
+
+  it('announcement pin by faculty 200 / by student 403', async () => {
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(course);
+    (prisma.announcement.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(annAll);
+    (prisma.announcement.update as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...annAll,
+      pinned: true,
+    });
+
+    // Faculty owner → 200.
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-fac',
+      role: 'faculty',
+    });
+    const pinned = await (await import('supertest'))
+      .default(app())
+      .patch('/api/announcements/ann-all')
+      .set('Authorization', 'Bearer x')
+      .send({ pinned: true });
+
+    expect(pinned.status).toBe(200);
+    expect(prisma.announcement.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'ann-all' }, data: { pinned: true } })
+    );
+
+    // Student → 403 (requireRole guard).
+    vi.clearAllMocks();
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-stu',
+      role: 'student',
+    });
+    const denied = await (await import('supertest'))
+      .default(app())
+      .patch('/api/announcements/ann-all')
+      .set('Authorization', 'Bearer x')
+      .send({ pinned: true });
+
+    expect(denied.status).toBe(403);
+    expect(prisma.announcement.update).not.toHaveBeenCalled();
+  });
+
+  it('announcement pin rejects unknown keys and non-boolean pinned', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-fac',
+      role: 'faculty',
+    });
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(course);
+    (prisma.announcement.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(annAll);
+
+    const request = (await import('supertest')).default(app());
+    const unknown = await request
+      .patch('/api/announcements/ann-all')
+      .set('Authorization', 'Bearer x')
+      .send({ pinned: true, title: 'hijack' });
+    const nonBoolean = await request
+      .patch('/api/announcements/ann-all')
+      .set('Authorization', 'Bearer x')
+      .send({ pinned: 'yes' });
+    const missing = await request
+      .patch('/api/announcements/ann-all')
+      .set('Authorization', 'Bearer x')
+      .send({});
+
+    expect(unknown.status).toBe(400);
+    expect(nonBoolean.status).toBe(400);
+    expect(missing.status).toBe(400);
+    expect(prisma.announcement.update).not.toHaveBeenCalled();
+  });
 });

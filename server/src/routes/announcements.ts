@@ -364,6 +364,32 @@ announcementsRouter.post(
   })
 );
 
+announcementsRouter.patch(
+  '/announcements/:id',
+  authenticateToken,
+  requireRole('faculty', 'admin'),
+  asyncHandler(async (req, res) => {
+    const auth = req.auth!;
+    const ann = await loadAnnouncementOr404(req.params.id);
+    const course = await loadCourseOr404(ann.courseId);
+    assertCourseOwner(course, auth);
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    for (const key of Object.keys(body)) {
+      if (key !== 'pinned') {
+        throw new ApiError(400, 'bad_request', `Unknown field '${key}'. Only 'pinned' is allowed.`);
+      }
+    }
+    if (body.pinned === undefined || typeof body.pinned !== 'boolean') {
+      throw new ApiError(400, 'bad_request', "Field 'pinned' must be a boolean.");
+    }
+    const updated = await prisma.announcement.update({
+      where: { id: ann.id },
+      data: { pinned: body.pinned },
+    });
+    res.json({ announcement: updated });
+  })
+);
+
 announcementsRouter.delete(
   '/announcements/:id',
   authenticateToken,

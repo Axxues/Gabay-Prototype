@@ -346,6 +346,23 @@ modulesRouter.patch(
       }
       data.minScore = body.minScore;
     }
+    if (body.completed !== undefined) {
+      if (typeof body.completed !== 'boolean') {
+        throw new ApiError(400, 'bad_request', "Field 'completed' must be a boolean.");
+      }
+      data.completed = body.completed;
+    }
+    if (body.targetModuleId !== undefined) {
+      if (typeof body.targetModuleId !== 'string' || !body.targetModuleId) {
+        throw new ApiError(400, 'bad_request', "Field 'targetModuleId' must be a non-empty string.");
+      }
+      const target = await loadModuleOr404(body.targetModuleId);
+      if (target.courseId !== course.id) {
+        throw new ApiError(400, 'bad_request', 'Target module must belong to the same course.');
+      }
+      // Move: update ONLY the FK — the item id is PRESERVED.
+      data.moduleId = target.id;
+    }
     const item = await prisma.moduleItem.update({ where: { id: prev.id }, data });
     const hadFile = !!(prev.fileName || prev.fileUrl);
     const willHaveFile = !!(
@@ -433,6 +450,76 @@ modulesRouter.post(
       });
     }
     res.status(201).json({ comment: { ...comment, likedBy: [] as string[] } });
+  })
+);
+
+modulesRouter.patch(
+  '/modules/:moduleId/comments/:commentId',
+  authenticateToken,
+  asyncHandler(async (req, res) => {
+    const auth = req.auth!;
+    const mod = await loadModuleOr404(req.params.moduleId);
+    const course = await loadCourseOr404(mod.courseId);
+    const comment = await prisma.moduleComment.findUnique({
+      where: { id: req.params.commentId },
+      include: { likedBy: true },
+    });
+    if (!comment || comment.moduleId !== mod.id) {
+      throw new ApiError(404, 'not_found', 'Comment not found.');
+    }
+    if (comment.authorId !== auth.sub) {
+      if (auth.role !== 'faculty' && auth.role !== 'admin') {
+        throw new ApiError(403, 'forbidden', 'Only the author or faculty can edit this comment.');
+      }
+      assertCourseOwner(course, auth);
+    } else {
+      await assertCourseAccess(course, auth);
+    }
+    const { content } = (req.body ?? {}) as { content?: unknown };
+    if (typeof content !== 'string' || !content.trim()) {
+      throw new ApiError(400, 'bad_request', 'Field content is required.');
+    }
+    const updated = await prisma.moduleComment.update({
+      where: { id: comment.id },
+      data: { content: content.trim(), isEdited: true, editedAt: new Date() },
+      include: { likedBy: true },
+    });
+    res.json({ comment: mapComment(updated) });
+  })
+);
+
+modulesRouter.post(
+  '/modules/:moduleId/comments/:commentId/like',
+  authenticateToken,
+  asyncHandler(async (req, res) => {
+    const auth = req.auth!;
+    const mod = await loadModuleOr404(req.params.moduleId);
+    const course = await loadCourseOr404(mod.courseId);
+    await assertCourseAccess(course, auth);
+    const comment = await prisma.moduleComment.findUnique({
+      where: { id: req.params.commentId },
+    });
+    if (!comment || comment.moduleId !== mod.id) {
+      throw new ApiError(404, 'not_found', 'Comment not found.');
+    }
+    const existing = await prisma.moduleCommentLike.findFirst({
+      where: { commentId: comment.id, userId: auth.sub },
+    });
+    let liked: boolean;
+    if (existing) {
+      await prisma.moduleCommentLike.delete({
+        where: { commentId_userId: { commentId: comment.id, userId: auth.sub } },
+      });
+      liked = false;
+    } else {
+      await prisma.moduleCommentLike.create({
+        data: { commentId: comment.id, userId: auth.sub },
+      });
+      liked = true;
+    }
+    const likes = await prisma.moduleCommentLike.count({ where: { commentId: comment.id } });
+    await prisma.moduleComment.update({ where: { id: comment.id }, data: { likes } });
+    res.json({ likes, liked });
   })
 );
 
