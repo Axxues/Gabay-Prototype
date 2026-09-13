@@ -113,7 +113,7 @@ export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: strin
           <nav className="space-y-1">
             {COURSE_CHILDREN.filter(i => isVisible(i, activeRole)).map(item => (
               <button key={item.id} type="button" onClick={() => p.onSelectCourseTab(item.id)}
-                className={`flex w-full items-center justify-between gap-2.5 rounded-xl px-3 py-2.5 text-xs font-bold cursor-pointer ${p.courseSubTab === item.id ? 'bg-primary text-primary-foreground shadow-primary-sm' : 'text-muted-foreground hover:bg-accent hover:text-foreground font-medium'}`}>{COURSE_ICONS[item.id]}<span>{item.label}</span>{(() => {
+                className={`flex w-full items-center justify-between gap-2.5 rounded-xl px-3 py-2.5 text-xs font-bold cursor-pointer ${p.courseSubTab === item.id ? 'bg-primary text-primary-foreground shadow-primary-sm' : 'text-muted-foreground hover:bg-accent hover:text-foreground font-medium'}`}><span className="flex items-center gap-2.5">{COURSE_ICONS[item.id]}<span>{item.label}</span></span>{(() => {
                   const n = courseBadgeFor(item.id);
                   return n > 0 ? (
                     <span className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground">
