@@ -237,7 +237,7 @@ export const CreateEventPage: React.FC<CreateEventPageProps> = ({
   const selectedTypeOption = EVENT_TYPE_OPTIONS.find(opt => opt.value === eventType) || EVENT_TYPE_OPTIONS[0];
   const SelectedTypeIcon = selectedTypeOption.icon;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) {
       showAlert({
@@ -294,24 +294,34 @@ export const CreateEventPage: React.FC<CreateEventPageProps> = ({
     };
 
     if (isEditing && initialEvent?.id) {
-      updateCalendarEvent(initialEvent.id, payload);
-      showAlert({
-        title: 'Event Updated',
-        message: `"${payload.title}" has been updated on the calendar.`,
-        type: 'success'
-      });
-      if (onEventSaved) {
-        onEventSaved({ ...payload, id: initialEvent.id });
+      try {
+        await updateCalendarEvent(initialEvent.id, payload);
+        showAlert({
+          title: 'Event Updated',
+          message: `"${payload.title}" has been updated on the calendar.`,
+          type: 'success'
+        });
+        if (onEventSaved) {
+          onEventSaved({ ...payload, id: initialEvent.id });
+        }
+      } catch {
+        // Context already surfaced the alert; stay on the form.
+        return;
       }
     } else {
-      addCalendarEvent(payload);
-      showAlert({
-        title: 'Event Scheduled',
-        message: `"${payload.title}" scheduled for ${payload.date} (${payload.time}).`,
-        type: 'success'
-      });
-      if (onEventSaved) {
-        onEventSaved({ ...payload, id: `ev-${Date.now()}` });
+      try {
+        const created = await addCalendarEvent(payload);
+        showAlert({
+          title: 'Event Scheduled',
+          message: `"${payload.title}" scheduled for ${payload.date} (${payload.time}).`,
+          type: 'success'
+        });
+        if (onEventSaved) {
+          onEventSaved(created);
+        }
+      } catch {
+        // Context already surfaced the alert; stay on the form.
+        return;
       }
     }
 
@@ -323,16 +333,22 @@ export const CreateEventPage: React.FC<CreateEventPageProps> = ({
     showConfirm(
       `Are you sure you want to remove "${initialEvent.title}" from the calendar?`,
       () => {
-        deleteCalendarEvent(initialEvent.id);
-        showAlert({
-          title: 'Event Removed',
-          message: `"${initialEvent.title}" was deleted.`,
-          type: 'info'
-        });
-        if (onEventDeleted) {
-          onEventDeleted(initialEvent.id);
-        }
-        onBack();
+        void (async () => {
+          try {
+            await deleteCalendarEvent(initialEvent.id);
+            showAlert({
+              title: 'Event Removed',
+              message: `"${initialEvent.title}" was deleted.`,
+              type: 'info'
+            });
+            if (onEventDeleted) {
+              onEventDeleted(initialEvent.id);
+            }
+            onBack();
+          } catch {
+            // Context already surfaced the alert.
+          }
+        })();
       },
       'Delete Event'
     );

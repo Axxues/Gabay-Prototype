@@ -43,7 +43,7 @@ interface SyllabusViewProps {
 }
 
 export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
-  const { db, activeRole, activeUser, updateCourseSyllabus, removeCourseSyllabus, showAlert, fileUploadToArea } = useLMS();
+  const { db, activeRole, activeUser, updateCourseSyllabus, removeCourseSyllabus, showAlert, uploadCourseFile } = useLMS();
   const currentCourse = db.courses.find(c => c.id === courseId);
   const data = currentCourse?.syllabus || null;
   const isCustomSyllabus = Boolean(currentCourse?.syllabus);
@@ -72,6 +72,9 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
   const [scanLogs, setScanLogs] = useState<string[]>([]);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
+  // Raw scanned file retained so syllabus apply can send the bytes to the
+  // files endpoint (area: syllabus) — the server owns filing.
+  const [scannedFile, setScannedFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isFilePickerOpen, setIsFilePickerOpen] = useState(false);
@@ -131,6 +134,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
         setScanLogs(prev => [...prev.slice(-4), step]);
       });
       setScanResult(result);
+      setScannedFile(file);
 
       // Auto-detect faculty member from document text
       const detectedNames = result.detectedFacultyNames || [];
@@ -164,6 +168,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
       const message: string = err?.message || 'Error occurred while scanning document. Please check the file.';
       setScanError(message);
       setScanResult(null);
+      setScannedFile(null);
       // Keep the upload modal open so the user sees why the file was rejected
       setIsUploadModalOpen(true);
       setScanLogs(prev => [...prev, `Rejected: ${message}`]);
@@ -253,7 +258,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
     }];
   }, [data?.facultyMembers, currentCourse, activeUser]);
 
-  const handleApplySyllabus = () => {
+  const handleApplySyllabus = async () => {
     if (!scanResult || !currentCourse) return;
 
     // Find the chosen faculty member
@@ -295,16 +300,27 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
       }
     };
 
-    updateCourseSyllabus(courseId, boundSyllabus);
-    fileUploadToArea({
-      courseId,
-      area: 'syllabus',
-      sourceId: courseId,
-      name: scanResult.fileName,
-      formattedSize: scanResult.fileSize,
-      type: scanResult.fileType === 'pdf' ? 'pdf' : 'document',
-      reuseExistingName: true,
-    });
+    try {
+      await updateCourseSyllabus(courseId, boundSyllabus);
+    } catch {
+      // Context already surfaced the alert; do not file the document.
+      return;
+    }
+    // Syllabus apply sends the file: server files it (area: syllabus) and
+    // the scanned bytes ride the multipart upload when still retained.
+    try {
+      await uploadCourseFile({
+        courseId,
+        area: 'syllabus',
+        name: scanResult.fileName,
+        rawFile: scannedFile ?? undefined,
+        formattedSize: scanResult.fileSize,
+        type: scanResult.fileType === 'pdf' ? 'pdf' : 'document',
+        visibility: 'published',
+      });
+    } catch {
+      // Context already surfaced the alert; the syllabus itself is saved.
+    }
     showAlert({
       title: 'Syllabus Updated Successfully',
       message: `Course syllabus for ${currentCourse.code} synchronized with "${scanResult.fileName}". Assigned Faculty: ${chosenFaculty.name}.`,
@@ -312,12 +328,18 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
     });
     setIsUploadModalOpen(false);
     setScanResult(null);
+    setScannedFile(null);
   };
 
-  const handleResetToDefault = () => {
+  const handleResetToDefault = async () => {
     if (!currentCourse) return;
     const defaultSyllabus = createDefaultSyllabusForCourse(currentCourse);
-    updateCourseSyllabus(courseId, defaultSyllabus);
+    try {
+      await updateCourseSyllabus(courseId, defaultSyllabus);
+    } catch {
+      // Context already surfaced the alert.
+      return;
+    }
     showAlert({
       title: 'Syllabus Reset',
       message: `Course syllabus for ${currentCourse.code} restored to its standard institutional template.`,
@@ -356,13 +378,20 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
   }, [searchQuery, activeWeekTab, data]);
 
   const handleConfirmDeleteSyllabus = () => {
-    removeCourseSyllabus(courseId);
-    setIsDeleteModalOpen(false);
-    showAlert({
-      title: 'Syllabus Removed',
-      message: `The syllabus for "${currentCourse?.code || 'Course'}" has been successfully removed.`,
-      type: 'info'
-    });
+    void (async () => {
+      try {
+        await removeCourseSyllabus(courseId);
+      } catch {
+        // Context already surfaced the alert.
+        return;
+      }
+      setIsDeleteModalOpen(false);
+      showAlert({
+        title: 'Syllabus Removed',
+        message: `The syllabus for "${currentCourse?.code || 'Course'}" has been successfully removed.`,
+        type: 'info'
+      });
+    })();
   };
 
   const handleDownloadSyllabus = () => {
@@ -451,6 +480,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               onClick={() => {
                 setScanResult(null);
                 setScanError(null);
+                setScannedFile(null);
               }}
               className="p-2 rounded-xl bg-card border border-border hover:bg-muted text-muted-foreground hover:text-foreground transition-all cursor-pointer shadow-subtle flex items-center space-x-1.5 text-xs font-bold"
               title="Return to Syllabus"
@@ -474,6 +504,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                 onClick={() => {
                   setScanResult(null);
                   setScanError(null);
+                  setScannedFile(null);
                   setIsUploadModalOpen(true);
                 }}
                 className="px-3 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted border border-transparent hover:border-border rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
@@ -749,6 +780,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                 onClick={() => {
                   setScanResult(null);
                   setScanError(null);
+                  setScannedFile(null);
                 }}
                 className="w-full py-2 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-all cursor-pointer text-center"
               >
@@ -807,6 +839,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                 onClick={() => {
                   setScanResult(null);
                   setScanError(null);
+                  setScannedFile(null);
                   setIsScanning(false);
                   setScanProgress(0);
                   setScanLogs([]);
@@ -871,6 +904,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                 onClick={() => {
                   setScanResult(null);
                   setScanError(null);
+                  setScannedFile(null);
                   setIsScanning(false);
                   setScanProgress(0);
                   setScanLogs([]);

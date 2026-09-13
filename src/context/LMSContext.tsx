@@ -25,13 +25,10 @@ import type {
   ChatGroup,
   Notification,
   CourseSection,
-  EnrollmentRequest,
-  FileSourceArea,
-  FileAreaInput
+  EnrollmentRequest
 } from '../types/lms';
 import type { Activity } from '../types/lms';
 import { activityPointsPossible } from '../utils/activities';
-import { areaFolderAutoKey, areaFolderName, dedupeFileName, findFolderByAutoKey, moduleFolderAutoKey } from '../utils/autoFolder';
 import initialMockData from '../data/mockData.json';
 import { commonsTemplates } from '../data/commonsTemplates';
 import { AlertModal, type AlertModalOptions } from '../components/common/AlertModal';
@@ -106,8 +103,8 @@ interface LMSContextType {
   joinCourseByCode: (joinCode: string) => Promise<{ success: boolean; message: string; course?: Course }>;
   regenerateCourseJoinCode: (courseId: string) => Promise<string>;
   updateSyllabus: (courseId: string, updates: Partial<Course>) => void;
-  updateCourseSyllabus: (courseId: string, syllabus: OfficialSyllabusData) => void;
-  removeCourseSyllabus: (courseId: string) => void;
+  updateCourseSyllabus: (courseId: string, syllabus: OfficialSyllabusData) => Promise<void>;
+  removeCourseSyllabus: (courseId: string) => Promise<void>;
   importCommonsTemplate: (templateId: string, targetCourseId: string) => Promise<{ success: boolean; message: string }>;
 
   gradeSubmission: (
@@ -128,15 +125,15 @@ interface LMSContextType {
   editModuleComment: (moduleId: string, commentId: string, newContent: string) => Promise<void>;
   deleteModuleComment: (moduleId: string, commentId: string) => Promise<void>;
   toggleLikeModuleComment: (moduleId: string, commentId: string) => Promise<void>;
-  sendMessage: (recipientId: string, subject: string, body: string, courseId?: string, attachmentName?: string, attachmentSize?: string, isGroup?: boolean, groupId?: string) => void;
-  createChatGroup: (name: string, memberIds: string[], courseId?: string) => ChatGroup;
-  markThreadAsRead: (partnerId: string) => void;
-  toggleMessageReaction: (messageId: string, reaction: string) => void;
-  bookAdvisingSlot: (slotId: string) => void;
-  createAdvisingSlot: (date: string, timeSlot: string, location: string) => void;
-  addCalendarEvent: (event: Omit<CalendarEvent, 'id'>) => void;
-  updateCalendarEvent: (id: string, updates: Partial<CalendarEvent>) => void;
-  deleteCalendarEvent: (id: string) => void;
+  sendMessage: (recipientId: string, subject: string, body: string, courseId?: string, attachmentName?: string, attachmentSize?: string, isGroup?: boolean, groupId?: string) => Promise<void>;
+  createChatGroup: (name: string, memberIds: string[], courseId?: string) => Promise<ChatGroup>;
+  markThreadAsRead: (partnerId: string) => Promise<void>;
+  toggleMessageReaction: (messageId: string, reaction: string) => Promise<void>;
+  bookAdvisingSlot: (slotId: string) => Promise<void>;
+  createAdvisingSlot: (date: string, timeSlot: string, location: string) => Promise<void>;
+  addCalendarEvent: (event: Omit<CalendarEvent, 'id'>) => Promise<CalendarEvent>;
+  updateCalendarEvent: (id: string, updates: Partial<CalendarEvent>) => Promise<void>;
+  deleteCalendarEvent: (id: string) => Promise<void>;
 
   // Announcements CRUD
   createAnnouncement: (data: Partial<Announcement>) => Promise<Announcement>;
@@ -148,10 +145,9 @@ interface LMSContextType {
 
   // Notifications
   notifications: Notification[];
-  createNotification: (notification: Partial<Notification>) => Notification;
   getUnreadNotificationCount: (userId: string, type?: string) => number;
-  markNotificationRead: (id: string) => void;
-  markAllNotificationsRead: (userId: string, type?: string) => void;
+  markNotificationRead: (id: string) => Promise<void>;
+  markAllNotificationsRead: (userId: string, type?: string) => Promise<void>;
   markTabVisited: (tab: string, courseId?: string) => void;
   markModuleCommentsRead: (moduleId: string) => Promise<void>;
   getNotifications: (userId: string, type?: string, limit?: number) => Notification[];
@@ -165,15 +161,14 @@ interface LMSContextType {
   toggleLikeDiscussionReply: (discussionId: string, replyId: string) => Promise<void>;
 
   // Course Files & Folders CRUD
-  createCourseFolder: (courseId: string, name: string, parentId?: string | null, autoKey?: string) => CourseFolder;
-  uploadCourseFile: (fileData: Partial<CourseFile>) => CourseFile;
-  ensureAreaFolder: (courseId: string, area: FileSourceArea) => CourseFolder;
-  ensureModuleFolder: (courseId: string, moduleId: string, moduleTitle: string) => CourseFolder;
-  fileUploadToArea: (input: FileAreaInput) => CourseFile;
-  deleteCourseFile: (fileId: string) => void;
-  deleteCourseFolder: (folderId: string) => void;
-  updateFileVisibility: (fileId: string, visibility: 'published' | 'unpublished' | 'restricted') => void;
-  renameCourseFile: (fileId: string, newName: string) => void;
+  // uploadCourseFile accepts an optional rawFile Blob for the multipart
+  // upload endpoint; area/moduleId/moduleTitle trigger server-side filing.
+  createCourseFolder: (courseId: string, name: string, parentId?: string | null, autoKey?: string) => Promise<CourseFolder>;
+  uploadCourseFile: (fileData: Partial<CourseFile> & { rawFile?: File | Blob; area?: string; moduleId?: string; moduleTitle?: string }) => Promise<CourseFile>;
+  deleteCourseFile: (fileId: string) => Promise<void>;
+  deleteCourseFolder: (folderId: string) => Promise<void>;
+  updateFileVisibility: (fileId: string, visibility: 'published' | 'unpublished' | 'restricted') => Promise<void>;
+  renameCourseFile: (fileId: string, newName: string) => Promise<void>;
 
   // Course Grades CRUD (Midterm 40%, Final 60%)
   setCourseStudentGrade: (
@@ -442,6 +437,20 @@ const normalizeCourseGrade = (raw: any): CourseStudentGrade => ({
   finalGrade: raw.finalGrade ?? null,
   updatedAt: raw.updatedAt ? toIsoString(raw.updatedAt) : undefined,
 });
+
+/** Task 5: the server stores Course.syllabus as a JSON string (nullable);
+ *  the client cache holds the parsed OfficialSyllabusData object. */
+const normalizeCourseSyllabus = (raw: any): Course => {
+  const syllabus = raw?.syllabus;
+  if (typeof syllabus !== 'string' || !syllabus) {
+    return { ...raw, syllabus: syllabus ? raw.syllabus : null };
+  }
+  try {
+    return { ...raw, syllabus: JSON.parse(syllabus) };
+  } catch {
+    return { ...raw, syllabus: null };
+  }
+};
 
 export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Theme state
@@ -810,10 +819,30 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ]);
       const fresh = emptyDb();
       fresh.users = [user];
-      fresh.courses = coursesRes.courses;
+      fresh.courses = coursesRes.courses.map(normalizeCourseSyllabus);
       fresh.notifications = notificationsRes.notifications;
       fresh.messages = messagesRes.messages;
       fresh.calendarEvents = calendarRes.events;
+      // Task 5: chat groups + advising slots are global (no per-course
+      // scope). Failures are tolerated; sync getters read the cache.
+      const groupAdvisingResults = await Promise.allSettled([
+        apiFetch<{ groups: ChatGroup[] }>('/api/groups'),
+        apiFetch<{ slots: AdvisingSlot[] }>('/api/advising'),
+      ]);
+      if (groupAdvisingResults[0].status === 'fulfilled') {
+        const groups = groupAdvisingResults[0].value.groups || [];
+        fresh.chatGroups = groups.map(g => ({
+          ...g,
+          memberIds: Array.isArray((g as any).memberIds)
+            ? (g as any).memberIds
+            : Array.isArray((g as any).members)
+              ? (g as any).members.map((m: any) => m.userId)
+              : [],
+        }));
+      }
+      if (groupAdvisingResults[1].status === 'fulfilled') {
+        fresh.advisingSlots = groupAdvisingResults[1].value.slots || [];
+      }
       // Task 2: fill the course/request cache scope — sections plus pending
       // requests for each course. Per-course failures are tolerated (e.g.
       // students get 403 on the faculty-only requests endpoint); the sync
@@ -965,6 +994,29 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       fresh.quizzes = allQuizzes;
       fresh.activities = allActivities;
       fresh.courseGrades = allGrades;
+      // Task 5 files bootstrap: folders + direct CourseFile rows for each of
+      // the user's courses (virtual aggregation in useCourseFiles reads these
+      // rows plus module/announcement/assignment sources). Per-course
+      // failures are tolerated (403-tolerant); sync getters read the cache.
+      const fileResults = await Promise.all(
+        coursesRes.courses.map(course =>
+          (async () => {
+            const [foldersSettled, filesSettled] = await Promise.allSettled([
+              apiFetch<{ folders: CourseFolder[] }>(`/api/courses/${encodeURIComponent(course.id)}/folders`),
+              apiFetch<{ files: CourseFile[] }>(`/api/courses/${encodeURIComponent(course.id)}/files`),
+            ]);
+            return { foldersSettled, filesSettled };
+          })()
+        )
+      );
+      const allFolders: CourseFolder[] = [];
+      const allFiles: CourseFile[] = [];
+      for (const r of fileResults) {
+        if (r.foldersSettled.status === 'fulfilled') allFolders.push(...r.foldersSettled.value.folders);
+        if (r.filesSettled.status === 'fulfilled') allFiles.push(...r.filesSettled.value.files);
+      }
+      fresh.courseFolders = allFolders;
+      fresh.courseFiles = allFiles;
       setDb(fresh);
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to load data.';
@@ -1890,12 +1942,25 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   };
 
-  const updateCourseSyllabus = (courseId: string, syllabus: OfficialSyllabusData) => {
+  const updateCourseSyllabus = async (courseId: string, syllabus: OfficialSyllabusData): Promise<void> => {
     const boundSyllabus: OfficialSyllabusData = {
       ...syllabus,
       courseId
     };
     const instructorFromSyllabus = boundSyllabus.facultyMembers?.[0]?.name;
+    // Server stores syllabus as a JSON string (String? column) — stringify
+    // client-side; the cache keeps the parsed object.
+    try {
+      await apiFetch<{ course: Course }>(
+        `/api/courses/${encodeURIComponent(courseId)}`,
+        { method: 'PATCH', body: { syllabus: JSON.stringify(boundSyllabus) } }
+      );
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to update syllabus.';
+      setLastError(message);
+      showAlert(message, 'Update Syllabus Failed');
+      throw err;
+    }
     setDb(prev => ({
       ...prev,
       courses: prev.courses.map(c => (c.id === courseId ? {
@@ -1906,7 +1971,20 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   };
 
-  const removeCourseSyllabus = (courseId: string) => {
+  const removeCourseSyllabus = async (courseId: string): Promise<void> => {
+    // Server PATCH accepts strings only (no null) — '' is the clear sentinel
+    // (normalized back to null on bootstrap/read).
+    try {
+      await apiFetch<{ course: Course }>(
+        `/api/courses/${encodeURIComponent(courseId)}`,
+        { method: 'PATCH', body: { syllabus: '' } }
+      );
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to remove syllabus.';
+      setLastError(message);
+      showAlert(message, 'Remove Syllabus Failed');
+      throw err;
+    }
     setDb(prev => ({
       ...prev,
       courses: prev.courses.map(c => (c.id === courseId ? { ...c, syllabus: null } : c))
@@ -2171,7 +2249,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const sendMessage = (
+  const sendMessage = async (
     recipientId: string,
     subject: string,
     body: string,
@@ -2180,162 +2258,256 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     attachmentSize?: string,
     isGroupParam?: boolean,
     groupIdParam?: string
-  ) => {
+  ): Promise<void> => {
     const matchedGroup = (db.chatGroups || []).find(g => g.id === (groupIdParam || recipientId));
-    const recipient = db.users.find(u => u.id === recipientId);
     const isGroup = isGroupParam !== undefined ? isGroupParam : !!matchedGroup;
-    if (!recipient && !matchedGroup) return;
-
-    const course = db.courses.find(c => c.id === (courseId || matchedGroup?.courseId));
-
-    const newMsg: Message = {
-      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      senderId: activeUser.id,
-      senderName: activeUser.name,
-      senderRole: activeRole,
-      recipientId: isGroup ? matchedGroup!.id : recipient!.id,
-      recipientName: isGroup ? matchedGroup!.name : recipient!.name,
-      recipientRole: isGroup ? 'student' : recipient!.role,
-      courseId: course?.id,
-      courseCode: course?.code,
-      subject,
-      body,
-      timestamp: new Date().toISOString(),
-      read: false,
-      attachmentName,
-      attachmentSize,
-      isGroup,
-      groupId: isGroup ? (groupIdParam || matchedGroup?.id) : undefined
-    };
-
-    setDb(prev => ({ ...prev, messages: [newMsg, ...(prev.messages || [])] }));
+    // Server persists recipient/subject/body/courseId (+ groupId for group
+    // rows); attachment metadata rides in the cache only (no server field).
+    try {
+      const { message } = await apiFetch<{ message: Message }>('/api/messages', {
+        method: 'POST',
+        body: {
+          recipientId,
+          subject,
+          body,
+          ...(courseId !== undefined ? { courseId } : {}),
+          ...(isGroup && matchedGroup ? { groupId: matchedGroup.id } : {}),
+        },
+      });
+      const merged: Message = {
+        ...message,
+        ...(attachmentName !== undefined ? { attachmentName } : {}),
+        ...(attachmentSize !== undefined ? { attachmentSize } : {}),
+      };
+      setDb(prev => ({ ...prev, messages: [merged, ...(prev.messages || [])] }));
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to send message.';
+      setLastError(message);
+      showAlert(message, 'Send Message Failed');
+      throw err;
+    }
   };
 
-  const createChatGroup = (name: string, memberIds: string[], courseId?: string): ChatGroup => {
-    const course = db.courses.find(c => c.id === courseId);
-    const allMembers = Array.from(new Set([activeUser.id, ...memberIds]));
-
-    const newGroup: ChatGroup = {
-      id: `grp-${Date.now()}`,
-      name: name.trim() || 'New Study Group',
-      memberIds: allMembers,
-      courseId,
-      courseCode: course?.code,
-      createdAt: new Date().toISOString(),
-      createdBy: activeUser.id
-    };
-
-    const welcomeMsg: Message = {
-      id: `msg-${Date.now()}-welcome`,
-      senderId: activeUser.id,
-      senderName: activeUser.name,
-      senderRole: activeRole,
-      recipientId: newGroup.id,
-      recipientName: newGroup.name,
-      recipientRole: 'student',
-      courseId: course?.id,
-      courseCode: course?.code,
-      subject: `Welcome to ${newGroup.name}`,
-      body: `Group created by ${activeUser.name}. Welcome everyone!`,
-      timestamp: new Date().toISOString(),
-      read: true,
-      groupId: newGroup.id,
-      isGroup: true
-    };
-
-    setDb(prev => ({
-      ...prev,
-      chatGroups: [newGroup, ...(prev.chatGroups || [])],
-      messages: [welcomeMsg, ...(prev.messages || [])]
-    }));
-
-    return newGroup;
+  const createChatGroup = async (name: string, memberIds: string[], courseId?: string): Promise<ChatGroup> => {
+    try {
+      const { group } = await apiFetch<{ group: any }>('/api/groups', {
+        method: 'POST',
+        body: {
+          name: name.trim() || 'New Study Group',
+          memberIds,
+          ...(courseId !== undefined ? { courseId } : {}),
+        },
+      });
+      // Server returns { ...group, members } — rehydrate the memberIds array.
+      const merged: ChatGroup = {
+        ...(group as ChatGroup),
+        memberIds: Array.isArray((group as any).memberIds)
+          ? (group as any).memberIds
+          : Array.isArray((group as any).members)
+            ? (group as any).members.map((m: any) => m.userId)
+            : Array.from(new Set([activeUser.id, ...memberIds])),
+      };
+      // Welcome message rides the group-messages endpoint (client single-row
+      // group convention); best-effort so group creation still succeeds.
+      try {
+        const { message } = await apiFetch<{ message: Message }>(
+          `/api/groups/${encodeURIComponent(merged.id)}/messages`,
+          {
+            method: 'POST',
+            body: {
+              subject: `Welcome to ${merged.name}`,
+              body: `Group created by ${activeUser.name}. Welcome everyone!`,
+            },
+          }
+        );
+        setDb(prev => ({
+          ...prev,
+          chatGroups: [merged, ...(prev.chatGroups || [])],
+          messages: [message, ...(prev.messages || [])]
+        }));
+      } catch {
+        setDb(prev => ({
+          ...prev,
+          chatGroups: [merged, ...(prev.chatGroups || [])]
+        }));
+      }
+      return merged;
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to create group.';
+      setLastError(message);
+      showAlert(message, 'Create Group Failed');
+      throw err;
+    }
   };
 
-  const markThreadAsRead = (partnerId: string) => {
+  const markThreadAsRead = async (partnerId: string): Promise<void> => {
+    const isGroup = (db.chatGroups || []).some(g => g.id === partnerId);
     setDb(prev => ({
       ...prev,
       messages: (prev.messages || []).map(m => {
+        if (isGroup) {
+          if ((m.groupId === partnerId || m.recipientId === partnerId) && m.senderId !== activeUser.id && !m.read) {
+            return { ...m, read: true };
+          }
+          return m;
+        }
         if (m.senderId === partnerId && m.recipientId === activeUser.id && !m.read) {
           return { ...m, read: true };
         }
         return m;
       })
     }));
+    // Read path: stay silent (no modal) on failure; cache already updated.
+    try {
+      await apiFetch<{ updated: number }>('/api/messages/thread/read', {
+        method: 'POST',
+        body: isGroup ? { groupId: partnerId } : { partnerId },
+      });
+    } catch (err) {
+      setLastError(err instanceof ApiError ? err.message : 'Failed to mark thread read.');
+    }
   };
 
-  const toggleMessageReaction = (messageId: string, reaction: string) => {
-    setDb(prev => ({
-      ...prev,
-      messages: (prev.messages || []).map(m => {
-        if (m.id === messageId) {
-          return { ...m, reaction: m.reaction === reaction ? undefined : reaction };
+  const toggleMessageReaction = async (messageId: string, reaction: string): Promise<void> => {
+    // Server SETS the reaction (no toggle-off) — the cache follows the
+    // returned row so client and server stay identical.
+    try {
+      const { message } = await apiFetch<{ message: Message }>(
+        `/api/messages/${encodeURIComponent(messageId)}/react`,
+        { method: 'POST', body: { reaction } }
+      );
+      setDb(prev => ({
+        ...prev,
+        messages: (prev.messages || []).map(m =>
+          m.id === messageId ? { ...m, ...(message as Message) } : m
+        )
+      }));
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to react to message.';
+      setLastError(message);
+      showAlert(message, 'Reaction Failed');
+      throw err;
+    }
+  };
+
+  const bookAdvisingSlot = async (slotId: string): Promise<void> => {
+    try {
+      const { slot } = await apiFetch<{ slot: AdvisingSlot }>(
+        `/api/advising/${encodeURIComponent(slotId)}/book`,
+        { method: 'POST' }
+      );
+      setDb(prev => ({
+        ...prev,
+        advisingSlots: prev.advisingSlots.map(s => (s.id === slotId ? { ...s, ...(slot as AdvisingSlot) } : s))
+      }));
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to book advising slot.';
+      setLastError(message);
+      showAlert(message, 'Booking Failed');
+      throw err;
+    }
+  };
+
+  const createAdvisingSlot = async (date: string, timeSlot: string, location: string): Promise<void> => {
+    try {
+      const { slot } = await apiFetch<{ slot: AdvisingSlot }>('/api/advising', {
+        method: 'POST',
+        body: { date, timeSlot, location }
+      });
+      setDb(prev => ({
+        ...prev,
+        advisingSlots: [...prev.advisingSlots, slot]
+      }));
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to create advising slot.';
+      setLastError(message);
+      showAlert(message, 'Create Slot Failed');
+      throw err;
+    }
+  };
+
+  const addCalendarEvent = async (event: Omit<CalendarEvent, 'id'>): Promise<CalendarEvent> => {
+    try {
+      const { event: created } = await apiFetch<{ event: CalendarEvent }>('/api/calendar', {
+        method: 'POST',
+        body: {
+          title: event.title,
+          date: event.date,
+          ...(event.time !== undefined ? { time: event.time } : {}),
+          ...(event.courseId !== undefined ? { courseId: event.courseId } : {}),
+          ...(event.courseCode !== undefined ? { courseCode: event.courseCode } : {}),
+          ...(event.type !== undefined ? { type: event.type } : {}),
+          ...(event.description !== undefined ? { description: event.description } : {}),
+          ...(event.startAt !== undefined ? { startAt: event.startAt } : {}),
+          ...(event.endAt !== undefined ? { endAt: event.endAt } : {}),
+          ...(event.isAllDay !== undefined ? { isAllDay: event.isAllDay } : {}),
+          ...(event.colorHex !== undefined ? { colorHex: event.colorHex } : {}),
+          ...(event.location !== undefined ? { location: event.location } : {}),
+          ...(event.meetingPlatform !== undefined ? { meetingPlatform: event.meetingPlatform } : {}),
+          ...(event.meetingId !== undefined ? { meetingId: event.meetingId } : {}),
+          ...(event.meetingPasscode !== undefined ? { meetingPasscode: event.meetingPasscode } : {}),
+          ...(event.meetingJoinUrl !== undefined ? { meetingJoinUrl: event.meetingJoinUrl } : {}),
         }
-        return m;
-      })
-    }));
+      });
+      setDb(prev => ({
+        ...prev,
+        calendarEvents: [...prev.calendarEvents, created]
+      }));
+      return created;
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to create event.';
+      setLastError(message);
+      showAlert(message, 'Create Event Failed');
+      throw err;
+    }
   };
 
-  const bookAdvisingSlot = (slotId: string) => {
-    setDb(prev => ({
-      ...prev,
-      advisingSlots: prev.advisingSlots.map(slot => {
-        if (slot.id === slotId) {
-          return {
-            ...slot,
-            status: 'booked' as const,
-            bookedByStudentId: activeUser.id,
-            bookedByStudentName: activeUser.name,
-            notes: `Advising requested by ${activeUser.name} (${activeUser.studentId || activeUser.email})`
-          };
-        }
-        return slot;
-      })
-    }));
+  const updateCalendarEvent = async (id: string, updates: Partial<CalendarEvent>): Promise<void> => {
+    const body: Record<string, string | boolean> = {};
+    const stringFields = [
+      'title', 'date', 'time', 'courseId', 'courseCode', 'type', 'description',
+      'startAt', 'endAt', 'colorHex', 'location', 'meetingPlatform',
+      'meetingId', 'meetingPasscode', 'meetingJoinUrl'
+    ] as const;
+    for (const key of stringFields) {
+      const value = updates[key];
+      if (value !== undefined && value !== null) body[key] = value;
+    }
+    if (updates.isAllDay !== undefined) body.isAllDay = updates.isAllDay;
+    try {
+      const { event } = await apiFetch<{ event: CalendarEvent }>(
+        `/api/calendar/${encodeURIComponent(id)}`,
+        { method: 'PATCH', body }
+      );
+      setDb(prev => ({
+        ...prev,
+        calendarEvents: prev.calendarEvents.map(evt =>
+          evt.id === id ? { ...evt, ...(event as CalendarEvent) } : evt
+        )
+      }));
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to update event.';
+      setLastError(message);
+      showAlert(message, 'Update Event Failed');
+      throw err;
+    }
   };
 
-  const createAdvisingSlot = (date: string, timeSlot: string, location: string) => {
-    const newSlot: AdvisingSlot = {
-      id: `adv-${Date.now()}`,
-      instructorId: activeUser.id,
-      instructorName: activeUser.name,
-      date,
-      timeSlot,
-      location,
-      status: 'available'
-    };
-
-    setDb(prev => ({
-      ...prev,
-      advisingSlots: [...prev.advisingSlots, newSlot]
-    }));
-  };
-
-  const addCalendarEvent = (event: Omit<CalendarEvent, 'id'>) => {
-    const newEvt: CalendarEvent = {
-      ...event,
-      id: `evt-${Date.now()}`
-    };
-    setDb(prev => ({
-      ...prev,
-      calendarEvents: [...prev.calendarEvents, newEvt]
-    }));
-  };
-
-  const updateCalendarEvent = (id: string, updates: Partial<CalendarEvent>) => {
-    setDb(prev => ({
-      ...prev,
-      calendarEvents: prev.calendarEvents.map(evt =>
-        evt.id === id ? { ...evt, ...updates } : evt
-      )
-    }));
-  };
-
-  const deleteCalendarEvent = (id: string) => {
-    setDb(prev => ({
-      ...prev,
-      calendarEvents: prev.calendarEvents.filter(evt => evt.id !== id)
-    }));
+  const deleteCalendarEvent = async (id: string): Promise<void> => {
+    try {
+      await apiFetch<{ ok: true }>(`/api/calendar/${encodeURIComponent(id)}`, {
+        method: 'DELETE'
+      });
+      setDb(prev => ({
+        ...prev,
+        calendarEvents: prev.calendarEvents.filter(evt => evt.id !== id)
+      }));
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to delete event.';
+      setLastError(message);
+      showAlert(message, 'Delete Event Failed');
+      throw err;
+    }
   };
 
   // ==========================================
@@ -2512,45 +2684,6 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // NOTIFICATIONS
   // ==========================================
 
-  const createNotification = (notificationData: Partial<Notification>): Notification => {
-    const newNotification: Notification = {
-      id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-      type: notificationData.type || 'module_comment_reply',
-      recipientId: notificationData.recipientId || activeUser.id,
-      actorId: notificationData.actorId || activeUser.id,
-      actorName: notificationData.actorName || activeUser.name,
-      actorAvatar: notificationData.actorAvatar || activeUser.avatar,
-      relatedId: notificationData.relatedId || '',
-      relatedTitle: notificationData.relatedTitle || '',
-      content: notificationData.content || '',
-      read: false,
-      createdAt: new Date().toISOString()
-    };
-
-    setNotifications(prev => {
-      const merged = [newNotification, ...prev];
-      const others = merged.filter(n => n.recipientId !== newNotification.recipientId);
-      const mine = merged
-        .filter(n => n.recipientId === newNotification.recipientId)
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-        .slice(0, 200);
-      return [...others, ...mine];
-    });
-
-    // Also persist to db.notifications if available
-    setDb(prev => {
-      const merged = (prev.notifications || []).concat(newNotification);
-      const others = merged.filter(n => n.recipientId !== newNotification.recipientId);
-      const mine = merged
-        .filter(n => n.recipientId === newNotification.recipientId)
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-        .slice(0, 200);
-      return { ...prev, notifications: [...others, ...mine] };
-    });
-
-    return newNotification;
-  };
-
   const getUnreadNotificationCount = (userId: string, type?: string): number => {
     const userNotifications = (notifications || [])
       .filter(n => n.recipientId === userId && !n.read);
@@ -2560,7 +2693,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return userNotifications.filter(n => n.type === type).length;
   };
 
-  const markNotificationRead = (id: string) => {
+  const markNotificationRead = async (id: string): Promise<void> => {
     setNotifications(prev =>
       prev.map(n => (n.id === id ? { ...n, read: true } : n))
     );
@@ -2571,9 +2704,19 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         n.id === id ? { ...n, read: true } : n
       )
     }));
+
+    // Read path: stay silent (no modal) on failure; cache already updated.
+    try {
+      await apiFetch<{ notification: Notification }>(
+        `/api/notifications/${encodeURIComponent(id)}/read`,
+        { method: 'POST' }
+      );
+    } catch (err) {
+      setLastError(err instanceof ApiError ? err.message : 'Failed to mark notification read.');
+    }
   };
 
-  const markAllNotificationsRead = (userId: string, type?: string) => {
+  const markAllNotificationsRead = async (userId: string, type?: string): Promise<void> => {
     setNotifications(prev =>
       prev.map(n =>
         n.recipientId === userId && (!type || n.type === type) ? { ...n, read: true } : n
@@ -2586,6 +2729,17 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         n.recipientId === userId && (!type || n.type === type) ? { ...n, read: true } : n
       )
     }));
+
+    // Read path: stay silent (no modal) on failure; cache already updated.
+    // The server marks the caller's own rows (userId is a client-side filter).
+    try {
+      await apiFetch<{ updated: number }>('/api/notifications/read-all', {
+        method: 'POST',
+        body: type ? { type } : {}
+      });
+    } catch (err) {
+      setLastError(err instanceof ApiError ? err.message : 'Failed to mark notifications read.');
+    }
   };
 
   const markTabVisited = (tab: string, courseId?: string) => {
@@ -2818,97 +2972,98 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // COURSE FILES & FOLDERS CRUD
   // ==========================================
 
-  const createCourseFolder = (courseId: string, name: string, parentId?: string | null, autoKey?: string): CourseFolder => {
-    const newFolder: CourseFolder = {
-      id: `fld-${Date.now().toString(36)}`,
-      courseId,
-      name,
-      parentId: parentId || null,
-      updatedAt: new Date().toISOString(),
-      ...(autoKey ? { autoKey } : {})
-    };
-    setDb(prev => ({
-      ...prev,
-      courseFolders: [...(prev.courseFolders || []), newFolder]
-    }));
-    return newFolder;
-  };
-
-  const uploadCourseFile = (fileData: Partial<CourseFile>): CourseFile => {
-    const size = fileData.size || 1024 * 512;
-    const formattedSize = fileData.formattedSize || (size > 1048576 ? `${(size / 1048576).toFixed(1)} MB` : `${Math.round(size / 1024)} KB`);
-    const newFile: CourseFile = {
-      id: `file-${Date.now().toString(36)}`,
-      courseId: fileData.courseId || activeCourseId || 'crs-cmsc131',
-      folderId: fileData.folderId || null,
-      name: fileData.name || 'uploaded_asset.pdf',
-      size,
-      formattedSize,
-      type: fileData.type || 'document',
-      visibility: fileData.visibility || 'published',
-      updatedAt: new Date().toISOString(),
-      uploadedBy: activeUser.id,
-      uploadedByName: activeUser.name,
-      content: fileData.content || '',
-      url: fileData.url,
-      fileUrl: fileData.fileUrl,
-      sourceArea: fileData.sourceArea,
-      sourceId: fileData.sourceId
-    };
-    setDb(prev => ({
-      ...prev,
-      courseFiles: [...(prev.courseFiles || []), newFile]
-    }));
-    return newFile;
-  };
-
-  const ensureAreaFolder = (courseId: string, area: FileSourceArea): CourseFolder => {
-    const autoKey = areaFolderAutoKey(area);
-    const existing = findFolderByAutoKey(db.courseFolders || [], courseId, autoKey);
-    if (existing) return existing;
-    return createCourseFolder(courseId, areaFolderName(area), null, autoKey);
-  };
-
-  const ensureModuleFolder = (courseId: string, moduleId: string, moduleTitle: string): CourseFolder => {
-    const autoKey = moduleFolderAutoKey(moduleId);
-    const existing = findFolderByAutoKey(db.courseFolders || [], courseId, autoKey);
-    if (existing) return existing;
-    const parent = ensureAreaFolder(courseId, 'modules');
-    return createCourseFolder(courseId, moduleTitle, parent.id, autoKey);
-  };
-
-  const fileUploadToArea = (input: FileAreaInput): CourseFile => {
-    const areaFolder = ensureAreaFolder(input.courseId, input.area);
-    let targetFolderId = areaFolder.id;
-    if (input.area === 'modules' && input.moduleId) {
-      targetFolderId = ensureModuleFolder(input.courseId, input.moduleId, input.moduleTitle || 'Module').id;
-    }
-    const siblings = (db.courseFiles || [])
-      .filter(f => f.courseId === input.courseId && (f.folderId || null) === targetFolderId)
-      .map(f => f.name);
-    if (input.reuseExistingName) {
-      const existing = (db.courseFiles || []).find(
-        f => f.courseId === input.courseId && (f.folderId || null) === targetFolderId && f.name === input.name
+  const createCourseFolder = async (courseId: string, name: string, parentId?: string | null, autoKey?: string): Promise<CourseFolder> => {
+    try {
+      const { folder } = await apiFetch<{ folder: CourseFolder }>(
+        `/api/courses/${encodeURIComponent(courseId)}/folders`,
+        {
+          method: 'POST',
+          body: {
+            name,
+            ...(parentId ? { parentId } : {}),
+          },
+        }
       );
-      if (existing) return existing;
+      // Server stores name/parent only — autoKey stays a client cache overlay.
+      const merged: CourseFolder = autoKey ? { ...folder, autoKey } : folder;
+      setDb(prev => ({
+        ...prev,
+        courseFolders: [...(prev.courseFolders || []), merged]
+      }));
+      return merged;
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to create folder.';
+      setLastError(message);
+      showAlert(message, 'Create Folder Failed');
+      throw err;
     }
-    return uploadCourseFile({
-      courseId: input.courseId,
-      folderId: targetFolderId,
-      name: dedupeFileName(input.name, siblings),
-      size: input.size,
-      formattedSize: input.formattedSize,
-      type: input.type || 'document',
-      visibility: input.visibility || 'published',
-      url: input.url,
-      fileUrl: input.fileUrl,
-      content: input.content || '',
-      sourceArea: input.area,
-      sourceId: input.sourceId,
-    });
   };
 
-  const deleteCourseFile = (fileId: string) => {
+  const uploadCourseFile = async (
+    fileData: Partial<CourseFile> & { rawFile?: File | Blob; area?: string; moduleId?: string; moduleTitle?: string }
+  ): Promise<CourseFile> => {
+    const courseId = fileData.courseId || activeCourseId || 'crs-cmsc131';
+    // The files endpoint is multipart (multer single `file`) — apiFetch is
+    // JSON-only, so this posts FormData directly with the auth token.
+    // Metadata-only calls fall back to an empty Blob so the row still files.
+    const blob = fileData.rawFile ?? new Blob([fileData.content || ''], { type: 'application/octet-stream' });
+    const form = new FormData();
+    form.append('file', blob, fileData.name || 'uploaded_asset.pdf');
+    if (fileData.folderId) form.append('folderId', fileData.folderId);
+    if (fileData.area) {
+      form.append('area', fileData.area);
+      if (fileData.moduleId) form.append('moduleId', fileData.moduleId);
+      if (fileData.moduleTitle) form.append('moduleTitle', fileData.moduleTitle);
+    }
+    form.append('visibility', fileData.visibility || 'published');
+    try {
+      const headers: Record<string, string> = {};
+      const token = getToken();
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const res = await fetch(`/api/courses/${encodeURIComponent(courseId)}/files/upload`, {
+        method: 'POST',
+        headers,
+        body: form,
+      });
+      const data = (await res.json().catch(() => null)) as { file?: CourseFile; error?: { code?: string; message?: string } } | null;
+      if (!res.ok || !data?.file) {
+        throw new ApiError(res.status, data?.error?.code || 'request_failed', data?.error?.message || `Upload failed (${res.status}).`);
+      }
+      setDb(prev => ({
+        ...prev,
+        courseFiles: [...(prev.courseFiles || []), data.file as CourseFile]
+      }));
+      return data.file as CourseFile;
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to upload file.';
+      setLastError(message);
+      showAlert(message, 'Upload File Failed');
+      throw err;
+    }
+  };
+
+  const deleteCourseFile = async (fileId: string): Promise<void> => {
+    // Virtual ids (mod-file-*, ann-file-*, asg-file-*, sub-file-*, quiz-*)
+    // are cache-only aggregations from useCourseFiles — they clear the source
+    // fields locally. Real CourseFile rows delete via the files endpoint.
+    const isVirtual = /^(mod-file-|ann-file-|asg-file-|sub-file-|quiz-file-|quiz-q-file-)/.test(fileId);
+    if (!isVirtual) {
+      try {
+        await apiFetch<{ ok: true }>(`/api/files/${encodeURIComponent(fileId)}`, {
+          method: 'DELETE'
+        });
+      } catch (err) {
+        const message = err instanceof ApiError ? err.message : 'Failed to delete file.';
+        setLastError(message);
+        showAlert(message, 'Delete File Failed');
+        throw err;
+      }
+      setDb(prev => ({
+        ...prev,
+        courseFiles: (prev.courseFiles || []).filter(f => f.id !== fileId)
+      }));
+      return;
+    }
     setDb(prev => {
       // 1. Direct course files
       const updatedCourseFiles = (prev.courseFiles || []).filter(f => f.id !== fileId);
@@ -3035,7 +3190,17 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  const deleteCourseFolder = (folderId: string) => {
+  const deleteCourseFolder = async (folderId: string): Promise<void> => {
+    try {
+      await apiFetch<{ ok: true }>(`/api/folders/${encodeURIComponent(folderId)}`, {
+        method: 'DELETE'
+      });
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to delete folder.';
+      setLastError(message);
+      showAlert(message, 'Delete Folder Failed');
+      throw err;
+    }
     setDb(prev => ({
       ...prev,
       courseFolders: (prev.courseFolders || []).filter(f => f.id !== folderId && f.parentId !== folderId),
@@ -3043,16 +3208,51 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   };
 
-  const updateFileVisibility = (fileId: string, visibility: 'published' | 'unpublished' | 'restricted') => {
-    setDb(prev => ({
-      ...prev,
-      courseFiles: (prev.courseFiles || []).map(f =>
-        f.id === fileId ? { ...f, visibility } : f
-      )
-    }));
+  const updateFileVisibility = async (fileId: string, visibility: 'published' | 'unpublished' | 'restricted'): Promise<void> => {
+    try {
+      const { file } = await apiFetch<{ file: CourseFile }>(
+        `/api/files/${encodeURIComponent(fileId)}`,
+        { method: 'PATCH', body: { visibility } }
+      );
+      setDb(prev => ({
+        ...prev,
+        courseFiles: (prev.courseFiles || []).map(f =>
+          f.id === fileId ? { ...f, ...(file as CourseFile) } : f
+        )
+      }));
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to update visibility.';
+      setLastError(message);
+      showAlert(message, 'Visibility Failed');
+      throw err;
+    }
   };
 
-  const renameCourseFile = (fileId: string, newName: string) => {
+  const renameCourseFile = async (fileId: string, newName: string): Promise<void> => {
+    // Real CourseFile rows rename via the files endpoint; virtual
+    // aggregation ids (mod-file-*, ann-file-*, asg-file-*) rename the source
+    // fields locally below.
+    const isVirtual = /^(mod-file-|ann-file-|asg-file-|sub-file-|quiz-file-|quiz-q-file-)/.test(fileId);
+    if (!isVirtual) {
+      try {
+        const { file } = await apiFetch<{ file: CourseFile }>(
+          `/api/files/${encodeURIComponent(fileId)}`,
+          { method: 'PATCH', body: { name: newName } }
+        );
+        setDb(prev => ({
+          ...prev,
+          courseFiles: (prev.courseFiles || []).map(f =>
+            f.id === fileId ? { ...f, ...(file as CourseFile) } : f
+          )
+        }));
+        return;
+      } catch (err) {
+        const message = err instanceof ApiError ? err.message : 'Failed to rename file.';
+        setLastError(message);
+        showAlert(message, 'Rename Failed');
+        throw err;
+      }
+    }
     setDb(prev => {
       const updatedCourseFiles = (prev.courseFiles || []).map(f =>
         f.id === fileId ? { ...f, name: newName, updatedAt: new Date().toISOString() } : f
@@ -3739,7 +3939,6 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addAnnouncementReply,
         markAnnouncementRead,
         notifications,
-        createNotification,
         getUnreadNotificationCount,
         markNotificationRead,
         markAllNotificationsRead,
@@ -3754,9 +3953,6 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toggleLikeDiscussionReply,
         createCourseFolder,
         uploadCourseFile,
-        ensureAreaFolder,
-        ensureModuleFolder,
-        fileUploadToArea,
         deleteCourseFile,
         deleteCourseFolder,
         updateFileVisibility,

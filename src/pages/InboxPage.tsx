@@ -181,7 +181,7 @@ export const InboxPage: React.FC = () => {
   // Mark thread as read when selected
   useEffect(() => {
     if (selectedThreadId) {
-      markThreadAsRead(selectedThreadId);
+      void markThreadAsRead(selectedThreadId).catch(() => {});
     }
   }, [selectedThreadId, db.messages?.length]);
 
@@ -247,38 +247,42 @@ export const InboxPage: React.FC = () => {
       });
   }, [db.users, activeUser.id, groupMemberSearch]);
 
-  const handleSendMessage = (textToSend?: string) => {
+  const handleSendMessage = async (textToSend?: string) => {
     const text = textToSend !== undefined ? textToSend : inputText;
     if ((!text.trim() && !pendingAttachment) || !activeThread) return;
 
-    sendMessage(
-      activeThread.id,
-      activeThread.isGroup ? activeThread.title : 'Direct Message',
-      text.trim() || (pendingAttachment ? `Sent attachment: ${pendingAttachment.name}` : ''),
-      activeThread.isGroup ? activeThread.group?.courseId : (activeThread.lastMessage.courseId || db.courses[0]?.id),
-      pendingAttachment?.name,
-      pendingAttachment?.size,
-      activeThread.isGroup,
-      activeThread.isGroup ? activeThread.id : undefined
-    );
+    try {
+      await sendMessage(
+        activeThread.id,
+        activeThread.isGroup ? activeThread.title : 'Direct Message',
+        text.trim() || (pendingAttachment ? `Sent attachment: ${pendingAttachment.name}` : ''),
+        activeThread.isGroup ? activeThread.group?.courseId : (activeThread.lastMessage.courseId || db.courses[0]?.id),
+        pendingAttachment?.name,
+        pendingAttachment?.size,
+        activeThread.isGroup,
+        activeThread.isGroup ? activeThread.id : undefined
+      );
 
-    setInputText('');
-    setPendingAttachment(null);
-    setShowEmojiPicker(false);
-    inputRef.current?.focus();
+      setInputText('');
+      setPendingAttachment(null);
+      setShowEmojiPicker(false);
+      inputRef.current?.focus();
+    } catch {
+      // Context already surfaced the alert; keep the draft intact.
+    }
   };
 
   const handleSendThumbsUp = () => {
-    handleSendMessage('👍');
+    void handleSendMessage('👍');
   };
 
   const handleToggleReaction = (msgId: string, emoji: string) => {
-    toggleMessageReaction(msgId, emoji);
+    void toggleMessageReaction(msgId, emoji).catch(() => {});
   };
 
   const handleStartDirectConversation = (partnerId: string) => {
     setSelectedThreadId(partnerId);
-    markThreadAsRead(partnerId);
+    void markThreadAsRead(partnerId).catch(() => {});
     setShowComposeModal(false);
     setComposeSearch('');
     setMobileChatOpen(true);
@@ -290,7 +294,7 @@ export const InboxPage: React.FC = () => {
     );
   };
 
-  const handleCreateGroupSubmit = (e: React.FormEvent) => {
+  const handleCreateGroupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!groupName.trim()) {
       showAlert('Please enter a group name.');
@@ -301,18 +305,22 @@ export const InboxPage: React.FC = () => {
       return;
     }
 
-    const newGroup = createChatGroup(
-      groupName.trim(),
-      selectedGroupMemberIds
-    );
+    try {
+      const newGroup = await createChatGroup(
+        groupName.trim(),
+        selectedGroupMemberIds
+      );
 
-    setSelectedThreadId(newGroup.id);
-    setShowComposeModal(false);
-    setGroupName('');
-    setSelectedGroupMemberIds([]);
-    setGroupMemberSearch('');
-    setMobileChatOpen(true);
-    showAlert(`Group "${newGroup.name}" created successfully!`);
+      setSelectedThreadId(newGroup.id);
+      setShowComposeModal(false);
+      setGroupName('');
+      setSelectedGroupMemberIds([]);
+      setGroupMemberSearch('');
+      setMobileChatOpen(true);
+      showAlert(`Group "${newGroup.name}" created successfully!`);
+    } catch {
+      // Context already surfaced the alert; keep the form intact.
+    }
   };
 
   // Format timestamps

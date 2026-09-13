@@ -290,7 +290,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
                   </p>
                   <button
                     type="button"
-                    onClick={() => markAllNotificationsRead(activeUser.id, groupType)}
+                    onClick={() => void markAllNotificationsRead(activeUser.id, groupType).catch(() => {})}
                     className="px-2 py-0.5 text-[10px] font-bold text-primary hover:bg-primary/10 rounded-lg transition-colors cursor-pointer"
                   >
                     Mark all read
@@ -301,7 +301,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
                     <button
                       key={n.id}
                       onClick={() => {
-                        markNotificationRead(n.id);
+                        void markNotificationRead(n.id).catch(() => {});
                         setOpen(false);
                       }}
                       className={`flex w-full items-start gap-2.5 px-3 py-2 rounded-xl text-left hover:bg-accent/60 transition-colors cursor-pointer ${n.read ? 'opacity-60' : ''}`}

@@ -119,17 +119,22 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
     return [...crumbs, ...trail];
   };
 
-  const handleCreateFolder = (e: React.FormEvent) => {
+  const handleCreateFolder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newFolderName.trim()) return;
-    createCourseFolder(effectiveScopeId, newFolderName.trim(), currentFolderId);
-    setNewFolderName('');
-    setIsCreateFolderOpen(false);
-    showAlert({
-      title: 'Folder Created',
-      message: `Folder "${newFolderName.trim()}" has been added.`,
-      type: 'success'
-    });
+    const folderName = newFolderName.trim();
+    try {
+      await createCourseFolder(effectiveScopeId, folderName, currentFolderId);
+      setNewFolderName('');
+      setIsCreateFolderOpen(false);
+      showAlert({
+        title: 'Folder Created',
+        message: `Folder "${folderName}" has been added.`,
+        type: 'success'
+      });
+    } catch {
+      // Context already surfaced the alert; keep the modal open.
+    }
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -152,10 +157,11 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
 
     try {
       const uploadRes = await uploadFileToPublic(file);
-      uploadCourseFile({
+      await uploadCourseFile({
         courseId: effectiveScopeId,
         folderId: currentFolderId,
         name: file.name,
+        rawFile: file,
         size: file.size,
         type,
         visibility: 'published',
@@ -180,20 +186,27 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
     const file = e.dataTransfer.files?.[0];
     if (!file) return;
 
-    uploadCourseFile({
-      courseId: effectiveScopeId,
-      folderId: currentFolderId,
-      name: file.name,
-      size: file.size,
-      type: file.name.endsWith('.pdf') ? 'pdf' : file.type.includes('image') ? 'image' : 'document',
-      visibility: 'published'
-    });
+    void (async () => {
+      try {
+        await uploadCourseFile({
+          courseId: effectiveScopeId,
+          folderId: currentFolderId,
+          name: file.name,
+          rawFile: file,
+          size: file.size,
+          type: file.name.endsWith('.pdf') ? 'pdf' : file.type.includes('image') ? 'image' : 'document',
+          visibility: 'published'
+        });
 
-    showAlert({
-      title: 'File Uploaded',
-      message: `File "${file.name}" dropped and saved.`,
-      type: 'success'
-    });
+        showAlert({
+          title: 'File Uploaded',
+          message: `File "${file.name}" dropped and saved.`,
+          type: 'success'
+        });
+      } catch {
+        // Context already surfaced the alert.
+      }
+    })();
   };
 
   const handleStartRename = (file: CourseFile) => {
@@ -202,15 +215,24 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
   };
 
   const handleSaveRename = (fileId: string) => {
-    if (renameValue.trim()) {
-      renameCourseFile(fileId, renameValue.trim());
-      showAlert({
-        title: 'File Renamed',
-        message: `File has been renamed to "${renameValue.trim()}".`,
-        type: 'success'
-      });
+    if (!renameValue.trim()) {
+      setRenamingFileId(null);
+      return;
     }
-    setRenamingFileId(null);
+    const nextName = renameValue.trim();
+    void (async () => {
+      try {
+        await renameCourseFile(fileId, nextName);
+        showAlert({
+          title: 'File Renamed',
+          message: `File has been renamed to "${nextName}".`,
+          type: 'success'
+        });
+      } catch {
+        // Context already surfaced the alert.
+      }
+      setRenamingFileId(null);
+    })();
   };
 
   const handleDeleteFile = (file: CourseFile, e?: React.MouseEvent) => {
@@ -218,15 +240,21 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
     showConfirm(
       `Are you sure you want to delete "${file.name}"?`,
       () => {
-        deleteCourseFile(file.id);
-        if (previewFile?.id === file.id) {
-          setPreviewFile(null);
-        }
-        showAlert({
-          title: 'File Deleted',
-          message: `"${file.name}" has been successfully removed.`,
-          type: 'success'
-        });
+        void (async () => {
+          try {
+            await deleteCourseFile(file.id);
+            if (previewFile?.id === file.id) {
+              setPreviewFile(null);
+            }
+            showAlert({
+              title: 'File Deleted',
+              message: `"${file.name}" has been successfully removed.`,
+              type: 'success'
+            });
+          } catch {
+            // Context already surfaced the alert.
+          }
+        })();
       },
       'Delete File'
     );
@@ -237,12 +265,18 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
     showConfirm(
       `Delete folder "${folder.name}" and all its contents?`,
       () => {
-        deleteCourseFolder(folder.id);
-        showAlert({
-          title: 'Folder Deleted',
-          message: `Folder "${folder.name}" has been deleted.`,
-          type: 'success'
-        });
+        void (async () => {
+          try {
+            await deleteCourseFolder(folder.id);
+            showAlert({
+              title: 'Folder Deleted',
+              message: `Folder "${folder.name}" has been deleted.`,
+              type: 'success'
+            });
+          } catch {
+            // Context already surfaced the alert.
+          }
+        })();
       },
       'Delete Folder'
     );
