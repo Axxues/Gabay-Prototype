@@ -37,6 +37,7 @@ model Course {
   chedComplianceCode String?           @db.NVarChar(64)
   joinCode          String?            @unique @db.NVarChar(32)
   syllabus          String?            @db.NVarChar(Max)
+  sprConfig         String?            @db.NVarChar(Max)
   sections          CourseSection[]
   requests          EnrollmentRequest[]
 }
@@ -468,6 +469,7 @@ model CourseGrade {
   studentId    String   @db.NVarChar(64)
   midtermGrade Float?
   finalGrade   Float?
+  sprCells     String?  @db.NVarChar(Max)
   updatedAt    DateTime @updatedAt
 
   @@id([courseId, studentId])

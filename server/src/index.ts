@@ -16,6 +16,7 @@ import { calendarRouter, advisingRouter } from './routes/calendar.js';
 import { notificationsRouter } from './routes/notifications.js';
 import { filesRouter } from './routes/files.js';
 import { gradesRouter } from './routes/grades.js';
+import { sprRouter } from './routes/spr.js';
 
 const app = express();
 // 20mb accommodates the client's 10MB image-upload cap: base64 inflates
@@ -46,6 +47,7 @@ app.use('/api/advising', advisingRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api', filesRouter);
 app.use('/api', gradesRouter);
+app.use('/api', sprRouter);
 
 const uploadsDir =
   process.cwd().endsWith('server') ? path.resolve('uploads') : path.resolve('server/uploads');
