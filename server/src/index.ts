@@ -4,6 +4,8 @@ import { authRouter } from './routes/auth.js';
 import { usersRouter } from './routes/users.js';
 import { coursesRouter, sectionsRouter } from './routes/courses.js';
 import { requestsRouter } from './routes/requests.js';
+import { modulesRouter } from './routes/modules.js';
+import { assignmentsRouter } from './routes/assignments.js';
 
 const app = express();
 app.use(express.json({ limit: '2mb' }));
@@ -17,6 +19,8 @@ app.use('/api/users', usersRouter);
 app.use('/api/courses', coursesRouter);
 app.use('/api/sections', sectionsRouter);
 app.use('/api', requestsRouter);
+app.use('/api', modulesRouter);
+app.use('/api', assignmentsRouter);
 
 app.use(errorMiddleware);
 
