@@ -1,3 +1,4 @@
+import '../src/env.js';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../src/db.js';
 
