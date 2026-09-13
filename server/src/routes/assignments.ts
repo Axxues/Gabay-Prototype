@@ -303,10 +303,36 @@ assignmentsRouter.post(
       where: { id: req.params.submissionId },
     });
     if (!submission) throw new ApiError(404, 'not_found', 'Submission not found.');
-    if (!submission.assignmentId) throw new ApiError(404, 'not_found', 'Assignment not found.');
-    const assignment = await loadAssignmentOr404(submission.assignmentId);
-    const course = await loadCourseOr404(assignment.courseId);
-    assertCourseOwner(course, auth);
+    // Quiz/activity submissions carry the synthetic asg-quiz-*/asg-activity-*
+    // assignmentId (no real Assignment row) — resolve ownership through the
+    // quiz/activity course instead.
+    let relatedId: string;
+    let relatedTitle: string;
+    let course;
+    if (submission.quizId) {
+      const quiz = await prisma.quiz.findUnique({ where: { id: submission.quizId } });
+      if (!quiz) throw new ApiError(404, 'not_found', 'Quiz not found.');
+      course = await loadCourseOr404(quiz.courseId);
+      assertCourseOwner(course, auth);
+      relatedId = quiz.id;
+      relatedTitle = quiz.title;
+    } else if (submission.activityId) {
+      const activity = await prisma.activity.findUnique({
+        where: { id: submission.activityId },
+      });
+      if (!activity) throw new ApiError(404, 'not_found', 'Activity not found.');
+      course = await loadCourseOr404(activity.courseId);
+      assertCourseOwner(course, auth);
+      relatedId = activity.id;
+      relatedTitle = activity.title;
+    } else {
+      if (!submission.assignmentId) throw new ApiError(404, 'not_found', 'Assignment not found.');
+      const assignment = await loadAssignmentOr404(submission.assignmentId);
+      course = await loadCourseOr404(assignment.courseId);
+      assertCourseOwner(course, auth);
+      relatedId = assignment.id;
+      relatedTitle = assignment.title;
+    }
     const { grade, feedback } = (req.body ?? {}) as { grade?: unknown; feedback?: unknown };
     if (typeof grade !== 'number') {
       throw new ApiError(400, 'bad_request', 'Field grade must be a number.');
@@ -342,9 +368,9 @@ assignmentsRouter.post(
       actorId: auth.sub,
       actorName: me?.name ?? '',
       actorAvatar: me?.avatar ?? '',
-      relatedId: assignment.id,
-      relatedTitle: assignment.title,
-      content: feedback && feedback.trim() ? feedback.trim() : `Your submission for ${assignment.title} was graded.`,
+      relatedId,
+      relatedTitle,
+      content: feedback && feedback.trim() ? feedback.trim() : `Your submission for ${relatedTitle} was graded.`,
     });
     res.json({ submission: mapSubmission(graded) });
   })
@@ -359,9 +385,24 @@ assignmentsRouter.post(
       where: { id: req.params.submissionId },
     });
     if (!submission) throw new ApiError(404, 'not_found', 'Submission not found.');
-    if (!submission.assignmentId) throw new ApiError(404, 'not_found', 'Assignment not found.');
-    const assignment = await loadAssignmentOr404(submission.assignmentId);
-    const course = await loadCourseOr404(assignment.courseId);
+    // Same synthetic-aware resolution as the grade path: quiz/activity
+    // submissions resolve their course through the quiz/activity row.
+    let course;
+    if (submission.quizId) {
+      const quiz = await prisma.quiz.findUnique({ where: { id: submission.quizId } });
+      if (!quiz) throw new ApiError(404, 'not_found', 'Quiz not found.');
+      course = await loadCourseOr404(quiz.courseId);
+    } else if (submission.activityId) {
+      const activity = await prisma.activity.findUnique({
+        where: { id: submission.activityId },
+      });
+      if (!activity) throw new ApiError(404, 'not_found', 'Activity not found.');
+      course = await loadCourseOr404(activity.courseId);
+    } else {
+      if (!submission.assignmentId) throw new ApiError(404, 'not_found', 'Assignment not found.');
+      const assignment = await loadAssignmentOr404(submission.assignmentId);
+      course = await loadCourseOr404(assignment.courseId);
+    }
     if (auth.role === 'faculty' || auth.role === 'admin') {
       assertCourseOwner(course, auth);
     } else {

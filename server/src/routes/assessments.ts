@@ -389,6 +389,36 @@ function buildAssessmentRouter(kind: AssessmentKind) {
     })
   );
 
+  router.get(
+    '/:id/submissions',
+    authenticateToken,
+    asyncHandler(async (req, res) => {
+      const auth = req.auth!;
+      const row = await loadOr404(req.params.id);
+      const course = await loadCourseOr404(row.courseId);
+      const where = (
+        isQuiz ? { quizId: row.id } : { activityId: row.id }
+      ) as Record<string, string>;
+      if (auth.role === 'faculty' || auth.role === 'admin') {
+        assertCourseOwner(course, auth);
+        const submissions = await prisma.submission.findMany({
+          where,
+          include: { comments: true },
+          orderBy: { submittedAt: 'desc' },
+        });
+        res.json({ submissions: submissions.map(mapSubmission) });
+        return;
+      }
+      await assertCourseAccess(course, auth);
+      const submissions = await prisma.submission.findMany({
+        where: { ...where, studentId: auth.sub },
+        include: { comments: true },
+        orderBy: { submittedAt: 'desc' },
+      });
+      res.json({ submissions: submissions.map(mapSubmission) });
+    })
+  );
+
   router.post(
     '/:id/submit',
     authenticateToken,
