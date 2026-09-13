@@ -145,7 +145,6 @@ export const FilePickerModal: React.FC<FilePickerModalProps> = ({ courseId, onCl
           {/* File List */}
           <div className="flex-1 overflow-y-auto custom-scrollbar px-6 pb-5 divide-y divide-border">
             {visibleFiles.map(file => {
-              const fileSource = (file as any).source || 'uploads';
               const sourceLabel = (file as any).sourceLabel || 'Direct Upload';
               return (
                 <div key={file.id} className="py-3 flex items-center justify-between gap-4">

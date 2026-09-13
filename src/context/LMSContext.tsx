@@ -28,6 +28,7 @@ import type {
 } from '../types/lms';
 import initialMockData from '../data/mockData.json';
 import { AlertModal, type AlertModalOptions } from '../components/common/AlertModal';
+import { canPickSection } from '../utils/sections';
 import type { OfficialSyllabusData } from '../data/syllabusData';
 
 interface LMSContextType {
@@ -179,6 +180,9 @@ interface LMSContextType {
   selectSection: (courseId: string, sectionId: string) => void;
   getPendingRequestsForCourse: (courseId: string) => EnrollmentRequest[];
   getPendingRequestsForStudent: () => EnrollmentRequest[];
+  requestJoinCourse: (courseId: string) => void;
+  getMyRequest: (courseId: string) => EnrollmentRequest | null;
+  getPendingRequests: (courseId: string) => EnrollmentRequest[];
 
   logHistory: (path: string, title: string) => void;
   clearHistory: () => void;
@@ -2363,6 +2367,22 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteSection = (sectionId: string) => {
+    const section = (db.courseSections || []).find((s: CourseSection) => s.id === sectionId);
+    const isOccupied = db.users.some(u =>
+      Object.values(u.courseSections || {}).includes(sectionId)
+    );
+    const hasPendingRequests = section
+      ? (db.enrollmentRequests || []).some(
+          (r: EnrollmentRequest) => r.courseId === section.courseId && r.status === 'pending'
+        )
+      : false;
+    if (isOccupied || hasPendingRequests) {
+      showAlert(
+        'This section cannot be deleted because students are assigned to it or there are pending enrollment requests for this course.',
+        'Delete Blocked'
+      );
+      return;
+    }
     setDb(prev => ({
       ...prev,
       courseSections: (prev.courseSections || []).filter((s: CourseSection) => s.id !== sectionId),
@@ -2495,11 +2515,33 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const selectSection = (courseId: string, sectionId: string) => {
+    const bypassGate = activeRole === 'faculty' || activeRole === 'admin';
+    if (!bypassGate) {
+      const hasApproval = (db.enrollmentRequests || []).some(
+        (r: EnrollmentRequest) =>
+          r.studentId === activeUser.id && r.courseId === courseId && r.status === 'approved'
+      );
+      if (!hasApproval) {
+        showAlert(
+          'You need an approved enrollment request before selecting a section.',
+          'Section Selection Blocked'
+        );
+        return;
+      }
+    }
+
+    const targetSection = (db.courseSections || []).find((s: CourseSection) => s.id === sectionId);
+    if (!targetSection) return;
+    if (!canPickSection(targetSection)) {
+      showAlert('This section is full. Please choose another section.', 'Section Full');
+      return;
+    }
+
     const oldSectionId = activeUser.courseSections?.[courseId];
 
     setDb(prev => {
       const section = (prev.courseSections || []).find((s: CourseSection) => s.id === sectionId);
-      if (!section || (section.capacity !== undefined && section.enrolledCount >= section.capacity)) return prev;
+      if (!section || !canPickSection(section)) return prev;
 
       let updatedSections = prev.courseSections || [];
 
@@ -2538,6 +2580,26 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return (db.enrollmentRequests || []).filter(
       (r: EnrollmentRequest) => r.studentId === activeUser.id && r.status === 'pending' && (r.type === 'faculty_enroll' || r.type === 'self_join')
     );
+  };
+
+  const requestJoinCourse = (courseId: string): void => {
+    if (activeRole === 'faculty' || activeRole === 'admin') return;
+    const existing = (db.enrollmentRequests || []).find(
+      (r: EnrollmentRequest) => r.studentId === activeUser.id && r.courseId === courseId
+    );
+    if (existing) return;
+    createEnrollmentRequest(courseId, 'self_join');
+  };
+
+  const getMyRequest = (courseId: string): EnrollmentRequest | null => {
+    const mine = (db.enrollmentRequests || []).filter(
+      (r: EnrollmentRequest) => r.studentId === activeUser.id && r.courseId === courseId
+    );
+    return mine.length > 0 ? mine[mine.length - 1] : null;
+  };
+
+  const getPendingRequests = (courseId: string): EnrollmentRequest[] => {
+    return getPendingRequestsForCourse(courseId);
   };
 
   const resetData = () => {
@@ -2657,6 +2719,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         selectSection,
         getPendingRequestsForCourse,
         getPendingRequestsForStudent,
+        requestJoinCourse,
+        getMyRequest,
+        getPendingRequests,
         logHistory,
         clearHistory,
         resetData
