@@ -222,3 +222,200 @@ model Activity {
   published      Boolean        @default(false)
   questions      QuizQuestion[]
 }
+
+model Announcement {
+  id                        String                   @id @db.NVarChar(64)
+  courseId                  String                   @db.NVarChar(64)
+  title                     String                   @db.NVarChar(256)
+  content                   String                   @db.NVarChar(Max)
+  authorId                  String                   @db.NVarChar(64)
+  authorName                String                   @db.NVarChar(128)
+  authorAvatar              String                   @db.NVarChar(512)
+  authorRole                String                   @db.NVarChar(32)
+  createdAt                 DateTime                 @default(now())
+  delayedUntil              DateTime?
+  sectionId                 String                   @db.NVarChar(64) @default("all")
+  sectionRestriction        String                   @db.NVarChar(128) @default("All Sections")
+  allowComments             Boolean                  @default(true)
+  usersMustPostBeforeReplies Boolean                 @default(false)
+  allowLiking               Boolean                  @default(true)
+  likes                     Int                      @default(0)
+  pinned                    Boolean                  @default(false)
+  attachments               AnnouncementAttachment[]
+  replies                   AnnouncementReply[]
+  likedBy                   AnnouncementLike[]
+  readBy                    AnnouncementRead[]
+}
+
+model AnnouncementAttachment {
+  id             String       @id @default(cuid()) @db.NVarChar(64)
+  announcementId String       @db.NVarChar(64)
+  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  name           String       @db.NVarChar(256)
+  size           String       @db.NVarChar(32)
+  url            String?      @db.NVarChar(1024)
+}
+
+model AnnouncementReply {
+  id             String            @id @db.NVarChar(64)
+  announcementId String            @db.NVarChar(64)
+  announcement   Announcement      @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  authorId       String            @db.NVarChar(64)
+  authorName     String            @db.NVarChar(128)
+  authorAvatar   String            @db.NVarChar(512)
+  authorRole     String            @db.NVarChar(32)
+  content        String            @db.NVarChar(Max)
+  createdAt      DateTime          @default(now())
+  likes          Int               @default(0)
+  likedBy        AnnouncementReplyLike[]
+}
+
+model AnnouncementReplyLike {
+  replyId String            @db.NVarChar(64)
+  reply   AnnouncementReply @relation(fields: [replyId], references: [id], onDelete: Cascade)
+  userId  String            @db.NVarChar(64)
+  @@id([replyId, userId])
+}
+
+model AnnouncementLike {
+  announcementId String       @db.NVarChar(64)
+  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  userId         String       @db.NVarChar(64)
+  @@id([announcementId, userId])
+}
+
+model AnnouncementRead {
+  announcementId String       @db.NVarChar(64)
+  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  userId         String       @db.NVarChar(64)
+  @@id([announcementId, userId])
+}
+
+model Discussion {
+  id                        String            @id @db.NVarChar(64)
+  courseId                  String            @db.NVarChar(64)
+  title                     String            @db.NVarChar(256)
+  prompt                    String            @db.NVarChar(Max)
+  authorId                  String            @db.NVarChar(64)
+  authorName                String            @db.NVarChar(128)
+  authorAvatar              String            @db.NVarChar(512)
+  authorRole                String            @db.NVarChar(32)
+  createdAt                 DateTime          @default(now())
+  isGraded                  Boolean           @default(false)
+  pointsPossible            Float?
+  dueDate                   DateTime?
+  pinned                    Boolean           @default(false)
+  locked                    Boolean           @default(false)
+  usersMustPostBeforeReplies Boolean          @default(false)
+  groupAssignment           String?           @db.NVarChar(128)
+  replies                   DiscussionReply[]
+}
+
+model DiscussionReply {
+  id           String                @id @db.NVarChar(64)
+  discussionId String                @db.NVarChar(64)
+  discussion   Discussion            @relation(fields: [discussionId], references: [id], onDelete: Cascade)
+  parentId     String?               @db.NVarChar(64)
+  authorId     String                @db.NVarChar(64)
+  authorName   String                @db.NVarChar(128)
+  authorAvatar String                @db.NVarChar(512)
+  authorRole   String                @db.NVarChar(32)
+  content      String                @db.NVarChar(Max)
+  createdAt    DateTime              @default(now())
+  likes        Int                   @default(0)
+  likedBy      DiscussionReplyLike[]
+}
+
+model DiscussionReplyLike {
+  replyId String          @db.NVarChar(64)
+  reply   DiscussionReply @relation(fields: [replyId], references: [id], onDelete: Cascade)
+  userId  String          @db.NVarChar(64)
+  @@id([replyId, userId])
+}
+
+model Message {
+  id             String    @id @db.NVarChar(64)
+  senderId       String    @db.NVarChar(64)
+  senderName     String    @db.NVarChar(128)
+  senderRole     String    @db.NVarChar(32)
+  recipientId    String    @db.NVarChar(64)
+  recipientName  String    @db.NVarChar(128)
+  recipientRole  String    @db.NVarChar(32)
+  courseId       String?   @db.NVarChar(64)
+  courseCode     String?   @db.NVarChar(32)
+  subject        String    @db.NVarChar(256)
+  body           String    @db.NVarChar(Max)
+  timestamp      DateTime  @default(now())
+  read           Boolean   @default(false)
+  reaction       String?   @db.NVarChar(32)
+  attachmentName String?   @db.NVarChar(256)
+  attachmentSize String?   @db.NVarChar(32)
+  groupId        String?   @db.NVarChar(64)
+  isGroup        Boolean   @default(false)
+}
+
+model ChatGroup {
+  id        String            @id @db.NVarChar(64)
+  name      String            @db.NVarChar(128)
+  avatar    String?           @db.NVarChar(512)
+  courseId  String?           @db.NVarChar(64)
+  courseCode String?          @db.NVarChar(32)
+  createdAt DateTime          @default(now())
+  createdBy String            @db.NVarChar(64)
+  members   ChatGroupMember[]
+}
+
+model ChatGroupMember {
+  groupId String    @db.NVarChar(64)
+  group   ChatGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId  String    @db.NVarChar(64)
+  @@id([groupId, userId])
+}
+
+model CalendarEvent {
+  id              String    @id @db.NVarChar(64)
+  title           String    @db.NVarChar(256)
+  date            String    @db.NVarChar(32)
+  time            String    @db.NVarChar(32)
+  courseId        String?   @db.NVarChar(64)
+  courseCode      String?   @db.NVarChar(32)
+  type            String    @db.NVarChar(32)
+  description     String    @db.NVarChar(Max)
+  createdAt       DateTime?
+  startAt         DateTime?
+  endAt           DateTime?
+  isAllDay        Boolean   @default(false)
+  colorHex        String?   @db.NVarChar(32)
+  location        String?   @db.NVarChar(256)
+  meetingPlatform String?   @db.NVarChar(32)
+  meetingId       String?   @db.NVarChar(128)
+  meetingPasscode String?   @db.NVarChar(128)
+  meetingJoinUrl  String?   @db.NVarChar(1024)
+}
+
+model AdvisingSlot {
+  id                 String   @id @db.NVarChar(64)
+  instructorId       String   @db.NVarChar(64)
+  instructorName     String   @db.NVarChar(128)
+  date               String   @db.NVarChar(32)
+  timeSlot           String   @db.NVarChar(64)
+  location           String   @db.NVarChar(256)
+  status             String   @db.NVarChar(32)
+  bookedByStudentId  String?  @db.NVarChar(64)
+  bookedByStudentName String? @db.NVarChar(128)
+  notes              String?  @db.NVarChar(Max)
+}
+
+model Notification {
+  id          String   @id @db.NVarChar(64)
+  type        String   @db.NVarChar(64)
+  recipientId String   @db.NVarChar(64)
+  actorId     String   @db.NVarChar(64)
+  actorName   String   @db.NVarChar(128)
+  actorAvatar String   @db.NVarChar(512)
+  relatedId   String   @db.NVarChar(64)
+  relatedTitle String  @db.NVarChar(256)
+  content     String   @db.NVarChar(Max)
+  read        Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
