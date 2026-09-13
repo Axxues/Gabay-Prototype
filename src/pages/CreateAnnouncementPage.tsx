@@ -119,6 +119,7 @@ export const CreateAnnouncementPage: React.FC<CreateAnnouncementPageProps> = ({
       courseId,
       title: title.trim(),
       content: content.trim(),
+      sectionId: sectionRestriction === 'all' ? 'all' : sectionRestriction,
       sectionRestriction: sectionRestriction === 'all' ? 'All Sections' : sectionRestriction,
       delayedUntil: delayPosting && delayedDate ? delayedDate : undefined,
       allowComments,

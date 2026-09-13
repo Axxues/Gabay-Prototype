@@ -1765,6 +1765,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       authorAvatar: activeUser.avatar,
       authorRole: activeRole,
       createdAt: new Date().toISOString(),
+      sectionId: data.sectionId || 'all',
       sectionRestriction: data.sectionRestriction || 'All Sections',
       delayedUntil: data.delayedUntil,
       allowComments: data.allowComments ?? true,

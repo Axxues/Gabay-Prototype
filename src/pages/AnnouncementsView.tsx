@@ -19,6 +19,7 @@ import {
   X
 } from 'lucide-react';
 import { isImageFile } from '../utils/fileUploader';
+import { isAnnouncementVisibleToViewer } from '../utils/sections';
 import { PageHeader } from '../components/common/PageHeader';
 import { EmptyState } from '../components/common/EmptyState';
 import { CreateAnnouncementPage } from './CreateAnnouncementPage';
@@ -44,6 +45,7 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
   const [searchQuery, setSearchQuery] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [selectedAnnouncementId, setSelectedAnnouncementId] = useState<string | null>(null);
+  const [facultySectionFilter, setFacultySectionFilter] = useState('all');
   const [previewingAttachment, setPreviewingAttachment] = useState<{ name: string; size: string; url?: string } | null>(null);
 
   // Reply state for currently expanded thread
@@ -60,7 +62,8 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
   };
 
   const course = db.courses.find(c => c.id === courseId);
-  const studentSectionId = activeUser.courseSections?.[courseId];
+  const viewerSectionId = activeUser.courseSections?.[courseId] ?? null;
+  const courseSections: CourseSection[] = (db.courseSections || []).filter((s: CourseSection) => s.courseId === courseId);
 
   const announcements = (db.announcements || []).filter(a => {
     if (a.courseId !== courseId && a.courseId !== 'all') return false;
@@ -68,15 +71,22 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
     // Faculty sees all announcements
     if (activeRole === 'faculty') return true;
 
-    // Student filtering: show "All Sections" or matching their section
-    if (!a.sectionRestriction || a.sectionRestriction === 'All Sections') return true;
-    const matchingSection = (db.courseSections || []).find((s: CourseSection) => s.id === studentSectionId);
-    if (matchingSection && a.sectionRestriction === matchingSection.id) return true;
-    return false;
+    // Student filtering via the shared section-visibility rule
+    return isAnnouncementVisibleToViewer(
+      { sectionId: a.sectionId ?? (a.sectionRestriction && a.sectionRestriction !== 'All Sections' ? a.sectionRestriction : 'all') },
+      viewerSectionId,
+      activeRole
+    );
   });
 
   // Filtered announcements
   const filteredAnnouncements = announcements
+    .filter(a => {
+      // Faculty-only section chip: narrow to announcements visible to that section
+      if (activeRole !== 'faculty' || facultySectionFilter === 'all') return true;
+      const scope = a.sectionId ?? (a.sectionRestriction && a.sectionRestriction !== 'All Sections' ? a.sectionRestriction : 'all');
+      return scope === 'all' || scope === facultySectionFilter;
+    })
     .filter(a => {
       const q = searchQuery.toLowerCase();
       return a.title.toLowerCase().includes(q) || a.content.toLowerCase().includes(q);
@@ -171,6 +181,35 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
           )}
         </div>
       </div>
+
+      {/* Faculty-only section filter chip row */}
+      {activeRole === 'faculty' && courseSections.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setFacultySectionFilter('all')}
+            className={`px-3 py-1.5 text-[11px] font-bold rounded-full border transition-colors cursor-pointer ${facultySectionFilter === 'all'
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'bg-card text-muted-foreground border-border hover:text-foreground'
+              }`}
+          >
+            All sections
+          </button>
+          {courseSections.map(s => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => setFacultySectionFilter(s.id)}
+              className={`px-3 py-1.5 text-[11px] font-bold rounded-full border transition-colors cursor-pointer ${facultySectionFilter === s.id
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'bg-card text-muted-foreground border-border hover:text-foreground'
+                }`}
+            >
+              {s.name}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Feed List */}
       {filteredAnnouncements.length === 0 ? (
