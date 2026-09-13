@@ -68,8 +68,10 @@ requestsRouter.post(
     if (typeof studentId !== 'string' || !studentId) {
       throw new ApiError(400, 'bad_request', 'Field studentId is required.');
     }
+    // Idempotency is scoped to invitations only: a pending self_join (or
+    // switch) request is a different request, not a duplicate invite.
     const existing = await prisma.enrollmentRequest.findFirst({
-      where: { courseId: course.id, studentId, status: 'pending' },
+      where: { courseId: course.id, studentId, status: 'pending', type: 'faculty_enroll' },
     });
     if (existing) {
       res.json({ request: existing });
@@ -102,6 +104,9 @@ requestsRouter.post(
     if (enrollment.studentId === auth.sub) {
       throw new ApiError(403, 'forbidden', 'You cannot approve your own request.');
     }
+    if (enrollment.status !== 'pending') {
+      throw new ApiError(409, 'conflict', 'Only pending requests can be approved.');
+    }
     const request = await prisma.enrollmentRequest.update({
       where: { id: enrollment.id },
       data: { status: 'approved', resolvedAt: new Date(), resolvedBy: auth.sub },
@@ -133,6 +138,9 @@ requestsRouter.post(
     if (enrollment.studentId === auth.sub) {
       throw new ApiError(403, 'forbidden', 'You cannot reject your own request.');
     }
+    if (enrollment.status !== 'pending') {
+      throw new ApiError(409, 'conflict', 'Only pending requests can be rejected.');
+    }
     const request = await prisma.enrollmentRequest.update({
       where: { id: enrollment.id },
       data: { status: 'rejected', resolvedAt: new Date(), resolvedBy: auth.sub },
@@ -149,6 +157,14 @@ requestsRouter.post(
     const enrollment = await loadRequestOr404(req.params.requestId);
     if (enrollment.studentId !== auth.sub) {
       throw new ApiError(403, 'forbidden', 'Only the invited student can accept this invite.');
+    }
+    // Invitations (faculty_enroll) are accepted by the student; join and
+    // switch requests require faculty approval and can never be self-accepted.
+    if (enrollment.type !== 'faculty_enroll') {
+      throw new ApiError(403, 'forbidden', 'Only pending faculty invitations can be accepted.');
+    }
+    if (enrollment.status !== 'pending') {
+      throw new ApiError(409, 'conflict', 'Only pending invitations can be accepted.');
     }
     const request = await prisma.enrollmentRequest.update({
       where: { id: enrollment.id },

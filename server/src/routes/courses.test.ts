@@ -41,6 +41,19 @@ describe('courses router', () => {
     });
   });
 
+  it('student GET /api/courses without enrolled param → 403', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-stud-1',
+      role: 'student',
+    });
+    const res = await (await import('supertest'))
+      .default(app())
+      .get('/api/courses')
+      .set('Authorization', 'Bearer x');
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('forbidden');
+  });
+
   it('POST /api/courses/join with unknown code → 404 course_not_found', async () => {
     (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
     const res = await (await import('supertest'))

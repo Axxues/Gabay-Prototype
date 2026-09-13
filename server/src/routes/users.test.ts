@@ -5,7 +5,7 @@ vi.mock('../db.js', () => ({
   prisma: {
     user: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
     course: { findUnique: vi.fn() },
-    enrollmentRequest: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn() },
+    enrollmentRequest: { findFirst: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
     courseSection: { findUnique: vi.fn(), update: vi.fn() },
     notification: { create: vi.fn() },
   },
@@ -234,5 +234,92 @@ describe('requests router (mine + faculty section bypass)', () => {
       .send({ sectionId: 'sec-1' });
     expect(res.status).toBe(403);
     expect(res.body.error.code).toBe('forbidden');
+  });
+});
+
+describe('request accept/approve status scoping', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-stud-1',
+      role: 'student',
+    });
+  });
+
+  it('student accepting own self_join request → 403, row untouched', async () => {
+    (prisma.enrollmentRequest.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'r1', courseId: 'c1', studentId: 'u-stud-1', type: 'self_join', status: 'pending',
+    });
+    const res = await (await request())(app())
+      .post('/api/requests/r1/accept')
+      .set('Authorization', 'Bearer x');
+    expect(res.status).toBe(403);
+    expect(prisma.enrollmentRequest.update as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
+  });
+
+  it('student accepting own faculty_enroll invite → 200 approved', async () => {
+    (prisma.enrollmentRequest.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'r2', courseId: 'c1', studentId: 'u-stud-1', type: 'faculty_enroll', status: 'pending',
+    });
+    (prisma.enrollmentRequest.update as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'r2', status: 'approved',
+    });
+    const res = await (await request())(app())
+      .post('/api/requests/r2/accept')
+      .set('Authorization', 'Bearer x');
+    expect(res.status).toBe(200);
+    expect(res.body.request.status).toBe('approved');
+  });
+
+  it('accepting a non-pending invite → 409, row untouched', async () => {
+    (prisma.enrollmentRequest.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'r3', courseId: 'c1', studentId: 'u-stud-1', type: 'faculty_enroll', status: 'approved',
+    });
+    const res = await (await request())(app())
+      .post('/api/requests/r3/accept')
+      .set('Authorization', 'Bearer x');
+    expect(res.status).toBe(409);
+    expect(prisma.enrollmentRequest.update as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
+  });
+
+  it('faculty invite alongside a pending self_join creates a new invite (no type-blind match)', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-fac-1',
+      role: 'faculty',
+    });
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'c1', instructorId: 'u-fac-1',
+    });
+    (prisma.enrollmentRequest.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    (prisma.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'u-stud-1', name: 'Stu' });
+    (prisma.enrollmentRequest.create as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'r-new', courseId: 'c1', studentId: 'u-stud-1', type: 'faculty_enroll', status: 'pending',
+    });
+    const res = await (await request())(app())
+      .post('/api/courses/c1/invites')
+      .set('Authorization', 'Bearer x')
+      .send({ studentId: 'u-stud-1' });
+    expect(res.status).toBe(201);
+    const findFirst = prisma.enrollmentRequest.findFirst as ReturnType<typeof vi.fn>;
+    expect(findFirst.mock.calls[0][0].where.type).toBe('faculty_enroll');
+    expect(res.body.request.id).toBe('r-new');
+  });
+
+  it('faculty approving a rejected request → 409, row untouched', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-fac-1',
+      role: 'faculty',
+    });
+    (prisma.enrollmentRequest.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'r4', courseId: 'c1', studentId: 'u-stud-1', type: 'self_join', status: 'rejected',
+    });
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'c1', instructorId: 'u-fac-1',
+    });
+    const res = await (await request())(app())
+      .post('/api/requests/r4/approve')
+      .set('Authorization', 'Bearer x');
+    expect(res.status).toBe(409);
+    expect(prisma.enrollmentRequest.update as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
   });
 });

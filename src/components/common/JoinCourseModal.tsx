@@ -14,10 +14,11 @@ interface JoinCourseModalProps {
   onNavigateCourse?: (courseId: string) => void;
 }
 
+// NOTE: onNavigateCourse is intentionally unused. A successful join only
+// creates a pending request, so the modal must not navigate into the course.
 export const JoinCourseModal: React.FC<JoinCourseModalProps> = ({
   isOpen,
   onClose,
-  onNavigateCourse
 }) => {
   const { db, activeUser, joinCourseByCode, showAlert } = useLMS();
   const [code, setCode] = useState('');
@@ -61,9 +62,9 @@ export const JoinCourseModal: React.FC<JoinCourseModalProps> = ({
     }
 
     onClose();
-    if (matchedCourse && onNavigateCourse) {
-      onNavigateCourse(matchedCourse.id);
-    }
+    // A successful join only creates a PENDING request — never navigate into
+    // the course shell. The student gains access after faculty approval (and
+    // section selection); until then every course endpoint returns 403.
     showAlert({
       title: 'Join Request Sent',
       message: res.message,
