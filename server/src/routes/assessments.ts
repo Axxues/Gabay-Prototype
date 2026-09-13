@@ -1,0 +1,450 @@
+import { Router } from 'express';
+import { prisma } from '../db.js';
+import { asyncHandler, ApiError } from '../utils/errors.js';
+import { authenticateToken, requireRole } from '../middleware/auth.js';
+import type { AuthPayload } from '../middleware/auth.js';
+import { createNotification } from '../utils/notifications.js';
+import { parseJsonField, stringifyJsonField } from '../utils/jsonFields.js';
+
+export const quizzesRouter = buildAssessmentRouter('quiz');
+export const activitiesRouter = buildAssessmentRouter('activity');
+
+type AssessmentKind = 'quiz' | 'activity';
+
+function newId(prefix: string): string {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+interface CourseRow {
+  id: string;
+  instructorId: string;
+}
+
+type RawQuestion = Record<string, unknown> & { options: string };
+
+interface AssessmentRow {
+  id: string;
+  courseId: string;
+  title: string;
+  questions: RawQuestion[];
+}
+
+async function loadCourseOr404(courseId: string) {
+  const course = await prisma.course.findUnique({ where: { id: courseId } });
+  if (!course) throw new ApiError(404, 'not_found', 'Course not found.');
+  return course;
+}
+
+async function assertCourseAccess(course: CourseRow, auth: AuthPayload): Promise<void> {
+  if (auth.role === 'faculty' || auth.role === 'admin') return;
+  if (course.instructorId === auth.sub) return;
+  const membership = await prisma.enrollmentRequest.findFirst({
+    where: { courseId: course.id, studentId: auth.sub, status: 'approved' },
+  });
+  if (!membership) throw new ApiError(403, 'forbidden', 'You are not a member of this course.');
+}
+
+function assertCourseOwner(course: { instructorId: string }, auth: AuthPayload): void {
+  if (auth.role !== 'admin' && course.instructorId !== auth.sub) {
+    throw new ApiError(403, 'forbidden', 'Only the course instructor can do this.');
+  }
+}
+
+// `options` is stored as a JSON string; the API speaks arrays.
+function mapQuestion(q: RawQuestion): Record<string, unknown> {
+  return { ...q, options: parseJsonField<unknown[]>(q.options, []) };
+}
+
+// Students must never see the key — delete it, don't null it.
+function stripAnswer(q: Record<string, unknown>): Record<string, unknown> {
+  const rest = { ...q };
+  delete rest.correctAnswer;
+  return rest;
+}
+
+function canSeeAnswers(role: string): boolean {
+  return role === 'faculty' || role === 'admin';
+}
+
+function mapQuestionsFor(role: string, questions: RawQuestion[]): Record<string, unknown>[] {
+  return questions
+    .map(mapQuestion)
+    .map((q) => (canSeeAnswers(role) ? q : stripAnswer(q)));
+}
+
+function mapSubmission<T extends { rubricScores: string }>(s: T) {
+  return { ...s, rubricScores: parseJsonField<Record<string, number>>(s.rubricScores, {}) };
+}
+
+const QUESTION_STRING_FIELDS = [
+  'description',
+  'rubricNotes',
+  'imageUrl',
+  'imageName',
+  'fileUrl',
+  'fileName',
+] as const;
+
+interface ParsedQuestion {
+  text: string;
+  type: string;
+  options: unknown[];
+  correctAnswer: string | null;
+  points: number;
+  extras: Record<string, string | null>;
+}
+
+function parseQuestionInput(raw: unknown, index: number): ParsedQuestion {
+  const q = (raw ?? {}) as Record<string, unknown>;
+  if (typeof q.text !== 'string' || !q.text.trim()) {
+    throw new ApiError(400, 'bad_request', `Question ${index + 1}: field text is required.`);
+  }
+  if (q.type !== undefined && typeof q.type !== 'string') {
+    throw new ApiError(400, 'bad_request', `Question ${index + 1}: field type must be a string.`);
+  }
+  const options = q.options === undefined ? [] : q.options;
+  if (!Array.isArray(options)) {
+    throw new ApiError(400, 'bad_request', `Question ${index + 1}: field options must be an array.`);
+  }
+  if (q.correctAnswer !== undefined && q.correctAnswer !== null && typeof q.correctAnswer !== 'string') {
+    throw new ApiError(400, 'bad_request', `Question ${index + 1}: field correctAnswer must be a string.`);
+  }
+  if (q.points !== undefined && typeof q.points !== 'number') {
+    throw new ApiError(400, 'bad_request', `Question ${index + 1}: field points must be a number.`);
+  }
+  const extras: Record<string, string | null> = {};
+  for (const key of QUESTION_STRING_FIELDS) {
+    const value = q[key];
+    if (value === undefined || value === null) {
+      extras[key] = null;
+    } else if (typeof value !== 'string') {
+      throw new ApiError(400, 'bad_request', `Question ${index + 1}: field '${key}' must be a string.`);
+    } else {
+      extras[key] = value;
+    }
+  }
+  return {
+    text: q.text,
+    type: typeof q.type === 'string' && q.type ? q.type : 'multiple_choice',
+    options,
+    correctAnswer: typeof q.correctAnswer === 'string' ? q.correctAnswer : null,
+    points: typeof q.points === 'number' ? q.points : 5,
+    extras,
+  };
+}
+
+function parseQuestionsInput(body: Record<string, unknown>): ParsedQuestion[] {
+  const raw = body.questions === undefined ? [] : body.questions;
+  if (!Array.isArray(raw)) {
+    throw new ApiError(400, 'bad_request', 'Field questions must be an array.');
+  }
+  return raw.map((q, i) => parseQuestionInput(q, i));
+}
+
+function parseOptionalDate(value: unknown, field: string): Date | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value !== 'string') {
+    throw new ApiError(400, 'bad_request', `Field '${field}' must be a date string.`);
+  }
+  return new Date(value);
+}
+
+function buildAssessmentRouter(kind: AssessmentKind) {
+  const router = Router();
+  const isQuiz = kind === 'quiz';
+  const singular = isQuiz ? 'Quiz' : 'Activity';
+  const syntheticAssignmentId = (id: string) =>
+    isQuiz ? `asg-quiz-${id}` : `asg-activity-${id}`;
+
+  async function loadOr404(id: string): Promise<AssessmentRow> {
+    const row = (isQuiz
+      ? await prisma.quiz.findUnique({ where: { id }, include: { questions: true } })
+      : await prisma.activity.findUnique({
+          where: { id },
+          include: { questions: true },
+        })) as unknown as AssessmentRow | null;
+    if (!row) throw new ApiError(404, 'not_found', `${singular} not found.`);
+    return row;
+  }
+
+  async function listForCourse(courseId: string): Promise<AssessmentRow[]> {
+    const rows = (isQuiz
+      ? await prisma.quiz.findMany({ where: { courseId }, include: { questions: true } })
+      : await prisma.activity.findMany({
+          where: { courseId },
+          include: { questions: true },
+        })) as unknown as AssessmentRow[];
+    return rows;
+  }
+
+  router.get(
+    '/',
+    authenticateToken,
+    asyncHandler(async (req, res) => {
+      const auth = req.auth!;
+      const courseId = req.query.courseId;
+      if (typeof courseId !== 'string' || !courseId) {
+        throw new ApiError(400, 'bad_request', 'Query param courseId is required.');
+      }
+      const course = await loadCourseOr404(courseId);
+      await assertCourseAccess(course, auth);
+      const rows = await listForCourse(course.id);
+      const items = rows.map((r) => ({
+        ...r,
+        questions: mapQuestionsFor(auth.role, r.questions),
+      }));
+      res.json(isQuiz ? { quizzes: items } : { activities: items });
+    })
+  );
+
+  router.post(
+    '/',
+    authenticateToken,
+    requireRole('faculty', 'admin'),
+    asyncHandler(async (req, res) => {
+      const auth = req.auth!;
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const { courseId } = body;
+      if (typeof courseId !== 'string' || !courseId) {
+        throw new ApiError(400, 'bad_request', 'Field courseId is required.');
+      }
+      const course = await loadCourseOr404(courseId);
+      assertCourseOwner(course, auth);
+      const { title, instructions } = body;
+      if (typeof title !== 'string' || !title.trim()) {
+        throw new ApiError(400, 'bad_request', 'Field title is required.');
+      }
+      if (typeof instructions !== 'string' || !instructions.trim()) {
+        throw new ApiError(400, 'bad_request', 'Field instructions is required.');
+      }
+      const published = typeof body.published === 'boolean' ? body.published : false;
+      const questions = parseQuestionsInput(body);
+
+      if (isQuiz) {
+        const timeLimitMinutes =
+          typeof body.timeLimitMinutes === 'number' ? body.timeLimitMinutes : 30;
+        const str = (v: unknown): string | null => (typeof v === 'string' ? v : null);
+        const created = await prisma.quiz.create({
+          data: {
+            id: newId('quiz'),
+            courseId: course.id,
+            title,
+            instructions,
+            timeLimitMinutes,
+            published,
+            delayedUntil: parseOptionalDate(body.delayedUntil, 'delayedUntil') ?? null,
+            dueDate: parseOptionalDate(body.dueDate, 'dueDate') ?? null,
+            fileName: str(body.fileName),
+            fileUrl: str(body.fileUrl),
+            fileSize: str(body.fileSize),
+          },
+        });
+        const rows: RawQuestion[] = [];
+        for (const q of questions) {
+          rows.push(
+            (await prisma.quizQuestion.create({
+              data: {
+                id: newId('qq'),
+                quizId: created.id,
+                text: q.text,
+                type: q.type,
+                options: stringifyJsonField(q.options),
+                correctAnswer: q.correctAnswer,
+                points: q.points,
+                ...q.extras,
+              },
+            })) as unknown as RawQuestion
+          );
+        }
+        res.status(201).json({
+          quiz: { ...created, questions: mapQuestionsFor(auth.role, rows) },
+        });
+        return;
+      }
+
+      const { pointsPossible } = body;
+      if (typeof pointsPossible !== 'number') {
+        throw new ApiError(400, 'bad_request', 'Field pointsPossible must be a number.');
+      }
+      const created = await prisma.activity.create({
+        data: {
+          id: newId('act'),
+          courseId: course.id,
+          title,
+          instructions,
+          pointsPossible,
+          dueDate: parseOptionalDate(body.dueDate, 'dueDate') ?? null,
+          published,
+        },
+      });
+      const rows: RawQuestion[] = [];
+      for (const q of questions) {
+        rows.push(
+          (await prisma.quizQuestion.create({
+            data: {
+              id: newId('qq'),
+              activityId: created.id,
+              text: q.text,
+              type: q.type,
+              options: stringifyJsonField(q.options),
+              correctAnswer: q.correctAnswer,
+              points: q.points,
+              ...q.extras,
+            },
+          })) as unknown as RawQuestion
+        );
+      }
+      res.status(201).json({
+        activity: { ...created, questions: mapQuestionsFor(auth.role, rows) },
+      });
+    })
+  );
+
+  router.get(
+    '/:id',
+    authenticateToken,
+    asyncHandler(async (req, res) => {
+      const auth = req.auth!;
+      const row = await loadOr404(req.params.id);
+      const course = await loadCourseOr404(row.courseId);
+      await assertCourseAccess(course, auth);
+      const item = { ...row, questions: mapQuestionsFor(auth.role, row.questions) };
+      res.json(isQuiz ? { quiz: item } : { activity: item });
+    })
+  );
+
+  router.patch(
+    '/:id',
+    authenticateToken,
+    requireRole('faculty', 'admin'),
+    asyncHandler(async (req, res) => {
+      const auth = req.auth!;
+      const row = await loadOr404(req.params.id);
+      const course = await loadCourseOr404(row.courseId);
+      assertCourseOwner(course, auth);
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const data: Record<string, string | boolean | number | Date | null> = {};
+      if (body.title !== undefined) {
+        if (typeof body.title !== 'string' || !body.title.trim()) {
+          throw new ApiError(400, 'bad_request', "Field 'title' must be a non-empty string.");
+        }
+        data.title = body.title;
+      }
+      if (body.instructions !== undefined) {
+        if (typeof body.instructions !== 'string' || !body.instructions.trim()) {
+          throw new ApiError(400, 'bad_request', "Field 'instructions' must be a non-empty string.");
+        }
+        data.instructions = body.instructions;
+      }
+      if (body.published !== undefined) {
+        if (typeof body.published !== 'boolean') {
+          throw new ApiError(400, 'bad_request', "Field 'published' must be a boolean.");
+        }
+        data.published = body.published;
+      }
+      for (const key of ['dueDate', 'delayedUntil'] as const) {
+        if (isQuiz || key === 'dueDate') {
+          const parsed = parseOptionalDate(body[key], key);
+          if (parsed !== undefined) data[key] = parsed;
+        }
+      }
+      if (isQuiz) {
+        if (body.timeLimitMinutes !== undefined) {
+          if (typeof body.timeLimitMinutes !== 'number') {
+            throw new ApiError(400, 'bad_request', "Field 'timeLimitMinutes' must be a number.");
+          }
+          data.timeLimitMinutes = body.timeLimitMinutes;
+        }
+        const updated = await prisma.quiz.update({ where: { id: row.id }, data });
+        res.json({ quiz: updated });
+        return;
+      }
+      if (body.pointsPossible !== undefined) {
+        if (typeof body.pointsPossible !== 'number') {
+          throw new ApiError(400, 'bad_request', "Field 'pointsPossible' must be a number.");
+        }
+        data.pointsPossible = body.pointsPossible;
+      }
+      const updated = await prisma.activity.update({ where: { id: row.id }, data });
+      res.json({ activity: updated });
+    })
+  );
+
+  router.delete(
+    '/:id',
+    authenticateToken,
+    requireRole('faculty', 'admin'),
+    asyncHandler(async (req, res) => {
+      const auth = req.auth!;
+      const row = await loadOr404(req.params.id);
+      const course = await loadCourseOr404(row.courseId);
+      assertCourseOwner(course, auth);
+      if (isQuiz) {
+        await prisma.quiz.delete({ where: { id: row.id } });
+      } else {
+        await prisma.activity.delete({ where: { id: row.id } });
+      }
+      res.json({ ok: true });
+    })
+  );
+
+  router.post(
+    '/:id/submit',
+    authenticateToken,
+    requireRole('student'),
+    asyncHandler(async (req, res) => {
+      const auth = req.auth!;
+      const row = await loadOr404(req.params.id);
+      const course = await loadCourseOr404(row.courseId);
+      await assertCourseAccess(course, auth);
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      if (typeof body.answers !== 'object' || body.answers === null || Array.isArray(body.answers)) {
+        throw new ApiError(400, 'bad_request', 'Field answers must be an object.');
+      }
+      const answers = body.answers as Record<string, string>;
+      const assignmentId = syntheticAssignmentId(row.id);
+      const me = await prisma.user.findUnique({ where: { id: auth.sub } });
+      const existing = await prisma.submission.findFirst({
+        where: { assignmentId, studentId: auth.sub },
+      });
+      const content = stringifyJsonField(answers);
+      // Quiz-taking state lives in Submission rows under the synthetic
+      // asg-quiz-<id> / asg-activity-<id> convention (SpeedGrader compat).
+      // Essay answers are stored as-is; grading happens via the Task 4
+      // submissions grade endpoint.
+      const submission = existing
+        ? await prisma.submission.update({
+            where: { id: existing.id },
+            data: { content, status: 'submitted', submittedAt: new Date() },
+          })
+        : await prisma.submission.create({
+            data: {
+              id: newId('sub'),
+              assignmentId,
+              courseId: course.id,
+              studentId: auth.sub,
+              studentName: me?.name ?? '',
+              studentAvatar: me?.avatar ?? '',
+              submissionType: 'online_text',
+              content,
+              status: 'submitted',
+              rubricScores: stringifyJsonField({}),
+            },
+          });
+      await createNotification({
+        type: 'assignment_submitted',
+        recipientId: course.instructorId,
+        actorId: auth.sub,
+        actorName: me?.name ?? '',
+        actorAvatar: me?.avatar ?? '',
+        relatedId: row.id,
+        relatedTitle: row.title,
+        content: `${me?.name ?? 'A student'} submitted ${row.title}.`,
+      });
+      res.status(201).json({ submission: mapSubmission(submission) });
+    })
+  );
+
+  return router;
+}
