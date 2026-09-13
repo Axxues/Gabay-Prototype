@@ -25,7 +25,23 @@ export const AppContent: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
 
-  const { setActiveCourseId, logHistory, isAuthenticated, activeRole } = useLMS();
+  const { setActiveCourseId, logHistory, isAuthenticated, isLoading, activeRole } = useLMS();
+
+  // Workspace loading gate: refreshAll is the only filler of the shared
+  // cache and no view refetches on navigation, so rendering pages before it
+  // completes shows empty states that look broken. Gate the whole canvas
+  // until the first bootstrap settles (login page is unaffected: it renders
+  // while logged out, when isLoading never turns true).
+  if (isAuthenticated && isLoading) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-muted font-sans dark:bg-background" role="status" aria-label="Loading workspace">
+        <div className="flex flex-col items-center space-y-4">
+          <div className="w-10 h-10 rounded-full border-[3px] border-border border-t-primary animate-spin" />
+          <p className="text-xs font-bold text-muted-foreground">Loading your workspace…</p>
+        </div>
+      </div>
+    );
+  }
 
   // Role-based active tab auto-guarding
   useEffect(() => {

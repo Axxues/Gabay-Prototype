@@ -34,6 +34,7 @@ import { AlertModal, type AlertModalOptions } from '../components/common/AlertMo
 import { canPickSection } from '../utils/sections';
 import type { OfficialSyllabusData } from '../data/syllabusData';
 import { apiFetch, ApiError, getToken, setToken, clearToken } from '../api/client';
+import { settledValue } from '../utils/promise';
 
 interface LMSContextType {
   theme: 'dark' | 'light';
@@ -528,12 +529,21 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         user.role === 'student'
           ? `/api/courses?enrolled=${encodeURIComponent(user.id)}`
           : '/api/courses';
-      const [coursesRes, notificationsRes, messagesRes, calendarRes] = await Promise.all([
+      // The first batch is failure-tolerant: only the course list is fatal
+      // (nothing renders without it). A single failing notifications /
+      // messages / calendar fetch must never empty the whole workspace —
+      // that was the intermittent blank-screen cause.
+      const [coursesSettled, notificationsSettled, messagesSettled, calendarSettled] = await Promise.allSettled([
         apiFetch<{ courses: Course[] }>(coursesPath),
         apiFetch<{ notifications: Notification[] }>('/api/notifications?limit=200'),
         apiFetch<{ messages: Message[] }>('/api/messages'),
         apiFetch<{ events: CalendarEvent[] }>('/api/calendar'),
       ]);
+      if (coursesSettled.status === 'rejected') throw coursesSettled.reason;
+      const coursesRes = coursesSettled.value;
+      const notificationsRes = settledValue(notificationsSettled, { notifications: [] });
+      const messagesRes = settledValue(messagesSettled, { messages: [] });
+      const calendarRes = settledValue(calendarSettled, { events: [] });
       const fresh = emptyDb();
       // User directory for inbox threads/compose/group-member lookups. The
       // signed-in row stays authoritative; failure tolerates to self-only.
