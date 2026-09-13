@@ -1,0 +1,68 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlserver"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String   @id @db.NVarChar(64)
+  name           String   @db.NVarChar(128)
+  email          String   @unique @db.NVarChar(256)
+  passwordHash   String   @db.NVarChar(256)
+  role           String   @db.NVarChar(32) // UserRole: admin | faculty | staff | student (enforced at API layer)
+  avatar         String   @db.NVarChar(512)
+  department     String   @db.NVarChar(128)
+  title          String   @db.NVarChar(128)
+  lastVisitedAt  String?  @db.NVarChar(Max)
+  coursesTaught  Course[] @relation("InstructorCourses")
+}
+
+model Course {
+  id                String             @id @db.NVarChar(64)
+  code              String             @db.NVarChar(32)
+  title             String             @db.NVarChar(256)
+  section           String             @db.NVarChar(64)
+  term              String             @db.NVarChar(64)
+  instructorId      String             @db.NVarChar(64)
+  instructor        User               @relation("InstructorCourses", fields: [instructorId], references: [id])
+  instructorName    String             @db.NVarChar(128)
+  published         Boolean            @default(false)
+  color             String?            @db.NVarChar(32)
+  image             String?            @db.NVarChar(512)
+  enrolledCount     Int                @default(0)
+  credits           Int?
+  chedComplianceCode String?           @db.NVarChar(64)
+  joinCode          String?            @unique @db.NVarChar(32)
+  syllabus          String?            @db.NVarChar(Max)
+  sections          CourseSection[]
+  requests          EnrollmentRequest[]
+}
+
+model CourseSection {
+  id            String  @id @db.NVarChar(64)
+  courseId      String  @db.NVarChar(64)
+  course        Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  name          String  @db.NVarChar(128)
+  capacity      Int?
+  enrolledCount Int     @default(0)
+  schedule      String? @db.NVarChar(256)
+  location      String? @db.NVarChar(256)
+}
+
+model EnrollmentRequest {
+  id              String                  @id @db.NVarChar(64)
+  courseId        String                  @db.NVarChar(64)
+  course          Course                  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  studentId       String                  @db.NVarChar(64)
+  studentName     String                  @db.NVarChar(128)
+  type            String   @db.NVarChar(32) // self_join | faculty_enroll | section_switch (enforced at API layer)
+  status          String   @db.NVarChar(32) @default("pending") // pending | approved | rejected (enforced at API layer)
+  requestedAt     DateTime                @default(now())
+  resolvedAt      DateTime?
+  resolvedBy      String?                 @db.NVarChar(64)
+  sectionId       String?                 @db.NVarChar(64)
+  targetSectionId String?                 @db.NVarChar(64)
+}
