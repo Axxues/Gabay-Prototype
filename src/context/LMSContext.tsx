@@ -760,6 +760,14 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           for (const req of r.requestsSettled.value.requests) requestMap.set(req.id, req);
         }
       }
+      // Seed the request cache with the viewer's own requests so
+      // getPendingRequestsForStudent (sync) survives reload.
+      const mineSettled = await Promise.allSettled([
+        apiFetch<{ requests: EnrollmentRequest[] }>('/api/requests/mine'),
+      ]);
+      if (mineSettled[0].status === 'fulfilled') {
+        for (const req of mineSettled[0].value.requests) requestMap.set(req.id, req);
+      }
       fresh.courseSections = [...sectionMap.values()];
       fresh.enrollmentRequests = [...requestMap.values()];
       setDb(fresh);
@@ -1420,8 +1428,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     // Mirror the invite server-side when the person references an existing
-    // account id. (No POST /api/users endpoint exists, so provisioning itself
-    // stays local.)
+    // account id. When the invite fails, roll back the created user.
     if (targetCourseId && person.id) {
       try {
         const { request } = await apiFetch<{ request: EnrollmentRequest }>(
@@ -1430,6 +1437,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         );
         setDb(prev => mergeEnrollmentRequest(prev, request));
       } catch (err) {
+        const createdId = newPerson.id;
+        setDb(prev => ({
+          ...prev,
+          users: prev.users.filter(u => u.id !== createdId)
+        }));
         const message = err instanceof ApiError ? err.message : 'Failed to send course invite.';
         setLastError(message);
         showAlert(message, 'Invite Failed');
@@ -1468,39 +1480,53 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Phase 2 provides no POST /api/users endpoint, so admin account
-  // provisioning stays local until the server adds user creation.
   const createUser = async (userData: Partial<User>): Promise<User> => {
     const role = userData.role || 'student';
-    const newUser: User = {
-      id: userData.id || `usr-${role.slice(0, 4)}-${Date.now().toString(36)}`,
-      name: userData.name?.trim() || 'New User',
-      email: userData.email?.trim() || `user.${Date.now()}@dmmmsu.edu.ph`,
-      role,
-      avatar: userData.avatar || `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80`,
-      department: userData.department || 'College of Computer Science',
-      title: userData.title || (role === 'student' ? 'Undergraduate Student' : 'Faculty Instructor'),
-      studentId: userData.studentId || (role === 'student' ? `2026-${Math.floor(10000 + Math.random() * 90000)}` : undefined),
-      password: userData.password || 'password123',
-      enrolledCourseIds: userData.enrolledCourseIds || []
-    };
-
-    setDb(prev => ({
-      ...prev,
-      users: [...prev.users, newUser]
-    }));
-
-    return newUser;
+    try {
+      const { user } = await apiFetch<{ user: User }>('/api/users', {
+        method: 'POST',
+        body: {
+          name: userData.name?.trim() || userData.email?.trim() || 'New User',
+          email: userData.email?.trim() || '',
+          role,
+          password: userData.password || 'password123',
+          avatar: userData.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+          department: userData.department || 'College of Computer Science',
+          title: userData.title || (role === 'student' ? 'Undergraduate Student' : 'Faculty Instructor'),
+        }
+      });
+      // The server returns the public user only — reattach the client-side
+      // account extras (studentId, password, enrolledCourseIds).
+      const merged: User = {
+        ...user,
+        studentId: userData.studentId || (role === 'student' ? `2026-${Math.floor(10000 + Math.random() * 90000)}` : undefined),
+        password: userData.password || 'password123',
+        enrolledCourseIds: userData.enrolledCourseIds || []
+      };
+      setDb(prev => ({
+        ...prev,
+        users: [...prev.users, merged]
+      }));
+      return merged;
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to create user.';
+      setLastError(message);
+      showAlert(message, 'Create User Failed');
+      throw err;
+    }
   };
 
   const updateUser = async (id: string, updates: Partial<User>): Promise<boolean> => {
-    // Server PATCH accepts only name/avatar/department/title — other fields
-    // (email, role, password) are applied to the local cache only.
+    // Server PATCH accepts name/avatar/department/title plus
+    // email/role/password (validated server-side).
     const patchBody: Record<string, string> = {};
     if (updates.name !== undefined) patchBody.name = updates.name;
     if (updates.avatar !== undefined) patchBody.avatar = updates.avatar;
     if (updates.department !== undefined) patchBody.department = updates.department;
     if (updates.title !== undefined) patchBody.title = updates.title;
+    if (updates.email !== undefined) patchBody.email = updates.email;
+    if (updates.role !== undefined) patchBody.role = updates.role;
+    if (updates.password !== undefined) patchBody.password = updates.password;
     const localUpdates = Object.fromEntries(
       Object.entries(updates).filter(([, v]) => v !== undefined)
     ) as Partial<User>;
@@ -1530,8 +1556,6 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Phase 2 provides no DELETE /api/users/:id endpoint, so admin account
-  // removal stays local until the server adds user deletion.
   const deleteUser = async (userId: string): Promise<{ success: boolean; message?: string }> => {
     if (activeUser.id === userId) {
       return {
@@ -1543,6 +1567,16 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const userToDelete = db.users.find(u => u.id === userId);
     if (!userToDelete) {
       return { success: false, message: 'User not found.' };
+    }
+
+    try {
+      await apiFetch<{ ok: true }>(`/api/users/${encodeURIComponent(userId)}`, {
+        method: 'DELETE'
+      });
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to delete user.';
+      setLastError(message);
+      return { success: false, message };
     }
 
     setDb(prev => ({
@@ -3194,20 +3228,16 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const { requests } = await apiFetch<{ requests: EnrollmentRequest[] }>(
         `/api/courses/${encodeURIComponent(courseId)}/requests?status=pending`
       );
-      setDb(prev => {
-        const kept = (prev.enrollmentRequests || []).filter(
-          (r: EnrollmentRequest) => r.courseId !== courseId || r.status !== 'pending'
-        );
-        const known = new Set(kept.map(r => r.id));
-        const merged = [...kept];
-        for (const req of requests) {
-          if (!known.has(req.id)) {
-            known.add(req.id);
-            merged.push(req);
-          }
-        }
-        return { ...prev, enrollmentRequests: merged };
-      });
+      setDb(prev => ({
+        ...prev,
+        // REPLACE (not merge) this course's cached pendings with server truth.
+        enrollmentRequests: [
+          ...(prev.enrollmentRequests || []).filter(
+            (r: EnrollmentRequest) => !(r.courseId === courseId && r.status === 'pending')
+          ),
+          ...requests,
+        ],
+      }));
       return requests;
     } catch (err) {
       // Read path: stay silent (no modal) and serve the cache.

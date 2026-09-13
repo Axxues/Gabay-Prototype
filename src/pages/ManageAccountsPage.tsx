@@ -350,7 +350,8 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = () => {
       studentId: formRole === 'student' ? `2026-SLUC-${Math.floor(1000 + Math.random() * 9000)}` : undefined,
       password: formPassword.trim() || 'gabay2026',
       avatar: defaultAvatar
-    });
+    }).catch(() => null);
+    if (!created) return;
 
     setIsCreateModalOpen(false);
     showAlert({
@@ -377,13 +378,14 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = () => {
 
     const finalName = editingUser.name?.trim() || cleanEmail;
 
-    await updateUser(editingUser.id, {
+    const ok = await updateUser(editingUser.id, {
       name: finalName,
       email: cleanEmail,
       role: formRole,
       department: formDepartment,
       password: formPassword.trim() || editingUser.password || 'gabay2026'
     });
+    if (!ok) return;
 
     setEditingUser(null);
     showAlert({
