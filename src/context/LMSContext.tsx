@@ -177,6 +177,7 @@ interface LMSContextType {
   approveEnrollmentRequests: (requestIds: string[]) => void;
   rejectEnrollmentRequests: (requestIds: string[]) => void;
   studentApproveInvitation: (requestId: string) => void;
+  studentDeclineInvitation: (requestId: string) => void;
   selectSection: (courseId: string, sectionId: string) => void;
   getPendingRequestsForCourse: (courseId: string) => EnrollmentRequest[];
   getPendingRequestsForStudent: () => EnrollmentRequest[];
@@ -2514,6 +2515,17 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
+  const studentDeclineInvitation = (requestId: string) => {
+    setDb(prev => ({
+      ...prev,
+      enrollmentRequests: (prev.enrollmentRequests || []).map((r: EnrollmentRequest) =>
+        r.id === requestId && r.studentId === activeUser.id && r.status === 'pending'
+          ? { ...r, status: 'rejected' as const, resolvedAt: new Date().toISOString(), resolvedBy: activeUser.id }
+          : r
+      )
+    }));
+  };
+
   const selectSection = (courseId: string, sectionId: string) => {
     const bypassGate = activeRole === 'faculty' || activeRole === 'admin';
     if (!bypassGate) {
@@ -2716,6 +2728,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         approveEnrollmentRequests,
         rejectEnrollmentRequests,
         studentApproveInvitation,
+        studentDeclineInvitation,
         selectSection,
         getPendingRequestsForCourse,
         getPendingRequestsForStudent,

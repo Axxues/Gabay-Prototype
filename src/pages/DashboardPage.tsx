@@ -29,7 +29,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   onNavigateCourse,
   onNavigateTab
 }) => {
-  const { activeRole, activeUser, db, openSpeedGrader, getPendingRequestsForStudent, studentApproveInvitation } = useLMS();
+  const { activeRole, activeUser, db, openSpeedGrader, getPendingRequestsForStudent, studentApproveInvitation, studentDeclineInvitation } = useLMS();
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
   const [copiedCodeCourseId, setCopiedCodeCourseId] = useState<string | null>(null);
   const pendingInvitations = getPendingRequestsForStudent();
@@ -274,7 +274,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                             Accept
                           </button>
                           <button
-                            onClick={() => { /* reject */ }}
+                            onClick={() => { studentDeclineInvitation(req.id); }}
                             className="px-3 py-1.5 text-[11px] font-bold bg-red-500/10 text-red-600 hover:bg-red-500/20 rounded-lg cursor-pointer"
                           >
                             Decline
@@ -291,6 +291,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                           <div className="text-xs font-bold">{course?.code} — {course?.title}</div>
                           <div className="text-[11px] text-muted-foreground">Request sent — waiting for instructor approval</div>
                         </div>
+                        <button
+                          onClick={() => { studentDeclineInvitation(req.id); }}
+                          className="px-3 py-1.5 text-[11px] font-bold bg-red-500/10 text-red-600 hover:bg-red-500/20 rounded-lg cursor-pointer"
+                        >
+                          Withdraw request
+                        </button>
                       </div>
                     );
                   })}
