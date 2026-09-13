@@ -535,7 +535,15 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         apiFetch<{ events: CalendarEvent[] }>('/api/calendar'),
       ]);
       const fresh = emptyDb();
-      fresh.users = [user];
+      // User directory for inbox threads/compose/group-member lookups. The
+      // signed-in row stays authoritative; failure tolerates to self-only.
+      try {
+        const { users } = await apiFetch<{ users: User[] }>('/api/users');
+        const others = (users || []).filter(u => u.id !== user.id);
+        fresh.users = [user, ...others];
+      } catch {
+        fresh.users = [user];
+      }
       fresh.courses = coursesRes.courses.map(normalizeCourseSyllabus);
       fresh.notifications = notificationsRes.notifications;
       fresh.messages = messagesRes.messages;

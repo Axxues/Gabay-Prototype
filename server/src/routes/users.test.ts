@@ -3,7 +3,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 vi.mock('../db.js', () => ({
   prisma: {
-    user: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
+    user: { findUnique: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
     course: { findUnique: vi.fn() },
     enrollmentRequest: { findFirst: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
     courseSection: { findUnique: vi.fn(), update: vi.fn() },
@@ -51,6 +51,24 @@ describe('users router', () => {
       sub: 'u-admin',
       role: 'admin',
     });
+  });
+
+  it('GET /api/users without token → 401', async () => {
+    const res = await (await request())(app()).get('/api/users');
+    expect(res.status).toBe(401);
+  });
+
+  it('GET /api/users returns directory without password hashes', async () => {
+    (prisma.user.findMany as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 'u1', name: 'Dean 1', email: 'a@x.ph', role: 'admin', avatar: '', department: '', title: '' },
+      { id: 'u2', name: 'Faculty 1', email: 'f@x.ph', role: 'faculty', avatar: '', department: '', title: '' },
+    ]);
+    const res = await (await request())(app())
+      .get('/api/users')
+      .set('Authorization', 'Bearer x');
+    expect(res.status).toBe(200);
+    expect(res.body.users).toHaveLength(2);
+    for (const u of res.body.users) expect(u).not.toHaveProperty('passwordHash');
   });
 
   it('POST /api/users as admin → 201 with public user (never passwordHash)', async () => {

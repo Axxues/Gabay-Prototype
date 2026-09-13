@@ -37,6 +37,20 @@ usersRouter.get(
   })
 );
 
+usersRouter.get(
+  '/',
+  authenticateToken,
+  asyncHandler(async (_req, res) => {
+    // Directory listing for messaging/compose flows. Any authenticated user
+    // may list it; rows use the public select (never password hashes).
+    const users = await prisma.user.findMany({
+      select: PUBLIC_USER,
+      orderBy: { name: 'asc' },
+    });
+    res.json({ users });
+  })
+);
+
 usersRouter.post(
   '/',
   authenticateToken,
