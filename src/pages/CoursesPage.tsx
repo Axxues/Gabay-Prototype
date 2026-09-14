@@ -202,7 +202,7 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
           activeRole === 'student' ? (
             <StudentGradebook courseId={activeCourse.id} />
           ) : (
-            <FacultyGradebook courseId={activeCourse.id} />
+            <FacultyGradebook courseId={activeCourse.id} onGoToSyllabus={() => setSubTab('syllabus')} />
           )
         )}
 

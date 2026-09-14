@@ -144,5 +144,5 @@ export function resolveExamScore(courseId: string, term: 'midterm' | 'final', st
   const cands = db.submissions.filter(s => s.studentId === studentId && s.assignmentId === `asg-exam-${exam.id}` && s.status === 'graded' && typeof s.grade === 'number');
   if (!cands.length) return { score: null, perfect };
   cands.sort((a, b) => String(b.gradedAt ?? b.submittedAt ?? '') > String(a.gradedAt ?? a.submittedAt ?? '') ? 1 : -1);
-  return { score: Math.min(Math.max(cands[0].grade as number, 0), 100), perfect };
+  return { score: Math.min(Math.max(cands[0].grade as number, 0), perfect), perfect };
 }

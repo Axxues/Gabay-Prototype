@@ -10,17 +10,20 @@ import {
 } from 'lucide-react';
 import {
   autoScoreFraction,
+  buildAutoColumns,
   classStandingPercent,
   finalPercent,
+  resolveExamScore,
   resolveSPRWeights,
+  round2,
   termGrade,
 } from '../../utils/spr';
 import type { SPRColumn } from '../../types/lms';
 import { exportSPRToExcel } from '../../utils/sprExport';
-import { SPRConfigModal } from './SPRConfigModal';
 
 interface FacultyGradebookProps {
   courseId: string;
+  onGoToSyllabus?: () => void;
 }
 
 // Institutional CHED / University Transmutation Table (1.00 - 5.00)
@@ -42,8 +45,8 @@ export const getTransmutedGrade = (
   return { grade: '5.00', remark: 'Failed', color: 'text-rose-700 dark:text-rose-400 bg-rose-500/10 border-rose-500/20' };
 };
 
-export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) => {
-  const { db, activeRole, showAlert, getSPRConfig, setSPRCell, resetSPRCell } = useLMS();
+export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, onGoToSyllabus }) => {
+  const { db, showAlert } = useLMS();
 
   const course = db.courses.find(c => c.id === courseId);
   const students = db.users.filter(
@@ -52,7 +55,6 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) 
 
   const [postingPolicy, setPostingPolicy] = useState<'manual' | 'automatic'>('manual');
   const [searchQuery, setSearchQuery] = useState('');
-  const [isConfigOpen, setIsConfigOpen] = useState(false);
 
   const filteredStudents = students.filter(
     s =>
@@ -61,36 +63,24 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) 
       s.email.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const sprConfig = getSPRConfig(courseId);
-
   const weights = useMemo(
     () => resolveSPRWeights(course?.syllabus?.gradingSystem ?? null),
     [course]
   );
+  const hasParseError = weights.parseError === true;
 
-  const mtColumns: SPRColumn[] = sprConfig?.midtermColumns ?? [];
-  const ftColumns: SPRColumn[] = sprConfig?.finalColumns ?? [];
-  const mtExamPerfect = sprConfig?.mtExamPerfect ?? 100;
-  const ftExamPerfect = sprConfig?.ftExamPerfect ?? 100;
-  const isEmptySPR = !sprConfig || (mtColumns.length === 0 && ftColumns.length === 0);
-
-  const onConfigure = () => {
-    setIsConfigOpen(true);
-  };
-
-  const onCellChange = async (studentId: string, term: 'midterm' | 'final', key: string, raw: string, perfect: number) => {
-    if (raw === '') {
-      await setSPRCell(courseId, studentId, term, key, null);
-      return;
-    }
-    const num = Number(raw);
-    if (Number.isNaN(num)) return;
-    if (num < 0 || num > perfect) {
-      showAlert({ title: 'Score out of range', message: `Enter 0–${perfect}.`, type: 'warning' });
-      return;
-    }
-    await setSPRCell(courseId, studentId, term, key, num);
-  };
+  const autoCols = useMemo(
+    () => buildAutoColumns(courseId, { activities: db.activities, quizzes: db.quizzes }),
+    [courseId, db.activities, db.quizzes]
+  );
+  const examPerfect = useMemo(() => {
+    const findPerfect = (term: 'midterm' | 'final'): number => {
+      const e = (db.exams ?? []).find(x => x.courseId === courseId && x.published && x.term === term);
+      const pts = (e?.questions ?? []).reduce((s, q) => s + (q.points ?? 0), 0);
+      return Math.max(1, pts);
+    };
+    return { mt: findPerfect('midterm'), ft: findPerfect('final') };
+  }, [courseId, db.exams]);
 
   const getSourceTitle = (column: SPRColumn): string | null => {
     const link = column.linkedSource;
@@ -122,91 +112,33 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) 
   }
 
   const sprRows: SPRRow[] = useMemo(() => {
-    if (!sprConfig) return [];
     return filteredStudents.map(student => {
-      const cells = db.sprScores?.[courseId]?.[student.id];
-      const manualMid = cells?.midterm ?? {};
-      const manualFinal = cells?.final ?? {};
-      const mtExam = cells?.mtExam ?? null;
-      const ftExam = cells?.ftExam ?? null;
-
-      const mtScores: Array<number | null> = [];
-      const mtPerfects: number[] = [];
-      const mtCells: SPRRowCell[] = mtColumns.map(col => {
-        const manualValue = manualMid[col.id];
-        if (typeof manualValue === 'number') {
-          mtScores.push(manualValue);
-          mtPerfects.push(col.perfectScore);
-          return { score: manualValue, isManual: true, sourceTitle: null };
-        }
-        const fraction = autoScoreFraction({
-          column: col,
-          studentId: student.id,
-          submissions: db.submissions,
-          assignments: db.assignments,
-          activities: db.activities ?? [],
-          quizzes: db.quizzes,
-        });
+      const mtCells: SPRRowCell[] = autoCols.map(col => {
+        const fraction = autoScoreFraction({ column: col, studentId: student.id, submissions: db.submissions, assignments: db.assignments, activities: db.activities ?? [], quizzes: db.quizzes });
         const sourceTitle = getSourceTitle(col);
-        if (fraction === null) {
-          mtScores.push(null);
-          mtPerfects.push(col.perfectScore);
-          return { score: null, isManual: false, sourceTitle };
-        }
-        const score = fraction * col.perfectScore;
-        mtScores.push(score);
-        mtPerfects.push(col.perfectScore);
-        return { score, isManual: false, sourceTitle };
+        if (fraction === null) return { score: null, isManual: false, sourceTitle };
+        return { score: fraction * col.perfectScore, isManual: false, sourceTitle };
       });
-
-      const ftScores: Array<number | null> = [];
-      const ftPerfects: number[] = [];
-      const ftCells: SPRRowCell[] = ftColumns.map(col => {
-        const manualValue = manualFinal[col.id];
-        if (typeof manualValue === 'number') {
-          ftScores.push(manualValue);
-          ftPerfects.push(col.perfectScore);
-          return { score: manualValue, isManual: true, sourceTitle: null };
-        }
-        const fraction = autoScoreFraction({
-          column: col,
-          studentId: student.id,
-          submissions: db.submissions,
-          assignments: db.assignments,
-          activities: db.activities ?? [],
-          quizzes: db.quizzes,
-        });
-        const sourceTitle = getSourceTitle(col);
-        if (fraction === null) {
-          ftScores.push(null);
-          ftPerfects.push(col.perfectScore);
-          return { score: null, isManual: false, sourceTitle };
-        }
-        const score = fraction * col.perfectScore;
-        ftScores.push(score);
-        ftPerfects.push(col.perfectScore);
-        return { score, isManual: false, sourceTitle };
-      });
-
+      const mtScores = mtCells.map(c => c.score);
+      const mtPerfects = autoCols.map(c => c.perfectScore);
+      const mtExam = resolveExamScore(courseId, 'midterm', student.id, { exams: db.exams, submissions: db.submissions }).score;
       const mtCS = classStandingPercent(mtScores, mtPerfects);
+      const mtGrade = termGrade(mtCS, mtExam, examPerfect.mt, weights);
+      const ftCells: SPRRowCell[] = autoCols.map(col => {
+        const fraction = autoScoreFraction({ column: col, studentId: student.id, submissions: db.submissions, assignments: db.assignments, activities: db.activities ?? [], quizzes: db.quizzes });
+        const sourceTitle = getSourceTitle(col);
+        if (fraction === null) return { score: null, isManual: false, sourceTitle };
+        return { score: fraction * col.perfectScore, isManual: false, sourceTitle };
+      });
+      const ftScores = ftCells.map(c => c.score);
+      const ftPerfects = autoCols.map(c => c.perfectScore);
+      const ftExam = resolveExamScore(courseId, 'final', student.id, { exams: db.exams, submissions: db.submissions }).score;
       const ftCS = classStandingPercent(ftScores, ftPerfects);
-      const mtGrade = termGrade(mtCS, mtExam, mtExamPerfect, weights);
-      const ftGrade = termGrade(ftCS, ftExam, ftExamPerfect, weights);
+      const ftGrade = termGrade(ftCS, ftExam, examPerfect.ft, weights);
       const final = finalPercent(mtGrade, ftGrade, weights);
-
-      return {
-        studentId: student.id,
-        mtCells,
-        mtExam,
-        mtGrade,
-        ftCells,
-        ftExam,
-        ftGrade,
-        final,
-      };
+      return { studentId: student.id, mtCells, mtExam, mtGrade, ftCells, ftExam, ftGrade, final };
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filteredStudents, sprConfig, db.sprScores, db.submissions, db.assignments, db.activities, db.quizzes, weights, courseId, mtColumns, ftColumns, mtExamPerfect, ftExamPerfect]);
+  }, [filteredStudents, autoCols, db.exams, db.submissions, db.assignments, db.activities, db.quizzes, weights, courseId, examPerfect]);
 
   const sprRowById = useMemo(() => {
     const map = new Map<string, SPRRow>();
@@ -215,18 +147,19 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) 
   }, [sprRows]);
 
   const handleExportExcel = () => {
-    if (!course || !sprConfig) return;
+    if (!course || hasParseError) return;
+    const autoConfig = { courseId, midtermColumns: autoCols, finalColumns: autoCols, mtExamPerfect: examPerfect.mt, ftExamPerfect: examPerfect.ft };
     exportSPRToExcel({
       course,
       roster: students,
-      config: sprConfig,
+      config: autoConfig,
       resolveStudent: (studentId: string) => {
         const row = sprRowById.get(studentId);
         const finalValue = row?.final ?? null;
         return {
-          mtCells: row?.mtCells.map(c => c.score) ?? mtColumns.map(() => null),
+          mtCells: row?.mtCells.map(c => c.score) ?? autoCols.map(() => null),
           mtExam: row?.mtExam ?? null,
-          ftCells: row?.ftCells.map(c => c.score) ?? ftColumns.map(() => null),
+          ftCells: row?.ftCells.map(c => c.score) ?? autoCols.map(() => null),
           ftExam: row?.ftExam ?? null,
           mtGrade: row?.mtGrade ?? null,
           ftGrade: row?.ftGrade ?? null,
@@ -243,7 +176,15 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) 
     });
   };
 
-  const totalColumns = 1 + mtColumns.length + 1 + 1 + ftColumns.length + 1 + 1 + 1 + 1;
+  const totalColumns = 1 + autoCols.length + 1 + 1 + autoCols.length + 1 + 1 + 1 + 1;
+
+  const exportTitle = students.length === 0
+    ? 'No students enrolled to export.'
+    : hasParseError
+      ? 'Fix the syllabus grading formula before exporting.'
+      : autoCols.length === 0
+        ? 'No published activities or quizzes to export.'
+        : 'Export SPR as Excel (.xlsx)';
 
   return (
     <div className="space-y-6 animate-fade-in font-sans">
@@ -279,19 +220,10 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) 
 
             <button
               type="button"
-              data-testid="spr-configure"
-              onClick={onConfigure}
-              className="px-3.5 py-2 rounded-xl border border-border text-xs font-bold flex items-center space-x-2 transition-all bg-card text-foreground hover:bg-muted shadow-subtle active:scale-98 cursor-pointer"
-            >
-              <span>Configure</span>
-            </button>
-
-            <button
-              type="button"
               data-testid="spr-export-excel"
               onClick={handleExportExcel}
-              disabled={students.length === 0 || isEmptySPR || !course}
-              title={students.length === 0 ? 'No students enrolled to export.' : isEmptySPR ? 'Configure SPR columns before exporting.' : 'Export SPR as Excel (.xlsx)'}
+              disabled={students.length === 0 || autoCols.length === 0 || !course || hasParseError}
+              title={exportTitle}
               className="px-4 py-2 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all flex items-center space-x-1.5 shadow-subtle active:scale-98 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Download className="w-3.5 h-3.5" />
@@ -317,34 +249,43 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) 
         <div className="flex items-center space-x-3 text-[11px] text-muted-foreground">
           <span className="flex items-center space-x-1">
             <span className="w-2 h-2 rounded-full bg-primary" />
-            <span>Midterm: <strong className="text-foreground">40%</strong></span>
+            <span>Midterm: <strong className="text-foreground">{weights.mtWeight}%</strong></span>
           </span>
           <span>&bull;</span>
           <span className="flex items-center space-x-1">
             <span className="w-2 h-2 rounded-full bg-emerald-500" />
-            <span>Final: <strong className="text-foreground">60%</strong></span>
+            <span>Final: <strong className="text-foreground">{weights.ftWeight}%</strong></span>
           </span>
           <span>&bull;</span>
           <span>Passing: <strong className="text-emerald-600 dark:text-emerald-400">75% (3.00)</strong></span>
         </div>
       </div>
 
-      {isEmptySPR ? (
+      {hasParseError ? (
+        <div data-testid="grades-formula-error" className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-8 text-center shadow-subtle">
+          <div className="mx-auto max-w-md space-y-3">
+            <h3 className="text-sm font-bold text-foreground">Grading formula needs attention</h3>
+            <p className="text-xs text-muted-foreground">
+              Grading formula needs attention — the syllabus section &apos;Course Requirements &amp; Official Grading Formula&apos; could not be parsed. Fix it in the Syllabus tab to enable grades.
+            </p>
+            {onGoToSyllabus ? (
+              <button
+                type="button"
+                onClick={() => onGoToSyllabus()}
+                className="px-4 py-2 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all shadow-subtle active:scale-98 cursor-pointer"
+              >
+                Go to Syllabus
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : autoCols.length === 0 ? (
         <div data-testid="spr-empty-state" className="bg-card border border-border rounded-2xl p-8 text-center shadow-subtle">
           <div className="mx-auto max-w-md space-y-3">
-            <h3 className="text-sm font-bold text-foreground">Student Performance Record not set up yet</h3>
+            <h3 className="text-sm font-bold text-foreground">No grade columns yet</h3>
             <p className="text-xs text-muted-foreground">
-              Define midterm and final columns to auto-fill scores from activities, quizzes, and assignments.
-              Blank cells count as 0 in computation. Term grades use 60% class standing + 40% exam, and the
-              final grade uses 40% midterm + 60% final term.
+              No grade columns yet — publish an Activity or Quiz and scores will appear here automatically.
             </p>
-            <button
-              type="button"
-              onClick={onConfigure}
-              className="px-4 py-2 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all shadow-subtle active:scale-98 cursor-pointer"
-            >
-              Configure SPR
-            </button>
           </div>
         </div>
       ) : (
@@ -356,7 +297,7 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) 
                   <th className="p-3.5 border-r border-border min-w-[220px] sticky left-0 bg-muted/40 z-10">
                     Student Roster Name & ID
                   </th>
-                  {mtColumns.map(col => (
+                  {autoCols.map(col => (
                     <th key={col.id} className="p-3 border-r border-border text-center min-w-[110px]">
                       <div className="font-bold text-foreground truncate max-w-[140px] mx-auto" title={col.title}>
                         {col.title}
@@ -369,13 +310,13 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) 
                   <th className="p-3 border-r border-border text-center min-w-[110px]">
                     <div className="font-bold text-foreground">MT Exam</div>
                     <div className="text-[10px] text-muted-foreground font-normal mt-0.5">
-                      / {mtExamPerfect}
+                      / {examPerfect.mt}
                     </div>
                   </th>
                   <th className="p-3 border-r border-border text-center min-w-[100px] font-bold text-primary">
                     MT Grade
                   </th>
-                  {ftColumns.map(col => (
+                  {autoCols.map(col => (
                     <th key={col.id} className="p-3 border-r border-border text-center min-w-[110px]">
                       <div className="font-bold text-foreground truncate max-w-[140px] mx-auto" title={col.title}>
                         {col.title}
@@ -388,7 +329,7 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) 
                   <th className="p-3 border-r border-border text-center min-w-[110px]">
                     <div className="font-bold text-foreground">FT Exam</div>
                     <div className="text-[10px] text-muted-foreground font-normal mt-0.5">
-                      / {ftExamPerfect}
+                      / {examPerfect.ft}
                     </div>
                   </th>
                   <th className="p-3 border-r border-border text-center min-w-[100px] font-bold text-emerald-700 dark:text-emerald-400">
@@ -434,46 +375,17 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) 
                           </div>
                         </td>
 
-                        {mtColumns.map((col, idx) => {
+                        {autoCols.map((col, idx) => {
                           const cell = row?.mtCells[idx];
                           const score = cell?.score ?? null;
-                          const isManual = cell?.isManual ?? false;
-                          const isBlank = score === null;
                           const autoTitle = cell?.sourceTitle ?? null;
                           return (
                             <td key={col.id} className="p-2 border-r border-border text-center">
                               <div className="flex items-center justify-center space-x-1">
-                                <input
-                                  type="number"
-                                  min={0}
-                                  max={col.perfectScore}
-                                  step={0.25}
-                                  disabled={activeRole === 'admin'}
-                                  value={score ?? ''}
-                                  onChange={e => onCellChange(student.id, 'midterm', col.id, e.target.value, col.perfectScore)}
-                                  title={!isManual && autoTitle ? `Auto from ${autoTitle}` : undefined}
-                                  placeholder="—"
-                                  className={`w-20 p-1.5 bg-background border border-border rounded-xl text-center text-xs font-bold text-foreground shadow-subtle ${
-                                    activeRole === 'admin' ? 'opacity-80 cursor-not-allowed bg-muted/40' : 'focus:outline-hidden focus:ring-2 focus:ring-primary/30'
-                                  } ${isBlank ? 'ring-1 ring-amber-500/60 placeholder:text-amber-600' : ''}`}
-                                />
-                                {!isManual && autoTitle && !isBlank ? (
+                                <span className="inline-block min-w-20 px-2 py-1 text-center text-xs font-bold text-foreground" title={cell?.sourceTitle ?? undefined}>{score === null ? '—' : round2(score)}</span>
+                                {!autoTitle ? null : (
                                   <span data-testid="spr-auto-dot" title={`Auto from ${autoTitle}`} className="w-1.5 h-1.5 rounded-full bg-sky-500 shrink-0" />
-                                ) : null}
-                                {isManual ? (
-                                  <button
-                                    type="button"
-                                    data-testid="spr-reset-cell"
-                                    title="Reset to auto"
-                                    disabled={activeRole === 'admin'}
-                                    onClick={() => {
-                                      void resetSPRCell(courseId, student.id, 'midterm', col.id);
-                                    }}
-                                    className="text-[10px] text-muted-foreground hover:text-primary transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                                  >
-                                    ↺
-                                  </button>
-                                ) : null}
+                                )}
                               </div>
                             </td>
                           );
@@ -481,33 +393,7 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) 
 
                         <td className="p-2 border-r border-border text-center">
                           <div className="flex items-center justify-center space-x-1">
-                            <input
-                              type="number"
-                              min={0}
-                              max={mtExamPerfect}
-                              step={0.25}
-                              disabled={activeRole === 'admin'}
-                              value={row?.mtExam ?? ''}
-                              onChange={e => onCellChange(student.id, 'midterm', '__mtExam', e.target.value, mtExamPerfect)}
-                              placeholder="—"
-                              className={`w-20 p-1.5 bg-background border border-border rounded-xl text-center text-xs font-bold text-foreground shadow-subtle ${
-                                activeRole === 'admin' ? 'opacity-80 cursor-not-allowed bg-muted/40' : 'focus:outline-hidden focus:ring-2 focus:ring-primary/30'
-                              } ${(row?.mtExam ?? null) === null ? 'ring-1 ring-amber-500/60 placeholder:text-amber-600' : ''}`}
-                            />
-                            {(row?.mtExam ?? null) !== null ? (
-                              <button
-                                type="button"
-                                data-testid="spr-reset-cell"
-                                title="Reset to auto"
-                                disabled={activeRole === 'admin'}
-                                onClick={() => {
-                                  void resetSPRCell(courseId, student.id, 'midterm', '__mtExam');
-                                }}
-                                className="text-[10px] text-muted-foreground hover:text-primary transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                              >
-                                ↺
-                              </button>
-                            ) : null}
+                            <span className="inline-block min-w-20 px-2 py-1 text-center text-xs font-bold text-foreground">{row?.mtExam === null || row?.mtExam === undefined ? '—' : round2(row.mtExam)}</span>
                           </div>
                         </td>
 
@@ -521,46 +407,17 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) 
                           )}
                         </td>
 
-                        {ftColumns.map((col, idx) => {
+                        {autoCols.map((col, idx) => {
                           const cell = row?.ftCells[idx];
                           const score = cell?.score ?? null;
-                          const isManual = cell?.isManual ?? false;
-                          const isBlank = score === null;
                           const autoTitle = cell?.sourceTitle ?? null;
                           return (
                             <td key={col.id} className="p-2 border-r border-border text-center">
                               <div className="flex items-center justify-center space-x-1">
-                                <input
-                                  type="number"
-                                  min={0}
-                                  max={col.perfectScore}
-                                  step={0.25}
-                                  disabled={activeRole === 'admin'}
-                                  value={score ?? ''}
-                                  onChange={e => onCellChange(student.id, 'final', col.id, e.target.value, col.perfectScore)}
-                                  title={!isManual && autoTitle ? `Auto from ${autoTitle}` : undefined}
-                                  placeholder="—"
-                                  className={`w-20 p-1.5 bg-background border border-border rounded-xl text-center text-xs font-bold text-foreground shadow-subtle ${
-                                    activeRole === 'admin' ? 'opacity-80 cursor-not-allowed bg-muted/40' : 'focus:outline-hidden focus:ring-2 focus:ring-emerald-500/30'
-                                  } ${isBlank ? 'ring-1 ring-amber-500/60 placeholder:text-amber-600' : ''}`}
-                                />
-                                {!isManual && autoTitle && !isBlank ? (
+                                <span className="inline-block min-w-20 px-2 py-1 text-center text-xs font-bold text-foreground" title={cell?.sourceTitle ?? undefined}>{score === null ? '—' : round2(score)}</span>
+                                {!autoTitle ? null : (
                                   <span data-testid="spr-auto-dot" title={`Auto from ${autoTitle}`} className="w-1.5 h-1.5 rounded-full bg-sky-500 shrink-0" />
-                                ) : null}
-                                {isManual ? (
-                                  <button
-                                    type="button"
-                                    data-testid="spr-reset-cell"
-                                    title="Reset to auto"
-                                    disabled={activeRole === 'admin'}
-                                    onClick={() => {
-                                      void resetSPRCell(courseId, student.id, 'final', col.id);
-                                    }}
-                                    className="text-[10px] text-muted-foreground hover:text-primary transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                                  >
-                                    ↺
-                                  </button>
-                                ) : null}
+                                )}
                               </div>
                             </td>
                           );
@@ -568,33 +425,7 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) 
 
                         <td className="p-2 border-r border-border text-center">
                           <div className="flex items-center justify-center space-x-1">
-                            <input
-                              type="number"
-                              min={0}
-                              max={ftExamPerfect}
-                              step={0.25}
-                              disabled={activeRole === 'admin'}
-                              value={row?.ftExam ?? ''}
-                              onChange={e => onCellChange(student.id, 'final', '__ftExam', e.target.value, ftExamPerfect)}
-                              placeholder="—"
-                              className={`w-20 p-1.5 bg-background border border-border rounded-xl text-center text-xs font-bold text-foreground shadow-subtle ${
-                                activeRole === 'admin' ? 'opacity-80 cursor-not-allowed bg-muted/40' : 'focus:outline-hidden focus:ring-2 focus:ring-emerald-500/30'
-                              } ${(row?.ftExam ?? null) === null ? 'ring-1 ring-amber-500/60 placeholder:text-amber-600' : ''}`}
-                            />
-                            {(row?.ftExam ?? null) !== null ? (
-                              <button
-                                type="button"
-                                data-testid="spr-reset-cell"
-                                title="Reset to auto"
-                                disabled={activeRole === 'admin'}
-                                onClick={() => {
-                                  void resetSPRCell(courseId, student.id, 'final', '__ftExam');
-                                }}
-                                className="text-[10px] text-muted-foreground hover:text-primary transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                              >
-                                ↺
-                              </button>
-                            ) : null}
+                            <span className="inline-block min-w-20 px-2 py-1 text-center text-xs font-bold text-foreground">{row?.ftExam === null || row?.ftExam === undefined ? '—' : round2(row.ftExam)}</span>
                           </div>
                         </td>
 
@@ -640,7 +471,6 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) 
           </div>
         </div>
       )}
-      {isConfigOpen ? <SPRConfigModal courseId={courseId} onClose={() => setIsConfigOpen(false)} /> : null}
     </div>
   );
 };

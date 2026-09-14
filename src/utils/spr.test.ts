@@ -6,6 +6,7 @@ import {
   classStandingPercent,
   finalPercent,
   resolveSPRWeights,
+  resolveExamScore,
   round2,
   termGrade,
 } from './spr';
@@ -249,5 +250,10 @@ describe('autoScoreFraction', () => {
     const exams = [{ id: 'e1', courseId: 'c1', title: 'MT', published: true, term: 'midterm', questions: [{ points: 60 }] } as unknown as Exam];
     const subs = [makeSubmission({ assignmentId: 'asg-exam-e1', studentId: 's1', grade: 45 })];
     expect(autoScoreFraction({ column: col({ kind: 'exam', sourceId: 'e1' }), studentId: 's1', submissions: subs, assignments: [], activities: [], quizzes: [], exams })).toBeCloseTo(0.75, 5);
+  });
+  it('clamps exam raw scores to [0, perfect]', () => {
+    const exams = [{ id: 'e1', courseId: 'c1', title: 'MT', published: true, term: 'midterm', questions: [{ points: 60 }] } as unknown as Exam];
+    const over = [makeSubmission({ assignmentId: 'asg-exam-e1', studentId: 's1', grade: 500 })];
+    expect(resolveExamScore('c1', 'midterm', 's1', { exams, submissions: over }).score).toBe(60);
   });
 });
