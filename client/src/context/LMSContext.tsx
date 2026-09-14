@@ -132,7 +132,7 @@ interface LMSContextType {
   ) => Promise<void>;
   toggleModulePublish: (moduleId: string) => Promise<void>;
   toggleItemCompletion: (moduleId: string, itemId: string) => Promise<void>;
-  addModuleComment: (moduleId: string, content: string) => Promise<void>;
+  addModuleComment: (moduleId: string, content: string, parentId?: string) => Promise<void>;
   editModuleComment: (moduleId: string, commentId: string, newContent: string) => Promise<void>;
   deleteModuleComment: (moduleId: string, commentId: string) => Promise<void>;
   toggleLikeModuleComment: (moduleId: string, commentId: string) => Promise<void>;
@@ -151,7 +151,7 @@ interface LMSContextType {
   deleteAnnouncement: (id: string) => Promise<void>;
   togglePinAnnouncement: (id: string) => Promise<void>;
   toggleLikeAnnouncement: (id: string) => Promise<void>;
-  addAnnouncementReply: (announcementId: string, content: string) => Promise<void>;
+  addAnnouncementReply: (announcementId: string, content: string, parentId?: string) => Promise<void>;
   markAnnouncementRead: (id: string) => Promise<void>;
 
   // Notifications
@@ -2122,13 +2122,13 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const addModuleComment = async (moduleId: string, content: string): Promise<void> => {
+  const addModuleComment = async (moduleId: string, content: string, parentId?: string): Promise<void> => {
     if (!content.trim()) return;
     // Server creates the reply notification inline (no client call needed).
     try {
       const { comment } = await apiFetch<{ comment: ModuleComment }>(
         `/api/modules/${encodeURIComponent(moduleId)}/comments`,
-        { method: 'POST', body: { content: content.trim() } }
+        { method: 'POST', body: parentId ? { content: content.trim(), parentId } : { content: content.trim() } }
       );
       setDb(prev => ({
         ...prev,
@@ -2621,12 +2621,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const addAnnouncementReply = async (announcementId: string, content: string): Promise<void> => {
+  const addAnnouncementReply = async (announcementId: string, content: string, parentId?: string): Promise<void> => {
     // Server notifies the announcement author inline (no client call needed).
     try {
       const { reply } = await apiFetch<{ reply: AnnouncementReply }>(
         `/api/announcements/${encodeURIComponent(announcementId)}/replies`,
-        { method: 'POST', body: { content } }
+        { method: 'POST', body: parentId ? { content, parentId } : { content } }
       );
       setDb(prev => ({
         ...prev,
