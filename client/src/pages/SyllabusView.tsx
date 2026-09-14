@@ -395,6 +395,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
     } catch {
       // Context already surfaced the alert; the syllabus itself is saved.
       upload.fail();
+      return;
     }
     showAlert({
       title: 'Syllabus Updated Successfully',
