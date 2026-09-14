@@ -189,7 +189,16 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
 
         {subTab === 'files' && <FilesView courseId={activeCourse.id} />}
 
-        {subTab === 'grades' && (
+        {subTab === 'grades' && !activeCourse.syllabus && (
+          <div className="bg-card border border-border rounded-2xl p-8 text-center shadow-subtle" data-testid="grades-syllabus-gate">
+            <h3 className="text-sm font-bold text-foreground">Syllabus required for grades</h3>
+            <p className="text-xs text-muted-foreground mt-1">The grading formula lives in the syllabus under Course Requirements &amp; Official Grading Formula. {activeRole === 'faculty' ? 'Upload a syllabus to enable the gradebook.' : 'Waiting for your instructor to upload the syllabus.'}</p>
+            {activeRole === 'faculty' && (
+              <button type="button" onClick={() => setSubTab('syllabus')} className="mt-3 px-4 py-2 text-xs font-bold bg-primary text-primary-foreground rounded-xl cursor-pointer">Go to Syllabus</button>
+            )}
+          </div>
+        )}
+        {subTab === 'grades' && activeCourse.syllabus && (
           activeRole === 'student' ? (
             <StudentGradebook courseId={activeCourse.id} />
           ) : (
