@@ -1,8 +1,17 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useLMS } from '../../context/LMSContext';
 import { Sliders, RefreshCw } from 'lucide-react';
 import { PageHeader } from '../common/PageHeader';
 import { getTransmutedGrade } from './FacultyGradebook';
+import {
+  buildAutoColumns,
+  resolveSPRWeights,
+  resolveExamScore,
+  autoScoreFraction,
+  classStandingPercent,
+  termGrade,
+  finalPercent,
+} from '../../utils/spr';
 
 interface StudentGradebookProps {
   courseId: string;
@@ -17,17 +26,35 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
 
   const course = db.courses.find(c => c.id === courseId);
 
-  // Retrieve official grade record for the current active student
-  const gradeRecord = db.courseGrades?.find(
-    g => g.courseId === courseId && g.studentId === activeUser.id
+  // Auto grade computation for the viewing student (same calc as faculty Task 4 row)
+  const weights = useMemo(() => resolveSPRWeights(course?.syllabus?.gradingSystem ?? null), [course]);
+  const autoCols = useMemo(
+    () => buildAutoColumns(courseId, { activities: db.activities, quizzes: db.quizzes }),
+    [courseId, db.activities, db.quizzes]
   );
+  const auto = useMemo(() => {
+    const scores = autoCols.map(col => {
+      const f = autoScoreFraction({ column: col, studentId: activeUser.id, submissions: db.submissions, assignments: db.assignments, activities: db.activities ?? [], quizzes: db.quizzes });
+      return f === null ? null : f * col.perfectScore;
+    });
+    const perfects = autoCols.map(c => c.perfectScore);
+    const cs = classStandingPercent(scores, perfects);
+    const mtExam = resolveExamScore(courseId, 'midterm', activeUser.id, { exams: db.exams, submissions: db.submissions });
+    const ftExam = resolveExamScore(courseId, 'final', activeUser.id, { exams: db.exams, submissions: db.submissions });
+    const mt = termGrade(cs, mtExam.score, mtExam.perfect, weights);
+    const ft = termGrade(cs, ftExam.score, ftExam.perfect, weights);
+    return { mt, ft, final: finalPercent(mt, ft, weights) };
+  }, [autoCols, weights, courseId, activeUser.id, db.submissions, db.assignments, db.activities, db.quizzes, db.exams]);
 
-  const officialMidterm = gradeRecord?.midtermGrade ?? null;
-  const officialFinal = gradeRecord?.finalGrade ?? null;
+  const hasParseError = weights.parseError === true;
 
-  // What-If Simulation State
-  const [simulatedMidterm, setSimulatedMidterm] = useState<number>(() => officialMidterm ?? 85);
-  const [simulatedFinal, setSimulatedFinal] = useState<number>(() => officialFinal ?? 85);
+  // Parse failure → official "—", never silent fallback
+  const officialMidterm = hasParseError ? null : auto.mt;
+  const officialFinal = hasParseError ? null : auto.ft;
+
+  // What-If Simulation State (defaults from auto values)
+  const [simulatedMidterm, setSimulatedMidterm] = useState<number>(() => auto.mt ?? 85);
+  const [simulatedFinal, setSimulatedFinal] = useState<number>(() => auto.ft ?? 85);
   const [isWhatIfActive, setIsWhatIfActive] = useState(false);
 
   const handleMidtermWhatIfChange = (val: number) => {
@@ -43,8 +70,8 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
   };
 
   const handleResetWhatIf = () => {
-    setSimulatedMidterm(officialMidterm ?? 85);
-    setSimulatedFinal(officialFinal ?? 85);
+    setSimulatedMidterm(auto.mt ?? 85);
+    setSimulatedFinal(auto.ft ?? 85);
     setIsWhatIfActive(false);
   };
 
@@ -53,32 +80,74 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
   const hasOfficialFinal = officialFinal !== null && officialFinal !== undefined;
 
   let officialTotalPercentage: number | null = null;
-  if (hasOfficialMidterm && hasOfficialFinal) {
-    officialTotalPercentage = Math.round((officialMidterm * 0.40) + (officialFinal * 0.60));
+  if (hasParseError) {
+    officialTotalPercentage = null;
+  } else {
+    officialTotalPercentage = auto.final;
   }
   const officialTransmuted = getTransmutedGrade(officialTotalPercentage);
 
-  // Simulated calculations (Formula: 40% Midterm + 60% Final)
-  const simulatedTotalPercentage = Math.round((simulatedMidterm * 0.40) + (simulatedFinal * 0.60));
+  const mtW = weights.mtWeight / 100;
+  const ftW = weights.ftWeight / 100;
+
+  // Simulated calculations (Formula: parsed weights from syllabus)
+  const simulatedTotalPercentage = Math.round((simulatedMidterm * mtW) + (simulatedFinal * ftW));
   const simulatedTransmuted = getTransmutedGrade(simulatedTotalPercentage);
+
+  // No syllabus → gated empty state (same student copy as CoursesPage gate)
+  if (!course?.syllabus) {
+    return (
+      <div className="space-y-6 max-w-5xl animate-fade-in font-sans">
+        <PageHeader
+          title="Academic Performance & Grade Calculator"
+          description={`${course?.code}: ${course?.title} • Grading Policy: ${weights.mtWeight}% Midterm + ${weights.ftWeight}% Final`}
+          actions={
+            <>
+              <span className="px-3 py-1 rounded-xl bg-primary/10 text-primary border border-primary/20 font-bold">
+                Midterm ({weights.mtWeight}%)
+              </span>
+              <span className="px-3 py-1 rounded-xl bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 font-bold">
+                Final ({weights.ftWeight}%)
+              </span>
+            </>
+          }
+        />
+        <div className="bg-card border border-border rounded-2xl p-8 text-center shadow-subtle" data-testid="grades-syllabus-gate">
+          <h3 className="text-sm font-bold text-foreground">Syllabus required for grades</h3>
+          <p className="text-xs text-muted-foreground mt-1">The grading formula lives in the syllabus under Course Requirements &amp; Official Grading Formula. Waiting for your instructor to upload the syllabus.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 max-w-5xl animate-fade-in font-sans">
       {/* Header Banner */}
       <PageHeader
         title="Academic Performance & Grade Calculator"
-        description={`${course?.code}: ${course?.title} • Grading Policy: 40% Midterm + 60% Final`}
+        description={`${course?.code}: ${course?.title} • Grading Policy: ${weights.mtWeight}% Midterm + ${weights.ftWeight}% Final`}
         actions={
           <>
             <span className="px-3 py-1 rounded-xl bg-primary/10 text-primary border border-primary/20 font-bold">
-              Midterm (40%)
+              Midterm ({weights.mtWeight}%)
             </span>
             <span className="px-3 py-1 rounded-xl bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 font-bold">
-              Final (60%)
+              Final ({weights.ftWeight}%)
             </span>
           </>
         }
       />
+
+      {hasParseError ? (
+        <div data-testid="grades-formula-error" className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-8 text-center shadow-subtle">
+          <div className="mx-auto max-w-md space-y-3">
+            <h3 className="text-sm font-bold text-foreground">Grading formula needs attention</h3>
+            <p className="text-xs text-muted-foreground">
+              The grading formula could not be parsed. Ask your instructor to fix the Course Requirements &amp; Official Grading Formula section in Syllabus.
+            </p>
+          </div>
+        </div>
+      ) : null}
 
       {/* Grade Summary Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
@@ -100,7 +169,7 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
           <div className="text-[11px] text-muted-foreground pt-1 border-t border-border/60">
             {hasOfficialMidterm && hasOfficialFinal ? (
               <span>
-                Midterm: <strong className="text-foreground">{officialMidterm}%</strong> ({(officialMidterm * 0.4).toFixed(1)}%) &bull; Final: <strong className="text-foreground">{officialFinal}%</strong> ({(officialFinal * 0.6).toFixed(1)}%)
+                Midterm: <strong className="text-foreground">{officialMidterm}%</strong> ({(officialMidterm * mtW).toFixed(1)}%) &bull; Final: <strong className="text-foreground">{officialFinal}%</strong> ({(officialFinal * ftW).toFixed(1)}%)
               </span>
             ) : hasOfficialMidterm ? (
               <span>Midterm posted ({officialMidterm}%). Final evaluation in progress.</span>
@@ -140,7 +209,7 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
           </div>
 
           <div className="text-[11px] text-muted-foreground pt-1 border-t border-border/60">
-            Formula: ({simulatedMidterm} &times; 40%) + ({simulatedFinal} &times; 60%) = <strong className="text-foreground">{simulatedTotalPercentage}%</strong>
+            Formula: ({simulatedMidterm} &times; {weights.mtWeight}%) + ({simulatedFinal} &times; {weights.ftWeight}%) = <strong className="text-foreground">{simulatedTotalPercentage}%</strong>
           </div>
         </div>
 
@@ -203,7 +272,7 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
                 </td>
                 <td className="p-3.5 text-center">
                   <span className="px-2.5 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20 font-bold">
-                    40%
+                    {weights.mtWeight}%
                   </span>
                 </td>
                 <td className="p-3.5 text-center font-extrabold text-sm">
@@ -237,7 +306,7 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
                   </div>
                 </td>
                 <td className="p-3.5 text-center font-bold text-primary text-xs">
-                  {(simulatedMidterm * 0.40).toFixed(1)}% / 40%
+                  {(simulatedMidterm * mtW).toFixed(1)}% / {weights.mtWeight}%
                 </td>
               </tr>
 
@@ -254,7 +323,7 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
                 </td>
                 <td className="p-3.5 text-center">
                   <span className="px-2.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 font-bold">
-                    60%
+                    {weights.ftWeight}%
                   </span>
                 </td>
                 <td className="p-3.5 text-center font-extrabold text-sm">
@@ -288,7 +357,7 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
                   </div>
                 </td>
                 <td className="p-3.5 text-center font-bold text-emerald-600 dark:text-emerald-400 text-xs">
-                  {(simulatedFinal * 0.60).toFixed(1)}% / 60%
+                  {(simulatedFinal * ftW).toFixed(1)}% / {weights.ftWeight}%
                 </td>
               </tr>
 
@@ -297,7 +366,7 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
                 <td className="p-3.5">
                   <div className="font-extrabold text-sm">Calculated Final Course Rating</div>
                   <div className="text-[10px] text-muted-foreground font-normal">
-                    Formula: (Midterm &times; 40%) + (Final &times; 60%)
+                    Formula: (Midterm &times; {weights.mtWeight}%) + (Final &times; {weights.ftWeight}%)
                   </div>
                 </td>
                 <td className="p-3.5 text-center font-black">
