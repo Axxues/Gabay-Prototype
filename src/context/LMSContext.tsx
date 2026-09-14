@@ -8,6 +8,7 @@ import type {
   ModuleComment,
   Assignment,
   Quiz,
+  Exam,
   LMSDatabase,
   CalendarEvent,
   Submission,
@@ -101,6 +102,8 @@ interface LMSContextType {
   deleteModuleItem: (moduleId: string, itemId: string) => Promise<void>;
   createQuiz: (quiz: Partial<Quiz>) => Promise<Quiz>;
   recordQuizSubmission: (quizId: string, studentId: string, answers: Record<string, string>) => Promise<Submission>;
+  createExam: (exam: Partial<Exam>) => Promise<Exam>;
+  recordExamSubmission: (examId: string, studentId: string, answers: Record<string, string>) => Promise<Submission>;
   createActivity: (data: Partial<Activity>) => Promise<Activity>;
   recordActivitySubmission: (activityId: string, studentId: string, answers: Record<string, string>) => Promise<Submission>;
   deleteActivity: (activityId: string) => Promise<void>;
@@ -391,6 +394,14 @@ const normalizeQuiz = (raw: any): Quiz => ({
   questions: Array.isArray(raw.questions) ? raw.questions : [],
 });
 
+const normalizeExam = (raw: any): Exam => ({
+  ...raw,
+  timeLimitMinutes: typeof raw.timeLimitMinutes === 'number' ? raw.timeLimitMinutes : 30,
+  dueDate: toOptionalIso(raw.dueDate),
+  questions: Array.isArray(raw.questions) ? raw.questions : [],
+  term: raw.term === 'final' ? 'final' : 'midterm',
+});
+
 const normalizeActivity = (raw: any): Activity => ({
   ...raw,
   dueDate: toOptionalIso(raw.dueDate),
@@ -600,6 +611,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     assignments: [],
     submissions: [],
     quizzes: [],
+    exams: [],
     activities: [],
     calendarEvents: [],
     advisingSlots: [],
@@ -771,19 +783,21 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const assessmentResults = await Promise.all(
         coursesRes.courses.map(course =>
           (async () => {
-            const [assignmentsSettled, quizzesSettled, activitiesSettled, gradesSettled] =
+            const [assignmentsSettled, quizzesSettled, examsSettled, activitiesSettled, gradesSettled] =
               await Promise.allSettled([
                 apiFetch<{ assignments: Assignment[] }>(`/api/courses/${encodeURIComponent(course.id)}/assignments`),
                 apiFetch<{ quizzes: Quiz[] }>(`/api/quizzes?courseId=${encodeURIComponent(course.id)}`),
+                apiFetch<{ exams: Exam[] }>(`/api/exams?courseId=${encodeURIComponent(course.id)}`),
                 apiFetch<{ activities: Activity[] }>(`/api/activities?courseId=${encodeURIComponent(course.id)}`),
                 apiFetch<{ grades: CourseStudentGrade[] }>(`/api/courses/${encodeURIComponent(course.id)}/grades`),
               ]);
-            return { courseId: course.id, assignmentsSettled, quizzesSettled, activitiesSettled, gradesSettled };
+            return { courseId: course.id, assignmentsSettled, quizzesSettled, examsSettled, activitiesSettled, gradesSettled };
           })()
         )
       );
       const allAssignments: Assignment[] = [];
       const allQuizzes: Quiz[] = [];
+      const allExams: Exam[] = [];
       const allActivities: Activity[] = [];
       const allGrades: CourseStudentGrade[] = [];
       const allSPRScores: Record<string, Record<string, SPRStudentCells>> = {};
@@ -793,6 +807,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         if (r.quizzesSettled.status === 'fulfilled') {
           for (const q of r.quizzesSettled.value.quizzes) allQuizzes.push(normalizeQuiz(q));
+        }
+        if (r.examsSettled.status === 'fulfilled') {
+          for (const e of r.examsSettled.value.exams) allExams.push(normalizeExam(e));
         }
         if (r.activitiesSettled.status === 'fulfilled') {
           for (const a of r.activitiesSettled.value.activities) allActivities.push(normalizeActivity(a));
@@ -863,7 +880,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           apiFetch<{ submissions: any[] }>(`/api/activities/${encodeURIComponent(a.id)}/submissions`)
         )
       );
-      for (const r of [...quizSubmissionResults, ...activitySubmissionResults]) {
+      const examSubmissionResults = await Promise.allSettled(
+        allExams.map(e =>
+          apiFetch<{ submissions: any[] }>(`/api/exams/${encodeURIComponent(e.id)}/submissions`)
+        )
+      );
+      for (const r of [...quizSubmissionResults, ...examSubmissionResults, ...activitySubmissionResults]) {
         if (r.status === 'fulfilled') {
           for (const s of r.value.submissions) {
             const merged = normalizeSubmission(s);
@@ -876,6 +898,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       fresh.assignments = allAssignments;
       fresh.submissions = allSubmissions;
       fresh.quizzes = allQuizzes;
+      fresh.exams = allExams;
       fresh.activities = allActivities;
       fresh.courseGrades = allGrades;
       fresh.sprConfigs = allSPRConfigs;
@@ -1467,6 +1490,82 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const message = err instanceof ApiError ? err.message : 'Failed to submit quiz.';
       setLastError(message);
       showAlert(message, 'Submit Quiz Failed');
+      throw err;
+    }
+  };
+
+  const createExam = async (examData: Partial<Exam>): Promise<Exam> => {
+    const courseId = examData.courseId || activeCourseId || 'crs-cmsc131';
+    try {
+      const { exam } = await apiFetch<{ exam: Exam }>('/api/exams', {
+        method: 'POST',
+        body: {
+          courseId,
+          title: examData.title || 'New Exam',
+          instructions: examData.instructions || 'Answer all questions carefully. Time limit strictly enforced.',
+          published: examData.published ?? true,
+          questions: examData.questions || [
+            {
+              id: `q-${Date.now()}-1`,
+              text: 'Which architectural pattern is recommended for modern web applications?',
+              type: 'multiple_choice',
+              options: ['Component-based (e.g. React)', 'Monolithic CGI', 'FTP Server', 'Telnet Terminal'],
+              correctAnswer: 'Component-based (e.g. React)',
+              points: 10
+            }
+          ],
+          ...(examData.timeLimitMinutes !== undefined ? { timeLimitMinutes: examData.timeLimitMinutes } : {}),
+          ...(examData.dueDate !== undefined ? { dueDate: examData.dueDate } : {}),
+          ...((examData as { fileName?: unknown }).fileName !== undefined ? { fileName: (examData as { fileName?: unknown }).fileName } : {}),
+          ...((examData as { fileUrl?: unknown }).fileUrl !== undefined ? { fileUrl: (examData as { fileUrl?: unknown }).fileUrl } : {}),
+          ...((examData as { fileSize?: unknown }).fileSize !== undefined ? { fileSize: (examData as { fileSize?: unknown }).fileSize } : {}),
+          term: examData.term ?? 'midterm'
+        }
+      });
+      const merged = normalizeExam(exam);
+      setDb(prev => ({
+        ...prev,
+        exams: [merged, ...(prev.exams || [])]
+      }));
+      return merged;
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to create exam.';
+      setLastError(message);
+      showAlert(message, 'Create Exam Failed');
+      throw err;
+    }
+  };
+
+  const recordExamSubmission = async (
+    examId: string,
+    studentId: string,
+    answers: Record<string, string>
+  ): Promise<Submission> => {
+    // Client computes nothing new: POST the answers, cache the server row.
+    // Instant-feedback scoring stays in ExamsView's client scorer; the
+    // gradebook reads the server row.
+    try {
+      const { submission } = await apiFetch<{ submission: any }>(
+        `/api/exams/${encodeURIComponent(examId)}/submit`,
+        { method: 'POST', body: { answers } }
+      );
+      const merged = normalizeSubmission(submission);
+      setDb(prev => {
+        const idx = (prev.submissions || []).findIndex(
+          s => s.assignmentId === merged.assignmentId && s.studentId === studentId
+        );
+        if (idx >= 0) {
+          const updatedSubs = [...prev.submissions];
+          updatedSubs[idx] = merged;
+          return { ...prev, submissions: updatedSubs };
+        }
+        return { ...prev, submissions: [merged, ...prev.submissions] };
+      });
+      return merged;
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to submit exam.';
+      setLastError(message);
+      showAlert(message, 'Submit Exam Failed');
       throw err;
     }
   };
@@ -4036,6 +4135,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteModuleItem,
         createQuiz,
         recordQuizSubmission,
+        createExam,
+        recordExamSubmission,
         createActivity,
         recordActivitySubmission,
         deleteActivity,

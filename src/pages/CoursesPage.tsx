@@ -4,6 +4,7 @@ import { ModulesView } from './ModulesView';
 import { SyllabusView } from './SyllabusView';
 import { AssignmentsView } from './AssignmentsView';
 import { QuizzesView } from './QuizzesView';
+import { ExamsView } from './ExamsView';
 import { PeopleView } from './PeopleView';
 import { AnnouncementsView } from './AnnouncementsView';
 import { FilesView } from './FilesView';
@@ -36,6 +37,7 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
   const [returnToTab, setReturnToTab] = useState<string | null>(null);
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<string | null>(null);
   const [selectedQuizId, setSelectedQuizId] = useState<string | null>(null);
+  const [selectedExamId, setSelectedExamId] = useState<string | null>(null);
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
 
   const availableCourses = activeRole === 'student'
@@ -179,6 +181,23 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
               returnToTab === 'modules'
                 ? () => {
                     setSelectedQuizId(null);
+                    setReturnToTab(null);
+                    setSubTab('modules');
+                  }
+                : undefined
+            }
+          />
+        )}
+
+        {subTab === 'exams' && (
+          <ExamsView
+            courseId={activeCourse.id}
+            selectedExamId={selectedExamId}
+            onSelectExam={setSelectedExamId}
+            onBackToModules={
+              returnToTab === 'modules'
+                ? () => {
+                    setSelectedExamId(null);
                     setReturnToTab(null);
                     setSubTab('modules');
                   }

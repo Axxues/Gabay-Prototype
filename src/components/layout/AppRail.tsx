@@ -8,7 +8,7 @@ const ICONS: Record<NavIcon, React.ReactNode> = {
   history: <History className="h-5 w-5" />, help: <HelpCircle className="h-5 w-5" />,
   modules: <BookOpen className="h-5 w-5" />, syllabus: <BookOpen className="h-5 w-5" />,
   announcements: <BookOpen className="h-5 w-5" />, activities: <BookOpen className="h-5 w-5" />,
-  quizzes: <BookOpen className="h-5 w-5" />, files: <BookOpen className="h-5 w-5" />,
+  quizzes: <BookOpen className="h-5 w-5" />, exams: <BookOpen className="h-5 w-5" />, files: <BookOpen className="h-5 w-5" />,
   grades: <BookOpen className="h-5 w-5" />, people: <Users className="h-5 w-5" />,
   'pending-requests': <Users className="h-5 w-5" />,
   'gabay-rag': <Sparkles className="h-5 w-5" />,
