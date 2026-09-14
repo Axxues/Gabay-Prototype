@@ -8,7 +8,7 @@ vi.mock('../db.js', () => ({
     enrollmentRequest: { findFirst: vi.fn() },
     announcement: { findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
     announcementAttachment: { create: vi.fn() },
-    announcementReply: { create: vi.fn() },
+    announcementReply: { findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn() },
     announcementLike: { findFirst: vi.fn(), create: vi.fn(), delete: vi.fn(), count: vi.fn() },
     announcementRead: { findFirst: vi.fn(), create: vi.fn() },
     courseFolder: { findFirst: vi.fn(), create: vi.fn() },
@@ -255,5 +255,114 @@ describe('announcements router', () => {
     expect(nonBoolean.status).toBe(400);
     expect(missing.status).toBe(400);
     expect(prisma.announcement.update).not.toHaveBeenCalled();
+  });
+
+  it('stores parentId and notifies parent + root authors', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-caller',
+      role: 'student',
+    });
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(course);
+    (prisma.enrollmentRequest.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      courseId: 'c1',
+      studentId: 'u-caller',
+      status: 'approved',
+      targetSectionId: 'sec-a',
+    });
+    (prisma.announcement.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...annA,
+      replies: [],
+    });
+    const rows = [
+      { id: 'r-top', announcementId: 'ann-a', parentId: null, authorId: 'u-a' },
+      { id: 'r-mid', announcementId: 'ann-a', parentId: 'r-top', authorId: 'u-b' },
+    ];
+    (prisma.announcementReply.findMany as ReturnType<typeof vi.fn>).mockResolvedValue(rows);
+    (prisma.announcementReply.findUnique as ReturnType<typeof vi.fn>).mockImplementation(
+      async (args: { where: { id: string } }) => rows.find((r) => r.id === args.where.id) ?? null
+    );
+    (prisma.announcementReply.create as ReturnType<typeof vi.fn>).mockImplementation(
+      async (args: { data: Record<string, unknown> }) => ({
+        id: 'r-new',
+        announcementId: 'ann-a',
+        authorId: 'u-caller',
+        content: 'second',
+        parentId: args.data.parentId ?? null,
+      })
+    );
+    (prisma.notification.create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'n1' });
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .post('/api/announcements/ann-a/replies')
+      .set('Authorization', 'Bearer x')
+      .send({ content: 'second', parentId: 'r-mid' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.reply.parentId).toBe('r-mid');
+    expect(prisma.announcementReply.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ parentId: 'r-mid' }),
+      })
+    );
+    expect(prisma.notification.create).toHaveBeenCalledTimes(2);
+    const calls = (prisma.notification.create as ReturnType<typeof vi.fn>).mock.calls;
+    const recipients = calls.map(
+      (call) => (call[0] as { data: { recipientId: string } }).data.recipientId
+    );
+    expect(recipients).toContain('u-b');
+    expect(recipients).toContain('u-a');
+    for (const call of calls) {
+      expect((call[0] as { data: { type: string } }).data.type).toBe('announcement_reply');
+    }
+  });
+
+  it('rejects cross-announcement, missing, and non-string parentId', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-caller',
+      role: 'student',
+    });
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(course);
+    (prisma.enrollmentRequest.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      courseId: 'c1',
+      studentId: 'u-caller',
+      status: 'approved',
+      targetSectionId: 'sec-a',
+    });
+    (prisma.announcement.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...annA,
+      replies: [],
+    });
+    (prisma.announcementReply.findUnique as ReturnType<typeof vi.fn>).mockImplementation(
+      async (args: { where: { id: string } }) =>
+        args.where.id === 'other-ann-reply'
+          ? { id: 'other-ann-reply', announcementId: 'ann-other', authorId: 'u-x' }
+          : null
+    );
+
+    const request = (await import('supertest')).default(app());
+    const cross = await request
+      .post('/api/announcements/ann-a/replies')
+      .set('Authorization', 'Bearer x')
+      .send({ content: 'bad', parentId: 'other-ann-reply' });
+    const missing = await request
+      .post('/api/announcements/ann-a/replies')
+      .set('Authorization', 'Bearer x')
+      .send({ content: 'bad', parentId: 'ghost' });
+    const nonString = await request
+      .post('/api/announcements/ann-a/replies')
+      .set('Authorization', 'Bearer x')
+      .send({ content: 'bad', parentId: 123 });
+    const blank = await request
+      .post('/api/announcements/ann-a/replies')
+      .set('Authorization', 'Bearer x')
+      .send({ content: 'bad', parentId: '   ' });
+
+    expect(cross.status).toBe(400);
+    expect(missing.status).toBe(400);
+    expect(nonString.status).toBe(400);
+    expect(blank.status).toBe(400);
+    expect(prisma.announcementReply.create).not.toHaveBeenCalled();
+    expect(prisma.notification.create).not.toHaveBeenCalled();
   });
 });

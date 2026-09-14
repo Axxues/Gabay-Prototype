@@ -276,15 +276,27 @@ announcementsRouter.post(
     const course = await loadCourseOr404(ann.courseId);
     await assertCourseAccess(course, auth);
     await assertSectionScope(ann.sectionId, course.id, auth);
-    const { content } = (req.body ?? {}) as { content?: unknown };
+    const { content, parentId } = (req.body ?? {}) as { content?: unknown; parentId?: unknown };
     if (typeof content !== 'string' || !content.trim()) {
       throw new ApiError(400, 'bad_request', 'Field content is required.');
+    }
+    let resolvedParentId: string | null = null;
+    if (parentId !== undefined && parentId !== null) {
+      if (typeof parentId !== 'string' || !parentId.trim()) {
+        throw new ApiError(400, 'bad_request', 'Field parentId must be a string.');
+      }
+      const parent = await prisma.announcementReply.findUnique({ where: { id: parentId.trim() } });
+      if (!parent || parent.announcementId !== ann.id) {
+        throw new ApiError(400, 'bad_request', 'Parent reply not found in this announcement.');
+      }
+      resolvedParentId = parent.id;
     }
     const me = await prisma.user.findUnique({ where: { id: auth.sub } });
     const reply = await prisma.announcementReply.create({
       data: {
         id: newId('annreply'),
         announcementId: ann.id,
+        parentId: resolvedParentId,
         authorId: auth.sub,
         authorName: me?.name ?? '',
         authorAvatar: me?.avatar ?? '',
@@ -292,12 +304,51 @@ announcementsRouter.post(
         content: content.trim(),
       },
     });
-    // Port of the client's resolveAnnouncementReplyRecipient rule verbatim:
-    // notify the announcement author, never self.
-    if (ann.authorId !== auth.sub) {
+    // Port of the client's resolveAnnouncementReplyRecipient rule verbatim
+    // for the top-level path: notify the announcement author, never self.
+    // Second-layer replies instead notify the parent + root authors.
+    const recipients = new Set<string>();
+    if (resolvedParentId) {
+      const prior =
+        (await prisma.announcementReply.findMany({ where: { announcementId: ann.id } })) ?? [];
+      const byId = new Map(prior.map((r) => [r.id, r]));
+      let parent = byId.get(resolvedParentId);
+      if (!parent) {
+        const row = await prisma.announcementReply.findUnique({ where: { id: resolvedParentId } });
+        if (row) {
+          byId.set(row.id, row);
+          parent = row;
+        }
+      }
+      if (parent) {
+        if (parent.authorId && parent.authorId !== auth.sub) recipients.add(parent.authorId);
+        let root = parent;
+        const seen = new Set<string>([parent.id]);
+        let guard = 0;
+        while (root.parentId && guard < 25) {
+          guard += 1;
+          let next = byId.get(root.parentId);
+          if (!next) {
+            const row = await prisma.announcementReply.findUnique({ where: { id: root.parentId } });
+            if (!row || row.announcementId !== ann.id) break;
+            byId.set(row.id, row);
+            next = row;
+          }
+          if (seen.has(next.id)) break;
+          seen.add(next.id);
+          root = next;
+        }
+        if (root.id !== parent.id && root.authorId && root.authorId !== auth.sub) {
+          recipients.add(root.authorId);
+        }
+      }
+    } else if (ann.authorId !== auth.sub) {
+      recipients.add(ann.authorId);
+    }
+    for (const recipient of recipients) {
       await createNotification({
         type: 'announcement_reply',
-        recipientId: ann.authorId,
+        recipientId: recipient,
         actorId: auth.sub,
         actorName: me?.name ?? '',
         actorAvatar: me?.avatar ?? '',
