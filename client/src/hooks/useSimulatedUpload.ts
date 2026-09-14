@@ -40,6 +40,10 @@ export function useSimulatedUpload() {
       window.clearInterval(timerRef.current);
       timerRef.current = null;
     }
+    if (resetTimerRef.current !== null) {
+      window.clearTimeout(resetTimerRef.current);
+      resetTimerRef.current = null;
+    }
     setProgress(100);
     resetTimerRef.current = window.setTimeout(() => {
       setIsUploading(false);
