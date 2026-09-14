@@ -1,7 +1,6 @@
 import React from 'react';
-import { LayoutDashboard, BookOpen, Calendar, Inbox, Layers, FileText, Megaphone, FileCheck2, HelpCircle as QuizIcon, Folder, Award, Users, Copy, Check } from 'lucide-react';
+import { LayoutDashboard, BookOpen, Calendar, Inbox, History, HelpCircle, Layers, FileText, Megaphone, FileCheck2, HelpCircle as QuizIcon, Folder, Award, Users, Copy, Check } from 'lucide-react';
 import { useLMS } from '../../context/LMSContext';
-import { getDisplaySectionName } from '../../utils/sections';
 import { LMS_CHILDREN, COURSE_CHILDREN, isVisible, isLmsSectionTab } from '../../config/navigation';
 import {
   countFacultyGradingBadge,
@@ -14,6 +13,7 @@ import {
 const LMS_ICONS: Record<string, React.ReactNode> = {
   dashboard: <LayoutDashboard className="h-4 w-4" />, courses: <BookOpen className="h-4 w-4" />,
   calendar: <Calendar className="h-4 w-4" />, inbox: <Inbox className="h-4 w-4" />,
+  history: <History className="h-4 w-4" />, help: <HelpCircle className="h-4 w-4" />,
 };
 const COURSE_ICONS: Record<string, React.ReactNode> = {
   modules: <Layers className="h-4 w-4" />, syllabus: <FileText className="h-4 w-4" />,
@@ -26,23 +26,13 @@ export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: strin
   const { db, activeCourseId, activeRole, activeUser, getUnreadNotificationCount } = useLMS();
   const [copied, setCopied] = React.useState(false);
   const unread = db.messages.filter(m => m.recipientId === activeUser.id && !m.read).length;
-  // LMS navigations (Dashboard, Courses, Calendar, Inbox) belong
+  const studentSection = activeRole === 'student' && activeCourseId
+    ? (db.courseSections || []).find(s => s.id === activeUser.courseSections?.[activeCourseId])
+    : null;
+  // LMS navigations (Dashboard, Courses, Calendar, Inbox, History, Help) belong
   // to the Learning Management section only — hide the whole context panel on
   // top-level pages outside it (Page 1/2/3, Manage College Accounts).
   if (!isLmsSectionTab(p.currentTab)) return null;
-  // Students with no enrollments must not see or access course navigation.
-  // db.courses is scoped to enrolled courses for students, so an empty
-  // filtered list means "not enrolled in any course".
-  const enrolledCourseIds = activeUser.enrolledCourseIds || [];
-  const approvedIds = new Set(
-    (db.enrollmentRequests || [])
-      .filter(r => r.studentId === activeUser.id && r.status === 'approved')
-      .map(r => r.courseId)
-  );
-  const visibleCourses = activeRole === 'student'
-    ? db.courses.filter(c => enrolledCourseIds.includes(c.id) || approvedIds.has(c.id))
-    : db.courses;
-  const studentHasNoCourses = activeRole === 'student' && visibleCourses.length === 0;
   const lmsNav = (
     <>
       <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Learning Management</div>
@@ -58,18 +48,6 @@ export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: strin
     </>
   );
   if (p.currentTab === 'courses') {
-    // Unenrolled students get LMS nav only — no course header, join code,
-    // or course sub-tabs to see or click.
-    if (studentHasNoCourses) {
-      return (
-        <aside className="flex w-[240px] flex-shrink-0 flex-col border-r border-border/60 bg-card/50 p-3">
-          <div className="custom-scrollbar flex-1 space-y-1 overflow-y-auto">
-            {lmsNav}
-          </div>
-          <div className="px-2 pt-3 text-[10px] text-muted-foreground">Trail: LMS &gt; courses</div>
-        </aside>
-      );
-    }
     const course = db.courses.find(c => c.id === activeCourseId) ?? db.courses[0];
     const courseBadgeFor = (tabId: string): number => {
       if (!course) return 0;
@@ -107,7 +85,7 @@ export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: strin
         if (activeRole !== 'student') return 0;
         return countNewGrades(db.courseGrades || [], cid, activeUser.id, visits);
       }
-      if (tabId === 'people') {
+      if (tabId === 'people' || tabId === 'pending-requests') {
         if (activeRole !== 'faculty' && activeRole !== 'admin') return 0;
         // Sync read of the request cache (bootstrap fills it per course);
         // the async getter cannot be awaited inside this badge counter.
@@ -125,19 +103,11 @@ export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: strin
           <div className="mb-2 flex items-center gap-2.5 rounded-xl border border-border bg-card p-3">
             <span className="h-8 w-1.5 rounded-full" style={{ backgroundColor: course?.color ?? '#64748b' }} />
             <div className="min-w-0"><div className="truncate text-xs font-extrabold">{course?.code}</div><div className="truncate text-[11px] text-muted-foreground">{course?.title}</div>
-              {(() => {
-                if (!course) return null;
-                const displaySection = getDisplaySectionName(
-                  course,
-                  (db.courseSections || []).filter(s => s.courseId === course.id)
-                );
-                if (!displaySection) return null;
-                return (
-                  <div className="text-[10px] text-primary font-bold mt-0.5">
-                    {displaySection}
-                  </div>
-                );
-              })()}</div>
+              {activeRole === 'student' && studentSection && (
+                <div className="text-[10px] text-primary font-bold mt-0.5">
+                  {studentSection.name}
+                </div>
+              )}</div>
           </div>
           {course?.joinCode && <button type="button" onClick={() => { try { navigator.clipboard.writeText(course.joinCode ?? ''); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch {} }} className="mb-2 flex w-full items-center justify-between rounded-xl border border-border bg-card px-3 py-2 font-mono text-[11px] font-bold cursor-pointer">{course.joinCode}{copied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5 text-muted-foreground" />}</button>}
           <nav className="space-y-1">
