@@ -49,8 +49,13 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
   const { db, showAlert } = useLMS();
 
   const course = db.courses.find(c => c.id === courseId);
+  const approvedIds = new Set(
+    (db.enrollmentRequests || [])
+      .filter(r => r.courseId === courseId && r.status === 'approved')
+      .map(r => r.studentId)
+  );
   const students = db.users.filter(
-    u => u.role === 'student' && (!u.enrolledCourseIds || u.enrolledCourseIds.includes(courseId))
+    u => u.role === 'student' && (!u.enrolledCourseIds || u.enrolledCourseIds.includes(courseId) || approvedIds.has(u.id))
   );
 
   const [postingPolicy, setPostingPolicy] = useState<'manual' | 'automatic'>('manual');
