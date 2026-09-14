@@ -456,7 +456,7 @@ export interface SPRSourceLink { kind: 'assignment' | 'activity' | 'quiz'; sourc
 export interface SPRColumn { id: string; title: string; perfectScore: number; linkedSource?: SPRSourceLink }
 export interface SPRConfig { courseId: string; midtermColumns: SPRColumn[]; finalColumns: SPRColumn[]; mtExamPerfect: number; ftExamPerfect: number }
 export type SPRCellMap = Record<string, Record<string, number | null>>;
-export interface SPRWeights { csWeight: number; examWeight: number; mtWeight: number; ftWeight: number; formulaLabel: string }
+export interface SPRWeights { csWeight: number; examWeight: number; mtWeight: number; ftWeight: number; formulaLabel: string; parseError?: boolean }
 
 export interface LMSDatabase {
   users: User[];

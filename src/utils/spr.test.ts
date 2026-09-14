@@ -61,9 +61,17 @@ describe('resolveSPRWeights', () => {
       formulaLabel: 'Term 60% CS + 40% Exam · Final 40% MT + 60% FT',
     });
   });
-  it('ignores syllabus input (parsing out of scope)', () => {
-    expect(resolveSPRWeights({ termFormula: 'custom', finalFormula: 'custom' })).toEqual(baseWeights());
-    expect(resolveSPRWeights(undefined)).toEqual(baseWeights());
+  it('parses 70/30 term + 50/50 final from syllabus strings', () => {
+    const w = resolveSPRWeights({ termFormula: 'Term = 70% Class Standing + 30% Exam', finalFormula: 'Final = 50% Midterm + 50% Final Term' });
+    expect(w.csWeight).toBe(70);
+    expect(w.examWeight).toBe(30);
+    expect(w.mtWeight).toBe(50);
+    expect(w.ftWeight).toBe(50);
+    expect(w.parseError).toBeFalsy();
+  });
+  it('flags unparseable formula instead of silent fallback', () => {
+    const w = resolveSPRWeights({ termFormula: 'grades are vibes', finalFormula: '' });
+    expect(w.parseError).toBe(true);
   });
 });
 

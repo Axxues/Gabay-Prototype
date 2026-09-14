@@ -13,15 +13,18 @@ export function round2(n: number): number {
 }
 
 export function resolveSPRWeights(
-  _syllabusGrading: { termFormula?: string; finalFormula?: string } | null | undefined,
+  syllabusGrading: { termFormula?: string; finalFormula?: string } | null | undefined,
 ): SPRWeights {
-  return {
-    csWeight: 60,
-    examWeight: 40,
-    mtWeight: 40,
-    ftWeight: 60,
-    formulaLabel: 'Term 60% CS + 40% Exam · Final 40% MT + 60% FT',
-  };
+  const fallback = (): SPRWeights => ({ csWeight: 60, examWeight: 40, mtWeight: 40, ftWeight: 60, formulaLabel: 'Term 60% CS + 40% Exam · Final 40% MT + 60% FT', parseError: true });
+  if (!syllabusGrading) return { csWeight: 60, examWeight: 40, mtWeight: 40, ftWeight: 60, formulaLabel: 'Term 60% CS + 40% Exam · Final 40% MT + 60% FT' };
+  const term = syllabusGrading.termFormula ?? '';
+  const fin = syllabusGrading.finalFormula ?? '';
+  const nums = (s: string) => [...s.matchAll(/(\d+(?:\.\d+)?)\s*%/g)].map(m => Number(m[1]));
+  const tn = nums(term), fn = nums(fin);
+  const sumOk = (a: number[]) => a.length >= 2 && Math.abs(a[0] + a[1] - 100) < 0.01;
+  // term: first % = class standing, second % = exam; final: first % = midterm, second % = final term
+  if (!sumOk(tn) || !sumOk(fn)) return fallback();
+  return { csWeight: tn[0], examWeight: tn[1], mtWeight: fn[0], ftWeight: fn[1], formulaLabel: `Term ${tn[0]}% CS + ${tn[1]}% Exam · Final ${fn[0]}% MT + ${fn[1]}% FT` };
 }
 
 export function classStandingPercent(scores: Array<number | null>, perfects: number[]): number {
