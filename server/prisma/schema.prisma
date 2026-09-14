@@ -106,6 +106,7 @@ model ModuleItem {
 model ModuleComment {
   id           String              @id @db.NVarChar(64)
   moduleId     String              @db.NVarChar(64)
+  parentId     String?             @db.NVarChar(64)
   module       Module              @relation(fields: [moduleId], references: [id], onDelete: Cascade)
   authorId     String              @db.NVarChar(64)
   authorName   String              @db.NVarChar(128)
@@ -282,6 +283,7 @@ model AnnouncementAttachment {
 model AnnouncementReply {
   id             String                  @id @db.NVarChar(64)
   announcementId String                  @db.NVarChar(64)
+  parentId       String?                 @db.NVarChar(64)
   announcement   Announcement            @relation(fields: [announcementId], references: [id], onDelete: Cascade)
   authorId       String                  @db.NVarChar(64)
   authorName     String                  @db.NVarChar(128)

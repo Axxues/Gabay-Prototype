@@ -88,6 +88,7 @@ export interface ModuleItem {
 export interface ModuleComment {
   id: string;
   moduleId: string;
+  parentId?: string | null;
   authorId: string;
   authorName: string;
   authorAvatar: string;
@@ -340,6 +341,7 @@ export interface CommonsTemplate {
 export interface AnnouncementReply {
   id: string;
   announcementId: string;
+  parentId?: string | null;
   authorId: string;
   authorName: string;
   authorAvatar: string;
