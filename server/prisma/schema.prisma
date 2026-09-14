@@ -8,38 +8,38 @@ datasource db {
 }
 
 model User {
-  id             String   @id @db.NVarChar(64)
-  name           String   @db.NVarChar(128)
-  email          String   @unique @db.NVarChar(256)
-  passwordHash   String   @db.NVarChar(256)
-  role           String   @db.NVarChar(32) // UserRole: admin | faculty | staff | student (enforced at API layer)
-  avatar         String   @db.NVarChar(Max)
-  department     String   @db.NVarChar(128)
-  title          String   @db.NVarChar(128)
-  lastVisitedAt  String?  @db.NVarChar(Max)
-  coursesTaught  Course[] @relation("InstructorCourses")
+  id            String   @id @db.NVarChar(64)
+  name          String   @db.NVarChar(128)
+  email         String   @unique @db.NVarChar(256)
+  passwordHash  String   @db.NVarChar(256)
+  role          String   @db.NVarChar(32) // UserRole: admin | faculty | staff | student (enforced at API layer)
+  avatar        String   @db.NVarChar(Max)
+  department    String   @db.NVarChar(128)
+  title         String   @db.NVarChar(128)
+  lastVisitedAt String?  @db.NVarChar(Max)
+  coursesTaught Course[] @relation("InstructorCourses")
 }
 
 model Course {
-  id                String             @id @db.NVarChar(64)
-  code              String             @db.NVarChar(32)
-  title             String             @db.NVarChar(256)
-  section           String             @db.NVarChar(64)
-  term              String             @db.NVarChar(64)
-  instructorId      String             @db.NVarChar(64)
-  instructor        User               @relation("InstructorCourses", fields: [instructorId], references: [id])
-  instructorName    String             @db.NVarChar(128)
-  published         Boolean            @default(false)
-  color             String?            @db.NVarChar(32)
-  image             String?            @db.NVarChar(Max)
-  enrolledCount     Int                @default(0)
-  credits           Int?
-  chedComplianceCode String?           @db.NVarChar(64)
-  joinCode          String?            @unique @db.NVarChar(32)
-  syllabus          String?            @db.NVarChar(Max)
-  sprConfig         String?            @db.NVarChar(Max)
-  sections          CourseSection[]
-  requests          EnrollmentRequest[]
+  id                 String              @id @db.NVarChar(64)
+  code               String              @db.NVarChar(32)
+  title              String              @db.NVarChar(256)
+  section            String              @db.NVarChar(64)
+  term               String              @db.NVarChar(64)
+  instructorId       String              @db.NVarChar(64)
+  instructor         User                @relation("InstructorCourses", fields: [instructorId], references: [id])
+  instructorName     String              @db.NVarChar(128)
+  published          Boolean             @default(false)
+  color              String?             @db.NVarChar(32)
+  image              String?             @db.NVarChar(Max)
+  enrolledCount      Int                 @default(0)
+  credits            Int?
+  chedComplianceCode String?             @db.NVarChar(64)
+  joinCode           String?             @unique @db.NVarChar(32)
+  syllabus           String?             @db.NVarChar(Max)
+  sprConfig          String?             @db.NVarChar(Max)
+  sections           CourseSection[]
+  requests           EnrollmentRequest[]
 }
 
 model CourseSection {
@@ -54,18 +54,18 @@ model CourseSection {
 }
 
 model EnrollmentRequest {
-  id              String                  @id @db.NVarChar(64)
-  courseId        String                  @db.NVarChar(64)
-  course          Course                  @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  studentId       String                  @db.NVarChar(64)
-  studentName     String                  @db.NVarChar(128)
-  type            String   @db.NVarChar(32) // self_join | faculty_enroll | section_switch (enforced at API layer)
-  status          String   @db.NVarChar(32) @default("pending") // pending | approved | rejected (enforced at API layer)
-  requestedAt     DateTime                @default(now())
+  id              String    @id @db.NVarChar(64)
+  courseId        String    @db.NVarChar(64)
+  course          Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  studentId       String    @db.NVarChar(64)
+  studentName     String    @db.NVarChar(128)
+  type            String    @db.NVarChar(32) // self_join | faculty_enroll | section_switch (enforced at API layer)
+  status          String    @default("pending") @db.NVarChar(32) // pending | approved | rejected (enforced at API layer)
+  requestedAt     DateTime  @default(now())
   resolvedAt      DateTime?
-  resolvedBy      String?                 @db.NVarChar(64)
-  sectionId       String?                 @db.NVarChar(64)
-  targetSectionId String?                 @db.NVarChar(64)
+  resolvedBy      String?   @db.NVarChar(64)
+  sectionId       String?   @db.NVarChar(64)
+  targetSectionId String?   @db.NVarChar(64)
 }
 
 model Module {
@@ -82,92 +82,95 @@ model Module {
 }
 
 model ModuleItem {
-  id                String  @id @db.NVarChar(64)
-  moduleId          String  @db.NVarChar(64)
-  module            Module  @relation(fields: [moduleId], references: [id], onDelete: Cascade)
-  title             String  @db.NVarChar(256)
-  type              String  @db.NVarChar(32)
-  published         Boolean @default(true)
-  required          Boolean @default(false)
+  id                  String  @id @db.NVarChar(64)
+  moduleId            String  @db.NVarChar(64)
+  module              Module  @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  title               String  @db.NVarChar(256)
+  type                String  @db.NVarChar(32)
+  published           Boolean @default(true)
+  required            Boolean @default(false)
   completionCondition String? @db.NVarChar(32)
-  minScore          Float?
-  content           String? @db.NVarChar(Max)
-  assignmentId      String? @db.NVarChar(64)
-  quizId            String? @db.NVarChar(64)
-  fileUrl           String? @db.NVarChar(1024)
-  fileName          String? @db.NVarChar(256)
-  fileSize          String? @db.NVarChar(32)
-  fileType          String? @db.NVarChar(64)
-  completed         Boolean @default(false)
-  authorId          String? @db.NVarChar(64)
-  authorName        String? @db.NVarChar(128)
+  minScore            Float?
+  content             String? @db.NVarChar(Max)
+  assignmentId        String? @db.NVarChar(64)
+  quizId              String? @db.NVarChar(64)
+  fileUrl             String? @db.NVarChar(1024)
+  fileName            String? @db.NVarChar(256)
+  fileSize            String? @db.NVarChar(32)
+  fileType            String? @db.NVarChar(64)
+  completed           Boolean @default(false)
+  authorId            String? @db.NVarChar(64)
+  authorName          String? @db.NVarChar(128)
 }
 
 model ModuleComment {
-  id         String              @id @db.NVarChar(64)
-  moduleId   String              @db.NVarChar(64)
-  module     Module              @relation(fields: [moduleId], references: [id], onDelete: Cascade)
-  authorId   String              @db.NVarChar(64)
-  authorName String              @db.NVarChar(128)
-  authorAvatar String            @db.NVarChar(Max)
-  authorRole String              @db.NVarChar(32)
-  content    String              @db.NVarChar(Max)
-  createdAt  DateTime            @default(now())
-  likes      Int                 @default(0)
-  likedBy    ModuleCommentLike[]
-  isEdited   Boolean             @default(false)
-  editedAt   DateTime?
+  id           String              @id @db.NVarChar(64)
+  moduleId     String              @db.NVarChar(64)
+  module       Module              @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  authorId     String              @db.NVarChar(64)
+  authorName   String              @db.NVarChar(128)
+  authorAvatar String              @db.NVarChar(Max)
+  authorRole   String              @db.NVarChar(32)
+  content      String              @db.NVarChar(Max)
+  createdAt    DateTime            @default(now())
+  likes        Int                 @default(0)
+  likedBy      ModuleCommentLike[]
+  isEdited     Boolean             @default(false)
+  editedAt     DateTime?
 }
 
 model ModuleCommentLike {
   commentId String        @db.NVarChar(64)
   comment   ModuleComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
   userId    String        @db.NVarChar(64)
+
   @@id([commentId, userId])
 }
 
 model Assignment {
-  id               String   @id @db.NVarChar(64)
-  courseId         String   @db.NVarChar(64)
-  title            String   @db.NVarChar(256)
-  instructions     String   @db.NVarChar(Max)
-  pointsPossible   Float
-  dueDate          DateTime
-  submissionTypes  String   @db.NVarChar(64)
-  published        Boolean  @default(false)
-  category         String   @db.NVarChar(64)
-  weight           Float    @default(0)
-  rubric           String   @db.NVarChar(Max)
-  fileName         String?  @db.NVarChar(256)
-  fileUrl          String?  @db.NVarChar(1024)
-  fileSize         String?  @db.NVarChar(32)
-  availableFrom    DateTime?
-  availableUntil   DateTime?
-  sectionRestriction String? @db.NVarChar(128)
+  id                 String    @id @db.NVarChar(64)
+  courseId           String    @db.NVarChar(64)
+  title              String    @db.NVarChar(256)
+  instructions       String    @db.NVarChar(Max)
+  pointsPossible     Float
+  dueDate            DateTime
+  submissionTypes    String    @db.NVarChar(64)
+  published          Boolean   @default(false)
+  category           String    @db.NVarChar(64)
+  weight             Float     @default(0)
+  rubric             String    @db.NVarChar(Max)
+  fileName           String?   @db.NVarChar(256)
+  fileUrl            String?   @db.NVarChar(1024)
+  fileSize           String?   @db.NVarChar(32)
+  availableFrom      DateTime?
+  availableUntil     DateTime?
+  sectionRestriction String?   @db.NVarChar(128)
 }
 
 model Submission {
-  id            String              @id @db.NVarChar(64)
-  assignmentId  String?             @db.NVarChar(64)
-  quizId        String?             @db.NVarChar(64)
-  quiz          Quiz?               @relation(fields: [quizId], references: [id], onDelete: Cascade)
-  activityId    String?             @db.NVarChar(64)
-  activity      Activity?           @relation(fields: [activityId], references: [id], onDelete: Cascade)
-  courseId      String              @db.NVarChar(64)
-  studentId     String              @db.NVarChar(64)
-  studentName   String              @db.NVarChar(128)
-  studentAvatar String              @db.NVarChar(Max)
-  submittedAt   DateTime            @default(now())
-  submissionType String             @db.NVarChar(32)
-  content       String?             @db.NVarChar(Max)
-  fileUrl       String?             @db.NVarChar(1024)
-  fileName      String?             @db.NVarChar(256)
-  grade         Float?
-  gradedAt      DateTime?
-  gradedBy      String?             @db.NVarChar(128)
-  status        String              @db.NVarChar(32)
-  rubricScores  String              @db.NVarChar(Max)
-  comments      SubmissionComment[]
+  id             String              @id @db.NVarChar(64)
+  assignmentId   String?             @db.NVarChar(64)
+  quizId         String?             @db.NVarChar(64)
+  quiz           Quiz?               @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  activityId     String?             @db.NVarChar(64)
+  activity       Activity?           @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  examId         String?             @db.NVarChar(64)
+  exam           Exam?               @relation(fields: [examId], references: [id], onDelete: Cascade)
+  courseId       String              @db.NVarChar(64)
+  studentId      String              @db.NVarChar(64)
+  studentName    String              @db.NVarChar(128)
+  studentAvatar  String              @db.NVarChar(Max)
+  submittedAt    DateTime            @default(now())
+  submissionType String              @db.NVarChar(32)
+  content        String?             @db.NVarChar(Max)
+  fileUrl        String?             @db.NVarChar(1024)
+  fileName       String?             @db.NVarChar(256)
+  grade          Float?
+  gradedAt       DateTime?
+  gradedBy       String?             @db.NVarChar(128)
+  status         String              @db.NVarChar(32)
+  rubricScores   String              @db.NVarChar(Max)
+  comments       SubmissionComment[]
 }
 
 model SubmissionComment {
@@ -198,22 +201,24 @@ model Quiz {
 }
 
 model QuizQuestion {
-  id            String   @id @db.NVarChar(64)
-  quizId        String?  @db.NVarChar(64)
-  quiz          Quiz?    @relation(fields: [quizId], references: [id], onDelete: Cascade)
-  activityId    String?  @db.NVarChar(64)
+  id            String    @id @db.NVarChar(64)
+  quizId        String?   @db.NVarChar(64)
+  quiz          Quiz?     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  activityId    String?   @db.NVarChar(64)
   activity      Activity? @relation(fields: [activityId], references: [id], onDelete: Cascade)
-  text          String   @db.NVarChar(Max)
-  type          String   @db.NVarChar(32)
-  options       String   @db.NVarChar(Max)
-  correctAnswer String?  @db.NVarChar(1024)
-  points        Float    @default(5)
-  description   String?  @db.NVarChar(Max)
-  rubricNotes   String?  @db.NVarChar(Max)
-  imageUrl      String?  @db.NVarChar(1024)
-  imageName     String?  @db.NVarChar(256)
-  fileUrl       String?  @db.NVarChar(1024)
-  fileName      String?  @db.NVarChar(256)
+  examId        String?   @db.NVarChar(64)
+  exam          Exam?     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  text          String    @db.NVarChar(Max)
+  type          String    @db.NVarChar(32)
+  options       String    @db.NVarChar(Max)
+  correctAnswer String?   @db.NVarChar(1024)
+  points        Float     @default(5)
+  description   String?   @db.NVarChar(Max)
+  rubricNotes   String?   @db.NVarChar(Max)
+  imageUrl      String?   @db.NVarChar(1024)
+  imageName     String?   @db.NVarChar(256)
+  fileUrl       String?   @db.NVarChar(1024)
+  fileName      String?   @db.NVarChar(256)
 }
 
 model Activity {
@@ -228,28 +233,41 @@ model Activity {
   submissions    Submission[]
 }
 
+model Exam {
+  id               String         @id @db.NVarChar(64)
+  courseId         String         @db.NVarChar(64)
+  title            String         @db.NVarChar(256)
+  instructions     String         @db.NVarChar(Max)
+  timeLimitMinutes Int            @default(30)
+  published        Boolean        @default(false)
+  dueDate          DateTime?
+  term             String         @db.NVarChar(16)
+  questions        QuizQuestion[]
+  submissions      Submission[]
+}
+
 model Announcement {
-  id                        String                   @id @db.NVarChar(64)
-  courseId                  String                   @db.NVarChar(64)
-  title                     String                   @db.NVarChar(256)
-  content                   String                   @db.NVarChar(Max)
-  authorId                  String                   @db.NVarChar(64)
-  authorName                String                   @db.NVarChar(128)
-  authorAvatar              String                   @db.NVarChar(Max)
-  authorRole                String                   @db.NVarChar(32)
-  createdAt                 DateTime                 @default(now())
-  delayedUntil              DateTime?
-  sectionId                 String                   @db.NVarChar(64) @default("all")
-  sectionRestriction        String                   @db.NVarChar(128) @default("All Sections")
-  allowComments             Boolean                  @default(true)
-  usersMustPostBeforeReplies Boolean                 @default(false)
-  allowLiking               Boolean                  @default(true)
-  likes                     Int                      @default(0)
-  pinned                    Boolean                  @default(false)
-  attachments               AnnouncementAttachment[]
-  replies                   AnnouncementReply[]
-  likedBy                   AnnouncementLike[]
-  readBy                    AnnouncementRead[]
+  id                         String                   @id @db.NVarChar(64)
+  courseId                   String                   @db.NVarChar(64)
+  title                      String                   @db.NVarChar(256)
+  content                    String                   @db.NVarChar(Max)
+  authorId                   String                   @db.NVarChar(64)
+  authorName                 String                   @db.NVarChar(128)
+  authorAvatar               String                   @db.NVarChar(Max)
+  authorRole                 String                   @db.NVarChar(32)
+  createdAt                  DateTime                 @default(now())
+  delayedUntil               DateTime?
+  sectionId                  String                   @default("all") @db.NVarChar(64)
+  sectionRestriction         String                   @default("All Sections") @db.NVarChar(128)
+  allowComments              Boolean                  @default(true)
+  usersMustPostBeforeReplies Boolean                  @default(false)
+  allowLiking                Boolean                  @default(true)
+  likes                      Int                      @default(0)
+  pinned                     Boolean                  @default(false)
+  attachments                AnnouncementAttachment[]
+  replies                    AnnouncementReply[]
+  likedBy                    AnnouncementLike[]
+  readBy                     AnnouncementRead[]
 }
 
 model AnnouncementAttachment {
@@ -262,16 +280,16 @@ model AnnouncementAttachment {
 }
 
 model AnnouncementReply {
-  id             String            @id @db.NVarChar(64)
-  announcementId String            @db.NVarChar(64)
-  announcement   Announcement      @relation(fields: [announcementId], references: [id], onDelete: Cascade)
-  authorId       String            @db.NVarChar(64)
-  authorName     String            @db.NVarChar(128)
-  authorAvatar   String            @db.NVarChar(Max)
-  authorRole     String            @db.NVarChar(32)
-  content        String            @db.NVarChar(Max)
-  createdAt      DateTime          @default(now())
-  likes          Int               @default(0)
+  id             String                  @id @db.NVarChar(64)
+  announcementId String                  @db.NVarChar(64)
+  announcement   Announcement            @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  authorId       String                  @db.NVarChar(64)
+  authorName     String                  @db.NVarChar(128)
+  authorAvatar   String                  @db.NVarChar(Max)
+  authorRole     String                  @db.NVarChar(32)
+  content        String                  @db.NVarChar(Max)
+  createdAt      DateTime                @default(now())
+  likes          Int                     @default(0)
   likedBy        AnnouncementReplyLike[]
 }
 
@@ -279,6 +297,7 @@ model AnnouncementReplyLike {
   replyId String            @db.NVarChar(64)
   reply   AnnouncementReply @relation(fields: [replyId], references: [id], onDelete: Cascade)
   userId  String            @db.NVarChar(64)
+
   @@id([replyId, userId])
 }
 
@@ -286,6 +305,7 @@ model AnnouncementLike {
   announcementId String       @db.NVarChar(64)
   announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
   userId         String       @db.NVarChar(64)
+
   @@id([announcementId, userId])
 }
 
@@ -293,27 +313,28 @@ model AnnouncementRead {
   announcementId String       @db.NVarChar(64)
   announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
   userId         String       @db.NVarChar(64)
+
   @@id([announcementId, userId])
 }
 
 model Discussion {
-  id                        String            @id @db.NVarChar(64)
-  courseId                  String            @db.NVarChar(64)
-  title                     String            @db.NVarChar(256)
-  prompt                    String            @db.NVarChar(Max)
-  authorId                  String            @db.NVarChar(64)
-  authorName                String            @db.NVarChar(128)
-  authorAvatar              String            @db.NVarChar(Max)
-  authorRole                String            @db.NVarChar(32)
-  createdAt                 DateTime          @default(now())
-  isGraded                  Boolean           @default(false)
-  pointsPossible            Float?
-  dueDate                   DateTime?
-  pinned                    Boolean           @default(false)
-  locked                    Boolean           @default(false)
-  usersMustPostBeforeReplies Boolean          @default(false)
-  groupAssignment           String?           @db.NVarChar(128)
-  replies                   DiscussionReply[]
+  id                         String            @id @db.NVarChar(64)
+  courseId                   String            @db.NVarChar(64)
+  title                      String            @db.NVarChar(256)
+  prompt                     String            @db.NVarChar(Max)
+  authorId                   String            @db.NVarChar(64)
+  authorName                 String            @db.NVarChar(128)
+  authorAvatar               String            @db.NVarChar(Max)
+  authorRole                 String            @db.NVarChar(32)
+  createdAt                  DateTime          @default(now())
+  isGraded                   Boolean           @default(false)
+  pointsPossible             Float?
+  dueDate                    DateTime?
+  pinned                     Boolean           @default(false)
+  locked                     Boolean           @default(false)
+  usersMustPostBeforeReplies Boolean           @default(false)
+  groupAssignment            String?           @db.NVarChar(128)
+  replies                    DiscussionReply[]
 }
 
 model DiscussionReply {
@@ -335,45 +356,47 @@ model DiscussionReplyLike {
   replyId String          @db.NVarChar(64)
   reply   DiscussionReply @relation(fields: [replyId], references: [id], onDelete: Cascade)
   userId  String          @db.NVarChar(64)
+
   @@id([replyId, userId])
 }
 
 model Message {
-  id             String    @id @db.NVarChar(64)
-  senderId       String    @db.NVarChar(64)
-  senderName     String    @db.NVarChar(128)
-  senderRole     String    @db.NVarChar(32)
-  recipientId    String    @db.NVarChar(64)
-  recipientName  String    @db.NVarChar(128)
-  recipientRole  String    @db.NVarChar(32)
-  courseId       String?   @db.NVarChar(64)
-  courseCode     String?   @db.NVarChar(32)
-  subject        String    @db.NVarChar(256)
-  body           String    @db.NVarChar(Max)
-  timestamp      DateTime  @default(now())
-  read           Boolean   @default(false)
-  reaction       String?   @db.NVarChar(32)
-  attachmentName String?   @db.NVarChar(256)
-  attachmentSize String?   @db.NVarChar(32)
-  groupId        String?   @db.NVarChar(64)
-  isGroup        Boolean   @default(false)
+  id             String   @id @db.NVarChar(64)
+  senderId       String   @db.NVarChar(64)
+  senderName     String   @db.NVarChar(128)
+  senderRole     String   @db.NVarChar(32)
+  recipientId    String   @db.NVarChar(64)
+  recipientName  String   @db.NVarChar(128)
+  recipientRole  String   @db.NVarChar(32)
+  courseId       String?  @db.NVarChar(64)
+  courseCode     String?  @db.NVarChar(32)
+  subject        String   @db.NVarChar(256)
+  body           String   @db.NVarChar(Max)
+  timestamp      DateTime @default(now())
+  read           Boolean  @default(false)
+  reaction       String?  @db.NVarChar(32)
+  attachmentName String?  @db.NVarChar(256)
+  attachmentSize String?  @db.NVarChar(32)
+  groupId        String?  @db.NVarChar(64)
+  isGroup        Boolean  @default(false)
 }
 
 model ChatGroup {
-  id        String            @id @db.NVarChar(64)
-  name      String            @db.NVarChar(128)
-  avatar    String?           @db.NVarChar(Max)
-  courseId  String?           @db.NVarChar(64)
-  courseCode String?          @db.NVarChar(32)
-  createdAt DateTime          @default(now())
-  createdBy String            @db.NVarChar(64)
-  members   ChatGroupMember[]
+  id         String            @id @db.NVarChar(64)
+  name       String            @db.NVarChar(128)
+  avatar     String?           @db.NVarChar(Max)
+  courseId   String?           @db.NVarChar(64)
+  courseCode String?           @db.NVarChar(32)
+  createdAt  DateTime          @default(now())
+  createdBy  String            @db.NVarChar(64)
+  members    ChatGroupMember[]
 }
 
 model ChatGroupMember {
   groupId String    @db.NVarChar(64)
   group   ChatGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
   userId  String    @db.NVarChar(64)
+
   @@id([groupId, userId])
 }
 
@@ -399,30 +422,30 @@ model CalendarEvent {
 }
 
 model AdvisingSlot {
-  id                 String   @id @db.NVarChar(64)
-  instructorId       String   @db.NVarChar(64)
-  instructorName     String   @db.NVarChar(128)
-  date               String   @db.NVarChar(32)
-  timeSlot           String   @db.NVarChar(64)
-  location           String   @db.NVarChar(256)
-  status             String   @db.NVarChar(32)
-  bookedByStudentId  String?  @db.NVarChar(64)
+  id                  String  @id @db.NVarChar(64)
+  instructorId        String  @db.NVarChar(64)
+  instructorName      String  @db.NVarChar(128)
+  date                String  @db.NVarChar(32)
+  timeSlot            String  @db.NVarChar(64)
+  location            String  @db.NVarChar(256)
+  status              String  @db.NVarChar(32)
+  bookedByStudentId   String? @db.NVarChar(64)
   bookedByStudentName String? @db.NVarChar(128)
-  notes              String?  @db.NVarChar(Max)
+  notes               String? @db.NVarChar(Max)
 }
 
 model Notification {
-  id          String   @id @db.NVarChar(64)
-  type        String   @db.NVarChar(64)
-  recipientId String   @db.NVarChar(64)
-  actorId     String   @db.NVarChar(64)
-  actorName   String   @db.NVarChar(128)
-  actorAvatar String   @db.NVarChar(Max)
-  relatedId   String   @db.NVarChar(64)
-  relatedTitle String  @db.NVarChar(256)
-  content     String   @db.NVarChar(Max)
-  read        Boolean  @default(false)
-  createdAt   DateTime @default(now())
+  id           String   @id @db.NVarChar(64)
+  type         String   @db.NVarChar(64)
+  recipientId  String   @db.NVarChar(64)
+  actorId      String   @db.NVarChar(64)
+  actorName    String   @db.NVarChar(128)
+  actorAvatar  String   @db.NVarChar(Max)
+  relatedId    String   @db.NVarChar(64)
+  relatedTitle String   @db.NVarChar(256)
+  content      String   @db.NVarChar(Max)
+  read         Boolean  @default(false)
+  createdAt    DateTime @default(now())
 }
 
 model CourseFolder {
@@ -438,23 +461,23 @@ model CourseFolder {
 }
 
 model CourseFile {
-  id            String       @id @db.NVarChar(64)
-  courseId      String       @db.NVarChar(64)
-  folderId      String?      @db.NVarChar(64)
-  folder        CourseFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
-  name          String       @db.NVarChar(256)
-  size          Int          @default(0)
-  formattedSize String       @db.NVarChar(32)
-  type          String       @db.NVarChar(32)
-  visibility    String       @db.NVarChar(32)
-  updatedAt     DateTime     @updatedAt
-  uploadedBy    String       @db.NVarChar(64)
-  uploadedByName String      @db.NVarChar(128)
-  content       String?      @db.NVarChar(Max)
-  url           String?      @db.NVarChar(1024)
-  fileUrl       String?      @db.NVarChar(1024)
-  sourceArea    String?      @db.NVarChar(32)
-  sourceId      String?      @db.NVarChar(64)
+  id             String        @id @db.NVarChar(64)
+  courseId       String        @db.NVarChar(64)
+  folderId       String?       @db.NVarChar(64)
+  folder         CourseFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  name           String        @db.NVarChar(256)
+  size           Int           @default(0)
+  formattedSize  String        @db.NVarChar(32)
+  type           String        @db.NVarChar(32)
+  visibility     String        @db.NVarChar(32)
+  updatedAt      DateTime      @updatedAt
+  uploadedBy     String        @db.NVarChar(64)
+  uploadedByName String        @db.NVarChar(128)
+  content        String?       @db.NVarChar(Max)
+  url            String?       @db.NVarChar(1024)
+  fileUrl        String?       @db.NVarChar(1024)
+  sourceArea     String?       @db.NVarChar(32)
+  sourceId       String?       @db.NVarChar(64)
 }
 
 model HistoryLog {
@@ -476,13 +499,13 @@ model CourseGrade {
 }
 
 model CommonsTemplate {
-  id            String  @id @db.NVarChar(64)
-  title         String  @db.NVarChar(256)
-  category      String  @db.NVarChar(128)
-  description   String  @db.NVarChar(Max)
-  author        String  @db.NVarChar(128)
-  downloads     Int     @default(0)
-  rating        Float   @default(0)
-  tags          String  @db.NVarChar(Max)
-  chedAlignment String  @db.NVarChar(512)
+  id            String @id @db.NVarChar(64)
+  title         String @db.NVarChar(256)
+  category      String @db.NVarChar(128)
+  description   String @db.NVarChar(Max)
+  author        String @db.NVarChar(128)
+  downloads     Int    @default(0)
+  rating        Float  @default(0)
+  tags          String @db.NVarChar(Max)
+  chedAlignment String @db.NVarChar(512)
 }

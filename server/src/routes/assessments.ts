@@ -8,8 +8,9 @@ import { parseJsonField, stringifyJsonField } from '../utils/jsonFields.js';
 
 export const quizzesRouter = buildAssessmentRouter('quiz');
 export const activitiesRouter = buildAssessmentRouter('activity');
+export const examsRouter = buildAssessmentRouter('exam');
 
-type AssessmentKind = 'quiz' | 'activity';
+type AssessmentKind = 'quiz' | 'activity' | 'exam';
 
 function newId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -153,17 +154,20 @@ function parseOptionalDate(value: unknown, field: string): Date | null | undefin
 function buildAssessmentRouter(kind: AssessmentKind) {
   const router = Router();
   const isQuiz = kind === 'quiz';
-  const singular = isQuiz ? 'Quiz' : 'Activity';
+  const isExam = kind === 'exam';
+  const singular = isQuiz ? 'Quiz' : isExam ? 'Exam' : 'Activity';
   const syntheticAssignmentId = (id: string) =>
-    isQuiz ? `asg-quiz-${id}` : `asg-activity-${id}`;
+    isQuiz ? `asg-quiz-${id}` : isExam ? `asg-exam-${id}` : `asg-activity-${id}`;
 
   async function loadOr404(id: string): Promise<AssessmentRow> {
     const row = (isQuiz
       ? await prisma.quiz.findUnique({ where: { id }, include: { questions: true } })
-      : await prisma.activity.findUnique({
-          where: { id },
-          include: { questions: true },
-        })) as unknown as AssessmentRow | null;
+      : isExam
+        ? await prisma.exam.findUnique({ where: { id }, include: { questions: true } })
+        : await prisma.activity.findUnique({
+            where: { id },
+            include: { questions: true },
+          })) as unknown as AssessmentRow | null;
     if (!row) throw new ApiError(404, 'not_found', `${singular} not found.`);
     return row;
   }
@@ -171,10 +175,12 @@ function buildAssessmentRouter(kind: AssessmentKind) {
   async function listForCourse(courseId: string): Promise<AssessmentRow[]> {
     const rows = (isQuiz
       ? await prisma.quiz.findMany({ where: { courseId }, include: { questions: true } })
-      : await prisma.activity.findMany({
-          where: { courseId },
-          include: { questions: true },
-        })) as unknown as AssessmentRow[];
+      : isExam
+        ? await prisma.exam.findMany({ where: { courseId }, include: { questions: true } })
+        : await prisma.activity.findMany({
+            where: { courseId },
+            include: { questions: true },
+          })) as unknown as AssessmentRow[];
     return rows;
   }
 
@@ -194,7 +200,7 @@ function buildAssessmentRouter(kind: AssessmentKind) {
         ...r,
         questions: mapQuestionsFor(auth.role, r.questions),
       }));
-      res.json(isQuiz ? { quizzes: items } : { activities: items });
+      res.json(isQuiz ? { quizzes: items } : isExam ? { exams: items } : { activities: items });
     })
   );
 
@@ -263,6 +269,48 @@ function buildAssessmentRouter(kind: AssessmentKind) {
         return;
       }
 
+      if (isExam) {
+        const term = body.term;
+        if (term !== 'midterm' && term !== 'final') {
+          throw new ApiError(400, 'bad_request', "Field 'term' must be 'midterm' or 'final'.");
+        }
+        const timeLimitMinutes =
+          typeof body.timeLimitMinutes === 'number' ? body.timeLimitMinutes : 30;
+        const created = await prisma.exam.create({
+          data: {
+            id: newId('exam'),
+            courseId: course.id,
+            title,
+            instructions,
+            timeLimitMinutes,
+            published,
+            dueDate: parseOptionalDate(body.dueDate, 'dueDate') ?? null,
+            term,
+          },
+        });
+        const rows: RawQuestion[] = [];
+        for (const q of questions) {
+          rows.push(
+            (await prisma.quizQuestion.create({
+              data: {
+                id: newId('qq'),
+                examId: created.id,
+                text: q.text,
+                type: q.type,
+                options: stringifyJsonField(q.options),
+                correctAnswer: q.correctAnswer,
+                points: q.points,
+                ...q.extras,
+              },
+            })) as unknown as RawQuestion
+          );
+        }
+        res.status(201).json({
+          exam: { ...created, questions: mapQuestionsFor(auth.role, rows) },
+        });
+        return;
+      }
+
       const { pointsPossible } = body;
       if (typeof pointsPossible !== 'number') {
         throw new ApiError(400, 'bad_request', 'Field pointsPossible must be a number.');
@@ -310,7 +358,7 @@ function buildAssessmentRouter(kind: AssessmentKind) {
       const course = await loadCourseOr404(row.courseId);
       await assertCourseAccess(course, auth);
       const item = { ...row, questions: mapQuestionsFor(auth.role, row.questions) };
-      res.json(isQuiz ? { quiz: item } : { activity: item });
+      res.json(isQuiz ? { quiz: item } : isExam ? { exam: item } : { activity: item });
     })
   );
 
@@ -360,6 +408,23 @@ function buildAssessmentRouter(kind: AssessmentKind) {
         res.json({ quiz: updated });
         return;
       }
+      if (isExam) {
+        if (body.timeLimitMinutes !== undefined) {
+          if (typeof body.timeLimitMinutes !== 'number') {
+            throw new ApiError(400, 'bad_request', "Field 'timeLimitMinutes' must be a number.");
+          }
+          data.timeLimitMinutes = body.timeLimitMinutes;
+        }
+        if (body.term !== undefined) {
+          if (body.term !== 'midterm' && body.term !== 'final') {
+            throw new ApiError(400, 'bad_request', "Field 'term' must be 'midterm' or 'final'.");
+          }
+          data.term = body.term;
+        }
+        const updated = await prisma.exam.update({ where: { id: row.id }, data });
+        res.json({ exam: updated });
+        return;
+      }
       if (body.pointsPossible !== undefined) {
         if (typeof body.pointsPossible !== 'number') {
           throw new ApiError(400, 'bad_request', "Field 'pointsPossible' must be a number.");
@@ -382,6 +447,8 @@ function buildAssessmentRouter(kind: AssessmentKind) {
       assertCourseOwner(course, auth);
       if (isQuiz) {
         await prisma.quiz.delete({ where: { id: row.id } });
+      } else if (isExam) {
+        await prisma.exam.delete({ where: { id: row.id } });
       } else {
         await prisma.activity.delete({ where: { id: row.id } });
       }
@@ -397,7 +464,7 @@ function buildAssessmentRouter(kind: AssessmentKind) {
       const row = await loadOr404(req.params.id);
       const course = await loadCourseOr404(row.courseId);
       const where = (
-        isQuiz ? { quizId: row.id } : { activityId: row.id }
+        isQuiz ? { quizId: row.id } : isExam ? { examId: row.id } : { activityId: row.id }
       ) as Record<string, string>;
       if (auth.role === 'faculty' || auth.role === 'admin') {
         assertCourseOwner(course, auth);
@@ -440,7 +507,7 @@ function buildAssessmentRouter(kind: AssessmentKind) {
       });
       const content = stringifyJsonField(answers);
       // Quiz-taking state lives in Submission rows under the synthetic
-      // asg-quiz-<id> / asg-activity-<id> convention (SpeedGrader compat).
+      // asg-quiz-<id> / asg-activity-<id> / asg-exam-<id> convention (SpeedGrader compat).
       // Essay answers are stored as-is; grading happens via the Task 4
       // submissions grade endpoint.
       const submission = existing
@@ -450,14 +517,14 @@ function buildAssessmentRouter(kind: AssessmentKind) {
               content,
               status: 'submitted',
               submittedAt: new Date(),
-              ...(isQuiz ? { quizId: row.id } : { activityId: row.id }),
+              ...(isQuiz ? { quizId: row.id } : isExam ? { examId: row.id } : { activityId: row.id }),
             },
           })
         : await prisma.submission.create({
             data: {
               id: newId('sub'),
               assignmentId,
-              ...(isQuiz ? { quizId: row.id } : { activityId: row.id }),
+              ...(isQuiz ? { quizId: row.id } : isExam ? { examId: row.id } : { activityId: row.id }),
               courseId: course.id,
               studentId: auth.sub,
               studentName: me?.name ?? '',

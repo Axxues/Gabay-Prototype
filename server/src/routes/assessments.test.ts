@@ -8,6 +8,7 @@ vi.mock('../db.js', () => ({
     enrollmentRequest: { findFirst: vi.fn() },
     quiz: { findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
     activity: { findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
+    exam: { findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
     quizQuestion: { create: vi.fn() },
     submission: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
     notification: { create: vi.fn(), findMany: vi.fn(), deleteMany: vi.fn() },
@@ -24,7 +25,7 @@ process.env.JWT_SECRET ??= 'test-secret';
 import { prisma } from '../db.js';
 import jwt from 'jsonwebtoken';
 import express from 'express';
-import { quizzesRouter, activitiesRouter } from './assessments.js';
+import { quizzesRouter, activitiesRouter, examsRouter } from './assessments.js';
 import { errorMiddleware } from '../utils/errors.js';
 
 function app() {
@@ -32,6 +33,7 @@ function app() {
   a.use(express.json());
   a.use('/api/quizzes', quizzesRouter);
   a.use('/api/activities', activitiesRouter);
+  a.use('/api/exams', examsRouter);
   a.use(errorMiddleware);
   return a;
 }
@@ -153,5 +155,133 @@ describe('assessments router', () => {
         data: expect.objectContaining({ type: 'assignment_submitted', recipientId: 'u-fac' }),
       })
     );
+  });
+
+  it('POST /api/exams creates a midterm exam with 2 questions and returns { exam }', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-fac',
+      role: 'faculty',
+    });
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(course);
+    (prisma.exam.create as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'ex1',
+      courseId: 'c1',
+      title: 'Midterm Exam',
+      term: 'midterm',
+    });
+    (prisma.quizQuestion.create as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        id: 'qq1',
+        examId: 'ex1',
+        text: 'Q1?',
+        type: 'multiple_choice',
+        options: JSON.stringify(['A', 'B']),
+        correctAnswer: 'A',
+        points: 5,
+      })
+      .mockResolvedValueOnce({
+        id: 'qq2',
+        examId: 'ex1',
+        text: 'Q2?',
+        type: 'multiple_choice',
+        options: JSON.stringify(['C', 'D']),
+        correctAnswer: 'C',
+        points: 5,
+      });
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .post('/api/exams')
+      .set('Authorization', 'Bearer x')
+      .send({
+        courseId: 'c1',
+        title: 'Midterm Exam',
+        instructions: 'Answer all.',
+        term: 'midterm',
+        questions: [
+          { text: 'Q1?', options: ['A', 'B'], correctAnswer: 'A' },
+          { text: 'Q2?', options: ['C', 'D'], correctAnswer: 'C' },
+        ],
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.exam).toMatchObject({ term: 'midterm' });
+    expect(prisma.exam.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ term: 'midterm', courseId: 'c1' }),
+      })
+    );
+    expect(prisma.quizQuestion.create).toHaveBeenCalledTimes(2);
+    expect(prisma.quizQuestion.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ examId: 'ex1' }) })
+    );
+  });
+
+  it('POST /api/exams/:id/submit upserts one submission row with the asg-exam-<id> convention', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-stu',
+      role: 'student',
+    });
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(course);
+    (prisma.enrollmentRequest.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: 'approved',
+    });
+    (prisma.exam.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'ex1',
+      courseId: 'c1',
+      title: 'Midterm Exam',
+      questions: [],
+    });
+    (prisma.submission.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    (prisma.submission.create as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'sub1',
+      assignmentId: 'asg-exam-ex1',
+      status: 'submitted',
+      rubricScores: '{}',
+    });
+    (prisma.notification.create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'n1' });
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .post('/api/exams/ex1/submit')
+      .set('Authorization', 'Bearer x')
+      .send({ answers: { qq1: 'A' } });
+
+    expect(res.status).toBe(201);
+    expect(res.body.submission.assignmentId).toMatch(/^asg-exam-/);
+    expect(prisma.submission.create).toHaveBeenCalledTimes(1);
+    expect(prisma.submission.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          assignmentId: 'asg-exam-ex1',
+          examId: 'ex1',
+          studentId: 'u-stu',
+          status: 'submitted',
+        }),
+      })
+    );
+  });
+
+  it('POST /api/exams with a bad term returns 400', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-fac',
+      role: 'faculty',
+    });
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(course);
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .post('/api/exams')
+      .set('Authorization', 'Bearer x')
+      .send({
+        courseId: 'c1',
+        title: 'Bad Exam',
+        instructions: 'Answer all.',
+        term: 'prelim',
+        questions: [],
+      });
+
+    expect(res.status).toBe(400);
+    expect(prisma.exam.create).not.toHaveBeenCalled();
   });
 });
