@@ -240,6 +240,18 @@ export interface Activity {
   published: boolean;
 }
 
+export interface Exam {
+  id: string;
+  courseId: string;
+  title: string;
+  instructions: string;
+  timeLimitMinutes: number;
+  published: boolean;
+  dueDate?: string;
+  questions: QuizQuestion[];
+  term: 'midterm' | 'final';
+}
+
 export interface CalendarEvent {
   id: string;
   title: string;
@@ -452,7 +464,7 @@ export interface CourseStudentGrade {
   updatedAt?: string;
 }
 
-export interface SPRSourceLink { kind: 'assignment' | 'activity' | 'quiz'; sourceId: string }
+export interface SPRSourceLink { kind: 'assignment' | 'activity' | 'quiz' | 'exam'; sourceId: string }
 export interface SPRColumn { id: string; title: string; perfectScore: number; linkedSource?: SPRSourceLink }
 export interface SPRConfig { courseId: string; midtermColumns: SPRColumn[]; finalColumns: SPRColumn[]; mtExamPerfect: number; ftExamPerfect: number }
 export type SPRCellMap = Record<string, Record<string, number | null>>;
@@ -466,6 +478,7 @@ export interface LMSDatabase {
   submissions: Submission[];
   quizzes: Quiz[];
   activities?: Activity[];
+  exams?: Exam[];
   calendarEvents: CalendarEvent[];
   advisingSlots: AdvisingSlot[];
   messages: Message[];

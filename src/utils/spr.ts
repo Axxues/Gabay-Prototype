@@ -2,6 +2,7 @@
 import type {
   Activity,
   Assignment,
+  Exam,
   Quiz,
   SPRColumn,
   SPRWeights,
@@ -56,6 +57,20 @@ function quizPointsPossible(quiz: Quiz): number {
   return quiz.questions.reduce((sum, q) => sum + (q.points ?? 0), 0);
 }
 
+export function buildAutoColumns(courseId: string, db: { activities?: Activity[]; quizzes: Quiz[] }): SPRColumn[] {
+  const cols: SPRColumn[] = [];
+  for (const a of db.activities ?? []) {
+    if (a.courseId !== courseId || !a.published) continue;
+    cols.push({ id: `auto-activity-${a.id}`, title: a.title, perfectScore: Math.max(1, a.pointsPossible || 0), linkedSource: { kind: 'activity', sourceId: a.id } });
+  }
+  for (const q of db.quizzes ?? []) {
+    if (q.courseId !== courseId || !q.published) continue;
+    const pts = q.questions.reduce((s, qq) => s + (qq.points ?? 0), 0);
+    cols.push({ id: `auto-quiz-${q.id}`, title: q.title, perfectScore: Math.max(1, pts), linkedSource: { kind: 'quiz', sourceId: q.id } });
+  }
+  return cols;
+}
+
 export function autoScoreFraction(args: {
   column: SPRColumn;
   studentId: string;
@@ -63,8 +78,9 @@ export function autoScoreFraction(args: {
   assignments: Assignment[];
   activities: Activity[];
   quizzes: Quiz[];
+  exams?: Exam[];
 }): number | null {
-  const { column, studentId, submissions, assignments, activities, quizzes } = args;
+  const { column, studentId, submissions, assignments, activities, quizzes, exams } = args;
   const link = column.linkedSource;
   if (!link) return null;
 
@@ -82,12 +98,21 @@ export function autoScoreFraction(args: {
     if (typeof source.pointsPossible !== 'number' || source.pointsPossible <= 0) return null;
     assignmentKey = `asg-activity-${link.sourceId}`;
     divisor = 100;
-  } else {
+  } else if (link.kind === 'quiz') {
     const source = quizzes.find((q) => q.id === link.sourceId);
     if (!source) return null;
     if (quizPointsPossible(source) <= 0) return null;
     assignmentKey = `asg-quiz-${link.sourceId}`;
     divisor = 100;
+  } else if (link.kind === 'exam') {
+    const source = (exams ?? []).find((e) => e.id === link.sourceId);
+    if (!source) return null;
+    const pts = source.questions.reduce((s, qq) => s + (qq.points ?? 0), 0);
+    if (pts <= 0) return null;
+    assignmentKey = `asg-exam-${link.sourceId}`;
+    divisor = pts;
+  } else {
+    return null;
   }
 
   const candidates = submissions.filter(
@@ -109,4 +134,15 @@ export function autoScoreFraction(args: {
   const grade = candidates[0].grade as number;
   const fraction = grade / divisor;
   return Math.min(Math.max(fraction, 0), 1);
+}
+
+export function resolveExamScore(courseId: string, term: 'midterm' | 'final', studentId: string, db: { exams?: Exam[]; submissions: Submission[] }): { score: number | null; perfect: number } {
+  const exam = (db.exams ?? []).find(e => e.courseId === courseId && e.published && e.term === term);
+  if (!exam) return { score: null, perfect: 100 };
+  const pts = exam.questions.reduce((s, q) => s + (q.points ?? 0), 0);
+  const perfect = Math.max(1, pts);
+  const cands = db.submissions.filter(s => s.studentId === studentId && s.assignmentId === `asg-exam-${exam.id}` && s.status === 'graded' && typeof s.grade === 'number');
+  if (!cands.length) return { score: null, perfect };
+  cands.sort((a, b) => String(b.gradedAt ?? b.submittedAt ?? '') > String(a.gradedAt ?? a.submittedAt ?? '') ? 1 : -1);
+  return { score: Math.min(Math.max(cands[0].grade as number, 0), 100), perfect };
 }

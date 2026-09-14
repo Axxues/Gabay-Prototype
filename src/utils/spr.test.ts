@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   autoScoreFraction,
+  buildAutoColumns,
   classStandingPercent,
   finalPercent,
   resolveSPRWeights,
@@ -11,6 +12,7 @@ import {
 import type {
   Activity,
   Assignment,
+  Exam,
   Quiz,
   SPRColumn,
   Submission,
@@ -234,5 +236,18 @@ describe('autoScoreFraction', () => {
     const colA = col({ kind: 'assignment', sourceId: 'a1' });
     expect(autoScoreFraction({ column: colA, studentId: 's1', submissions: over, assignments, activities: [], quizzes: [] })).toBe(1);
     expect(autoScoreFraction({ column: colA, studentId: 's1', submissions: under, assignments, activities: [], quizzes: [] })).toBe(0);
+  });
+
+  it('builds auto columns from published activities+quizzes only, excluding assignments', () => {
+    const cols = buildAutoColumns('c1', {
+      activities: [{ id: 'a1', courseId: 'c1', title: 'Act', published: true, pointsPossible: 20 } as Activity],
+      quizzes: [{ id: 'q1', courseId: 'c1', title: 'Q', published: true, questions: [{ points: 10 }] } as unknown as Quiz, { id: 'q2', courseId: 'c1', title: 'Draft', published: false, questions: [] } as unknown as Quiz],
+    });
+    expect(cols.map(c => c.linkedSource?.sourceId).sort()).toEqual(['a1', 'q1']);
+  });
+  it('scores exam submissions as percent fraction', () => {
+    const exams = [{ id: 'e1', courseId: 'c1', title: 'MT', published: true, term: 'midterm', questions: [{ points: 60 }] } as unknown as Exam];
+    const subs = [makeSubmission({ assignmentId: 'asg-exam-e1', studentId: 's1', grade: 45 })];
+    expect(autoScoreFraction({ column: col({ kind: 'exam', sourceId: 'e1' }), studentId: 's1', submissions: subs, assignments: [], activities: [], quizzes: [], exams })).toBeCloseTo(0.75, 5);
   });
 });
