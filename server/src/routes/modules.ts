@@ -416,9 +416,20 @@ modulesRouter.post(
     const mod = await loadModuleOr404(req.params.moduleId);
     const course = await loadCourseOr404(mod.courseId);
     await assertCourseAccess(course, auth);
-    const { content } = (req.body ?? {}) as { content?: unknown };
+    const { content, parentId } = (req.body ?? {}) as { content?: unknown; parentId?: unknown };
     if (typeof content !== 'string' || !content.trim()) {
       throw new ApiError(400, 'bad_request', 'Field content is required.');
+    }
+    let resolvedParentId: string | null = null;
+    if (parentId !== undefined && parentId !== null) {
+      if (typeof parentId !== 'string' || !parentId.trim()) {
+        throw new ApiError(400, 'bad_request', 'Field parentId must be a string.');
+      }
+      const parent = await prisma.moduleComment.findUnique({ where: { id: parentId } });
+      if (!parent || parent.moduleId !== mod.id) {
+        throw new ApiError(400, 'bad_request', 'Parent comment not found in this module.');
+      }
+      resolvedParentId = parent.id;
     }
     const prior = await prisma.moduleComment.findMany({
       where: { moduleId: mod.id },
@@ -430,6 +441,7 @@ modulesRouter.post(
       data: {
         id: newId('mc'),
         moduleId: mod.id,
+        parentId: resolvedParentId,
         authorId: auth.sub,
         authorName: me?.name ?? '',
         authorAvatar: me?.avatar ?? '',
@@ -437,10 +449,46 @@ modulesRouter.post(
         content: content.trim(),
       },
     });
-    if (recipientId) {
+    const recipients = new Set<string>();
+    if (resolvedParentId) {
+      const byId = new Map(prior.map((c) => [c.id, c]));
+      let parent = byId.get(resolvedParentId);
+      if (!parent) {
+        const row = await prisma.moduleComment.findUnique({ where: { id: resolvedParentId } });
+        if (row) {
+          byId.set(row.id, row);
+          parent = row;
+        }
+      }
+      if (parent) {
+        if (parent.authorId && parent.authorId !== auth.sub) recipients.add(parent.authorId);
+        let root = parent;
+        const seen = new Set<string>([parent.id]);
+        let guard = 0;
+        while (root.parentId && guard < 25) {
+          guard += 1;
+          let next = byId.get(root.parentId);
+          if (!next) {
+            const row = await prisma.moduleComment.findUnique({ where: { id: root.parentId } });
+            if (!row || row.moduleId !== mod.id) break;
+            byId.set(row.id, row);
+            next = row;
+          }
+          if (seen.has(next.id)) break;
+          seen.add(next.id);
+          root = next;
+        }
+        if (root.id !== parent.id && root.authorId && root.authorId !== auth.sub) {
+          recipients.add(root.authorId);
+        }
+      }
+    } else if (recipientId) {
+      recipients.add(recipientId);
+    }
+    for (const recipient of recipients) {
       await createNotification({
         type: 'module_comment_reply',
-        recipientId,
+        recipientId: recipient,
         actorId: auth.sub,
         actorName: me?.name ?? '',
         actorAvatar: me?.avatar ?? '',

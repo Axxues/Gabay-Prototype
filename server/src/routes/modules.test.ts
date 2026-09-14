@@ -313,4 +313,84 @@ describe('modules router', () => {
     expect(res.status).toBe(400);
     expect(prisma.moduleItem.update).not.toHaveBeenCalled();
   });
+
+  it('stores parentId and notifies parent + root authors', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-caller',
+      role: 'student',
+    });
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(course);
+    (prisma.enrollmentRequest.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: 'approved',
+    });
+    (prisma.module.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(mod);
+    (prisma.moduleComment.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 'c-top', moduleId: 'm1', authorId: 'u-a' },
+      { id: 'c-mid', moduleId: 'm1', parentId: 'c-top', authorId: 'u-b' },
+    ]);
+    (prisma.moduleComment.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'c-mid',
+      moduleId: 'm1',
+      parentId: 'c-top',
+      authorId: 'u-b',
+    });
+    (prisma.moduleComment.create as ReturnType<typeof vi.fn>).mockImplementation(
+      async (args: { data: Record<string, unknown> }) => ({
+        id: 'c-new',
+        moduleId: 'm1',
+        authorId: 'u-caller',
+        content: 'second layer',
+        parentId: args.data.parentId ?? null,
+      })
+    );
+    (prisma.notification.create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'n1' });
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .post('/api/modules/m1/comments')
+      .set('Authorization', 'Bearer x')
+      .send({ content: 'second layer', parentId: 'c-mid' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.comment.parentId).toBe('c-mid');
+    expect(prisma.moduleComment.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ parentId: 'c-mid' }),
+      })
+    );
+    expect(prisma.notification.create).toHaveBeenCalledTimes(2);
+    const recipients = (prisma.notification.create as ReturnType<typeof vi.fn>).mock.calls.map(
+      (call) => (call[0] as { data: { recipientId: string } }).data.recipientId
+    );
+    expect(recipients).toContain('u-b');
+    expect(recipients).toContain('u-a');
+  });
+
+  it('rejects parentId from another module', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-caller',
+      role: 'student',
+    });
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(course);
+    (prisma.enrollmentRequest.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: 'approved',
+    });
+    (prisma.module.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(mod);
+    (prisma.moduleComment.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (prisma.moduleComment.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'other-module-comment',
+      moduleId: 'm-other',
+      authorId: 'u-x',
+    });
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .post('/api/modules/m1/comments')
+      .set('Authorization', 'Bearer x')
+      .send({ content: 'bad', parentId: 'other-module-comment' });
+
+    expect(res.status).toBe(400);
+    expect(prisma.moduleComment.create).not.toHaveBeenCalled();
+    expect(prisma.notification.create).not.toHaveBeenCalled();
+  });
 });
