@@ -453,12 +453,15 @@ export async function scanSyllabusDocument(
   }
 
   // Check if grading percentage mentioned
-  let termFormula = baseData.gradingSystem.termFormula;
-  let finalFormula = baseData.gradingSystem.finalFormula;
-  if (lowerText.includes('60%') && lowerText.includes('40%')) {
-    termFormula = 'Midterm Grade / Final Term Grade = 60% Class Standing + 40% ME / FE';
-    finalFormula = 'Final Grade = 40% Midterm Grade + 60% Final Term Grade';
-  }
+  const extractFormula = (text: string, keys: string[]): string | null => {
+    const matches = [...text.matchAll(/[^.\n]{0,120}\d+(?:\.\d+)?\s*%[^.\n]{0,120}/gi)].map(m => m[0].trim());
+    const hit = matches.find(s => { const l = s.toLowerCase(); return keys.every(k => l.includes(k)); });
+    return hit ?? null;
+  };
+  const scannedTerm = extractFormula(rawText, ['class standing']);
+  const scannedFinal = extractFormula(rawText, ['midterm', 'final']);
+  let termFormula = scannedTerm ?? baseData.gradingSystem.termFormula;
+  let finalFormula = scannedFinal ?? baseData.gradingSystem.finalFormula;
 
   const updatedSyllabus: OfficialSyllabusData = {
     ...baseData,

@@ -2,6 +2,7 @@ import React, { useState, useMemo, useRef } from 'react';
 import { useLMS } from '../context/LMSContext';
 import { createDefaultSyllabusForCourse, type OfficialSyllabusData, type FacultySchedule } from '../data/syllabusData';
 import { scanSyllabusDocument, formatBytes, type ScanResult } from '../utils/syllabusParser';
+import { resolveSPRWeights } from '../utils/spr';
 import { PageHeader } from '../components/common/PageHeader';
 import { DialogFrame } from '../components/common/DialogFrame';
 import { ModalPortal } from '../components/common/ModalPortal';
@@ -53,6 +54,8 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
   const facultyUsers = useMemo(() => {
     return db.users.filter(u => u.role === 'faculty' || u.role === 'admin');
   }, [db.users]);
+
+  const gradingWeights = useMemo(() => resolveSPRWeights(data?.gradingSystem ?? null), [data]);
 
   // Check if current user is the faculty member that created/instructs this course
   const isFacultyCreator = activeRole === 'faculty' && (
@@ -1339,7 +1342,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                 <span className="text-[10px] font-sans font-bold uppercase tracking-wider text-primary bg-primary/10 px-2 py-0.5 rounded-md">
                   Evaluation Scheme
                 </span>
-                <span className="text-[10px] text-muted-foreground font-sans">60% Class Standing / 40% Exam</span>
+                <span className={gradingWeights.parseError ? "text-[10px] font-sans bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20 px-2 py-0.5 rounded-md" : "text-[10px] text-muted-foreground font-sans"}>{gradingWeights.parseError ? 'Grading formula needs attention' : gradingWeights.formulaLabel}</span>
               </div>
               <h3 className="text-sm sm:text-base font-bold text-foreground truncate mt-0.5">
                 Course Requirements & Official Grading Formula
@@ -1413,10 +1416,10 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                       Term Grade (Midterm & Final Term)
                     </span>
                     <div className="font-sans font-bold text-sm text-foreground">
-                      60% Class Standing + 40% ME / FE
+                      {data.gradingSystem.termFormula}
                     </div>
                     <span className="text-[10px] text-muted-foreground block">
-                      Class Standing: Quizzes, assignments, laboratory activities & projects.
+                      Class Standing: {data.gradingSystem.classStandingComponents.join(', ')}
                     </span>
                   </div>
 
@@ -1425,7 +1428,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                       Semestral Final Grade
                     </span>
                     <div className="font-sans font-bold text-sm text-foreground">
-                      40% Midterm Grade + 60% Final Term Grade
+                      {data.gradingSystem.finalFormula}
                     </div>
                     <span className="text-[10px] text-muted-foreground block">
                       Minimum passing mark: {data.gradingSystem.passingGrade}
