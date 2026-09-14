@@ -23,6 +23,7 @@ import {
   Check
 } from 'lucide-react';
 import { ModalPortal } from '../components/common/ModalPortal';
+import { groupRepliesByRoot } from '../utils/threadReplies';
 import { PageHeader } from '../components/common/PageHeader';
 import { EmptyState } from '../components/common/EmptyState';
 import { AddModuleItemPage } from './AddModuleItemPage';
@@ -69,6 +70,10 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
 
   // Module Comments Input State per module
   const [commentInputs, setCommentInputs] = useState<Record<string, string>>({});
+
+  // Second-layer reply composer state per module (reply target id + draft text)
+  const [replyToIds, setReplyToIds] = useState<Record<string, string | null>>({});
+  const [replyTexts, setReplyTexts] = useState<Record<string, string>>({});
 
   // Module Comment Editing State (Author only)
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
@@ -656,7 +661,7 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                             </div>
                           ) : (
                             <div className="space-y-2.5 max-h-[300px] overflow-y-auto custom-scrollbar pr-1">
-                              {[...mod.comments]
+                              {[...(mod.comments || []).filter(cc => !cc.parentId)]
                                 .sort((a, b) => {
                                   const timeA = new Date(a.createdAt).getTime() || 0;
                                   const timeB = new Date(b.createdAt).getTime() || 0;
@@ -669,6 +674,13 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                                   const isEdited = Boolean(c.isEdited);
                                   const isLiked = (c.likedBy || []).includes(activeUser.id);
                                   const isEditing = editingCommentId === c.id;
+                                  const childThreads = groupRepliesByRoot((mod.comments || []).filter(cc => cc.parentId)).get(c.id) || [];
+                                  const moduleReplyToId = replyToIds[mod.id] ?? null;
+                                  const moduleReplyText = replyTexts[mod.id] ?? '';
+                                  const replyTarget = moduleReplyToId
+                                    ? (mod.comments || []).find(p => p.id === moduleReplyToId)
+                                    : undefined;
+                                  const showComposerHere = Boolean(moduleReplyToId) && (moduleReplyToId === c.id || childThreads.some(ch => ch.id === moduleReplyToId));
 
                                   return (
                                     <div
@@ -821,7 +833,7 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                                         </p>
                                       )}
 
-                                      {/* Like button only for active, non-deleted comments */}
+                                      {/* Like + Reply buttons only for active, non-deleted comments */}
                                       {!isDeleted && !isEditing && (
                                         <div className="flex items-center space-x-3 pl-8 pt-0.5">
                                           <button
@@ -837,7 +849,223 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                                             <Heart className={`w-3.5 h-3.5 ${isLiked ? 'fill-current' : ''}`} />
                                             <span>{(c.likes || 0) > 0 ? c.likes : 'Like'}</span>
                                           </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setReplyToIds(prev => ({ ...prev, [mod.id]: c.id }));
+                                              setReplyTexts(prev => ({ ...prev, [mod.id]: '' }));
+                                            }}
+                                            className="text-[11px] font-bold font-sans text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                                          >
+                                            Reply
+                                          </button>
                                         </div>
+                                      )}
+
+                                      {/* Second-layer thread: flattened children indented under the root */}
+                                      {childThreads.map(child => {
+                                        const directParent = (mod.comments || []).find(p => p.id === child.parentId);
+                                        const showMention = directParent && directParent.id !== c.id;
+                                        const childIsAuthor = child.authorId === activeUser.id;
+                                        const childIsDeleted = Boolean(child.isDeleted);
+                                        const childIsEdited = Boolean(child.isEdited);
+                                        const childIsLiked = (child.likedBy || []).includes(activeUser.id);
+                                        const childIsEditing = editingCommentId === child.id;
+                                        return (
+                                          <div key={child.id} className="ml-8 border-l border-border pl-3 space-y-1">
+                                            <div className="flex items-center justify-between">
+                                              <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                                                {child.authorAvatar ? (
+                                                  <img
+                                                    src={child.authorAvatar}
+                                                    alt={child.authorName}
+                                                    className="w-5 h-5 rounded-full object-cover border border-border shrink-0"
+                                                  />
+                                                ) : (
+                                                  <div className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0 font-sans">
+                                                    {child.authorName.charAt(0)}
+                                                  </div>
+                                                )}
+                                                <span className="text-xs font-bold text-foreground font-sans">
+                                                  {child.authorName}
+                                                </span>
+                                                <span className="text-[11px] text-muted-foreground font-sans">
+                                                  · {child.createdAt.includes('T') ? new Date(child.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : child.createdAt}
+                                                </span>
+                                                {childIsEdited && !childIsDeleted && (
+                                                  <span
+                                                    className="px-2 py-0.5 text-[11px] font-sans font-medium bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 rounded-full"
+                                                    title={child.editedAt ? `Edited on ${child.editedAt}` : 'Edited'}
+                                                  >
+                                                    Edited
+                                                  </span>
+                                                )}
+                                                {childIsDeleted && (
+                                                  <span
+                                                    className="px-2 py-0.5 text-[11px] font-sans font-semibold bg-muted text-muted-foreground border border-border rounded-full"
+                                                    title={child.deletedAt ? `Deleted on ${child.deletedAt}` : 'Deleted'}
+                                                  >
+                                                    Deleted
+                                                  </span>
+                                                )}
+                                              </div>
+                                              {childIsAuthor && !childIsDeleted && !childIsEditing && (
+                                                <div className="flex items-center space-x-1">
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                      setEditingCommentId(child.id);
+                                                      setEditingContent(child.content);
+                                                    }}
+                                                    className="text-muted-foreground hover:text-primary p-1 rounded-lg hover:bg-muted transition-colors cursor-pointer"
+                                                    title="Edit your reply"
+                                                  >
+                                                    <Pencil className="w-3.5 h-3.5" />
+                                                  </button>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                      showAlert({
+                                                        title: 'Delete Reply',
+                                                        message: 'Are you sure you want to delete this reply? It will be permanently deleted.',
+                                                        type: 'confirm',
+                                                        confirmText: 'Delete',
+                                                        cancelText: 'Cancel',
+                                                        onConfirm: () => {
+                                                          void deleteModuleComment(mod.id, child.id).catch(() => {});
+                                                        }
+                                                      });
+                                                    }}
+                                                    className="text-muted-foreground hover:text-destructive p-1 rounded-lg hover:bg-muted transition-colors cursor-pointer"
+                                                    title="Delete your reply"
+                                                  >
+                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                  </button>
+                                                </div>
+                                              )}
+                                            </div>
+                                            {childIsDeleted ? (
+                                              <p className="text-xs text-muted-foreground font-sans italic leading-relaxed">
+                                                [This reply was deleted by the author]
+                                              </p>
+                                            ) : childIsEditing ? (
+                                              <div className="pt-1 pb-1.5 pr-1 space-y-2">
+                                                <textarea
+                                                  value={editingContent}
+                                                  onChange={e => setEditingContent(e.target.value)}
+                                                  className="w-full p-2.5 bg-background border border-primary/40 rounded-xl text-xs text-foreground font-sans focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all resize-none shadow-inner-soft"
+                                                  rows={2}
+                                                />
+                                                <div className="flex items-center space-x-2">
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                      if (editingContent.trim()) {
+                                                        void editModuleComment(mod.id, child.id, editingContent)
+                                                          .then(() => setEditingCommentId(null))
+                                                          .catch(() => {});
+                                                      }
+                                                    }}
+                                                    disabled={!editingContent.trim()}
+                                                    className="px-3 py-1 bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold font-sans rounded-lg transition-all shadow-subtle flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
+                                                  >
+                                                    <Check className="w-3.5 h-3.5" />
+                                                    <span>Save</span>
+                                                  </button>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => setEditingCommentId(null)}
+                                                    className="px-3 py-1 text-muted-foreground hover:bg-muted text-xs font-bold font-sans rounded-lg transition-colors cursor-pointer"
+                                                  >
+                                                    Cancel
+                                                  </button>
+                                                </div>
+                                              </div>
+                                            ) : (
+                                              <p className="text-xs text-foreground font-sans leading-relaxed">
+                                                {showMention && <span className="font-bold text-primary">@{directParent.authorName} </span>}
+                                                {child.content}
+                                              </p>
+                                            )}
+                                            {!childIsDeleted && !childIsEditing && (
+                                              <div className="flex items-center space-x-3 pt-0.5">
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    void toggleLikeModuleComment(mod.id, child.id).catch(() => {});
+                                                  }}
+                                                  className={`flex items-center space-x-1 text-[11px] font-bold font-sans transition-colors cursor-pointer ${childIsLiked
+                                                    ? 'text-rose-600 dark:text-rose-400'
+                                                    : 'text-muted-foreground hover:text-foreground'
+                                                    }`}
+                                                >
+                                                  <Heart className={`w-3.5 h-3.5 ${childIsLiked ? 'fill-current' : ''}`} />
+                                                  <span>{(child.likes || 0) > 0 ? child.likes : 'Like'}</span>
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    setReplyToIds(prev => ({ ...prev, [mod.id]: child.id }));
+                                                    setReplyTexts(prev => ({ ...prev, [mod.id]: '' }));
+                                                  }}
+                                                  className="text-[11px] font-bold font-sans text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                                                >
+                                                  Reply
+                                                </button>
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+
+                                      {/* Inline second-layer composer for this thread */}
+                                      {showComposerHere && moduleReplyToId && (
+                                        <form
+                                          onSubmit={e => {
+                                            e.preventDefault();
+                                            const text = moduleReplyText.trim();
+                                            if (!text || !moduleReplyToId) return;
+                                            void addModuleComment(mod.id, text, moduleReplyToId)
+                                              .then(() => {
+                                                setReplyToIds(prev => ({ ...prev, [mod.id]: null }));
+                                                setReplyTexts(prev => ({ ...prev, [mod.id]: '' }));
+                                              })
+                                              .catch(() => {});
+                                          }}
+                                          className="ml-8 border-l border-border pl-3 pt-1 space-y-2"
+                                        >
+                                          <p className="text-[11px] font-sans text-muted-foreground">
+                                            Reply to <span className="font-bold text-primary">@{replyTarget?.authorName ?? 'comment'}</span>
+                                          </p>
+                                          <div className="flex items-center space-x-2">
+                                            <input
+                                              type="text"
+                                              value={moduleReplyText}
+                                              onChange={e =>
+                                                setReplyTexts(prev => ({ ...prev, [mod.id]: e.target.value }))
+                                              }
+                                              placeholder="Write a reply..."
+                                              className="flex-1 px-3 py-2 text-xs bg-background border border-border hover:border-primary/40 focus:border-primary rounded-xl text-foreground placeholder:text-muted-foreground font-sans focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all shadow-subtle"
+                                            />
+                                            <button
+                                              type="submit"
+                                              disabled={!moduleReplyText.trim()}
+                                              className="px-3 py-2 bg-primary hover:bg-primary/90 disabled:opacity-40 text-primary-foreground text-xs font-bold font-sans rounded-xl transition-all shadow-subtle cursor-pointer disabled:cursor-not-allowed shrink-0"
+                                            >
+                                              Reply
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setReplyToIds(prev => ({ ...prev, [mod.id]: null }));
+                                                setReplyTexts(prev => ({ ...prev, [mod.id]: '' }));
+                                              }}
+                                              className="px-3 py-2 text-muted-foreground hover:bg-muted text-xs font-bold font-sans rounded-xl transition-colors cursor-pointer shrink-0"
+                                            >
+                                              Cancel
+                                            </button>
+                                          </div>
+                                        </form>
                                       )}
                                     </div>
                                   );
