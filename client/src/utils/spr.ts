@@ -9,6 +9,7 @@ import type {
   Submission,
 } from '../types/lms';
 import type { TermId } from './gradingTerms';
+import { normalizeTermId } from './gradingTerms';
 
 export function round2(n: number): number {
   return Math.round(n * 100) / 100;
@@ -141,8 +142,12 @@ export function autoScoreFraction(args: {
   return Math.min(Math.max(fraction, 0), 1);
 }
 
-export function resolveExamScore(courseId: string, term: 'midterm' | 'final', studentId: string, db: { exams?: Exam[]; submissions: Submission[] }): { score: number | null; perfect: number } {
-  const exam = (db.exams ?? []).find(e => e.courseId === courseId && e.published && e.term === term);
+export function resolveExamScore(courseId: string, term: 'midterm' | 'final' | TermId, studentId: string, db: { exams?: Exam[]; submissions: Submission[] }): { score: number | null; perfect: number } {
+  // Task 7: accept TermId. Stored rows read legacy 'final' as 'finals'
+  // (normalizeExam on load), so compare normalized on both sides; a legacy
+  // 'final' lookup still matches either stored shape.
+  const want = normalizeTermId(term);
+  const exam = (db.exams ?? []).find(e => e.courseId === courseId && e.published && normalizeTermId(e.term) === want);
   if (!exam) return { score: null, perfect: 100 };
   const pts = exam.questions.reduce((s, q) => s + (q.points ?? 0), 0);
   const perfect = Math.max(1, pts);
@@ -213,4 +218,48 @@ export function finalPercentTerms(
     acc += (g * weight) / 100;
   }
   return round2(acc);
+}
+
+function isClassicTermPair(terms: TermId[]): boolean {
+  return terms.length === 2 && terms.includes('midterm') && terms.includes('finals');
+}
+
+export interface TermBucketing {
+  columnsByTerm: Record<TermId, SPRColumn[]>;
+  legacyUnmappedCount: number;
+}
+
+// Task 7: bucket auto columns by source-item term for N-term gradebooks.
+// The classic ['midterm','finals'] pair is the 2-term projection of the map:
+// both period blocks share the full column set, so classic courses compute
+// byte-identically to the pre-change pipeline. Otherwise items route by
+// their stored quiz/activity term; assignments carry no grading term and
+// legacy/unmapped tags fall back to midterm (counted for the one-time UI flag).
+export function bucketColumnsByTerm(
+  allCols: SPRColumn[],
+  db: { activities?: Activity[]; quizzes?: Quiz[] },
+  terms: TermId[],
+): TermBucketing {
+  if (isClassicTermPair(terms)) {
+    return { columnsByTerm: { prelim: [], midterm: allCols, finals: allCols }, legacyUnmappedCount: 0 };
+  }
+  const columnsByTerm: Record<TermId, SPRColumn[]> = { prelim: [], midterm: [], finals: [] };
+  let legacyUnmappedCount = 0;
+  const fallback: TermId = terms.includes('midterm') ? 'midterm' : (terms[0] ?? 'midterm');
+  for (const col of allCols) {
+    const link = col.linkedSource;
+    let routed: TermId | null = null;
+    if (link?.kind === 'activity') {
+      routed = normalizeTermId((db.activities ?? []).find(a => a.id === link.sourceId)?.term);
+    } else if (link?.kind === 'quiz') {
+      routed = normalizeTermId((db.quizzes ?? []).find(q => q.id === link.sourceId)?.term);
+    }
+    if (routed !== null && terms.includes(routed)) {
+      columnsByTerm[routed].push(col);
+    } else {
+      legacyUnmappedCount += 1;
+      columnsByTerm[fallback].push(col);
+    }
+  }
+  return { columnsByTerm, legacyUnmappedCount };
 }

@@ -10,15 +10,27 @@ import {
   autoScoreFraction,
   classStandingPercent,
   termGrade,
-  finalPercent,
+  extractTermWeights,
+  finalPercentTerms,
+  bucketColumnsByTerm,
+  round2,
 } from '../../utils/spr';
+import type { TermId } from '../../utils/gradingTerms';
+import { TERM_LABELS } from '../common/TermSelect';
 
 interface StudentGradebookProps {
   courseId: string;
 }
 
+// Per-term breakdown descriptions (classic Midterm/Final wording preserved).
+const TERM_DESC: Record<TermId, string> = {
+  prelim: 'Prelim quizzes and activities class standing (no exam)',
+  midterm: 'Quizzes, assignments, laboratory activities and midterm exam',
+  finals: 'Quizzes, projects, final practical outputs and final examination',
+};
+
 export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) => {
-  const { db, activeUser, markTabVisited } = useLMS();
+  const { db, activeUser, markTabVisited, effectiveTermsForCourse } = useLMS();
 
   React.useEffect(() => {
     markTabVisited('grades', courseId);
@@ -26,72 +38,86 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
 
   const course = db.courses.find(c => c.id === courseId);
 
-  // Auto grade computation for the viewing student (same calc as faculty Task 4 row)
+  // Auto grade computation for the viewing student (same calc as faculty rows),
+  // one block per effective term (Task 7). Guarded like Task 6 consumers so
+  // mocked contexts without the provider fn still render the classic pair.
+  const terms = useMemo((): TermId[] => (
+    typeof effectiveTermsForCourse === 'function'
+      ? effectiveTermsForCourse(courseId)
+      : ['midterm', 'finals']
+  ), [courseId, course, effectiveTermsForCourse]);
   const weights = useMemo(() => resolveSPRWeights(course?.syllabus?.gradingSystem ?? null), [course]);
+  const termWeightsResult = useMemo(
+    () => extractTermWeights(course?.syllabus?.gradingSystem ?? null, terms),
+    [course, terms]
+  );
+  const termWeights = termWeightsResult.weights;
+  const weightsDefaulted = termWeightsResult.defaulted;
   const autoCols = useMemo(
     () => buildAutoColumns(courseId, { activities: db.activities, quizzes: db.quizzes }),
     [courseId, db.activities, db.quizzes]
   );
-  const auto = useMemo(() => {
-    const scores = autoCols.map(col => {
-      const f = autoScoreFraction({ column: col, studentId: activeUser.id, submissions: db.submissions, assignments: db.assignments, activities: db.activities ?? [], quizzes: db.quizzes });
-      return f === null ? null : f * col.perfectScore;
-    });
-    const perfects = autoCols.map(c => c.perfectScore);
-    const cs = classStandingPercent(scores, perfects);
-    const mtExam = resolveExamScore(courseId, 'midterm', activeUser.id, { exams: db.exams, submissions: db.submissions });
-    const ftExam = resolveExamScore(courseId, 'final', activeUser.id, { exams: db.exams, submissions: db.submissions });
-    const mt = termGrade(cs, mtExam.score, mtExam.perfect, weights);
-    const ft = termGrade(cs, ftExam.score, ftExam.perfect, weights);
-    return { mt, ft, final: finalPercent(mt, ft, weights) };
-  }, [autoCols, weights, courseId, activeUser.id, db.submissions, db.assignments, db.activities, db.quizzes, db.exams]);
+  const { columnsByTerm, legacyUnmappedCount } = useMemo(
+    () => bucketColumnsByTerm(autoCols, { activities: db.activities, quizzes: db.quizzes }, terms),
+    [autoCols, db.activities, db.quizzes, terms]
+  );
+  const termOfficial = useMemo(() => {
+    const out = {} as Record<TermId, number | null>;
+    for (const term of terms) {
+      const cols = columnsByTerm[term] ?? [];
+      const scores = cols.map(col => {
+        const f = autoScoreFraction({ column: col, studentId: activeUser.id, submissions: db.submissions, assignments: db.assignments, activities: db.activities ?? [], quizzes: db.quizzes });
+        return f === null ? null : f * col.perfectScore;
+      });
+      const cs = classStandingPercent(scores, cols.map(c => c.perfectScore));
+      if (term === 'prelim') {
+        // Prelim is class-standing-only: no exam component.
+        out[term] = cols.length === 0 ? null : round2(cs);
+      } else {
+        const exam = resolveExamScore(courseId, term, activeUser.id, { exams: db.exams, submissions: db.submissions });
+        out[term] = termGrade(cs, exam.score, exam.perfect, weights);
+      }
+    }
+    return out;
+  }, [terms, columnsByTerm, courseId, activeUser.id, db.submissions, db.assignments, db.activities, db.quizzes, db.exams, weights]);
 
   const hasParseError = weights.parseError === true;
 
   // Parse failure → official "—", never silent fallback
-  const officialMidterm = hasParseError ? null : auto.mt;
-  const officialFinal = hasParseError ? null : auto.ft;
+  const officialFor = (term: TermId): number | null =>
+    hasParseError ? null : (termOfficial[term] ?? null);
 
-  // What-If Simulation State (defaults from auto values)
-  const [simulatedMidterm, setSimulatedMidterm] = useState<number>(() => auto.mt ?? 85);
-  const [simulatedFinal, setSimulatedFinal] = useState<number>(() => auto.ft ?? 85);
+  // What-If Simulation State (defaults track official values until touched)
+  const [simulated, setSimulated] = useState<Partial<Record<TermId, number>>>({});
   const [isWhatIfActive, setIsWhatIfActive] = useState(false);
 
-  const handleMidtermWhatIfChange = (val: number) => {
-    const clamped = Math.max(0, Math.min(100, val));
-    setSimulatedMidterm(clamped);
-    setIsWhatIfActive(true);
-  };
+  const simOf = (term: TermId): number => simulated[term] ?? termOfficial[term] ?? 85;
 
-  const handleFinalWhatIfChange = (val: number) => {
+  const handleSimChange = (term: TermId, val: number) => {
     const clamped = Math.max(0, Math.min(100, val));
-    setSimulatedFinal(clamped);
+    setSimulated(prev => ({ ...prev, [term]: clamped }));
     setIsWhatIfActive(true);
   };
 
   const handleResetWhatIf = () => {
-    setSimulatedMidterm(auto.mt ?? 85);
-    setSimulatedFinal(auto.ft ?? 85);
+    setSimulated({});
     setIsWhatIfActive(false);
   };
 
-  // Official calculations
-  const hasOfficialMidterm = officialMidterm !== null && officialMidterm !== undefined;
-  const hasOfficialFinal = officialFinal !== null && officialFinal !== undefined;
-
-  let officialTotalPercentage: number | null = null;
-  if (hasParseError) {
-    officialTotalPercentage = null;
-  } else {
-    officialTotalPercentage = auto.final;
-  }
+  // Official calculations (2-term path equals the pre-change finalPercent of
+  // the same term grades with { midterm: 40, finals: 60 }, round2).
+  const officialTotalPercentage: number | null = useMemo(() => {
+    if (hasParseError) return null;
+    const full = { prelim: null, midterm: null, finals: null } as Record<TermId, number | null>;
+    for (const t of terms) full[t] = termOfficial[t] ?? null;
+    return finalPercentTerms(full, termWeights);
+  }, [hasParseError, terms, termOfficial, termWeights]);
   const officialTransmuted = getTransmutedGrade(officialTotalPercentage);
 
-  const mtW = weights.mtWeight / 100;
-  const ftW = weights.ftWeight / 100;
+  const termWeightOf = (term: TermId): number => (termWeights[term] ?? 0) / 100;
 
   // Simulated calculations (Formula: parsed weights from syllabus)
-  const simulatedTotalPercentage = Math.round((simulatedMidterm * mtW) + (simulatedFinal * ftW));
+  const simulatedTotalPercentage = Math.round(terms.reduce((s, t) => s + simOf(t) * termWeightOf(t), 0));
   const simulatedTransmuted = getTransmutedGrade(simulatedTotalPercentage);
 
   // No syllabus → gated empty state (same student copy as CoursesPage gate)
@@ -123,20 +149,34 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
   return (
     <div className="space-y-6 max-w-5xl animate-fade-in font-sans">
       {/* Header Banner */}
-      <PageHeader
-        title="Academic Performance & Grade Calculator"
-        description={`${course?.code}: ${course?.title} • Grading Policy: ${weights.mtWeight}% Midterm + ${weights.ftWeight}% Final`}
-        actions={
-          <>
-            <span className="px-3 py-1 rounded-xl bg-primary/10 text-primary border border-primary/20 font-bold">
-              Midterm ({weights.mtWeight}%)
-            </span>
-            <span className="px-3 py-1 rounded-xl bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 font-bold">
-              Final ({weights.ftWeight}%)
-            </span>
-          </>
-        }
-      />
+        <PageHeader
+          title="Academic Performance & Grade Calculator"
+          description={`${course?.code}: ${course?.title} • Grading Policy: ${terms.map(t => `${termWeights[t] ?? 0}% ${TERM_LABELS[t]}`).join(' + ')}`}
+          actions={
+            <>
+              {terms.map(t => (
+                <span key={t} className={`px-3 py-1 rounded-xl border font-bold ${t === 'prelim' ? 'bg-sky-500/10 text-sky-700 dark:text-sky-400 border-sky-500/20' : t === 'midterm' ? 'bg-primary/10 text-primary border-primary/20' : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20'}`}>
+                  {TERM_LABELS[t]} ({termWeights[t] ?? 0}%)
+                </span>
+              ))}
+            </>
+          }
+        />
+
+      {weightsDefaulted || legacyUnmappedCount > 0 ? (
+        <div className="flex flex-col gap-1 text-[12px]">
+          {weightsDefaulted ? (
+            <div data-testid="grades-weights-defaulted" className="text-muted-foreground">
+              Weights defaulted — equal split (the syllabus formula did not parse into term weights).
+            </div>
+          ) : null}
+          {legacyUnmappedCount > 0 ? (
+            <div data-testid="grades-legacy-flag" className="text-muted-foreground">
+              {legacyUnmappedCount} item{legacyUnmappedCount === 1 ? '' : 's'} without a term counted under Midterm.
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       {hasParseError ? (
         <div data-testid="grades-formula-error" className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-8 text-center shadow-subtle">
@@ -152,30 +192,51 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
       {/* Grade Summary Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         {/* Official Grade Card */}
-        <div className="p-5 bg-card border border-border rounded-2xl shadow-subtle space-y-2">
-          <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-            Official Course Grade
+        <div className="p-5 bg-card border border-border rounded-2xl space-y-2">
+          <div className="text-[11.5px] font-semibold text-muted-foreground">
+            Official course grade
           </div>
           <div className="flex items-baseline space-x-2">
-            <div className="text-3xl font-black text-foreground">
+            <div className="text-3xl font-extrabold tracking-tight tabular-nums text-foreground">
               {officialTotalPercentage !== null ? `${officialTotalPercentage}%` : '—'}
             </div>
             {officialTotalPercentage !== null && (
-              <span className={`text-xs font-bold px-2 py-0.5 rounded-md border ${officialTransmuted.color}`}>
+              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${officialTransmuted.color}`}>
                 {officialTransmuted.grade} ({officialTransmuted.remark})
               </span>
             )}
           </div>
-          <div className="text-[11px] text-muted-foreground pt-1 border-t border-border/60">
-            {hasOfficialMidterm && hasOfficialFinal ? (
-              <span>
-                Midterm: <strong className="text-foreground">{officialMidterm}%</strong> ({(officialMidterm * mtW).toFixed(1)}%) &bull; Final: <strong className="text-foreground">{officialFinal}%</strong> ({(officialFinal * ftW).toFixed(1)}%)
-              </span>
-            ) : hasOfficialMidterm ? (
-              <span>Midterm posted ({officialMidterm}%). Final evaluation in progress.</span>
-            ) : (
-              <span>Scores are pending instructor grading submission.</span>
-            )}
+          <div className="text-[12px] text-muted-foreground pt-1 border-t border-border/60">
+            {(() => {
+              const posted = terms
+                .map(t => ({ t, g: officialFor(t) }))
+                .filter((x): x is { t: TermId; g: number } => x.g !== null);
+              if (posted.length === terms.length && terms.length > 0) {
+                return (
+                  <span>
+                    {posted.map((p, i) => (
+                      <React.Fragment key={p.t}>
+                        {i > 0 ? ' · ' : null}
+                        {TERM_LABELS[p.t]}: <strong className="text-foreground">{p.g}%</strong> ({(p.g * termWeightOf(p.t)).toFixed(1)}%)
+                      </React.Fragment>
+                    ))}
+                  </span>
+                );
+              }
+              if (posted.length === 1) {
+                const missing = terms.filter(t => officialFor(t) === null);
+                return (
+                  <span>{TERM_LABELS[posted[0].t]} posted ({posted[0].g}%). {missing.map(t => TERM_LABELS[t]).join(' · ')} evaluation in progress.</span>
+                );
+              }
+              if (posted.length > 1) {
+                const missing = terms.filter(t => officialFor(t) === null);
+                return (
+                  <span>{posted.map(p => `${TERM_LABELS[p.t]} (${p.g}%)`).join(' · ')} posted. {missing.map(t => TERM_LABELS[t]).join(' · ')} evaluation in progress.</span>
+                );
+              }
+              return <span>Scores are pending instructor grading submission.</span>;
+            })()}
           </div>
         </div>
 
@@ -183,33 +244,33 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
         <div
           className={`p-5 rounded-2xl border transition-all space-y-2 ${
             isWhatIfActive
-              ? 'bg-amber-500/10 border-amber-500/30 shadow-lifted ring-1 ring-amber-500/20'
-              : 'bg-card border-border shadow-subtle'
+              ? 'bg-amber-500/10 border-amber-500/20'
+              : 'bg-card border-border'
           }`}
         >
-          <div className="flex justify-between items-center text-xs uppercase tracking-wider text-amber-700 dark:text-amber-400">
-            <span className="font-bold flex items-center space-x-1.5">
+          <div className="flex justify-between items-center text-[11.5px] text-muted-foreground">
+            <span className="font-semibold flex items-center space-x-1.5">
               <Sliders className="w-3.5 h-3.5" />
-              <span>"What-If" Simulated Grade</span>
+              <span>What-if simulated grade</span>
             </span>
             {isWhatIfActive && (
-              <span className="text-[9px] px-2 py-0.5 bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded-md font-bold border border-amber-500/30">
-                ACTIVE
+              <span className="text-[11px] px-2 py-0.5 bg-amber-500/10 text-amber-700 dark:text-amber-400 rounded-full font-medium border border-amber-500/20">
+                Active
               </span>
             )}
           </div>
 
           <div className="flex items-baseline space-x-2">
-            <div className="text-3xl font-black text-amber-600 dark:text-amber-400">
+            <div className="text-3xl font-extrabold tracking-tight tabular-nums text-foreground">
               {simulatedTotalPercentage}%
             </div>
-            <span className={`text-xs font-bold px-2 py-0.5 rounded-md border ${simulatedTransmuted.color}`}>
+            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${simulatedTransmuted.color}`}>
               {simulatedTransmuted.grade} ({simulatedTransmuted.remark})
             </span>
           </div>
 
-          <div className="text-[11px] text-muted-foreground pt-1 border-t border-border/60">
-            Formula: ({simulatedMidterm} &times; {weights.mtWeight}%) + ({simulatedFinal} &times; {weights.ftWeight}%) = <strong className="text-foreground">{simulatedTotalPercentage}%</strong>
+          <div className="text-[12px] text-muted-foreground pt-1 border-t border-border/60">
+            Formula: ({terms.map(t => `${simOf(t)} × ${termWeights[t] ?? 0}%`).join(') + (')}) = <strong className="text-foreground">{simulatedTotalPercentage}%</strong>
           </div>
         </div>
 
@@ -237,142 +298,97 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
       </div>
 
       {/* Midterm & Final Breakdown & Simulator Table */}
-      <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-subtle">
-        <div className="p-4 bg-muted/40 border-b border-border flex justify-between items-center text-xs">
-          <span className="font-bold text-foreground uppercase tracking-wider">
-            Period Assessment Breakdown & Simulator
+      <div className="bg-card border border-border rounded-2xl overflow-hidden">
+        <div className="px-4 py-3 bg-muted/40 border-b border-border flex justify-between items-center">
+          <span className="text-[11.5px] font-semibold text-muted-foreground">
+            Period assessment breakdown and simulator
           </span>
-          <span className="text-muted-foreground font-semibold">
-            {course?.code} Gradebook
+          <span className="text-[12px] text-muted-foreground tabular-nums">
+            {course?.code} gradebook
           </span>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
-              <tr className="border-b border-border bg-muted/30 text-muted-foreground font-sans">
-                <th className="p-3.5">Grading Period</th>
-                <th className="p-3.5 text-center">Weight</th>
-                <th className="p-3.5 text-center">Official Score</th>
-                <th className="p-3.5 text-center min-w-[240px]">"What-If" Score Simulator</th>
-                <th className="p-3.5 text-center">Simulated Contribution</th>
+              <tr className="border-b border-border bg-muted/40 text-[11.5px] font-semibold text-muted-foreground font-sans">
+                <th className="px-4 py-3">Grading period</th>
+                <th className="px-4 py-3 text-center">Weight</th>
+                <th className="px-4 py-3 text-center">Official score</th>
+                <th className="px-4 py-3 text-center min-w-[240px]">What-if score simulator</th>
+                <th className="px-4 py-3 text-center">Simulated contribution</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {/* Row 1: Midterm Period */}
-              <tr className="hover:bg-muted/30 transition-colors">
-                <td className="p-3.5 font-bold text-foreground">
-                  <div className="flex items-center space-x-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-primary" />
-                    <span>Midterm Period Grade</span>
-                  </div>
-                  <div className="text-[10px] text-muted-foreground font-normal ml-4.5">
-                    Quizzes, assignments, laboratory activities & midterm exam
-                  </div>
-                </td>
-                <td className="p-3.5 text-center">
-                  <span className="px-2.5 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20 font-bold">
-                    {weights.mtWeight}%
-                  </span>
-                </td>
-                <td className="p-3.5 text-center font-extrabold text-sm">
-                  {officialMidterm !== null ? (
-                    <span className="text-emerald-600 dark:text-emerald-400">
-                      {officialMidterm}%
-                    </span>
-                  ) : (
-                    <span className="text-muted-foreground font-normal">Pending</span>
-                  )}
-                </td>
-                <td className="p-3.5 text-center">
-                  <div className="flex items-center justify-center space-x-3">
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      value={simulatedMidterm}
-                      onChange={e => handleMidtermWhatIfChange(Number(e.target.value))}
-                      className="w-32 accent-primary cursor-pointer"
-                    />
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={simulatedMidterm}
-                      onChange={e => handleMidtermWhatIfChange(Number(e.target.value))}
-                      className="w-14 p-1.5 bg-background border border-border rounded-lg text-center text-xs font-bold text-amber-600 dark:text-amber-400 shadow-soft"
-                    />
-                    <span className="text-muted-foreground text-[10px]">%</span>
-                  </div>
-                </td>
-                <td className="p-3.5 text-center font-bold text-primary text-xs">
-                  {(simulatedMidterm * mtW).toFixed(1)}% / {weights.mtWeight}%
-                </td>
-              </tr>
-
-              {/* Row 2: Final Period */}
-              <tr className="hover:bg-muted/30 transition-colors">
-                <td className="p-3.5 font-bold text-foreground">
-                  <div className="flex items-center space-x-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                    <span>Final Period Grade</span>
-                  </div>
-                  <div className="text-[10px] text-muted-foreground font-normal ml-4.5">
-                    Quizzes, projects, final practical outputs & final examination
-                  </div>
-                </td>
-                <td className="p-3.5 text-center">
-                  <span className="px-2.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 font-bold">
-                    {weights.ftWeight}%
-                  </span>
-                </td>
-                <td className="p-3.5 text-center font-extrabold text-sm">
-                  {officialFinal !== null ? (
-                    <span className="text-emerald-600 dark:text-emerald-400">
-                      {officialFinal}%
-                    </span>
-                  ) : (
-                    <span className="text-muted-foreground font-normal">Pending</span>
-                  )}
-                </td>
-                <td className="p-3.5 text-center">
-                  <div className="flex items-center justify-center space-x-3">
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      value={simulatedFinal}
-                      onChange={e => handleFinalWhatIfChange(Number(e.target.value))}
-                      className="w-32 accent-emerald-600 cursor-pointer"
-                    />
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={simulatedFinal}
-                      onChange={e => handleFinalWhatIfChange(Number(e.target.value))}
-                      className="w-14 p-1.5 bg-background border border-border rounded-lg text-center text-xs font-bold text-amber-600 dark:text-amber-400 shadow-soft"
-                    />
-                    <span className="text-muted-foreground text-[10px]">%</span>
-                  </div>
-                </td>
-                <td className="p-3.5 text-center font-bold text-emerald-600 dark:text-emerald-400 text-xs">
-                  {(simulatedFinal * ftW).toFixed(1)}% / {weights.ftWeight}%
-                </td>
-              </tr>
+              {terms.map(term => {
+                const w = termWeights[term] ?? 0;
+                const official = officialFor(term);
+                const sim = simOf(term);
+                return (
+                  <tr key={term} className="hover:bg-muted/40 transition-colors">
+                    <td className="px-4 py-3 font-semibold text-[14px] tracking-tight text-foreground">
+                      <div className="flex items-center space-x-2">
+                        <span className={`w-2.5 h-2.5 rounded-full ${term === 'prelim' ? 'bg-sky-500' : term === 'midterm' ? 'bg-primary' : 'bg-emerald-500'}`} />
+                        <span>{TERM_LABELS[term]} Period Grade</span>
+                      </div>
+                      <div className="text-[11px] text-muted-foreground font-normal">
+                        {TERM_DESC[term]}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className="px-2.5 py-0.5 rounded-full bg-muted text-muted-foreground border border-border font-semibold tabular-nums">
+                        {w}%
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center font-semibold text-sm">
+                      {official !== null ? (
+                        <span className="text-emerald-600 dark:text-emerald-400">
+                          {official}%
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground font-normal">Pending</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <div className="flex items-center justify-center space-x-3">
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          value={sim}
+                          onChange={e => handleSimChange(term, Number(e.target.value))}
+                          className="w-32 accent-primary cursor-pointer"
+                        />
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={sim}
+                          onChange={e => handleSimChange(term, Number(e.target.value))}
+                          className="w-14 p-1.5 bg-background border border-border rounded-lg text-center text-xs font-semibold tabular-nums text-foreground"
+                        />
+                        <span className="text-muted-foreground text-[11px]">%</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-center font-semibold text-muted-foreground text-[12px] tabular-nums">
+                      {(sim * (w / 100)).toFixed(1)}% / {w}%
+                    </td>
+                  </tr>
+                );
+              })}
 
               {/* Summary Row */}
-              <tr className="bg-muted/40 font-bold text-foreground">
-                <td className="p-3.5">
-                  <div className="font-extrabold text-sm">Calculated Final Course Rating</div>
-                  <div className="text-[10px] text-muted-foreground font-normal">
-                    Formula: (Midterm &times; {weights.mtWeight}%) + (Final &times; {weights.ftWeight}%)
+              <tr className="bg-muted/40 font-semibold text-foreground">
+                <td className="px-4 py-3">
+                  <div className="font-semibold text-[14px] tracking-tight">Calculated final course rating</div>
+                  <div className="text-[11px] text-muted-foreground font-normal">
+                    Formula: ({terms.map(t => `${TERM_LABELS[t]} × ${termWeights[t] ?? 0}%`).join(') + (')})
                   </div>
                 </td>
-                <td className="p-3.5 text-center font-black">
+                <td className="px-4 py-3 text-center font-semibold tabular-nums">
                   100%
                 </td>
-                <td className="p-3.5 text-center font-black text-sm">
+                <td className="px-4 py-3 text-center font-semibold text-sm">
                   {officialTotalPercentage !== null ? (
                     <span className={officialTotalPercentage >= 75 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>
                       {officialTotalPercentage}%

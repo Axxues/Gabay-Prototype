@@ -10,15 +10,20 @@ import {
 } from 'lucide-react';
 import {
   autoScoreFraction,
+  bucketColumnsByTerm,
   buildAutoColumns,
   classStandingPercent,
-  finalPercent,
+  extractTermWeights,
+  finalPercentTerms,
   resolveExamScore,
   resolveSPRWeights,
   round2,
   termGrade,
 } from '../../utils/spr';
 import type { SPRColumn } from '../../types/lms';
+import type { TermId } from '../../utils/gradingTerms';
+import { normalizeTermId } from '../../utils/gradingTerms';
+import { TERM_LABELS } from '../common/TermSelect';
 import { exportSPRToExcel } from '../../utils/sprExport';
 
 interface FacultyGradebookProps {
@@ -45,8 +50,12 @@ export const getTransmutedGrade = (
   return { grade: '5.00', remark: 'Failed', color: 'text-rose-700 dark:text-rose-400 bg-rose-500/10 border-rose-500/20' };
 };
 
+// Short period labels for the dense grade-table headers (classic Midterm/Final
+// blocks keep their pre-change "MT"/"FT" wording).
+const TERM_SHORT: Record<TermId, string> = { prelim: 'Prelim', midterm: 'MT', finals: 'FT' };
+
 export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, onGoToSyllabus }) => {
-  const { db, showAlert } = useLMS();
+  const { db, showAlert, effectiveTermsForCourse } = useLMS();
 
   const course = db.courses.find(c => c.id === courseId);
   const approvedIds = new Set(
@@ -68,23 +77,50 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
       s.email.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  // Syllabus-driven grading terms (Task 7): one period block per effective term.
+  // Guarded like Task 6 consumers so mocked contexts without the provider fn
+  // still render the classic pair.
+  const terms = useMemo((): TermId[] => (
+    typeof effectiveTermsForCourse === 'function'
+      ? effectiveTermsForCourse(courseId)
+      : ['midterm', 'finals']
+  ), [courseId, course, effectiveTermsForCourse]);
+
   const weights = useMemo(
     () => resolveSPRWeights(course?.syllabus?.gradingSystem ?? null),
     [course]
   );
   const hasParseError = weights.parseError === true;
 
+  // Final weights per term parsed from the syllabus formula text (Task 2).
+  // For the classic pair this yields { midterm: 40, finals: 60 } (parsed or
+  // defaulted), so finalPercentTerms below equals the pre-change finalPercent.
+  const termWeightsResult = useMemo(
+    () => extractTermWeights(course?.syllabus?.gradingSystem ?? null, terms),
+    [course, terms]
+  );
+  const termWeights = termWeightsResult.weights;
+  const weightsDefaulted = termWeightsResult.defaulted;
+
   const autoCols = useMemo(
     () => buildAutoColumns(courseId, { activities: db.activities, quizzes: db.quizzes }),
     [courseId, db.activities, db.quizzes]
   );
-  const examPerfect = useMemo(() => {
-    const findPerfect = (term: 'midterm' | 'final'): number => {
-      const e = (db.exams ?? []).find(x => x.courseId === courseId && x.published && x.term === term);
+  // Bucket auto columns by source-item term; the classic 2-term pair shares
+  // the full set in both blocks (byte-identical math). Legacy items without
+  // a term count toward midterm (flagged once in the UI below).
+  const { columnsByTerm, legacyUnmappedCount } = useMemo(
+    () => bucketColumnsByTerm(autoCols, { activities: db.activities, quizzes: db.quizzes }, terms),
+    [autoCols, db.activities, db.quizzes, terms]
+  );
+  const examPerfectByTerm = useMemo((): Record<TermId, number> => {
+    const findPerfect = (term: TermId): number => {
+      const want = normalizeTermId(term);
+      const e = (db.exams ?? []).find(x => x.courseId === courseId && x.published && normalizeTermId(x.term) === want);
       const pts = (e?.questions ?? []).reduce((s, q) => s + (q.points ?? 0), 0);
       return Math.max(1, pts);
     };
-    return { mt: findPerfect('midterm'), ft: findPerfect('final') };
+    return { prelim: 1, midterm: findPerfect('midterm'), finals: findPerfect('finals') };
   }, [courseId, db.exams]);
 
   const getSourceTitle = (column: SPRColumn): string | null => {
@@ -105,45 +141,48 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
     sourceTitle: string | null;
   }
 
+  interface SPRTermResult {
+    cells: SPRRowCell[];
+    exam: number | null;
+    grade: number | null;
+  }
+
   interface SPRRow {
     studentId: string;
-    mtCells: SPRRowCell[];
-    mtExam: number | null;
-    mtGrade: number | null;
-    ftCells: SPRRowCell[];
-    ftExam: number | null;
-    ftGrade: number | null;
+    terms: Record<TermId, SPRTermResult>;
     final: number | null;
   }
 
   const sprRows: SPRRow[] = useMemo(() => {
     return filteredStudents.map(student => {
-      const mtCells: SPRRowCell[] = autoCols.map(col => {
-        const fraction = autoScoreFraction({ column: col, studentId: student.id, submissions: db.submissions, assignments: db.assignments, activities: db.activities ?? [], quizzes: db.quizzes });
-        const sourceTitle = getSourceTitle(col);
-        if (fraction === null) return { score: null, isManual: false, sourceTitle };
-        return { score: fraction * col.perfectScore, isManual: false, sourceTitle };
-      });
-      const mtScores = mtCells.map(c => c.score);
-      const mtPerfects = autoCols.map(c => c.perfectScore);
-      const mtExam = resolveExamScore(courseId, 'midterm', student.id, { exams: db.exams, submissions: db.submissions }).score;
-      const mtCS = classStandingPercent(mtScores, mtPerfects);
-      const mtGrade = termGrade(mtCS, mtExam, examPerfect.mt, weights);
-      const ftCells: SPRRowCell[] = autoCols.map(col => {
-        const fraction = autoScoreFraction({ column: col, studentId: student.id, submissions: db.submissions, assignments: db.assignments, activities: db.activities ?? [], quizzes: db.quizzes });
-        const sourceTitle = getSourceTitle(col);
-        if (fraction === null) return { score: null, isManual: false, sourceTitle };
-        return { score: fraction * col.perfectScore, isManual: false, sourceTitle };
-      });
-      const ftScores = ftCells.map(c => c.score);
-      const ftPerfects = autoCols.map(c => c.perfectScore);
-      const ftExam = resolveExamScore(courseId, 'final', student.id, { exams: db.exams, submissions: db.submissions }).score;
-      const ftCS = classStandingPercent(ftScores, ftPerfects);
-      const ftGrade = termGrade(ftCS, ftExam, examPerfect.ft, weights);
-      const final = finalPercent(mtGrade, ftGrade, weights);
-      return { studentId: student.id, mtCells, mtExam, mtGrade, ftCells, ftExam, ftGrade, final };
+      const perTerm = {} as Record<TermId, SPRTermResult>;
+      for (const term of terms) {
+        const cols = columnsByTerm[term] ?? [];
+        const cells: SPRRowCell[] = cols.map(col => {
+          const fraction = autoScoreFraction({ column: col, studentId: student.id, submissions: db.submissions, assignments: db.assignments, activities: db.activities ?? [], quizzes: db.quizzes });
+          const sourceTitle = getSourceTitle(col);
+          if (fraction === null) return { score: null, isManual: false, sourceTitle };
+          return { score: fraction * col.perfectScore, isManual: false, sourceTitle };
+        });
+        const scores = cells.map(c => c.score);
+        const perfects = cols.map(c => c.perfectScore);
+        const cs = classStandingPercent(scores, perfects);
+        if (term === 'prelim') {
+          // Prelim is class-standing-only: no exam component.
+          perTerm[term] = { cells, exam: null, grade: cols.length === 0 ? null : round2(cs) };
+        } else {
+          const exam = resolveExamScore(courseId, term, student.id, { exams: db.exams, submissions: db.submissions });
+          perTerm[term] = { cells, exam: exam.score, grade: termGrade(cs, exam.score, exam.perfect, weights) };
+        }
+      }
+      const termGrades = {} as Record<TermId, number | null>;
+      for (const term of terms) termGrades[term] = perTerm[term].grade;
+      // 2-term path equals existing finalPercent(mt, ft, w): same weighted
+      // sum of the same term grades with { midterm: 40, finals: 60 }, round2.
+      const final = finalPercentTerms(termGrades, termWeights);
+      return { studentId: student.id, terms: perTerm, final };
     });
-  }, [filteredStudents, autoCols, db.exams, db.submissions, db.assignments, db.activities, db.quizzes, weights, courseId, examPerfect]);
+  }, [filteredStudents, columnsByTerm, db.exams, db.submissions, db.assignments, db.activities, db.quizzes, weights, termWeights, courseId, terms]);
 
   const sprRowById = useMemo(() => {
     const map = new Map<string, SPRRow>();
@@ -153,7 +192,7 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
 
   const handleExportExcel = () => {
     if (!course || hasParseError) return;
-    const autoConfig = { courseId, midtermColumns: autoCols, finalColumns: autoCols, mtExamPerfect: examPerfect.mt, ftExamPerfect: examPerfect.ft };
+    const autoConfig = { courseId, midtermColumns: columnsByTerm.midterm, finalColumns: columnsByTerm.finals, mtExamPerfect: examPerfectByTerm.midterm, ftExamPerfect: examPerfectByTerm.finals };
     exportSPRToExcel({
       course,
       roster: students,
@@ -161,13 +200,15 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
       resolveStudent: (studentId: string) => {
         const row = sprRowById.get(studentId);
         const finalValue = row?.final ?? null;
+        const mt = row?.terms.midterm;
+        const ft = row?.terms.finals;
         return {
-          mtCells: row?.mtCells.map(c => c.score) ?? autoCols.map(() => null),
-          mtExam: row?.mtExam ?? null,
-          ftCells: row?.ftCells.map(c => c.score) ?? autoCols.map(() => null),
-          ftExam: row?.ftExam ?? null,
-          mtGrade: row?.mtGrade ?? null,
-          ftGrade: row?.ftGrade ?? null,
+          mtCells: mt?.cells.map(c => c.score) ?? columnsByTerm.midterm.map(() => null),
+          mtExam: mt?.exam ?? null,
+          ftCells: ft?.cells.map(c => c.score) ?? columnsByTerm.finals.map(() => null),
+          ftExam: ft?.exam ?? null,
+          mtGrade: mt?.grade ?? null,
+          ftGrade: ft?.grade ?? null,
           finalPercent: finalValue,
           numerical: finalValue === null ? '' : getTransmutedGrade(finalValue).grade,
         };
@@ -181,7 +222,9 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
     });
   };
 
-  const totalColumns = 1 + autoCols.length + 1 + 1 + autoCols.length + 1 + 1 + 1 + 1;
+  // One (columns + exam + grade) group per term, plus roster + final + numerical.
+  // Prelim blocks carry no exam column (class-standing-only term).
+  const totalColumns = 1 + terms.reduce((n, t) => n + (columnsByTerm[t]?.length ?? 0) + (t === 'prelim' ? 1 : 2), 0) + 2;
 
   const exportTitle = students.length === 0
     ? 'No students enrolled to export.'
@@ -251,20 +294,35 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
           />
         </div>
 
-        <div className="flex items-center space-x-3 text-[11px] text-muted-foreground">
-          <span className="flex items-center space-x-1">
-            <span className="w-2 h-2 rounded-full bg-primary" />
-            <span>Midterm: <strong className="text-foreground">{weights.mtWeight}%</strong></span>
-          </span>
-          <span>&bull;</span>
-          <span className="flex items-center space-x-1">
-            <span className="w-2 h-2 rounded-full bg-emerald-500" />
-            <span>Final: <strong className="text-foreground">{weights.ftWeight}%</strong></span>
-          </span>
-          <span>&bull;</span>
+        <div className="flex items-center space-x-3 text-[12px] text-muted-foreground">
+          {terms.map((t, i) => (
+            <React.Fragment key={t}>
+              {i > 0 ? <span>·</span> : null}
+              <span className="flex items-center space-x-1">
+                <span className={`w-2 h-2 rounded-full ${t === 'prelim' ? 'bg-sky-500' : t === 'midterm' ? 'bg-primary' : 'bg-emerald-500'}`} />
+                <span>{TERM_LABELS[t]}: <strong className="text-foreground">{termWeights[t]}%</strong></span>
+              </span>
+            </React.Fragment>
+          ))}
+          <span>·</span>
           <span>Passing: <strong className="text-emerald-600 dark:text-emerald-400">75% (3.00)</strong></span>
         </div>
       </div>
+
+      {weightsDefaulted || legacyUnmappedCount > 0 ? (
+        <div className="flex flex-col gap-1 text-[12px]">
+          {weightsDefaulted ? (
+            <div data-testid="grades-weights-defaulted" className="text-muted-foreground">
+              Weights defaulted — equal split (the syllabus formula did not parse into term weights).
+            </div>
+          ) : null}
+          {legacyUnmappedCount > 0 ? (
+            <div data-testid="grades-legacy-flag" className="text-muted-foreground">
+              {legacyUnmappedCount} item{legacyUnmappedCount === 1 ? '' : 's'} without a term counted under Midterm.
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       {hasParseError ? (
         <div data-testid="grades-formula-error" className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-8 text-center shadow-subtle">
@@ -294,59 +352,46 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
           </div>
         </div>
       ) : (
-        <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-subtle">
+        <div className="bg-card border border-border rounded-2xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="border-b border-border bg-muted/40 text-muted-foreground">
-                  <th className="p-3.5 border-r border-border min-w-[220px] sticky left-0 bg-muted/40 z-10">
-                    Student Roster Name & ID
+                <tr className="border-b border-border bg-muted/40 text-[11.5px] font-semibold text-muted-foreground">
+                  <th className="px-4 py-3 border-r border-border min-w-[220px] sticky left-0 bg-muted/40 z-10">
+                    Student roster name and ID
                   </th>
-                  {autoCols.map(col => (
-                    <th key={col.id} className="p-3 border-r border-border text-center min-w-[110px]">
-                      <div className="font-bold text-foreground truncate max-w-[140px] mx-auto" title={col.title}>
-                        {col.title}
-                      </div>
-                      <div className="text-[10px] text-muted-foreground font-normal mt-0.5">
-                        / {col.perfectScore}
-                      </div>
-                    </th>
+                  {terms.map(term => (
+                    <React.Fragment key={term}>
+                      {(columnsByTerm[term] ?? []).map(col => (
+                        <th key={`${term}-${col.id}`} className="px-4 py-3 border-r border-border text-center min-w-[110px]">
+                          <div className="font-semibold text-muted-foreground truncate max-w-[140px] mx-auto" title={col.title}>
+                            {col.title}
+                          </div>
+                          <div className="text-[11px] text-muted-foreground font-normal mt-0.5 tabular-nums">
+                            / {col.perfectScore}
+                          </div>
+                        </th>
+                      ))}
+                      {term === 'prelim' ? null : (
+                        <th className="px-4 py-3 border-r border-border text-center min-w-[110px]">
+                          <div className="font-semibold text-muted-foreground">{TERM_SHORT[term]} exam</div>
+                          <div className="text-[11px] text-muted-foreground font-normal mt-0.5 tabular-nums">
+                            / {examPerfectByTerm[term]}
+                          </div>
+                        </th>
+                      )}
+                      <th className="px-4 py-3 border-r border-border text-center min-w-[100px] font-semibold text-muted-foreground">
+                        {TERM_SHORT[term]} grade
+                      </th>
+                    </React.Fragment>
                   ))}
-                  <th className="p-3 border-r border-border text-center min-w-[110px]">
-                    <div className="font-bold text-foreground">MT Exam</div>
-                    <div className="text-[10px] text-muted-foreground font-normal mt-0.5">
-                      / {examPerfect.mt}
-                    </div>
-                  </th>
-                  <th className="p-3 border-r border-border text-center min-w-[100px] font-bold text-primary">
-                    MT Grade
-                  </th>
-                  {autoCols.map(col => (
-                    <th key={col.id} className="p-3 border-r border-border text-center min-w-[110px]">
-                      <div className="font-bold text-foreground truncate max-w-[140px] mx-auto" title={col.title}>
-                        {col.title}
-                      </div>
-                      <div className="text-[10px] text-muted-foreground font-normal mt-0.5">
-                        / {col.perfectScore}
-                      </div>
-                    </th>
-                  ))}
-                  <th className="p-3 border-r border-border text-center min-w-[110px]">
-                    <div className="font-bold text-foreground">FT Exam</div>
-                    <div className="text-[10px] text-muted-foreground font-normal mt-0.5">
-                      / {examPerfect.ft}
-                    </div>
-                  </th>
-                  <th className="p-3 border-r border-border text-center min-w-[100px] font-bold text-emerald-700 dark:text-emerald-400">
-                    FT Grade
-                  </th>
-                  <th className="p-3 border-r border-border text-center min-w-[100px] font-bold text-primary">
+                  <th className="px-4 py-3 border-r border-border text-center min-w-[100px] font-semibold text-muted-foreground">
                     Final %
                   </th>
-                  <th className="p-3 text-center min-w-[110px] font-bold text-foreground">
+                  <th className="px-4 py-3 text-center min-w-[110px] font-semibold text-muted-foreground">
                     Numerical
-                    <div className="text-[10px] text-muted-foreground font-normal mt-0.5">
-                      1.00 - 5.00 Scale
+                    <div className="text-[11px] text-muted-foreground font-normal mt-0.5">
+                      1.00 - 5.00 scale
                     </div>
                   </th>
                 </tr>
@@ -363,88 +408,68 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
                     const row = sprRowById.get(student.id);
                     const transmuted = getTransmutedGrade(row?.final ?? null);
                     return (
-                      <tr key={student.id} className="hover:bg-muted/30 transition-colors">
-                        <td className="p-3.5 border-r border-border font-bold text-foreground sticky left-0 bg-card z-10">
+                      <tr key={student.id} className="hover:bg-muted/40 transition-colors">
+                        <td className="px-4 py-3 border-r border-border font-semibold text-[14px] tracking-tight text-foreground sticky left-0 bg-card z-10">
                           <div className="flex items-center space-x-2.5">
                             <img
                               src={student.avatar}
                               alt={student.name}
-                              className="w-7 h-7 rounded-full object-cover border border-border shadow-soft shrink-0"
+                              className="w-7 h-7 rounded-full object-cover border border-border shrink-0"
                             />
                             <div className="min-w-0">
                               <div className="truncate">{student.name}</div>
-                              <div className="text-[10px] text-muted-foreground font-normal">
-                                {student.studentId || '2021-SLUC-0492'} &bull; {student.email}
+                              <div className="text-[11px] text-muted-foreground font-normal">
+                                {student.studentId || '2021-SLUC-0492'} · {student.email}
                               </div>
                             </div>
                           </div>
                         </td>
 
-                        {autoCols.map((col, idx) => {
-                          const cell = row?.mtCells[idx];
-                          const score = cell?.score ?? null;
-                          const autoTitle = cell?.sourceTitle ?? null;
+                        {terms.map(term => {
+                          const termResult = row?.terms[term];
+                          const termCols = columnsByTerm[term] ?? [];
+                          const examValue = termResult?.exam;
+                          const gradeValue = termResult?.grade;
                           return (
-                            <td key={col.id} className="p-2 border-r border-border text-center">
-                              <div className="flex items-center justify-center space-x-1">
-                                <span className="inline-block min-w-20 px-2 py-1 text-center text-xs font-bold text-foreground" title={cell?.sourceTitle ?? undefined}>{score === null ? '—' : round2(score)}</span>
-                                {!autoTitle ? null : (
-                                  <span data-testid="spr-auto-dot" title={`Auto from ${autoTitle}`} className="w-1.5 h-1.5 rounded-full bg-sky-500 shrink-0" />
+                            <React.Fragment key={term}>
+                              {termCols.map((col, idx) => {
+                                const cell = termResult?.cells[idx];
+                                const score = cell?.score ?? null;
+                                const autoTitle = cell?.sourceTitle ?? null;
+                                return (
+                                  <td key={`${term}-${col.id}`} className="px-4 py-3 border-r border-border text-center">
+                                    <div className="flex items-center justify-center space-x-1">
+                                      <span className="inline-block min-w-20 px-2 py-1 text-center text-xs font-bold text-foreground" title={cell?.sourceTitle ?? undefined}>{score === null ? '—' : round2(score)}</span>
+                                      {!autoTitle ? null : (
+                                        <span data-testid="spr-auto-dot" title={`Auto from ${autoTitle}`} className="w-1.5 h-1.5 rounded-full bg-sky-500 shrink-0" />
+                                      )}
+                                    </div>
+                                  </td>
+                                );
+                              })}
+
+                              {term === 'prelim' ? null : (
+                                <td className="px-4 py-3 border-r border-border text-center">
+                                  <div className="flex items-center justify-center space-x-1">
+                                    <span className="inline-block min-w-20 px-2 py-1 text-center text-xs font-semibold text-foreground">{examValue === null || examValue === undefined ? '—' : round2(examValue)}</span>
+                                  </div>
+                                </td>
+                              )}
+
+                              <td className="px-4 py-3 border-r border-border text-center">
+                                {gradeValue !== null && gradeValue !== undefined ? (
+                                  <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold border tabular-nums ${term === 'prelim' ? 'text-sky-700 dark:text-sky-400 bg-sky-500/10 border-sky-500/20' : term === 'midterm' ? 'text-primary bg-primary/10 border-primary/20' : 'text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20'}`}>
+                                    {gradeValue}%
+                                  </span>
+                                ) : (
+                                  <span className="text-muted-foreground font-normal">—</span>
                                 )}
-                              </div>
-                            </td>
+                              </td>
+                            </React.Fragment>
                           );
                         })}
 
-                        <td className="p-2 border-r border-border text-center">
-                          <div className="flex items-center justify-center space-x-1">
-                            <span className="inline-block min-w-20 px-2 py-1 text-center text-xs font-bold text-foreground">{row?.mtExam === null || row?.mtExam === undefined ? '—' : round2(row.mtExam)}</span>
-                          </div>
-                        </td>
-
-                        <td className="p-3 border-r border-border text-center">
-                          {row?.mtGrade !== null && row?.mtGrade !== undefined ? (
-                            <span className="inline-block px-2.5 py-0.5 rounded-lg text-xs font-black border text-primary bg-primary/10 border-primary/20">
-                              {row.mtGrade}%
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground font-normal">—</span>
-                          )}
-                        </td>
-
-                        {autoCols.map((col, idx) => {
-                          const cell = row?.ftCells[idx];
-                          const score = cell?.score ?? null;
-                          const autoTitle = cell?.sourceTitle ?? null;
-                          return (
-                            <td key={col.id} className="p-2 border-r border-border text-center">
-                              <div className="flex items-center justify-center space-x-1">
-                                <span className="inline-block min-w-20 px-2 py-1 text-center text-xs font-bold text-foreground" title={cell?.sourceTitle ?? undefined}>{score === null ? '—' : round2(score)}</span>
-                                {!autoTitle ? null : (
-                                  <span data-testid="spr-auto-dot" title={`Auto from ${autoTitle}`} className="w-1.5 h-1.5 rounded-full bg-sky-500 shrink-0" />
-                                )}
-                              </div>
-                            </td>
-                          );
-                        })}
-
-                        <td className="p-2 border-r border-border text-center">
-                          <div className="flex items-center justify-center space-x-1">
-                            <span className="inline-block min-w-20 px-2 py-1 text-center text-xs font-bold text-foreground">{row?.ftExam === null || row?.ftExam === undefined ? '—' : round2(row.ftExam)}</span>
-                          </div>
-                        </td>
-
-                        <td className="p-3 border-r border-border text-center">
-                          {row?.ftGrade !== null && row?.ftGrade !== undefined ? (
-                            <span className="inline-block px-2.5 py-0.5 rounded-lg text-xs font-black border text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20">
-                              {row.ftGrade}%
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground font-normal">—</span>
-                          )}
-                        </td>
-
-                        <td className="p-3 border-r border-border text-center font-extrabold text-sm">
+                        <td className="px-4 py-3 border-r border-border text-center font-semibold text-sm">
                           {row?.final !== null && row?.final !== undefined ? (
                             <span
                               className={
