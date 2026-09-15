@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useRef } from 'r
 import type {
   User,
   UserRole,
+  TermId,
   Course,
   Module,
   ModuleItem,
@@ -40,6 +41,7 @@ import {
   termGrade,
 } from '../utils/spr';
 import { commonsTemplates } from '../data/commonsTemplates';
+import { effectiveTerms, normalizeTermId } from '../utils/gradingTerms';
 import { AlertModal, type AlertModalOptions } from '../components/common/AlertModal';
 import { canPickSection } from '../utils/sections';
 import type { OfficialSyllabusData } from '../data/syllabusData';
@@ -116,6 +118,8 @@ interface LMSContextType {
   regenerateCourseJoinCode: (courseId: string) => Promise<string>;
   updateCourseSyllabus: (courseId: string, syllabus: OfficialSyllabusData) => Promise<void>;
   removeCourseSyllabus: (courseId: string) => Promise<void>;
+  updateCourseGradingTerms: (courseId: string, gradingTerms: TermId[] | null) => Promise<void>;
+  effectiveTermsForCourse: (courseId: string) => TermId[];
   importCommonsTemplate: (templateId: string, targetCourseId: string) => Promise<{ success: boolean; message: string }>;
 
   gradeSubmission: (
@@ -386,6 +390,7 @@ const normalizeAssignment = (raw: any): Assignment => ({
 
 const normalizeQuiz = (raw: any): Quiz => ({
   ...raw,
+  term: normalizeTermId(raw.term) ?? 'midterm',
   delayedUntil: toOptionalIso(raw.delayedUntil),
   dueDate: toOptionalIso(raw.dueDate),
   fileName: raw.fileName ?? undefined,
@@ -399,11 +404,12 @@ const normalizeExam = (raw: any): Exam => ({
   timeLimitMinutes: typeof raw.timeLimitMinutes === 'number' ? raw.timeLimitMinutes : 30,
   dueDate: toOptionalIso(raw.dueDate),
   questions: Array.isArray(raw.questions) ? raw.questions : [],
-  term: raw.term === 'final' ? 'final' : 'midterm',
+  term: normalizeTermId(raw.term) ?? 'midterm',
 });
 
 const normalizeActivity = (raw: any): Activity => ({
   ...raw,
+  term: normalizeTermId(raw.term) ?? 'midterm',
   dueDate: toOptionalIso(raw.dueDate),
   questions: Array.isArray(raw.questions) ? raw.questions : [],
 });
@@ -521,18 +527,37 @@ const mergeSPRGrades = (
   return merged;
 };
 
+/** Task 5: the server stores Course.gradingTerms as a JSON string (nullable);
+ *  the client cache holds the TermId array (null = auto-detect). */
+const normalizeCourseGradingTerms = (raw: unknown): TermId[] | null => {
+  let parsed: unknown = raw;
+  if (typeof raw === 'string') {
+    if (!raw) return null;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+  if (!Array.isArray(parsed)) return null;
+  return [...new Set((parsed as unknown[]).map(normalizeTermId).filter((t): t is TermId => t !== null))];
+};
+
 /** Task 5: the server stores Course.syllabus as a JSON string (nullable);
  *  the client cache holds the parsed OfficialSyllabusData object. */
 const normalizeCourseSyllabus = (raw: any): Course => {
   const syllabus = raw?.syllabus;
+  let parsedSyllabus: Course['syllabus'];
   if (typeof syllabus !== 'string' || !syllabus) {
-    return { ...raw, syllabus: syllabus ? raw.syllabus : null };
+    parsedSyllabus = syllabus ? raw.syllabus : null;
+  } else {
+    try {
+      parsedSyllabus = JSON.parse(syllabus);
+    } catch {
+      parsedSyllabus = null;
+    }
   }
-  try {
-    return { ...raw, syllabus: JSON.parse(syllabus) };
-  } catch {
-    return { ...raw, syllabus: null };
-  }
+  return { ...raw, syllabus: parsedSyllabus, gradingTerms: normalizeCourseGradingTerms(raw?.gradingTerms) };
 };
 
 export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -1090,6 +1115,16 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // REAL CRUD ACTIONS
   // ==========================================
 
+  // Syllabus-driven grading terms: per-course options from the override
+  // (Task 6 editor) or syllabus detection, consumed by Tasks 6-7.
+  const effectiveTermsForCourse = (courseId: string): TermId[] => {
+    const course = db.courses.find(c => c.id === courseId);
+    return effectiveTerms(course ?? null, course?.syllabus ?? null);
+  };
+
+  const defaultTermForCourse = (courseId: string): TermId =>
+    effectiveTermsForCourse(courseId)[0] ?? 'midterm';
+
   const createCourse = async (courseData: Partial<Course>): Promise<Course> => {
     const uniqueJoinCode =
       courseData.joinCode?.trim().toUpperCase() ||
@@ -1418,6 +1453,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const createQuiz = async (quizData: Partial<Quiz>): Promise<Quiz> => {
     const courseId = quizData.courseId || activeCourseId || 'crs-cmsc131';
+    const term = quizData.term ?? defaultTermForCourse(courseId);
     // Questions pass through (server parses option blobs; students get the
     // key stripped on read while faculty keep it).
     try {
@@ -1426,6 +1462,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         body: {
           courseId,
           title: quizData.title || 'New Assessment Quiz',
+          term,
           instructions: quizData.instructions || 'Answer all questions carefully. Time limit strictly enforced.',
           published: quizData.published ?? true,
           questions: quizData.questions || [
@@ -1496,12 +1533,14 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const createExam = async (examData: Partial<Exam>): Promise<Exam> => {
     const courseId = examData.courseId || activeCourseId || 'crs-cmsc131';
+    const term = examData.term ?? defaultTermForCourse(courseId);
     try {
       const { exam } = await apiFetch<{ exam: Exam }>('/api/exams', {
         method: 'POST',
         body: {
           courseId,
           title: examData.title || 'New Exam',
+          term,
           instructions: examData.instructions || 'Answer all questions carefully. Time limit strictly enforced.',
           published: examData.published ?? true,
           questions: examData.questions || [
@@ -1518,8 +1557,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ...(examData.dueDate !== undefined ? { dueDate: examData.dueDate } : {}),
           ...((examData as { fileName?: unknown }).fileName !== undefined ? { fileName: (examData as { fileName?: unknown }).fileName } : {}),
           ...((examData as { fileUrl?: unknown }).fileUrl !== undefined ? { fileUrl: (examData as { fileUrl?: unknown }).fileUrl } : {}),
-          ...((examData as { fileSize?: unknown }).fileSize !== undefined ? { fileSize: (examData as { fileSize?: unknown }).fileSize } : {}),
-          term: examData.term ?? 'midterm'
+          ...((examData as { fileSize?: unknown }).fileSize !== undefined ? { fileSize: (examData as { fileSize?: unknown }).fileSize } : {})
         }
       });
       const merged = normalizeExam(exam);
@@ -1573,12 +1611,14 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const createActivity = async (data: Partial<Activity>): Promise<Activity> => {
     const courseId = data.courseId || activeCourseId || 'crs-cmsc131';
     const questions = data.questions || [];
+    const term = data.term ?? defaultTermForCourse(courseId);
     try {
       const { activity } = await apiFetch<{ activity: Activity }>('/api/activities', {
         method: 'POST',
         body: {
           courseId,
           title: data.title?.trim() || 'New Question-Set Activity',
+          term,
           instructions: data.instructions || 'Answer all questions carefully.',
           pointsPossible: data.pointsPossible ?? activityPointsPossible(questions),
           ...(data.dueDate !== undefined ? { dueDate: data.dueDate } : {}),
@@ -1967,6 +2007,27 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...prev,
       courses: prev.courses.map(c => (c.id === courseId ? { ...c, syllabus: null } : c))
     }));
+  };
+
+  const updateCourseGradingTerms = async (courseId: string, gradingTerms: TermId[] | null): Promise<void> => {
+    // Server stores the override as a JSON string (null clears to auto-detect);
+    // the array/null is sent verbatim and the response row is re-normalized.
+    try {
+      const { course } = await apiFetch<{ course: Course }>(
+        `/api/courses/${encodeURIComponent(courseId)}`,
+        { method: 'PATCH', body: { gradingTerms } }
+      );
+      const normalized = normalizeCourseSyllabus(course);
+      setDb(prev => ({
+        ...prev,
+        courses: prev.courses.map(c => (c.id === courseId ? normalized : c))
+      }));
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to update grading terms.';
+      setLastError(message);
+      showAlert(message, 'Update Grading Terms Failed');
+      throw err;
+    }
   };
 
   const importCommonsTemplate = async (templateId: string, targetCourseId: string): Promise<{ success: boolean; message: string }> => {
@@ -4149,6 +4210,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         regenerateCourseJoinCode,
         updateCourseSyllabus,
         removeCourseSyllabus,
+        updateCourseGradingTerms,
+        effectiveTermsForCourse,
         importCommonsTemplate,
         gradeSubmission,
         submitAssignment,
