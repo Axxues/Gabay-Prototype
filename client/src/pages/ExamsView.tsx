@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useLMS } from '../context/LMSContext';
-import type { Exam, QuizQuestion } from '../types/lms';
+import type { Exam, QuizQuestion, TermId } from '../types/lms';
+import { normalizeTermId } from '../utils/gradingTerms';
+import { TERM_LABELS } from '../components/common/TermSelect';
 import {
   HelpCircle,
   Play,
@@ -47,6 +49,12 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
 
   // Full page Create Exam state
   const [isCreatingExam, setIsCreatingExam] = useState(false);
+
+  // Grading-term filter for the list (legacy 'final' rows read as 'finals').
+  const [termFilter, setTermFilter] = useState<'all' | TermId>('all');
+  const visibleExams = termFilter === 'all'
+    ? courseExams
+    : courseExams.filter(e => (normalizeTermId(e.term) ?? 'midterm') === termFilter);
 
   // Sync activeExam when selectedExamId changes (e.g. from Modules navigation)
   useEffect(() => {
@@ -607,7 +615,29 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
             onAction={activeRole === 'faculty' ? () => setIsCreatingExam(true) : undefined}
           />
         ) : (
-          courseExams.map(exam => {
+          <>
+            <div className="flex items-center justify-end gap-2">
+              <label htmlFor="exams-term-filter" className="text-[11.5px] font-semibold text-muted-foreground select-none">
+                Filter by term:
+              </label>
+              <select
+                id="exams-term-filter"
+                value={termFilter}
+                onChange={e => setTermFilter(e.target.value as 'all' | TermId)}
+                className="px-2.5 py-1.5 bg-card border border-border rounded-xl text-[12px] font-semibold text-foreground outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 cursor-pointer"
+              >
+                <option value="all">All terms</option>
+                <option value="prelim">Prelim</option>
+                <option value="midterm">Midterm</option>
+                <option value="finals">Finals</option>
+              </select>
+            </div>
+            {visibleExams.length === 0 ? (
+              <p className="text-[12.5px] text-muted-foreground text-center py-6">
+                No exams tagged for this term yet.
+              </p>
+            ) : (
+          visibleExams.map(exam => {
             const existingSub = db.submissions.find(
               s => s.assignmentId === `asg-exam-${exam.id}` && s.studentId === activeUser.id
             );
@@ -617,7 +647,14 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
             ).length;
             const pageCount = exam.questions.filter(q => q.type === 'page_break').length + 1;
             const totalPts = exam.questions.reduce((sum, q) => sum + (q.points || 0), 0);
-            const isMidterm = exam.term !== 'final';
+            // Legacy 'final' rows normalize to 'finals' on read.
+            const termId: TermId = normalizeTermId(exam.term) ?? 'midterm';
+            const termChipCls =
+              termId === 'prelim'
+                ? 'bg-sky-500/10 text-sky-700 dark:text-sky-400 border-sky-500/20'
+                : termId === 'midterm'
+                  ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20'
+                  : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20';
 
             return (
               <div
@@ -633,12 +670,8 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
                       <h3 className="font-bold text-sm text-foreground group-hover:text-primary transition-colors">
                         {exam.title}
                       </h3>
-                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border flex items-center space-x-1 ${
-                        isMidterm
-                          ? 'bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30'
-                          : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30'
-                      }`}>
-                        <span>{isMidterm ? 'Midterm Exam' : 'Final Exam'}</span>
+                      <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium border flex items-center space-x-1 ${termChipCls}`}>
+                        <span>{TERM_LABELS[termId]} exam</span>
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
@@ -684,7 +717,8 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
                 </div>
               </div>
             );
-          })
+          }))}
+          </>
         )}
       </div>
     </div>

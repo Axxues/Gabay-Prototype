@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLMS } from '../context/LMSContext';
-import type { Activity, Assignment, ModuleItem, Quiz } from '../types/lms';
+import type { Activity, Assignment, ModuleItem, Quiz, TermId } from '../types/lms';
 import {
   ArrowLeft,
   FileText,
@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 
 import { uploadFileToPublic } from '../utils/fileUploader';
+import { normalizeTermId } from '../utils/gradingTerms';
 import { UploadProgress } from '../components/common/UploadProgress';
 import { useSimulatedUpload } from '../hooks/useSimulatedUpload';
 import { FilePickerModal } from '../components/common/FilePickerModal';
@@ -160,6 +161,7 @@ const activityToQuestionSet = (
   title: a.title || fallbackTitle,
   instructions: a.instructions || fallbackContent,
   dueDate: toLocalDateTimeInput(a.dueDate) || emptyQuestionSetValue().dueDate,
+  term: normalizeTermId(a.term) ?? 'midterm',
   items: (a.questions || []).map((qq, idx) => {
     const opts = [...(qq.options || [])];
     let correctAnswer = qq.correctAnswer || '';
@@ -192,6 +194,7 @@ const quizToBuilder = (
   timeLimitMinutes: q.timeLimitMinutes ?? 30,
   delayPosting: Boolean(q.delayedUntil),
   delayedDate: toLocalDateTimeInput(q.delayedUntil) || emptyQuizBuilderValue().delayedDate,
+  term: normalizeTermId(q.term) ?? 'midterm',
   items: (q.questions || []).map((qq, idx) => {
     const opts = [...(qq.options || [])];
     let correctAnswer = qq.correctAnswer || '';
@@ -231,11 +234,17 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
     updateActivity,
     createQuiz,
     updateQuiz,
-    showAlert
+    showAlert,
+    effectiveTermsForCourse
   } = useLMS();
   const isEditing = Boolean(editingItem);
 
   const course = db.courses.find(c => c.id === courseId);
+  // Syllabus-driven default grading term for fresh quiz/activity builders.
+  const defaultAssessmentTerm: TermId =
+    typeof effectiveTermsForCourse === 'function'
+      ? (effectiveTermsForCourse(courseId)[0] ?? 'midterm')
+      : 'midterm';
   const courseModules = db.modules.filter(m => m.courseId === courseId);
   const sortedModules = [...courseModules].sort((a, b) => {
     if (b.order !== a.order) return b.order - a.order;
@@ -282,7 +291,7 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
   const [quizBuilder, setQuizBuilder] = useState<QuizBuilderValue>(() =>
     linkedQuiz
       ? quizToBuilder(linkedQuiz, editingItem?.title || '', editingItem?.content || '')
-      : emptyQuizBuilderValue()
+      : { ...emptyQuizBuilderValue(), term: defaultAssessmentTerm }
   );
 
   // Classic vs question-set mode for Activity items — same chooser as the
@@ -293,7 +302,7 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
   const [questionSet, setQuestionSet] = useState<QuestionSetValue>(() =>
     linkedActivity
       ? activityToQuestionSet(linkedActivity, editingItem?.title || '', editingItem?.content || '')
-      : emptyQuestionSetValue()
+      : { ...emptyQuestionSetValue(), term: defaultAssessmentTerm }
   );
 
   // Custom Dropdown Open States
@@ -513,7 +522,7 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
         message: `"${savedTitle}" has been added. You can add another item now.`,
         type: 'success'
       });
-      setQuestionSet(emptyQuestionSetValue());
+      setQuestionSet({ ...emptyQuestionSetValue(), term: defaultAssessmentTerm });
     } else {
       showAlert({
         title: 'Item Added to Module',
@@ -601,7 +610,7 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
         type: 'success'
       });
       setActivityForm(emptyActivityFormValue());
-      setQuestionSet(emptyQuestionSetValue());
+      setQuestionSet({ ...emptyQuestionSetValue(), term: defaultAssessmentTerm });
     } else {
       showAlert({
         title: 'Item Added to Module',
@@ -715,7 +724,7 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
         message: `"${savedTitle}" has been added. You can add another item now.`,
         type: 'success'
       });
-      setQuizBuilder(emptyQuizBuilderValue());
+      setQuizBuilder({ ...emptyQuizBuilderValue(), term: defaultAssessmentTerm });
     } else {
       showAlert({
         title: 'Item Added to Module',
@@ -1143,6 +1152,7 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
                   value={questionSet}
                   onChange={setQuestionSet}
                   questionsEditable={!linkedActivity}
+                  courseId={courseId}
                 />
               )}
             </div>
@@ -1167,6 +1177,7 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
                 value={quizBuilder}
                 onChange={setQuizBuilder}
                 questionsEditable={!linkedQuiz}
+                courseId={courseId}
               />
             </div>
           )}

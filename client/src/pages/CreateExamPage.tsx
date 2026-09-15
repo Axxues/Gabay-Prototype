@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { useLMS } from '../context/LMSContext';
-import type { QuizQuestion, QuizItemType } from '../types/lms';
+import type { QuizQuestion, QuizItemType, TermId } from '../types/lms';
 import type { QuizImportDraft } from '../utils/quizImport';
 import { applyQuizTextLimit, classifyQuizImportFile, isQuizImportTooLarge, parseQuizText } from '../utils/quizImport';
 import { extractDocxText, extractPdfText } from '../utils/quizExtract';
 import { useSimulatedUpload } from '../hooks/useSimulatedUpload';
 import { UploadProgress } from '../components/common/UploadProgress';
+import { TermSelect } from '../components/common/TermSelect';
 import {
   ArrowLeft,
   HelpCircle,
@@ -101,7 +102,7 @@ export const CreateExamPage: React.FC<CreateExamPageProps> = ({
   onBack,
   onExamCreated
 }) => {
-  const { db, createExam, showAlert } = useLMS();
+  const { db, createExam, showAlert, effectiveTermsForCourse } = useLMS();
   const course = db.courses.find(c => c.id === courseId);
 
   // General Exam Information (Google Form Header Card)
@@ -109,8 +110,14 @@ export const CreateExamPage: React.FC<CreateExamPageProps> = ({
   const [instructions, setInstructions] = useState('');
   const [timeLimitMinutes, setTimeLimitMinutes] = useState(30);
 
-  // Exam term (midterm / final) — always sent; the server 400s without it.
-  const [term, setTerm] = useState<'midterm' | 'final'>('midterm');
+  // Exam term — syllabus-driven options, defaulting to the first effective
+  // term. Always sent; the server 400s without it.
+  const examTerms: TermId[] =
+    typeof effectiveTermsForCourse === 'function'
+      ? effectiveTermsForCourse(courseId)
+      : ['midterm', 'finals'];
+  const [term, setTerm] = useState<TermId>(() => examTerms[0] ?? 'midterm');
+  const safeTerm: TermId = examTerms.includes(term) ? term : (examTerms[0] ?? 'midterm');
 
   // Active selected card index (for highlighting with left border and positioning floating toolbar)
   const [activeCardIndex, setActiveCardIndex] = useState<number>(0);
@@ -469,7 +476,7 @@ export const CreateExamPage: React.FC<CreateExamPageProps> = ({
       instructions: instructions.trim() || 'Answer all questions carefully within the allotted time limit.',
       timeLimitMinutes: Number(timeLimitMinutes) || 30,
       published,
-      term,
+      term: safeTerm,
       questions: compiledQuestions
     });
 
@@ -893,21 +900,8 @@ export const CreateExamPage: React.FC<CreateExamPageProps> = ({
                   <span className="text-muted-foreground">mins</span>
                 </div>
 
-                {/* Exam term picker (midterm / final) */}
-                <div className="flex items-center space-x-2 bg-muted/40 px-3 py-1.5 rounded-xl border border-border">
-                  <label htmlFor="exam-term-select" className="text-[12px] font-semibold text-muted-foreground select-none">
-                    Term:
-                  </label>
-                  <select
-                    id="exam-term-select"
-                    value={term}
-                    onChange={e => setTerm(e.target.value === 'final' ? 'final' : 'midterm')}
-                    className="px-2 py-1 bg-background border border-border rounded-xl text-[12.5px] font-semibold text-foreground outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 cursor-pointer"
-                  >
-                    <option value="midterm">Midterm</option>
-                    <option value="final">Final</option>
-                  </select>
-                </div>
+                {/* Exam term picker (syllabus-driven options) */}
+                <TermSelect terms={examTerms} value={safeTerm} onChange={setTerm} id="exam-term-select" />
               </div>
 
               <div className="flex items-center space-x-2 text-[11px] font-sans">

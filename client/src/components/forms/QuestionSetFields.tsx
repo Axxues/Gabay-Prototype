@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useLMS } from '../../context/LMSContext';
 import type { QuizQuestion, QuizItemType, Activity } from '../../types/lms';
+import type { TermId } from '../../utils/gradingTerms';
+import { TermSelect } from '../common/TermSelect';
 import {
   Trash2,
   Check,
@@ -31,6 +33,7 @@ export interface QuestionSetValue {
   title: string;
   instructions: string;
   dueDate: string;
+  term?: TermId;
   items: ActivityQuestionDraft[];
 }
 
@@ -199,19 +202,29 @@ export function buildActivityPayload(courseId: string, v: QuestionSetValue): Par
     instructions: v.instructions.trim() || 'Answer all questions carefully.',
     questions: compileActivityQuestions(v),
     dueDate: v.dueDate ? new Date(v.dueDate).toISOString() : undefined,
+    ...(v.term !== undefined ? { term: v.term } : {}),
     published: true
   };
 }
 
-export const QuestionSetFields: React.FC<{ value: QuestionSetValue; onChange: (v: QuestionSetValue) => void; questionsEditable?: boolean; }> = ({
+export const QuestionSetFields: React.FC<{ value: QuestionSetValue; onChange: (v: QuestionSetValue) => void; questionsEditable?: boolean; courseId?: string; }> = ({
   value,
   onChange,
   // False when editing an already-published activity: header stays editable,
   // the question set renders as a locked summary instead.
-  questionsEditable = true
+  questionsEditable = true,
+  // Host course for the syllabus-driven term picker. When omitted the picker
+  // falls back to the legacy Midterm/Finals pair.
+  courseId
 }) => {
-  const { showAlert } = useLMS();
+  const { showAlert, effectiveTermsForCourse } = useLMS();
   const items = value.items;
+  const terms: TermId[] =
+    courseId && typeof effectiveTermsForCourse === 'function'
+      ? effectiveTermsForCourse(courseId)
+      : ['midterm', 'finals'];
+  const safeTerm: TermId =
+    value.term && terms.includes(value.term) ? value.term : (terms[0] ?? 'midterm');
 
   const [activeCardIndex, setActiveCardIndex] = useState<number>(0);
   const [openTypeDropdownIndex, setOpenTypeDropdownIndex] = useState<number | null>(null);
@@ -398,6 +411,9 @@ export const QuestionSetFields: React.FC<{ value: QuestionSetValue; onChange: (v
                 className="px-2.5 py-1.5 bg-muted/50 border border-border rounded-lg text-foreground text-xs font-semibold outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 cursor-pointer"
               />
             </div>
+
+            {/* Grading term picker (syllabus-driven options) */}
+            <TermSelect terms={terms} value={safeTerm} onChange={t => onChange({ ...value, term: t })} id="activity-term-select" />
 
             <div className="flex items-center gap-1.5 text-[11px] font-sans">
               <span className="px-2 py-1 rounded-md bg-muted text-muted-foreground font-semibold">

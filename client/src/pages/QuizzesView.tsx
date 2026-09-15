@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useLMS } from '../context/LMSContext';
-import type { Quiz, QuizQuestion } from '../types/lms';
+import type { Quiz, QuizQuestion, TermId } from '../types/lms';
+import { normalizeTermId } from '../utils/gradingTerms';
+import { TERM_LABELS } from '../components/common/TermSelect';
 import {
   HelpCircle,
   Play,
@@ -49,6 +51,12 @@ export const QuizzesView: React.FC<QuizzesViewProps> = ({
 
   // Full page Create Quiz state
   const [isCreatingQuiz, setIsCreatingQuiz] = useState(false);
+
+  // Grading-term filter for the list (legacy rows read as 'midterm').
+  const [termFilter, setTermFilter] = useState<'all' | TermId>('all');
+  const visibleQuizzes = termFilter === 'all'
+    ? courseQuizzes
+    : courseQuizzes.filter(q => (normalizeTermId(q.term) ?? 'midterm') === termFilter);
 
   // Sync activeQuiz when selectedQuizId changes (e.g. from Modules navigation)
   useEffect(() => {
@@ -609,7 +617,29 @@ export const QuizzesView: React.FC<QuizzesViewProps> = ({
             onAction={activeRole === 'faculty' ? () => setIsCreatingQuiz(true) : undefined}
           />
         ) : (
-          courseQuizzes.map(quiz => {
+          <>
+            <div className="flex items-center justify-end gap-2">
+              <label htmlFor="quizzes-term-filter" className="text-[11.5px] font-semibold text-muted-foreground select-none">
+                Filter by term:
+              </label>
+              <select
+                id="quizzes-term-filter"
+                value={termFilter}
+                onChange={e => setTermFilter(e.target.value as 'all' | TermId)}
+                className="px-2.5 py-1.5 bg-card border border-border rounded-xl text-[12px] font-semibold text-foreground outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 cursor-pointer"
+              >
+                <option value="all">All terms</option>
+                <option value="prelim">Prelim</option>
+                <option value="midterm">Midterm</option>
+                <option value="finals">Finals</option>
+              </select>
+            </div>
+            {visibleQuizzes.length === 0 ? (
+              <p className="text-[12.5px] text-muted-foreground text-center py-6">
+                No quizzes tagged for this term yet.
+              </p>
+            ) : (
+          visibleQuizzes.map(quiz => {
             const existingSub = db.submissions.find(
               s => s.assignmentId === `asg-quiz-${quiz.id}` && s.studentId === activeUser.id
             );
@@ -622,6 +652,7 @@ export const QuizzesView: React.FC<QuizzesViewProps> = ({
 
             const isScheduled = !!quiz.delayedUntil && new Date(quiz.delayedUntil).getTime() > Date.now();
             const isStudent = activeRole === 'student';
+            const quizTermId: TermId = normalizeTermId(quiz.term) ?? 'midterm';
 
             return (
               <div
@@ -645,6 +676,9 @@ export const QuizzesView: React.FC<QuizzesViewProps> = ({
                       <h3 className="font-bold text-sm text-foreground group-hover:text-primary transition-colors">
                         {quiz.title}
                       </h3>
+                      <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-muted text-muted-foreground border border-border">
+                        <span>{TERM_LABELS[quizTermId]}</span>
+                      </span>
                       {isScheduled && (
                         <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 flex items-center space-x-1">
                           <Clock className="w-3 h-3" />
@@ -706,7 +740,8 @@ export const QuizzesView: React.FC<QuizzesViewProps> = ({
                 </div>
               </div>
             );
-          })
+          }))}
+          </>
         )}
       </div>
     </div>

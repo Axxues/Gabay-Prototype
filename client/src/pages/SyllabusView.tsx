@@ -3,6 +3,8 @@ import { useLMS } from '../context/LMSContext';
 import { createDefaultSyllabusForCourse, type OfficialSyllabusData, type FacultySchedule } from '../data/syllabusData';
 import { scanSyllabusDocument, formatBytes, type ScanResult } from '../utils/syllabusParser';
 import { resolveSPRWeights } from '../utils/spr';
+import { effectiveTerms, resolveCourseTerms } from '../utils/gradingTerms';
+import type { TermId } from '../types/lms';
 import { PageHeader } from '../components/common/PageHeader';
 import { DialogFrame } from '../components/common/DialogFrame';
 import { ModalPortal } from '../components/common/ModalPortal';
@@ -46,7 +48,7 @@ interface SyllabusViewProps {
 }
 
 export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
-  const { db, activeRole, activeUser, updateCourseSyllabus, removeCourseSyllabus, showAlert, uploadCourseFile } = useLMS();
+  const { db, activeRole, activeUser, updateCourseSyllabus, removeCourseSyllabus, showAlert, uploadCourseFile, updateCourseGradingTerms } = useLMS();
   const currentCourse = db.courses.find(c => c.id === courseId);
   const data = currentCourse?.syllabus || null;
   const isCustomSyllabus = Boolean(currentCourse?.syllabus);
@@ -58,6 +60,14 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
   }, [db.users]);
 
   const gradingWeights = useMemo(() => resolveSPRWeights(data?.gradingSystem ?? null), [data]);
+
+  // Syllabus-driven grading terms: auto-detected from the course outline
+  // unless a per-course override was saved (Task 6 editor below).
+  const TERM_ORDER: TermId[] = ['prelim', 'midterm', 'finals'];
+  const TERM_LABELS_SYLLABUS: Record<TermId, string> = { prelim: 'Prelim', midterm: 'Midterm', finals: 'Finals' };
+  const detectedTerms = useMemo(() => resolveCourseTerms(data), [data]);
+  const activeTerms = useMemo(() => effectiveTerms(currentCourse ?? null, data), [currentCourse, data]);
+  const isTermsOverridden = Boolean(currentCourse?.gradingTerms && currentCourse.gradingTerms.length > 0);
 
   // Check if current user is the faculty member that created/instructs this course
   const isFacultyCreator = activeRole === 'faculty' && (
@@ -112,6 +122,9 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
   const [activeWeekTab, setActiveWeekTab] = useState<string>('all');
   const [editingSection, setEditingSection] = useState<string | null>(null);
   const [draft, setDraft] = useState<OfficialSyllabusData | null>(null);
+  // Per-course grading-terms override draft (null = auto-detect from the
+  // syllabus outline). Edited only inside the gradingSystem section.
+  const [gradingTermsOverride, setGradingTermsOverride] = useState<TermId[] | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const upload = useSimulatedUpload();
 
@@ -121,26 +134,49 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
   const startEditing = (sectionId: string) => {
     if (!data) return;
     setDraft(cloneSyllabus(data));
+    if (sectionId === 'gradingSystem') {
+      setGradingTermsOverride(currentCourse?.gradingTerms ? [...currentCourse.gradingTerms] : null);
+    }
     setEditingSection(sectionId);
     setExpandedSections(prev => ({ ...prev, [sectionId]: true }));
   };
 
   const cancelEditing = () => {
     setDraft(null);
+    setGradingTermsOverride(null);
     setEditingSection(null);
   };
 
   const saveDraft = async () => {
     if (!draft) return;
+    // Grading-terms override: at least one term must stay checked.
+    if (editingSection === 'gradingSystem' && gradingTermsOverride !== null && gradingTermsOverride.length === 0) {
+      showAlert({
+        title: 'Grading Terms Required',
+        message: 'Select at least one grading term, or reset to auto-detect.',
+        type: 'warning'
+      });
+      return;
+    }
     setIsSaving(true);
     try {
       await updateCourseSyllabus(courseId, draft);
+      if (editingSection === 'gradingSystem') {
+        const current = currentCourse?.gradingTerms ?? null;
+        const same =
+          JSON.stringify([...(current ?? [])].sort()) ===
+          JSON.stringify([...(gradingTermsOverride ?? [])].sort());
+        if (!same) {
+          await updateCourseGradingTerms(courseId, gradingTermsOverride);
+        }
+      }
       showAlert({
         title: 'Syllabus Updated',
         message: 'Section changes have been saved.',
         type: 'success'
       });
       setDraft(null);
+      setGradingTermsOverride(null);
       setEditingSection(null);
     } catch {
       // updateCourseSyllabus already surfaced the alert.
@@ -1869,6 +1905,70 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                       }} className={inputCls} />
                     </div>
                   </div>
+                  <div className="p-4 rounded-xl border border-border bg-muted/20 space-y-3">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span className={labelCls}>Grading terms</span>
+                      {gradingTermsOverride !== null ? (
+                        <button
+                          type="button"
+                          onClick={() => setGradingTermsOverride(null)}
+                          className="text-[11px] font-bold text-primary hover:text-primary/80 transition-colors cursor-pointer"
+                        >
+                          Reset to auto-detect
+                        </button>
+                      ) : (
+                        <span className="text-[11px] text-muted-foreground">
+                          Auto-detected: {detectedTerms.map(t => TERM_LABELS_SYLLABUS[t]).join(', ')}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {TERM_ORDER.map(t => {
+                        const base = gradingTermsOverride ?? detectedTerms;
+                        const checked = base.includes(t);
+                        const isLastChecked = checked && base.length === 1;
+                        return (
+                          <label
+                            key={t}
+                            className={`flex items-center space-x-2 px-3 py-1.5 rounded-xl border text-[12px] font-semibold cursor-pointer transition-colors ${
+                              checked
+                                ? 'bg-primary/10 border-primary/30 text-foreground'
+                                : 'bg-background border-border text-muted-foreground hover:border-primary/40'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={e => {
+                                const next = e.target.checked
+                                  ? [...new Set([...base, t])]
+                                  : base.filter(x => x !== t);
+                                if (next.length === 0) {
+                                  showAlert({
+                                    title: 'Grading Terms Required',
+                                    message: 'At least one grading term must stay selected.',
+                                    type: 'warning'
+                                  });
+                                  return;
+                                }
+                                setGradingTermsOverride(
+                                  [...next].sort((a, b) => TERM_ORDER.indexOf(a) - TERM_ORDER.indexOf(b))
+                                );
+                              }}
+                              disabled={isLastChecked}
+                              className="w-4 h-4 rounded text-primary focus:ring-primary accent-primary cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                            />
+                            <span>{TERM_LABELS_SYLLABUS[t]}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      {gradingTermsOverride !== null
+                        ? `Custom override — assessment term pickers offer: ${gradingTermsOverride.map(t => TERM_LABELS_SYLLABUS[t]).join(', ')}.`
+                        : 'Assessment term pickers follow the auto-detected terms. Check a box to pin a custom set.'}
+                    </p>
+                  </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className={labelCls}>Major requirements (one per line)</label>
@@ -1962,8 +2062,21 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                       Minimum passing mark: {data.gradingSystem.passingGrade}
                     </span>
                   </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                    <span className="font-bold uppercase tracking-wider text-[10px]">Grading terms:</span>
+                    <span className="font-semibold text-foreground">
+                      {activeTerms.map(t => TERM_LABELS_SYLLABUS[t]).join(', ')}
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-full border font-medium ${
+                      isTermsOverridden
+                        ? 'bg-primary/10 text-primary border-primary/20'
+                        : 'bg-muted text-muted-foreground border-border'
+                    }`}>
+                      {isTermsOverridden ? 'Custom override' : 'Auto-detected'}
+                    </span>
+                  </div>
                 </div>
-              </div>
               </>
               )}
             </div>

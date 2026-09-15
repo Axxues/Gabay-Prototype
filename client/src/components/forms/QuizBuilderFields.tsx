@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useLMS } from '../../context/LMSContext';
 import type { QuizQuestion, QuizItemType, Quiz } from '../../types/lms';
+import type { TermId } from '../../utils/gradingTerms';
 import type { QuizImportDraft } from '../../utils/quizImport';
 import { applyQuizTextLimit, classifyQuizImportFile, isQuizImportTooLarge, parseQuizText } from '../../utils/quizImport';
 import { extractDocxText, extractPdfText } from '../../utils/quizExtract';
 import { useSimulatedUpload } from '../../hooks/useSimulatedUpload';
 import { UploadProgress } from '../common/UploadProgress';
+import { TermSelect } from '../common/TermSelect';
 import {
   Clock,
   Trash2,
@@ -49,6 +51,7 @@ export interface QuizBuilderValue {
   timeLimitMinutes: number;
   delayPosting: boolean;
   delayedDate: string;
+  term?: TermId;
   items: QuestionDraft[];
 }
 
@@ -210,6 +213,7 @@ export function buildQuizPayload(courseId: string, v: QuizBuilderValue, publishe
     instructions: v.instructions.trim() || 'Answer all questions carefully within the allotted time limit.',
     timeLimitMinutes: Number(v.timeLimitMinutes) || 30,
     published: v.delayPosting ? false : published,
+    ...(v.term !== undefined ? { term: v.term } : {}),
     delayedUntil: v.delayPosting && v.delayedDate ? new Date(v.delayedDate).toISOString() : undefined,
     questions: compileQuizQuestions(v)
   };
@@ -261,16 +265,25 @@ const QUESTION_TYPE_OPTIONS: QuestionTypeOption[] = [
   },
 ];
 
-export const QuizBuilderFields: React.FC<{ value: QuizBuilderValue; onChange: (v: QuizBuilderValue) => void; questionsEditable?: boolean; }> = ({
+export const QuizBuilderFields: React.FC<{ value: QuizBuilderValue; onChange: (v: QuizBuilderValue) => void; questionsEditable?: boolean; courseId?: string; }> = ({
   value,
   onChange,
   // False when editing an already-published quiz (the quizzes PATCH endpoint
   // replaces header fields only, never questions): header stays editable,
   // the question set renders as a locked summary instead.
-  questionsEditable = true
+  questionsEditable = true,
+  // Host course for the syllabus-driven term picker. When omitted the picker
+  // falls back to the legacy Midterm/Finals pair.
+  courseId
 }) => {
-  const { showAlert } = useLMS();
+  const { showAlert, effectiveTermsForCourse } = useLMS();
   const items = value.items;
+  const terms: TermId[] =
+    courseId && typeof effectiveTermsForCourse === 'function'
+      ? effectiveTermsForCourse(courseId)
+      : ['midterm', 'finals'];
+  const safeTerm: TermId =
+    value.term && terms.includes(value.term) ? value.term : (terms[0] ?? 'midterm');
 
   // Active selected card index (for highlighting with left border and positioning floating toolbar)
   const [activeCardIndex, setActiveCardIndex] = useState<number>(0);
@@ -835,6 +848,9 @@ export const QuizBuilderFields: React.FC<{ value: QuizBuilderValue; onChange: (v
                 />
                 <span className="text-muted-foreground">mins</span>
               </div>
+
+              {/* Grading term picker (syllabus-driven options) */}
+              <TermSelect terms={terms} value={safeTerm} onChange={t => onChange({ ...value, term: t })} id="quiz-term-select" />
 
               {/* Delayed Posting (Schedule Release) Toggle */}
               <div className="flex items-center space-x-2 bg-muted/40 px-3 py-1.5 rounded-xl border border-border">
