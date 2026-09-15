@@ -12,6 +12,15 @@ export const examsRouter = buildAssessmentRouter('exam');
 
 type AssessmentKind = 'quiz' | 'activity' | 'exam';
 
+const KNOWN_TERMS = ['prelim', 'midterm', 'finals'] as const;
+
+function parseTermInput(value: unknown, field = 'term'): string {
+  if (typeof value !== 'string' || !(KNOWN_TERMS as readonly string[]).includes(value)) {
+    throw new ApiError(400, 'bad_request', `Field '${field}' must be one of prelim, midterm, finals.`);
+  }
+  return value;
+}
+
 function newId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -239,6 +248,7 @@ function buildAssessmentRouter(kind: AssessmentKind) {
             instructions,
             timeLimitMinutes,
             published,
+            term: parseTermInput(body.term ?? 'midterm'),
             delayedUntil: parseOptionalDate(body.delayedUntil, 'delayedUntil') ?? null,
             dueDate: parseOptionalDate(body.dueDate, 'dueDate') ?? null,
             fileName: str(body.fileName),
@@ -270,10 +280,7 @@ function buildAssessmentRouter(kind: AssessmentKind) {
       }
 
       if (isExam) {
-        const term = body.term;
-        if (term !== 'midterm' && term !== 'final') {
-          throw new ApiError(400, 'bad_request', "Field 'term' must be 'midterm' or 'final'.");
-        }
+        const term = parseTermInput(body.term);
         const timeLimitMinutes =
           typeof body.timeLimitMinutes === 'number' ? body.timeLimitMinutes : 30;
         const created = await prisma.exam.create({
@@ -322,6 +329,7 @@ function buildAssessmentRouter(kind: AssessmentKind) {
           title,
           instructions,
           pointsPossible,
+          term: parseTermInput(body.term ?? 'midterm'),
           dueDate: parseOptionalDate(body.dueDate, 'dueDate') ?? null,
           published,
         },
@@ -404,6 +412,9 @@ function buildAssessmentRouter(kind: AssessmentKind) {
           }
           data.timeLimitMinutes = body.timeLimitMinutes;
         }
+        if (body.term !== undefined) {
+          data.term = parseTermInput(body.term);
+        }
         const updated = await prisma.quiz.update({ where: { id: row.id }, data });
         res.json({ quiz: updated });
         return;
@@ -416,10 +427,7 @@ function buildAssessmentRouter(kind: AssessmentKind) {
           data.timeLimitMinutes = body.timeLimitMinutes;
         }
         if (body.term !== undefined) {
-          if (body.term !== 'midterm' && body.term !== 'final') {
-            throw new ApiError(400, 'bad_request', "Field 'term' must be 'midterm' or 'final'.");
-          }
-          data.term = body.term;
+          data.term = parseTermInput(body.term);
         }
         const updated = await prisma.exam.update({ where: { id: row.id }, data });
         res.json({ exam: updated });
@@ -430,6 +438,9 @@ function buildAssessmentRouter(kind: AssessmentKind) {
           throw new ApiError(400, 'bad_request', "Field 'pointsPossible' must be a number.");
         }
         data.pointsPossible = body.pointsPossible;
+      }
+      if (body.term !== undefined) {
+        data.term = parseTermInput(body.term);
       }
       const updated = await prisma.activity.update({ where: { id: row.id }, data });
       res.json({ activity: updated });

@@ -202,4 +202,45 @@ describe('courses router', () => {
       expect.objectContaining({ data: expect.objectContaining({ joinCode: 'MYCODE1' }) })
     );
   });
+
+  it('PATCH gradingTerms persists a valid array, rejects garbage, clears on null', async () => {
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'c1',
+      instructorId: 'u-fac',
+      published: true,
+    });
+    (prisma.course.update as ReturnType<typeof vi.fn>).mockImplementation(
+      (args: { where: unknown; data: Record<string, unknown> }) =>
+        Promise.resolve({ id: 'c1', ...args.data })
+    );
+    const request = (await import('supertest')).default;
+
+    const set = await request(app())
+      .patch('/api/courses/c1')
+      .set('Authorization', 'Bearer x')
+      .send({ gradingTerms: ['prelim', 'midterm', 'finals'] });
+    expect(set.status).toBe(200);
+    expect(prisma.course.update).toHaveBeenCalledWith({
+      where: { id: 'c1' },
+      data: expect.objectContaining({
+        gradingTerms: JSON.stringify(['prelim', 'midterm', 'finals']),
+      }),
+    });
+
+    const garbage = await request(app())
+      .patch('/api/courses/c1')
+      .set('Authorization', 'Bearer x')
+      .send({ gradingTerms: ['quarter'] });
+    expect(garbage.status).toBe(400);
+
+    const cleared = await request(app())
+      .patch('/api/courses/c1')
+      .set('Authorization', 'Bearer x')
+      .send({ gradingTerms: null });
+    expect(cleared.status).toBe(200);
+    expect(prisma.course.update).toHaveBeenCalledWith({
+      where: { id: 'c1' },
+      data: expect.objectContaining({ gradingTerms: null }),
+    });
+  });
 });

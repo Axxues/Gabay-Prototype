@@ -277,11 +277,131 @@ describe('assessments router', () => {
         courseId: 'c1',
         title: 'Bad Exam',
         instructions: 'Answer all.',
-        term: 'prelim',
+        term: 'quarter',
         questions: [],
       });
 
     expect(res.status).toBe(400);
     expect(prisma.exam.create).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/exams with prelim term returns 201', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-fac',
+      role: 'faculty',
+    });
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(course);
+    (prisma.exam.create as ReturnType<typeof vi.fn>).mockImplementation(
+      (args: { data: Record<string, unknown> }) =>
+        Promise.resolve({ id: 'ex1', ...args.data })
+    );
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .post('/api/exams')
+      .set('Authorization', 'Bearer x')
+      .send({
+        courseId: 'c1',
+        title: 'Prelim Exam',
+        instructions: 'Answer all.',
+        term: 'prelim',
+        questions: [],
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.exam.term).toBe('prelim');
+  });
+
+  it('POST /api/quizzes accepts prelim term and returns it', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-fac',
+      role: 'faculty',
+    });
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(course);
+    (prisma.quiz.create as ReturnType<typeof vi.fn>).mockImplementation(
+      (args: { data: Record<string, unknown> }) =>
+        Promise.resolve({ id: 'qz1', ...args.data })
+    );
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .post('/api/quizzes')
+      .set('Authorization', 'Bearer x')
+      .send({
+        courseId: 'c1',
+        title: 'Q',
+        instructions: 'I',
+        term: 'prelim',
+        questions: [],
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.quiz.term).toBe('prelim');
+  });
+
+  it('POST /api/activities with unknown term returns 400', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-fac',
+      role: 'faculty',
+    });
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(course);
+
+    const bad = await (await import('supertest'))
+      .default(app())
+      .post('/api/activities')
+      .set('Authorization', 'Bearer x')
+      .send({
+        courseId: 'c1',
+        title: 'A',
+        instructions: 'I',
+        pointsPossible: 100,
+        term: 'quarter',
+        questions: [],
+      });
+
+    expect(bad.status).toBe(400);
+    expect(prisma.activity.create).not.toHaveBeenCalled();
+  });
+
+  it('PATCH /api/quizzes/:id updates term, PATCH /api/activities/:id rejects unknown term', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-fac',
+      role: 'faculty',
+    });
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(course);
+    (prisma.quiz.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'qz1',
+      courseId: 'c1',
+      title: 'Q',
+      questions: [],
+    });
+    (prisma.quiz.update as ReturnType<typeof vi.fn>).mockImplementation(
+      (args: { where: unknown; data: Record<string, unknown> }) =>
+        Promise.resolve({ id: 'qz1', ...args.data })
+    );
+    (prisma.activity.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'a1',
+      courseId: 'c1',
+      title: 'A',
+      questions: [],
+    });
+
+    const request = (await import('supertest')).default;
+    const ok = await request(app())
+      .patch('/api/quizzes/qz1')
+      .set('Authorization', 'Bearer x')
+      .send({ term: 'finals' });
+    expect(ok.status).toBe(200);
+    expect(prisma.quiz.update).toHaveBeenCalledWith({
+      where: { id: 'qz1' },
+      data: expect.objectContaining({ term: 'finals' }),
+    });
+
+    const bad = await request(app())
+      .patch('/api/activities/a1')
+      .set('Authorization', 'Bearer x')
+      .send({ term: 'quarter' });
+    expect(bad.status).toBe(400);
+    expect(prisma.activity.update).not.toHaveBeenCalled();
   });
 });

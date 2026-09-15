@@ -193,6 +193,8 @@ coursesRouter.get(
   })
 );
 
+const KNOWN_TERMS = ['prelim', 'midterm', 'finals'] as const;
+
 const COURSE_PATCH_STRINGS = [
   'code',
   'title',
@@ -216,6 +218,16 @@ coursesRouter.patch(
     assertCourseOwner(course, auth);
     const body = (req.body ?? {}) as Record<string, unknown>;
     const data: Record<string, string | boolean | number | null> = {};
+    if (body.gradingTerms !== undefined) {
+      if (body.gradingTerms !== null) {
+        if (!Array.isArray(body.gradingTerms) || body.gradingTerms.some(t => typeof t !== 'string' || !(KNOWN_TERMS as readonly string[]).includes(t))) {
+          throw new ApiError(400, 'bad_request', `Field 'gradingTerms' must be an array of prelim, midterm, finals.`);
+        }
+        data.gradingTerms = JSON.stringify([...new Set(body.gradingTerms)]);
+      } else {
+        data.gradingTerms = null;
+      }
+    }
     for (const key of COURSE_PATCH_STRINGS) {
       const value = body[key];
       if (value === undefined) continue;
