@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { isImageFile } from '../utils/fileUploader';
 import { isAnnouncementVisibleToViewer } from '../utils/sections';
+import { groupRepliesByRoot } from '../utils/threadReplies';
 import { PageHeader } from '../components/common/PageHeader';
 import { EmptyState } from '../components/common/EmptyState';
 import { CreateAnnouncementPage } from './CreateAnnouncementPage';
@@ -49,6 +50,10 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
 
   // Reply state for currently expanded thread
   const [replyText, setReplyText] = useState('');
+
+  // Second-layer reply composer state per announcement (reply target id + draft text)
+  const [replyToReplyIds, setReplyToReplyIds] = useState<Record<string, string | null>>({});
+  const [childTexts, setChildTexts] = useState<Record<string, string>>({});
 
   const isImageFileName = (name: string, url?: string): boolean => {
     return isImageFile(name, undefined, url);
@@ -478,11 +483,23 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
                           )}
 
                           {/* List of Replies */}
-                          {!mustPostFirst && ann.replies && ann.replies.length > 0 && (
+                          {!mustPostFirst && ann.replies && ann.replies.length > 0 && (() => {
+                            // Hoisted per-announcement: computed once outside the per-row map.
+                            const topReplies = (ann.replies || []).filter(r => !r.parentId);
+                            const childGroups = groupRepliesByRoot((ann.replies || []).filter(r => r.parentId));
+                            const annReplyToId = replyToReplyIds[ann.id] ?? null;
+                            const annChildText = childTexts[ann.id] ?? '';
+                            const replyTarget = annReplyToId
+                              ? (ann.replies || []).find(p => p.id === annReplyToId)
+                              : undefined;
+                            return (
                             <div className="space-y-3">
-                              {[...ann.replies]
+                              {[...topReplies]
                                 .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-                                .map(rep => (
+                                .map(rep => {
+                                  const childThreads = childGroups.get(rep.id) || [];
+                                  const showComposerHere = Boolean(annReplyToId) && (annReplyToId === rep.id || childThreads.some(ch => ch.id === annReplyToId));
+                                  return (
                                   <div
                                     key={rep.id}
                                     className="p-3.5 bg-muted/30 border border-border rounded-xl space-y-1.5"
@@ -509,10 +526,120 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
                                       </span>
                                     </div>
                                     <p className="text-xs text-foreground pl-8">{rep.content}</p>
+                                    <div className="flex items-center space-x-3 pl-8 pt-0.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setReplyToReplyIds(prev => ({ ...prev, [ann.id]: rep.id }));
+                                          setChildTexts(prev => ({ ...prev, [ann.id]: '' }));
+                                        }}
+                                        className="text-[11px] font-bold font-sans text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                                      >
+                                        Reply
+                                      </button>
+                                    </div>
+
+                                    {/* Second-layer thread: flattened children indented under the root */}
+                                    {childThreads.map(child => {
+                                      const direct = (ann.replies || []).find(p => p.id === child.parentId);
+                                      const showMention = Boolean(direct && direct.id !== rep.id);
+                                      return (
+                                        <div key={child.id} className="ml-8 border-l border-border pl-3 space-y-1">
+                                          <div className="flex items-center justify-between">
+                                            <div className="flex items-center space-x-2">
+                                              <img
+                                                src={child.authorAvatar}
+                                                alt={child.authorName}
+                                                className="w-5 h-5 rounded-full object-cover border border-border shrink-0"
+                                              />
+                                              <span className="text-xs font-bold text-foreground">
+                                                {child.authorName}
+                                              </span>
+                                              <span className="px-2 py-0.5 text-[11px] font-sans font-medium rounded-full bg-muted text-muted-foreground border border-border">
+                                                {child.authorRole}
+                                              </span>
+                                            </div>
+                                            <span className="text-[10px] font-sans text-muted-foreground">
+                                              {new Date(child.createdAt).toLocaleTimeString([], {
+                                                hour: '2-digit',
+                                                minute: '2-digit'
+                                              })}
+                                            </span>
+                                          </div>
+                                          <p className="text-xs text-foreground pl-0">
+                                            {showMention && <span className="font-bold text-primary">@{direct?.authorName} </span>}
+                                            {child.content}
+                                          </p>
+                                          <div className="flex items-center space-x-3 pt-0.5">
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setReplyToReplyIds(prev => ({ ...prev, [ann.id]: child.id }));
+                                                setChildTexts(prev => ({ ...prev, [ann.id]: '' }));
+                                              }}
+                                              className="text-[11px] font-bold font-sans text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                                            >
+                                              Reply
+                                            </button>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+
+                                    {/* Inline second-layer composer for this thread */}
+                                    {showComposerHere && annReplyToId && (
+                                      <div className="ml-8 border-l border-border pl-3 pt-1 space-y-2">
+                                        <p className="text-[11px] font-sans text-muted-foreground">
+                                          Reply to <span className="font-bold text-primary">@{replyTarget?.authorName ?? 'reply'}</span>
+                                        </p>
+                                        <div className="flex items-start space-x-2">
+                                          <textarea
+                                            rows={2}
+                                            value={annChildText}
+                                            onChange={e =>
+                                              setChildTexts(prev => ({ ...prev, [ann.id]: e.target.value }))
+                                            }
+                                            placeholder="Write a reply..."
+                                            className="flex-1 px-3 py-2 bg-background border border-border rounded-xl text-xs font-sans text-foreground outline-none focus:ring-2 focus:ring-primary/20 resize-none"
+                                          />
+                                          <div className="flex flex-col space-y-1.5 shrink-0">
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                const text = annChildText.trim();
+                                                if (!text || !annReplyToId) return;
+                                                void addAnnouncementReply(ann.id, text, annReplyToId)
+                                                  .then(() => {
+                                                    setReplyToReplyIds(prev => ({ ...prev, [ann.id]: null }));
+                                                    setChildTexts(prev => ({ ...prev, [ann.id]: '' }));
+                                                  })
+                                                  .catch(() => {});
+                                              }}
+                                              disabled={!annChildText.trim()}
+                                              className="px-3 py-1.5 text-xs font-bold bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-lg transition-all cursor-pointer"
+                                            >
+                                              Reply
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setReplyToReplyIds(prev => ({ ...prev, [ann.id]: null }));
+                                                setChildTexts(prev => ({ ...prev, [ann.id]: '' }));
+                                              }}
+                                              className="px-3 py-1.5 text-muted-foreground hover:bg-muted text-xs font-bold font-sans rounded-lg transition-colors cursor-pointer"
+                                            >
+                                              Cancel
+                                            </button>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
                                   </div>
-                                ))}
+                                  );
+                                })}
                             </div>
-                          )}
+                            );
+                          })()}
 
                           {/* Reply Composer Box */}
                           <div className="flex items-start space-x-2 pt-2">
