@@ -192,7 +192,7 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
 
   const handleExportExcel = () => {
     if (!course || hasParseError) return;
-    const autoConfig = { courseId, midtermColumns: columnsByTerm.midterm, finalColumns: columnsByTerm.finals, mtExamPerfect: examPerfectByTerm.midterm, ftExamPerfect: examPerfectByTerm.finals };
+    const autoConfig = { courseId, prelimColumns: columnsByTerm.prelim, midtermColumns: columnsByTerm.midterm, finalColumns: columnsByTerm.finals, mtExamPerfect: examPerfectByTerm.midterm, ftExamPerfect: examPerfectByTerm.finals };
     exportSPRToExcel({
       course,
       roster: students,
@@ -200,9 +200,12 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
       resolveStudent: (studentId: string) => {
         const row = sprRowById.get(studentId);
         const finalValue = row?.final ?? null;
+        const prelim = row?.terms.prelim;
         const mt = row?.terms.midterm;
         const ft = row?.terms.finals;
         return {
+          prelimCells: prelim?.cells.map(c => c.score) ?? columnsByTerm.prelim.map(() => null),
+          prelimGrade: prelim?.grade ?? null,
           mtCells: mt?.cells.map(c => c.score) ?? columnsByTerm.midterm.map(() => null),
           mtExam: mt?.exam ?? null,
           ftCells: ft?.cells.map(c => c.score) ?? columnsByTerm.finals.map(() => null),

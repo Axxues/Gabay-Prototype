@@ -8,6 +8,7 @@ export function exportSPRToExcel(args: {
   roster: User[];
   config: SPRConfig;
   resolveStudent: (studentId: string) => {
+    prelimCells?: Array<number | null>; prelimGrade?: number | null;
     mtCells: Array<number | null>; mtExam: number | null;
     ftCells: Array<number | null>; ftExam: number | null;
     mtGrade: number | null; ftGrade: number | null;
@@ -15,6 +16,10 @@ export function exportSPRToExcel(args: {
   };
 }): void {
   const { course, roster, config, resolveStudent } = args;
+  const prelimCols = config.prelimColumns ?? [];
+  // Prelim is class-standing-only (no exam column), mirroring the gradebook UI.
+  // An absent/empty prelim bucket keeps 2-term exports byte-identical.
+  const hasPrelim = prelimCols.length > 0;
   const mtCols = config.midtermColumns;
   const ftCols = config.finalColumns;
 
@@ -22,6 +27,8 @@ export function exportSPRToExcel(args: {
     'No.',
     'Name of Student',
     'Course, Year & Section',
+    ...prelimCols.map(c => c.title),
+    ...(hasPrelim ? ['Prelim Grade'] : []),
     ...mtCols.map(c => c.title),
     'MT Exam',
     'MT Grade',
@@ -49,6 +56,8 @@ export function exportSPRToExcel(args: {
   rows.push(headerRow);
   rows.push([
     '', '', '',
+    ...prelimCols.map(c => c.perfectScore),
+    ...(hasPrelim ? [''] : []),
     ...mtCols.map(c => c.perfectScore),
     config.mtExamPerfect, '',
     ...ftCols.map(c => c.perfectScore),
@@ -63,6 +72,8 @@ export function exportSPRToExcel(args: {
       '',
       student.name,
       section,
+      ...padCells(v.prelimCells ?? [], prelimCols.length),
+      ...(hasPrelim ? [blank(v.prelimGrade)] : []),
       ...padCells(v.mtCells, mtCols.length),
       blank(v.mtExam),
       blank(v.mtGrade),
@@ -87,7 +98,7 @@ export function exportSPRToExcel(args: {
   const ws = XLSX.utils.aoa_to_sheet(rows);
   ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: totalCols - 1 } }];
   ws['!freeze'] = { xSplit: 3, ySplit: 4 };
-  const gradeColCount = mtCols.length + 2 + ftCols.length + 2;
+  const gradeColCount = prelimCols.length + (hasPrelim ? 1 : 0) + mtCols.length + 2 + ftCols.length + 2;
   ws['!cols'] = [
     { wch: 6 },
     { wch: 28 },
