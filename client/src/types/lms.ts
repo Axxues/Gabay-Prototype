@@ -1,5 +1,7 @@
 export type UserRole = 'admin' | 'faculty' | 'staff' | 'student';
 
+export type TermId = 'prelim' | 'midterm' | 'finals';
+
 export interface User {
   id: string;
   name: string;
@@ -35,6 +37,7 @@ export interface Course {
   chedComplianceCode?: string;
   image?: string;
   syllabus?: OfficialSyllabusData | null;
+  gradingTerms?: TermId[] | null;
   joinCode?: string;
   sectionIds?: string[];
 }
@@ -220,6 +223,7 @@ export interface Quiz {
   courseId: string;
   title: string;
   instructions: string;
+  term: TermId;
   timeLimitMinutes: number;
   published: boolean;
   delayedUntil?: string; // scheduled release date/time
@@ -235,6 +239,7 @@ export interface Activity {
   courseId: string;
   title: string;
   instructions: string;
+  term: TermId;
   questions: QuizQuestion[];
   pointsPossible: number;
   dueDate?: string;
@@ -250,7 +255,7 @@ export interface Exam {
   published: boolean;
   dueDate?: string;
   questions: QuizQuestion[];
-  term: 'midterm' | 'final';
+  term: TermId;
 }
 
 export interface CalendarEvent {

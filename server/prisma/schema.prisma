@@ -38,6 +38,7 @@ model Course {
   joinCode           String?             @unique @db.NVarChar(32)
   syllabus           String?             @db.NVarChar(Max)
   sprConfig          String?             @db.NVarChar(Max)
+  gradingTerms       String?             @db.NVarChar(Max) // JSON array of TermIds, null = auto-detect
   sections           CourseSection[]
   requests           EnrollmentRequest[]
 }
@@ -197,6 +198,7 @@ model Quiz {
   fileName         String?        @db.NVarChar(256)
   fileUrl          String?        @db.NVarChar(1024)
   fileSize         String?        @db.NVarChar(32)
+  term             String?        @db.NVarChar(16) // grading term (prelim|midterm|finals), nullable = legacy rows
   questions        QuizQuestion[]
   submissions      Submission[]
 }
@@ -230,6 +232,7 @@ model Activity {
   pointsPossible Float
   dueDate        DateTime?
   published      Boolean        @default(false)
+  term           String?        @db.NVarChar(16) // grading term (prelim|midterm|finals), nullable = legacy rows
   questions      QuizQuestion[]
   submissions    Submission[]
 }
