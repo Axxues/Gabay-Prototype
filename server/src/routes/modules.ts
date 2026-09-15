@@ -592,6 +592,10 @@ modulesRouter.delete(
     } else {
       await assertCourseAccess(course, auth);
     }
+    await prisma.moduleComment.updateMany({
+      where: { moduleId: mod.id, parentId: comment.id },
+      data: { parentId: comment.parentId ?? null },
+    });
     await prisma.moduleComment.delete({ where: { id: comment.id } });
     res.json({ ok: true });
   })

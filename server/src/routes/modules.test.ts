@@ -8,7 +8,7 @@ vi.mock('../db.js', () => ({
     enrollmentRequest: { findFirst: vi.fn() },
     module: { findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
     moduleItem: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
-    moduleComment: { findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
+    moduleComment: { findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn(), delete: vi.fn() },
     moduleCommentLike: { findFirst: vi.fn(), create: vi.fn(), delete: vi.fn(), count: vi.fn() },
     courseFolder: { findFirst: vi.fn(), create: vi.fn(), updateMany: vi.fn() },
     courseFile: { findMany: vi.fn(), findFirst: vi.fn(), create: vi.fn() },
@@ -392,5 +392,78 @@ describe('modules router', () => {
     expect(res.status).toBe(400);
     expect(prisma.moduleComment.create).not.toHaveBeenCalled();
     expect(prisma.notification.create).not.toHaveBeenCalled();
+  });
+
+  it('DELETE top-level comment re-parents second-layer child to null', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-caller',
+      role: 'student',
+    });
+    (prisma.module.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(mod);
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(course);
+    (prisma.enrollmentRequest.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: 'approved',
+    });
+    (prisma.moduleComment.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'c-top',
+      moduleId: 'm1',
+      parentId: null,
+      authorId: 'u-caller',
+      content: 'top',
+    });
+    (prisma.moduleComment.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 1 });
+    (prisma.moduleComment.delete as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'c-top' });
+
+    const del = await (await import('supertest'))
+      .default(app())
+      .delete('/api/modules/m1/comments/c-top')
+      .set('Authorization', 'Bearer x');
+
+    expect(del.status).toBe(200);
+    expect(prisma.moduleComment.updateMany).toHaveBeenCalledWith({
+      where: { moduleId: 'm1', parentId: 'c-top' },
+      data: { parentId: null },
+    });
+    expect(prisma.moduleComment.delete).toHaveBeenCalledWith({ where: { id: 'c-top' } });
+
+    // Child survives as top-level with content intact; sibling threads unaffected.
+    (prisma.module.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        ...mod,
+        items: [],
+        comments: [
+          {
+            id: 'c-child',
+            moduleId: 'm1',
+            parentId: null,
+            content: 'second layer',
+            authorId: 'u-b',
+            likedBy: [],
+          },
+          {
+            id: 'c-sib',
+            moduleId: 'm1',
+            parentId: null,
+            content: 'sibling',
+            authorId: 'u-c',
+            likedBy: [],
+          },
+        ],
+      },
+    ]);
+
+    const list = await (await import('supertest'))
+      .default(app())
+      .get('/api/courses/c1/modules')
+      .set('Authorization', 'Bearer x');
+
+    expect(list.status).toBe(200);
+    const comments = list.body.modules[0].comments;
+    const child = comments.find((c: { id: string }) => c.id === 'c-child');
+    const sib = comments.find((c: { id: string }) => c.id === 'c-sib');
+    expect(child.parentId).toBeNull();
+    expect(child.content).toBe('second layer');
+    expect(sib.parentId).toBeNull();
+    expect(sib.content).toBe('sibling');
   });
 });
