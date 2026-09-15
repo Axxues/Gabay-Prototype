@@ -239,12 +239,26 @@ describe('autoScoreFraction', () => {
     expect(autoScoreFraction({ column: colA, studentId: 's1', submissions: under, assignments, activities: [], quizzes: [] })).toBe(0);
   });
 
-  it('builds auto columns from published activities+quizzes only, excluding assignments', () => {
+  it('builds auto columns from published activities+quizzes, skipping drafts', () => {
     const cols = buildAutoColumns('c1', {
       activities: [{ id: 'a1', courseId: 'c1', title: 'Act', published: true, pointsPossible: 20 } as Activity],
       quizzes: [{ id: 'q1', courseId: 'c1', title: 'Q', published: true, questions: [{ points: 10 }] } as unknown as Quiz, { id: 'q2', courseId: 'c1', title: 'Draft', published: false, questions: [] } as unknown as Quiz],
     });
     expect(cols.map(c => c.linkedSource?.sourceId).sort()).toEqual(['a1', 'q1']);
+  });
+  it('builds an auto column for each published classic assignment', () => {
+    const cols = buildAutoColumns('c1', {
+      activities: [],
+      quizzes: [],
+      assignments: [
+        makeAssignment({ id: 'asg1', courseId: 'c1', title: 'Lab 1', published: true, pointsPossible: 50 }),
+        makeAssignment({ id: 'asg2', courseId: 'c1', title: 'Draft', published: false, pointsPossible: 50 }),
+        makeAssignment({ id: 'asg3', courseId: 'other', title: 'Other course', published: true, pointsPossible: 50 }),
+      ],
+    });
+    expect(cols.map(c => c.linkedSource)).toEqual([{ kind: 'assignment', sourceId: 'asg1' }]);
+    expect(cols[0].title).toBe('Lab 1');
+    expect(cols[0].perfectScore).toBe(50);
   });
   it('scores exam submissions as percent fraction', () => {
     const exams = [{ id: 'e1', courseId: 'c1', title: 'MT', published: true, term: 'midterm', questions: [{ points: 60 }] } as unknown as Exam];
@@ -255,5 +269,38 @@ describe('autoScoreFraction', () => {
     const exams = [{ id: 'e1', courseId: 'c1', title: 'MT', published: true, term: 'midterm', questions: [{ points: 60 }] } as unknown as Exam];
     const over = [makeSubmission({ assignmentId: 'asg-exam-e1', studentId: 's1', grade: 500 })];
     expect(resolveExamScore('c1', 'midterm', 's1', { exams, submissions: over }).score).toBe(60);
+  });
+});
+
+import { extractTermWeights, finalPercentTerms } from './spr';
+
+describe('extractTermWeights', () => {
+  it('parses 3-term weights from formula text', () => {
+    const w = extractTermWeights(
+      { termFormula: 'Prelim Grade 30%, Midterm Grade 30%', finalFormula: 'Final Grade = 60% class standing + 40% finals' },
+      ['prelim', 'midterm', 'finals'],
+    );
+    expect(w.weights).toEqual({ prelim: 30, midterm: 30, finals: 40 });
+    expect(w.defaulted).toBe(false);
+  });
+  it('keeps 2-term 40/60 behavior', () => {
+    const w = extractTermWeights(
+      { termFormula: 'Midterm Grade / Final Term Grade = 60% Class Standing + 40% ME / FE', finalFormula: 'Final Grade = 40% Midterm Grade + 60% Final Term Grade' },
+      ['midterm', 'finals'],
+    );
+    expect(w.weights).toEqual({ midterm: 40, finals: 60 });
+    expect(w.defaulted).toBe(false);
+  });
+  it('falls back to equal split with defaulted flag on garbage', () => {
+    const w = extractTermWeights({ termFormula: 'see handbook', finalFormula: '' }, ['prelim', 'midterm', 'finals']);
+    expect(w.weights).toEqual({ prelim: 33.33, midterm: 33.33, finals: 33.34 });
+    expect(w.defaulted).toBe(true);
+  });
+});
+
+describe('finalPercentTerms', () => {
+  it('weights term grades; null term nulls the final', () => {
+    expect(finalPercentTerms({ prelim: 80, midterm: 90, finals: 70 }, { prelim: 30, midterm: 30, finals: 40 })).toBeCloseTo(79, 2);
+    expect(finalPercentTerms({ prelim: null, midterm: 90, finals: 70 }, { prelim: 30, midterm: 30, finals: 40 })).toBeNull();
   });
 });

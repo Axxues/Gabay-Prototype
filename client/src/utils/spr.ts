@@ -8,6 +8,7 @@ import type {
   SPRWeights,
   Submission,
 } from '../types/lms';
+import type { TermId } from './gradingTerms';
 
 export function round2(n: number): number {
   return Math.round(n * 100) / 100;
@@ -57,11 +58,15 @@ function quizPointsPossible(quiz: Quiz): number {
   return quiz.questions.reduce((sum, q) => sum + (q.points ?? 0), 0);
 }
 
-export function buildAutoColumns(courseId: string, db: { activities?: Activity[]; quizzes: Quiz[] }): SPRColumn[] {
+export function buildAutoColumns(courseId: string, db: { activities?: Activity[]; quizzes: Quiz[]; assignments?: Assignment[] }): SPRColumn[] {
   const cols: SPRColumn[] = [];
   for (const a of db.activities ?? []) {
     if (a.courseId !== courseId || !a.published) continue;
     cols.push({ id: `auto-activity-${a.id}`, title: a.title, perfectScore: Math.max(1, a.pointsPossible || 0), linkedSource: { kind: 'activity', sourceId: a.id } });
+  }
+  for (const a of db.assignments ?? []) {
+    if (a.courseId !== courseId || !a.published) continue;
+    cols.push({ id: `auto-assignment-${a.id}`, title: a.title, perfectScore: Math.max(1, a.pointsPossible || 0), linkedSource: { kind: 'assignment', sourceId: a.id } });
   }
   for (const q of db.quizzes ?? []) {
     if (q.courseId !== courseId || !q.published) continue;
@@ -145,4 +150,67 @@ export function resolveExamScore(courseId: string, term: 'midterm' | 'final', st
   if (!cands.length) return { score: null, perfect };
   cands.sort((a, b) => String(b.gradedAt ?? b.submittedAt ?? '') > String(a.gradedAt ?? a.submittedAt ?? '') ? 1 : -1);
   return { score: Math.min(Math.max(cands[0].grade as number, 0), perfect), perfect };
+}
+
+export interface TermWeightsResult {
+  weights: Record<TermId, number>;
+  defaulted: boolean;
+}
+
+export function extractTermWeights(
+  grading: { termFormula?: string; finalFormula?: string } | null | undefined,
+  terms: TermId[],
+): TermWeightsResult {
+  const equalSplit = (): TermWeightsResult => {
+    const weights = {} as Record<TermId, number>;
+    if (terms.length === 2 && terms.includes('midterm') && terms.includes('finals')) {
+      weights['midterm'] = 40; weights['finals'] = 60;
+    } else if (terms.length === 1) {
+      weights[terms[0]] = 100;
+    } else {
+      const each = Math.floor(10000 / terms.length) / 100;
+      terms.forEach((t, i) => { weights[t] = i === terms.length - 1 ? round2(100 - each * (terms.length - 1)) : each; });
+    }
+    return { weights, defaulted: true };
+  };
+  const text = `${grading?.termFormula ?? ''}\n${grading?.finalFormula ?? ''}`;
+  const found: Partial<Record<TermId, number>> = {};
+  for (const term of terms) {
+    const labels = term === 'prelim' ? ['prelim'] : term === 'midterm' ? ['midterm'] : ['final'];
+    // Multiple mentions can match (e.g. generic "Final Grade = 60%" vs "40% finals"):
+    // prefer the number closest to a term mention; later mentions win ties.
+    // The gap excludes digits/% so one weight can't swallow another ("60% ... + 40% finals").
+    const labelAlt = labels.join('|');
+    const beforeRe = new RegExp(`(\\d+(?:\\.\\d+)?)\\s*%([^.\\n\\d%]{0,80})((?:${labelAlt}))`, 'gi');
+    const afterRe = new RegExp(`((?:${labelAlt}))([^.\\n\\d%]{0,80})(\\d+(?:\\.\\d+)?)\\s*%`, 'gi');
+    let best: number | undefined;
+    let bestGap = Infinity;
+    for (const m of text.matchAll(beforeRe)) {
+      const gap = (m[2] ?? '').length;
+      if (gap <= bestGap) { bestGap = gap; best = Number(m[1]); }
+    }
+    for (const m of text.matchAll(afterRe)) {
+      const gap = (m[2] ?? '').length;
+      if (gap <= bestGap) { bestGap = gap; best = Number(m[3]); }
+    }
+    if (best !== undefined) found[term] = best;
+  }
+  const vals = terms.map(t => found[t]);
+  if (vals.some(v => v === undefined)) return equalSplit();
+  const total = (vals as number[]).reduce((s, v) => s + v, 0);
+  if (Math.abs(total - 100) > 0.01) return equalSplit();
+  return { weights: Object.fromEntries(terms.map(t => [t, found[t]!])) as Record<TermId, number>, defaulted: false };
+}
+
+export function finalPercentTerms(
+  termGrades: Record<TermId, number | null>,
+  weights: Record<TermId, number>,
+): number | null {
+  let acc = 0;
+  for (const [term, weight] of Object.entries(weights) as [TermId, number][]) {
+    const g = termGrades[term];
+    if (g === null || g === undefined) return null;
+    acc += (g * weight) / 100;
+  }
+  return round2(acc);
 }
