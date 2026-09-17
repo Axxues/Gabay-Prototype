@@ -243,4 +243,57 @@ describe('courses router', () => {
       data: expect.objectContaining({ gradingTerms: null }),
     });
   });
+
+  it('PATCH grades-release toggles one term, merges other terms, rejects bad input', async () => {
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'c1',
+      instructorId: 'u-fac',
+      published: true,
+      gradesReleased: JSON.stringify({ midterm: true }),
+    });
+    (prisma.course.update as ReturnType<typeof vi.fn>).mockImplementation(
+      (args: { where: unknown; data: Record<string, unknown> }) =>
+        Promise.resolve({ id: 'c1', ...args.data })
+    );
+    const request = (await import('supertest')).default;
+
+    const set = await request(app())
+      .patch('/api/courses/c1/grades-release')
+      .set('Authorization', 'Bearer x')
+      .send({ term: 'finals', released: true });
+    expect(set.status).toBe(200);
+    expect(prisma.course.update).toHaveBeenCalledWith({
+      where: { id: 'c1' },
+      data: expect.objectContaining({
+        gradesReleased: JSON.stringify({ midterm: true, finals: true }),
+      }),
+    });
+
+    const badTerm = await request(app())
+      .patch('/api/courses/c1/grades-release')
+      .set('Authorization', 'Bearer x')
+      .send({ term: 'quarter', released: true });
+    expect(badTerm.status).toBe(400);
+
+    const badFlag = await request(app())
+      .patch('/api/courses/c1/grades-release')
+      .set('Authorization', 'Bearer x')
+      .send({ term: 'midterm', released: 'yes' });
+    expect(badFlag.status).toBe(400);
+  });
+
+  it('PATCH grades-release as non-owner faculty → 403', async () => {
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'c1',
+      instructorId: 'u-other',
+      published: true,
+    });
+    const res = await (await import('supertest'))
+      .default(app())
+      .patch('/api/courses/c1/grades-release')
+      .set('Authorization', 'Bearer x')
+      .send({ term: 'midterm', released: true });
+    expect(res.status).toBe(403);
+    expect(prisma.course.update).not.toHaveBeenCalled();
+  });
 });

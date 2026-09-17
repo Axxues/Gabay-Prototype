@@ -249,6 +249,47 @@ coursesRouter.patch(
   })
 );
 
+coursesRouter.patch(
+  '/:id/grades-release',
+  authenticateToken,
+  requireRole('faculty', 'admin'),
+  asyncHandler(async (req, res) => {
+    const auth = req.auth!;
+    // Full row: need the current gradesReleased blob to merge one term.
+    const row = await prisma.course.findUnique({ where: { id: req.params.id } });
+    if (!row) throw new ApiError(404, 'not_found', 'Course not found.');
+    assertCourseOwner(row, auth);
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    if (typeof body.term !== 'string' || !(KNOWN_TERMS as readonly string[]).includes(body.term)) {
+      throw new ApiError(400, 'bad_request', `Field 'term' must be one of prelim, midterm, finals.`);
+    }
+    if (typeof body.released !== 'boolean') {
+      throw new ApiError(400, 'bad_request', `Field 'released' must be a boolean.`);
+    }
+    let merged: Record<string, boolean> = {};
+    if (typeof row.gradesReleased === 'string' && row.gradesReleased) {
+      try {
+        const parsed: unknown = JSON.parse(row.gradesReleased);
+        if (parsed && typeof parsed === 'object') {
+          for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+            if ((KNOWN_TERMS as readonly string[]).includes(k) && typeof v === 'boolean') {
+              merged[k] = v;
+            }
+          }
+        }
+      } catch {
+        merged = {};
+      }
+    }
+    merged[body.term] = body.released;
+    const updated = await prisma.course.update({
+      where: { id: row.id },
+      data: { gradesReleased: JSON.stringify(merged) },
+    });
+    res.json({ course: updated });
+  })
+);
+
 coursesRouter.get(
   '/:id/sections',
   authenticateToken,
