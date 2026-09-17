@@ -127,7 +127,7 @@ describe('assessments router', () => {
     (prisma.submission.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
     (prisma.submission.create as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: 'sub1',
-      assignmentId: 'asg-quiz-qz1',
+      activityKey: 'asg-quiz-qz1',
       status: 'submitted',
       rubricScores: '{}',
     });
@@ -144,7 +144,7 @@ describe('assessments router', () => {
     expect(prisma.submission.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          assignmentId: 'asg-quiz-qz1',
+          activityKey: 'asg-quiz-qz1',
           studentId: 'u-stu',
           status: 'submitted',
         }),
@@ -235,7 +235,7 @@ describe('assessments router', () => {
     (prisma.submission.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
     (prisma.submission.create as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: 'sub1',
-      assignmentId: 'asg-exam-ex1',
+      activityKey: 'asg-exam-ex1',
       status: 'submitted',
       rubricScores: '{}',
     });
@@ -248,12 +248,12 @@ describe('assessments router', () => {
       .send({ answers: { qq1: 'A' } });
 
     expect(res.status).toBe(201);
-    expect(res.body.submission.assignmentId).toMatch(/^asg-exam-/);
+    expect(res.body.submission.activityKey).toMatch(/^asg-exam-/);
     expect(prisma.submission.create).toHaveBeenCalledTimes(1);
     expect(prisma.submission.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          assignmentId: 'asg-exam-ex1',
+          activityKey: 'asg-exam-ex1',
           examId: 'ex1',
           studentId: 'u-stu',
           status: 'submitted',
@@ -403,5 +403,70 @@ describe('assessments router', () => {
       .send({ term: 'quarter' });
     expect(bad.status).toBe(400);
     expect(prisma.activity.update).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/activities accepts classic fields and stores format classic', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-fac',
+      role: 'faculty',
+    });
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(course);
+    (prisma.activity.create as ReturnType<typeof vi.fn>).mockImplementation(
+      (args: { data: Record<string, unknown> }) =>
+        Promise.resolve({ id: 'act1', ...args.data })
+    );
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .post('/api/activities')
+      .set('Authorization', 'Bearer x')
+      .send({
+        courseId: 'c1', title: 'Lab 1', instructions: 'Do it', pointsPossible: 50,
+        dueDate: '2026-10-01', submissionTypes: ['online_text'], category: 'lab', format: 'classic',
+      });
+    expect(res.status).toBe(201);
+    expect(prisma.activity.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ format: 'classic', title: 'Lab 1' }) })
+    );
+  });
+
+  it('POST /api/activities accepts prelim term and echoes it', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-fac',
+      role: 'faculty',
+    });
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(course);
+    (prisma.activity.create as ReturnType<typeof vi.fn>).mockImplementation(
+      (args: { data: Record<string, unknown> }) => Promise.resolve({ id: 'act1', ...args.data })
+    );
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .post('/api/activities')
+      .set('Authorization', 'Bearer x')
+      .send({ courseId: 'c1', title: 'Lab', instructions: 'Do it', pointsPossible: 50, dueDate: '2026-10-01T00:00:00.000Z', term: 'prelim', format: 'classic' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.activity.term).toBe('prelim');
+    expect(prisma.activity.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ term: 'prelim' }) })
+    );
+  });
+
+  it('POST /api/activities rejects unknown term with 400', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-fac',
+      role: 'faculty',
+    });
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(course);
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .post('/api/activities')
+      .set('Authorization', 'Bearer x')
+      .send({ courseId: 'c1', title: 'Lab', instructions: 'Do it', pointsPossible: 50, dueDate: '2026-10-01T00:00:00.000Z', term: 'quarter', format: 'classic' });
+
+    expect(res.status).toBe(400);
+    expect(prisma.activity.create).not.toHaveBeenCalled();
   });
 });
