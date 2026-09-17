@@ -39,6 +39,7 @@ model Course {
   syllabus           String?             @db.NVarChar(Max)
   sprConfig          String?             @db.NVarChar(Max)
   gradingTerms       String?             @db.NVarChar(Max) // JSON array of TermIds, null = auto-detect
+  gradesReleased     String?             @db.NVarChar(Max) // JSON map TermId -> boolean, absent = not released
   sections           CourseSection[]
   requests           EnrollmentRequest[]
 }
