@@ -38,7 +38,7 @@ export interface Course {
   image?: string;
   syllabus?: OfficialSyllabusData | null;
   gradingTerms?: TermId[] | null;
-  gradesReleased?: Record<TermId, boolean> | null;
+  gradesReleased?: Partial<Record<TermId, boolean>> | null;
   joinCode?: string;
   sectionIds?: string[];
 }

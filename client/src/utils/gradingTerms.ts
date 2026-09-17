@@ -40,8 +40,8 @@ export function effectiveTerms(
   return resolveCourseTerms(syllabus);
 }
 
-export function normalizeGradesReleased(raw: unknown): Record<TermId, boolean> {
-  const out: Record<TermId, boolean> = {};
+export function normalizeGradesReleased(raw: unknown): Partial<Record<TermId, boolean>> {
+  const out: Partial<Record<TermId, boolean>> = {};
   let obj: unknown = raw;
   if (typeof raw === 'string' && raw) {
     try {
