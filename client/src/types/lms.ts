@@ -180,7 +180,7 @@ export interface SubmissionComment {
 
 export interface Submission {
   id: string;
-  activityKey: string;
+  activityKey?: string;
   courseId: string;
   studentId: string;
   studentName: string;
