@@ -315,7 +315,7 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
                 <button
                   type="button"
                   data-testid={`grades-release-${t}`}
-                  onClick={() => void setGradesReleased(courseId, t, !released)}
+                  onClick={() => { if (!course) return; void Promise.resolve(setGradesReleased(courseId, t, !released)).catch(() => {}); }}
                   className="px-2 py-0.5 text-[11px] font-bold rounded-full border border-primary/30 text-primary hover:bg-primary/10 transition-all cursor-pointer"
                 >
                   {released ? 'Un-release' : 'Release'}
