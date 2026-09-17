@@ -124,7 +124,7 @@ export const ActivityFormFields: React.FC<{
         type: 'success'
       });
     } catch (err) {
-      console.error('Failed to attach assignment file:', err);
+      console.error('Failed to attach activity file:', err);
       upload.fail();
     }
   };

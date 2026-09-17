@@ -37,7 +37,7 @@ interface Conversation {
 
 const SUGGESTIONS = [
   { icon: <BookOpen className="h-4 w-4" />, title: 'Explain a module topic', prompt: 'Can you explain the key concepts from Module 3 of my course?' },
-  { icon: <CalendarDays className="h-4 w-4" />, title: 'Check my schedule', prompt: 'What assignments and quizzes are due this week?' },
+  { icon: <CalendarDays className="h-4 w-4" />, title: 'Check my schedule', prompt: 'What activities and quizzes are due this week?' },
   { icon: <GraduationCap className="h-4 w-4" />, title: 'Study help', prompt: 'Help me review for my upcoming quiz with practice questions.' },
   { icon: <FileText className="h-4 w-4" />, title: 'Summarize a file', prompt: 'Summarize the course syllabus and grading breakdown.' },
 ];
@@ -53,7 +53,7 @@ function getMockResponse(query: string): { content: string; sources: { label: st
       ],
     };
   }
-  if (q.includes('due') || q.includes('deadline') || q.includes('assignment') || q.includes('quiz')) {
+  if (q.includes('due') || q.includes('deadline') || q.includes('activit') || q.includes('quiz')) {
     return {
       content: 'Here is what I found due this week:\n\n• Lab Activity 4: ER Diagramming — due Friday, 11:59 PM\n• Quiz 3: Normalization (Modules 4–5) — due Sunday, 11:59 PM\n• Announcement: make-up class on Saturday, 9:00 AM\n\nWant me to draft a study plan for Quiz 3?',
       sources: [
