@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   db: {} as any,
   isLoading: false,
   isSyncing: false,
+  setGradesReleased: vi.fn(),
 }));
 
 vi.mock('../../context/LMSContext', () => ({
@@ -16,6 +17,7 @@ vi.mock('../../context/LMSContext', () => ({
     effectiveTermsForCourse: () => ['midterm', 'finals'],
     isLoading: mocks.isLoading,
     isSyncing: mocks.isSyncing,
+    setGradesReleased: mocks.setGradesReleased,
   }),
 }));
 
@@ -101,5 +103,27 @@ describe('FacultyGradebook refresh loading', () => {
     render(<FacultyGradebook courseId="c1" />);
     expect(screen.getAllByText(/no grade columns yet/i).length).toBeGreaterThan(0);
     expect(screen.queryByTestId('spr-loading')).not.toBeInTheDocument();
+  });
+});
+
+describe('FacultyGradebook grade release', () => {
+  beforeEach(() => {
+    mocks.setGradesReleased.mockClear();
+    mocks.db = { ...baseDb(), courses: [{ ...baseDb().courses[0], gradesReleased: { midterm: true } }] };
+    localStorage.setItem('gabay-gradebook-collapsed-c1', JSON.stringify([]));
+  });
+
+  test('released term shows pill and Un-release; unreleased shows Release', () => {
+    render(<FacultyGradebook courseId="c1" />);
+    expect(screen.getByTestId('grades-release-midterm')).toHaveTextContent(/un-release/i);
+    expect(screen.getByTestId('grades-release-finals')).toHaveTextContent(/^release$/i);
+    expect(screen.getByText('Released')).toBeInTheDocument();
+    expect(screen.getByText('Not released')).toBeInTheDocument();
+  });
+
+  test('clicking Release calls setGradesReleased with term and true', () => {
+    render(<FacultyGradebook courseId="c1" />);
+    fireEvent.click(screen.getByTestId('grades-release-finals'));
+    expect(mocks.setGradesReleased).toHaveBeenCalledWith('c1', 'finals', true);
   });
 });

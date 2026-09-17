@@ -55,9 +55,10 @@ export const getTransmutedGrade = (
 const TERM_SHORT: Record<TermId, string> = { prelim: 'Prelim', midterm: 'MT', finals: 'FT' };
 
 export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, onGoToSyllabus }) => {
-  const { db, showAlert, effectiveTermsForCourse } = useLMS();
+  const { db, showAlert, effectiveTermsForCourse, setGradesReleased } = useLMS();
 
   const course = db.courses.find(c => c.id === courseId);
+  const releaseMap = course?.gradesReleased || {};
   const approvedIds = new Set(
     (db.enrollmentRequests || [])
       .filter(r => r.courseId === courseId && r.status === 'approved')
@@ -304,6 +305,24 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
               </span>
             </React.Fragment>
           ))}
+          {terms.map(t => {
+            const released = releaseMap[t] === true;
+            return (
+              <span key={`release-${t}`} className="flex items-center space-x-1">
+                <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold border ${released ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20' : 'bg-muted text-muted-foreground border-border'}`}>
+                  {released ? 'Released' : 'Not released'}
+                </span>
+                <button
+                  type="button"
+                  data-testid={`grades-release-${t}`}
+                  onClick={() => void setGradesReleased(courseId, t, !released)}
+                  className="px-2 py-0.5 text-[11px] font-bold rounded-full border border-primary/30 text-primary hover:bg-primary/10 transition-all cursor-pointer"
+                >
+                  {released ? 'Un-release' : 'Release'}
+                </button>
+              </span>
+            );
+          })}
           <span>·</span>
           <span>Passing: <strong className="text-emerald-600 dark:text-emerald-400">75% (3.00)</strong></span>
         </div>
