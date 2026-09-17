@@ -7,7 +7,6 @@ import type {
   Module,
   ModuleItem,
   ModuleComment,
-  Assignment,
   Quiz,
   Exam,
   LMSDatabase,
@@ -66,7 +65,9 @@ interface LMSContextType {
   logout: () => void;
   switchRole: (role: UserRole) => void; // Keep for testing convenience if needed
   isLoading: boolean;
+  isSyncing: boolean;
   lastError: string | null;
+  authReady: boolean;
 
   activeCourseId: string | null;
   setActiveCourseId: (id: string | null) => void;
@@ -94,8 +95,7 @@ interface LMSContextType {
 
   // Real CRUD & Interactive Actions
   createCourse: (course: Partial<Course>) => Promise<Course>;
-  createAssignment: (asg: Partial<Assignment>) => Promise<Assignment>;
-  deleteAssignment: (asgId: string) => Promise<void>;
+  deleteCourse: (courseId: string) => Promise<void>;
   createModule: (courseId: string, title: string) => Promise<Module>;
   updateModule: (moduleId: string, updates: Partial<Module>) => Promise<void>;
   deleteModule: (moduleId: string) => Promise<void>;
@@ -103,10 +103,12 @@ interface LMSContextType {
   updateModuleItem: (currentModuleId: string, itemId: string, updates: Partial<ModuleItem>, targetModuleId?: string) => Promise<void>;
   deleteModuleItem: (moduleId: string, itemId: string) => Promise<void>;
   createQuiz: (quiz: Partial<Quiz>) => Promise<Quiz>;
+  updateQuiz: (quizId: string, updates: Omit<Partial<Quiz>, 'delayedUntil'> & { delayedUntil?: string | null }) => Promise<Quiz>;
   recordQuizSubmission: (quizId: string, studentId: string, answers: Record<string, string>) => Promise<Submission>;
   createExam: (exam: Partial<Exam>) => Promise<Exam>;
   recordExamSubmission: (examId: string, studentId: string, answers: Record<string, string>) => Promise<Submission>;
   createActivity: (data: Partial<Activity>) => Promise<Activity>;
+  updateActivity: (activityId: string, updates: Partial<Activity>) => Promise<Activity>;
   recordActivitySubmission: (activityId: string, studentId: string, answers: Record<string, string>) => Promise<Submission>;
   deleteActivity: (activityId: string) => Promise<void>;
   enrollPerson: (person: Partial<User>, courseId?: string) => Promise<boolean>;
@@ -128,11 +130,12 @@ interface LMSContextType {
     rubricScores: Record<string, number>,
     commentText?: string
   ) => Promise<void>;
-  submitAssignment: (
-    assignmentId: string,
+  submitActivity: (
+    activityId: string,
     submissionType: 'file' | 'online_text',
     content?: string,
-    fileName?: string
+    fileName?: string,
+    answers?: Record<string, string>
   ) => Promise<void>;
   toggleModulePublish: (moduleId: string) => Promise<void>;
   toggleItemCompletion: (moduleId: string, itemId: string) => Promise<void>;
@@ -215,6 +218,7 @@ interface LMSContextType {
   createSection: (courseId: string, data: Partial<CourseSection>) => Promise<CourseSection>;
   updateSection: (sectionId: string, updates: Partial<CourseSection>) => Promise<boolean>;
   deleteSection: (sectionId: string) => Promise<boolean>;
+  renameCourseSection: (courseId: string, name: string) => Promise<boolean>;
   getCourseSections: (courseId: string) => CourseSection[];
   getStudentSection: (courseId: string) => CourseSection | null;
 
@@ -227,6 +231,7 @@ interface LMSContextType {
   selectSection: (courseId: string, sectionId: string) => Promise<boolean>;
   requestSectionSwitch: (courseId: string, targetSectionId: string) => Promise<boolean>;
   getPendingRequestsForCourse: (courseId: string) => Promise<EnrollmentRequest[]>;
+  getApprovedRequestsForCourse: (courseId: string) => Promise<EnrollmentRequest[]>;
   getPendingRequestsForStudent: () => EnrollmentRequest[];
   requestJoinCourse: (courseId: string) => Promise<boolean>;
   getMyRequest: (courseId: string) => EnrollmentRequest | null;
@@ -237,6 +242,7 @@ interface LMSContextType {
 }
 
 const STORAGE_KEY_THEME = 'gabay_theme_v1';
+const STORAGE_KEY_VISITS = 'gabay_visits_v1';
 
 const safeSetLocalStorage = (key: string, value: string): boolean => {
   try {
@@ -248,7 +254,38 @@ const safeSetLocalStorage = (key: string, value: string): boolean => {
   }
 };
 
-const LMSContext = createContext<LMSContextType | undefined>(undefined);
+// Visit stamps are browser-local (per user): read/write helpers + merge into
+// the presented user so badges (which read activeUser.lastVisitedAt, i.e.
+// currentUser) actually see marks recorded by markTabVisited.
+type VisitMap = Record<string, Record<string, string>>;
+
+const readVisitStore = (): VisitMap => {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_VISITS);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object') return {};
+    return parsed as VisitMap;
+  } catch {
+    return {};
+  }
+};
+
+const writeVisitStore = (store: VisitMap): void => {
+  try {
+    safeSetLocalStorage(STORAGE_KEY_VISITS, JSON.stringify(store));
+  } catch {
+    // safeSetLocalStorage already warns; ignore here.
+  }
+};
+
+const withStoredVisits = <T extends { id: string; lastVisitedAt?: Record<string, string> }>(user: T): T => {
+  const stored = readVisitStore()[user.id];
+  if (!stored) return user;
+  return { ...user, lastVisitedAt: { ...(user.lastVisitedAt || {}), ...stored } };
+};
+
+export const LMSContext = createContext<LMSContextType | undefined>(undefined);
 
 /** Selectable system accent. Presets ship hand-tuned light/dark HSL triples. */
 export type AccentId = 'pink' | 'emerald' | 'navy' | 'gold' | 'custom';
@@ -375,11 +412,16 @@ const toOptionalIso = (value: unknown): string | undefined => {
   return toIsoString(value);
 };
 
-const normalizeAssignment = (raw: any): Assignment => ({
+const normalizeActivity = (raw: any): Activity => ({
   ...raw,
-  dueDate: toIsoString(raw.dueDate),
-  submissionTypes: Array.isArray(raw.submissionTypes) ? raw.submissionTypes : [],
-  rubric: Array.isArray(raw.rubric) ? raw.rubric : [],
+  format: raw.format === 'classic' ? 'classic' : 'questionset',
+  term: normalizeTermId(raw.term) ?? 'midterm',
+  dueDate: toOptionalIso(raw.dueDate),
+  questions: Array.isArray(raw.questions) ? raw.questions : [],
+  submissionTypes: Array.isArray(raw.submissionTypes) ? raw.submissionTypes : undefined,
+  rubric: Array.isArray(raw.rubric) ? raw.rubric : undefined,
+  category: raw.category ?? undefined,
+  weight: typeof raw.weight === 'number' ? raw.weight : undefined,
   fileName: raw.fileName ?? undefined,
   fileUrl: raw.fileUrl ?? undefined,
   fileSize: raw.fileSize ?? undefined,
@@ -407,13 +449,6 @@ const normalizeExam = (raw: any): Exam => ({
   term: normalizeTermId(raw.term) ?? 'midterm',
 });
 
-const normalizeActivity = (raw: any): Activity => ({
-  ...raw,
-  term: normalizeTermId(raw.term) ?? 'midterm',
-  dueDate: toOptionalIso(raw.dueDate),
-  questions: Array.isArray(raw.questions) ? raw.questions : [],
-});
-
 const normalizeSubmissionComment = (raw: any): SubmissionComment => ({
   ...raw,
   createdAt: raw.createdAt ? toIsoString(raw.createdAt) : new Date().toISOString(),
@@ -421,7 +456,7 @@ const normalizeSubmissionComment = (raw: any): SubmissionComment => ({
 
 const normalizeSubmission = (raw: any): Submission => ({
   id: raw.id,
-  assignmentId: raw.assignmentId ?? '',
+  activityKey: raw.activityKey ?? raw.assignmentId ?? undefined,
   courseId: raw.courseId,
   studentId: raw.studentId,
   studentName: raw.studentName ?? '',
@@ -506,27 +541,6 @@ const mergeSPRCourseMaps = (
   return out;
 };
 
-/** Union-merge grade rows by course+student (incoming rows win). */
-const mergeSPRGrades = (
-  prev: CourseStudentGrade[] | undefined,
-  incoming: CourseStudentGrade[],
-): CourseStudentGrade[] => {
-  if (incoming.length === 0) return prev ?? [];
-  const merged = [...(prev ?? [])];
-  const index = new Map(merged.map((g, i) => [`${g.courseId}:${g.studentId}`, i]));
-  for (const g of incoming) {
-    const key = `${g.courseId}:${g.studentId}`;
-    const at = index.get(key);
-    if (at === undefined) {
-      index.set(key, merged.length);
-      merged.push(g);
-    } else {
-      merged[at] = g;
-    }
-  }
-  return merged;
-};
-
 /** Task 5: the server stores Course.gradingTerms as a JSON string (nullable);
  *  the client cache holds the TermId array (null = auto-detect). */
 const normalizeCourseGradingTerms = (raw: unknown): TermId[] | null => {
@@ -566,7 +580,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const saved = localStorage.getItem(STORAGE_KEY_THEME);
       return saved === 'light' ? 'light' : 'dark';
-    } catch (_) {
+    } catch {
       return 'dark';
     }
   });
@@ -592,7 +606,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return saved;
       }
       return DEFAULT_ACCENT;
-    } catch (_) {
+    } catch {
       return DEFAULT_ACCENT;
     }
   });
@@ -601,7 +615,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const saved = localStorage.getItem(STORAGE_KEY_ACCENT_CUSTOM);
       return hexToHsl(saved ?? '') ? (saved as string) : DEFAULT_CUSTOM_HEX;
-    } catch (_) {
+    } catch {
       return DEFAULT_CUSTOM_HEX;
     }
   });
@@ -633,7 +647,6 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     users: [],
     courses: [],
     modules: [],
-    assignments: [],
     submissions: [],
     quizzes: [],
     exams: [],
@@ -662,7 +675,20 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Authentication State (token-backed; session restores via GET /api/auth/me)
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
+  // authReady gates route guards so refresh with a stored token shows the
+  // workspace loader instead of flashing the login page while /auth/me resolves.
+  const [authReady, setAuthReady] = useState<boolean>(() => {
+    try {
+      return !getToken();
+    } catch {
+      return true;
+    }
+  });
+  // Invalidates in-flight background fills when a new bootstrap starts or
+  // the user logs out, so stale merges never clobber fresh state.
+  const bootstrapRun = useRef(0);
   // SPR lazy-hydration guard: config/cells are fetched once per course per
   // session so getSPRConfig-triggered fills never refetch in a loop.
   const sprHydratedRef = useRef<Set<string>>(new Set());
@@ -673,10 +699,93 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     dbRef.current = db;
   }, [db]);
 
+  // Alert & Confirmation Modal state (hoisted so refreshAll & session restore can access showAlert)
+  const [alertOptions, setAlertOptions] = useState<AlertModalOptions | null>(null);
+  const [isAlertOpen, setIsAlertOpen] = useState(false);
+
+  const showAlert = (options: string | AlertModalOptions, title?: string) => {
+    if (typeof options === 'string') {
+      setAlertOptions({
+        title: title || 'Notice',
+        message: options,
+        type: 'info',
+      });
+    } else {
+      setAlertOptions(options);
+    }
+    setIsAlertOpen(true);
+  };
+
+  const showConfirm = (message: string, onConfirm: () => void, title?: string) => {
+    setAlertOptions({
+      title: title || 'Confirmation',
+      message,
+      type: 'confirm',
+      confirmText: 'Confirm',
+      cancelText: 'Cancel',
+      onConfirm,
+    });
+    setIsAlertOpen(true);
+  };
+
+  const closeAlert = () => {
+    setIsAlertOpen(false);
+  };
+
+  // Union-merge by id: background fills must never drop rows created
+  // locally while the sync was in flight (they win nothing, they persist).
+  const mergeByKey = <T,>(prev: T[] | undefined, incoming: T[], key: (r: T) => string): T[] => {
+    if (incoming.length === 0) return prev ?? [];
+    if (!prev || prev.length === 0) return incoming;
+    const index = new Map(prev.map((r, i) => [key(r), i]));
+    const merged = [...prev];
+    for (const r of incoming) {
+      const k = key(r);
+      const at = index.get(k);
+      if (at === undefined) {
+        index.set(k, merged.length);
+        merged.push(r);
+      } else {
+        merged[at] = r;
+      }
+    }
+    return merged;
+  };
+  const mergeById = <T extends { id: string }>(prev: T[] | undefined, incoming: T[]): T[] =>
+    mergeByKey(prev, incoming, r => r.id);
+
+  // Server owns filing (area/modules folders + CourseFile rows) on module,
+  // announcement, and area-upload mutations. Those endpoints return only the
+  // primary row, so refresh the file scope afterwards — otherwise Files view
+  // keeps showing the virtual (folder-less) aggregate at root and misses the
+  // newly created module folder until the next full reload.
+  const refreshCourseFileScope = async (courseId: string): Promise<void> => {
+    try {
+      const [foldersSettled, filesSettled] = await Promise.allSettled([
+        apiFetch<{ folders: CourseFolder[] }>(`/api/courses/${encodeURIComponent(courseId)}/folders`),
+        apiFetch<{ files: CourseFile[] }>(`/api/courses/${encodeURIComponent(courseId)}/files`),
+      ]);
+      const folders = foldersSettled.status === 'fulfilled' ? foldersSettled.value.folders : null;
+      const files = filesSettled.status === 'fulfilled' ? filesSettled.value.files : null;
+      if (!folders && !files) return;
+      setDb(prev => ({
+        ...prev,
+        ...(folders ? { courseFolders: mergeById(prev.courseFolders, folders) } : null),
+        ...(files ? { courseFiles: mergeById(prev.courseFiles, files) } : null),
+      }));
+    } catch {
+      // 403-tolerant background refresh; the virtual aggregation still shows
+      // the file at root rather than failing the original mutation.
+    }
+  };
+
   const refreshAll = async (user: User): Promise<void> => {
-    setIsLoading(true);
-    setLastError(null);
+    const runId = ++bootstrapRun.current;
     sprHydratedRef.current.clear();
+    setIsLoading(true);
+    setIsSyncing(false);
+    setLastError(null);
+    let deferredCourses: Course[] = [];
     try {
       const coursesPath =
         user.role === 'student'
@@ -738,11 +847,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const scopeResults = await Promise.all(
         coursesRes.courses.map(course =>
           (async () => {
-            const [sectionsSettled, requestsSettled] = await Promise.allSettled([
+            const [sectionsSettled, requestsSettled, approvedSettled] = await Promise.allSettled([
               apiFetch<{ sections: CourseSection[] }>(`/api/courses/${encodeURIComponent(course.id)}/sections`),
               apiFetch<{ requests: EnrollmentRequest[] }>(`/api/courses/${encodeURIComponent(course.id)}/requests?status=pending`),
+              apiFetch<{ requests: EnrollmentRequest[] }>(`/api/courses/${encodeURIComponent(course.id)}/requests?status=approved`),
             ]);
-            return { sectionsSettled, requestsSettled };
+            return { sectionsSettled, requestsSettled, approvedSettled };
           })()
         )
       );
@@ -755,6 +865,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (r.requestsSettled.status === 'fulfilled') {
           for (const req of r.requestsSettled.value.requests) requestMap.set(req.id, req);
         }
+        // Approved rows seed the enrollment cache so rosters and
+        // enrolled-course lists survive refresh (students 403 here —
+        // tolerated — and are covered by /requests/mine below).
+        if (r.approvedSettled.status === 'fulfilled') {
+          for (const req of r.approvedSettled.value.requests) requestMap.set(req.id, req);
+        }
       }
       // Seed the request cache with the viewer's own requests so
       // getPendingRequestsForStudent (sync) survives reload.
@@ -766,6 +882,71 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       fresh.courseSections = [...sectionMap.values()];
       fresh.enrollmentRequests = [...requestMap.values()];
+      // Enrollment truth lives in approved request rows — hydrate the
+      // client-side enrolledCourseIds from them so approved students show
+      // as enrolled on every machine (not just the approver's).
+      const approvedCoursesByStudent = new Map<string, Set<string>>();
+      for (const req of requestMap.values()) {
+        if (req.status !== 'approved') continue;
+        let set = approvedCoursesByStudent.get(req.studentId);
+        if (!set) {
+          set = new Set<string>();
+          approvedCoursesByStudent.set(req.studentId, set);
+        }
+        set.add(req.courseId);
+      }
+      if (approvedCoursesByStudent.size > 0) {
+        fresh.users = fresh.users.map(u => {
+          const extra = approvedCoursesByStudent.get(u.id);
+          if (!extra || extra.size === 0) return u;
+          const current: string[] = u.enrolledCourseIds || [];
+          const merged = [...current];
+          for (const cid of extra) {
+            if (!merged.includes(cid)) merged.push(cid);
+          }
+          return { ...u, enrolledCourseIds: merged };
+        });
+        // Root fix: UI filters student courses by activeUser (currentUser),
+        // not db.users. /auth/login and /auth/me return no enrolledCourseIds,
+        // so without this sync an approved student re-logging in keeps an
+        // empty enrolledCourseIds and filters out every course.
+        const myExtra = approvedCoursesByStudent.get(user.id);
+        if (myExtra && myExtra.size > 0) {
+          setCurrentUser(prev => {
+            const base = prev && prev.id === user.id ? prev : user;
+            const current: string[] = base.enrolledCourseIds || [];
+            const merged = [...current];
+            for (const cid of myExtra) {
+              if (!merged.includes(cid)) merged.push(cid);
+            }
+            if (merged.length === current.length) return base;
+            return { ...base, enrolledCourseIds: merged };
+          });
+        }
+      }
+      deferredCourses = coursesRes.courses;
+      // STAGED BOOTSTRAP: commit the critical slice now so the workspace
+      // paints immediately. Course content, assessments, submissions, and
+      // files fill in below without blocking first paint.
+      if (runId !== bootstrapRun.current) return;
+      setDb(fresh);
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to load data.';
+      setLastError(message);
+      showAlert(message, 'Load Failed');
+      return;
+    } finally {
+      if (runId === bootstrapRun.current) setIsLoading(false);
+    }
+    if (runId !== bootstrapRun.current) return;
+    setIsSyncing(true);
+    // Deferred fill runs detached so refreshAll (and login/session-restore)
+    // resolves right after the critical commit.
+    void (async () => {
+      try {
+        // Shadow the critical-scope result so the deferred queries below
+        // keep working unchanged off the captured course list.
+        const coursesRes = { courses: deferredCourses };
       // Course-content bootstrap: modules (with items + comments incl.
       // likedBy arrays), announcements (with replies/attachments/likedBy/
       // readBy), discussions (with replies) for each of the user's courses
@@ -795,41 +976,45 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           allDiscussions.push(...r.discussionsSettled.value.discussions);
         }
       }
-      fresh.modules = allModules;
-      fresh.announcements = allAnnouncements;
-      fresh.discussions = allDiscussions;
-      // Task 4 assessment bootstrap: assignments (+ per-assignment
-      // submissions — the server scopes rows by role, so faculty see all
-      // course submissions while students see their own), quizzes
-      // (+questions; the server strips answer keys for students),
-      // activities (+questions), and course grades (faculty all rows /
+      // Commit course content immediately so lists paint after the first
+      // round instead of waiting for the assessment/SPR/submission/file
+      // rounds below. The final merge at the end is idempotent
+      // (mergeById), so this early commit is never clobbered.
+      if (runId !== bootstrapRun.current) return;
+      setDb(prev => ({
+        ...prev,
+        modules: mergeById(prev.modules, allModules),
+        announcements: mergeById(prev.announcements, allAnnouncements),
+        discussions: mergeById(prev.discussions, allDiscussions),
+      }));
+      // Task 4 assessment bootstrap: activities (both formats — classic
+      // rows carry parsed submissionTypes/rubric arrays — plus
+      // per-activity submissions; the server scopes rows by role, so
+      // faculty see all course submissions while students see their own),
+      // quizzes (+questions; the server strips answer keys for students),
+      // and course grades (faculty all rows /
       // student own row). Per-course failures are tolerated
       // (403-tolerant); sync getters read the cache.
       const assessmentResults = await Promise.all(
         coursesRes.courses.map(course =>
           (async () => {
-            const [assignmentsSettled, quizzesSettled, examsSettled, activitiesSettled, gradesSettled] =
+            const [quizzesSettled, examsSettled, activitiesSettled, gradesSettled] =
               await Promise.allSettled([
-                apiFetch<{ assignments: Assignment[] }>(`/api/courses/${encodeURIComponent(course.id)}/assignments`),
                 apiFetch<{ quizzes: Quiz[] }>(`/api/quizzes?courseId=${encodeURIComponent(course.id)}`),
                 apiFetch<{ exams: Exam[] }>(`/api/exams?courseId=${encodeURIComponent(course.id)}`),
                 apiFetch<{ activities: Activity[] }>(`/api/activities?courseId=${encodeURIComponent(course.id)}`),
                 apiFetch<{ grades: CourseStudentGrade[] }>(`/api/courses/${encodeURIComponent(course.id)}/grades`),
               ]);
-            return { courseId: course.id, assignmentsSettled, quizzesSettled, examsSettled, activitiesSettled, gradesSettled };
+            return { courseId: course.id, quizzesSettled, examsSettled, activitiesSettled, gradesSettled };
           })()
         )
       );
-      const allAssignments: Assignment[] = [];
       const allQuizzes: Quiz[] = [];
       const allExams: Exam[] = [];
       const allActivities: Activity[] = [];
       const allGrades: CourseStudentGrade[] = [];
       const allSPRScores: Record<string, Record<string, SPRStudentCells>> = {};
       for (const r of assessmentResults) {
-        if (r.assignmentsSettled.status === 'fulfilled') {
-          for (const a of r.assignmentsSettled.value.assignments) allAssignments.push(normalizeAssignment(a));
-        }
         if (r.quizzesSettled.status === 'fulfilled') {
           for (const q of r.quizzesSettled.value.quizzes) allQuizzes.push(normalizeQuiz(q));
         }
@@ -875,26 +1060,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         sprHydratedRef.current.add(r.courseId);
         if (r.config) allSPRConfigs[r.courseId] = r.config;
       }
-      // Submissions ride per assignment / quiz / activity (role-scoped
-      // server-side). Per-list failures are tolerated (403-tolerant); sync
-      // getters read the cache.
-      const submissionResults = await Promise.allSettled(
-        allAssignments.map(a =>
-          apiFetch<{ submissions: any[] }>(`/api/assignments/${encodeURIComponent(a.id)}/submissions`)
-        )
-      );
+      // Submissions ride per quiz / exam / activity (role-scoped
+      // server-side; classic + question-set activities both list via
+      // GET /api/activities/:id/submissions). Per-list failures are
+      // tolerated (403-tolerant); sync getters read the cache.
       const allSubmissions: Submission[] = [];
       const seenSubmissionIds = new Set<string>();
-      for (const r of submissionResults) {
-        if (r.status === 'fulfilled') {
-          for (const s of r.value.submissions) {
-            const merged = normalizeSubmission(s);
-            if (seenSubmissionIds.has(merged.id)) continue;
-            seenSubmissionIds.add(merged.id);
-            allSubmissions.push(merged);
-          }
-        }
-      }
       const quizSubmissionResults = await Promise.allSettled(
         allQuizzes.map(q =>
           apiFetch<{ submissions: any[] }>(`/api/quizzes/${encodeURIComponent(q.id)}/submissions`)
@@ -920,17 +1091,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
         }
       }
-      fresh.assignments = allAssignments;
-      fresh.submissions = allSubmissions;
-      fresh.quizzes = allQuizzes;
-      fresh.exams = allExams;
-      fresh.activities = allActivities;
-      fresh.courseGrades = allGrades;
-      fresh.sprConfigs = allSPRConfigs;
-      fresh.sprScores = allSPRScores;
+      // (Staged bootstrap: detached fill merges incrementally via setDb below;
+      // the old fresh.* batch assignments were removed in the sibling refactor.)
       // Task 5 files bootstrap: folders + direct CourseFile rows for each of
       // the user's courses (virtual aggregation in useCourseFiles reads these
-      // rows plus module/announcement/assignment sources). Per-course
+      // rows plus module/announcement/activity sources). Per-course
       // failures are tolerated (403-tolerant); sync getters read the cache.
       const fileResults = await Promise.all(
         coursesRes.courses.map(course =>
@@ -949,16 +1114,31 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (r.foldersSettled.status === 'fulfilled') allFolders.push(...r.foldersSettled.value.folders);
         if (r.filesSettled.status === 'fulfilled') allFiles.push(...r.filesSettled.value.files);
       }
-      fresh.courseFolders = allFolders;
-      fresh.courseFiles = allFiles;
-      setDb(fresh);
+      if (runId !== bootstrapRun.current) return;
+      setDb(prev => ({
+        ...prev,
+        modules: mergeById(prev.modules, allModules),
+        announcements: mergeById(prev.announcements, allAnnouncements),
+        discussions: mergeById(prev.discussions, allDiscussions),
+        submissions: mergeById(prev.submissions, allSubmissions),
+        quizzes: mergeById(prev.quizzes, allQuizzes),
+        exams: mergeById(prev.exams, allExams),
+        activities: mergeById(prev.activities, allActivities),
+        courseGrades: mergeByKey(prev.courseGrades, allGrades, g => `${g.courseId}:${g.studentId}`),
+        sprConfigs: { ...(prev.sprConfigs ?? {}), ...allSPRConfigs },
+        sprScores: mergeSPRCourseMaps(prev.sprScores, allSPRScores),
+        courseFolders: mergeById(prev.courseFolders, allFolders),
+        courseFiles: mergeById(prev.courseFiles, allFiles),
+      }));
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Failed to load data.';
-      setLastError(message);
-      showAlert(message, 'Load Failed');
+      // Background-only failure: never pop an alert over a painted workspace.
+      const message = err instanceof ApiError ? err.message : 'Failed to sync workspace data.';
+      console.warn('[refreshAll] background sync failed:', message);
+      if (runId === bootstrapRun.current) setLastError(message);
     } finally {
-      setIsLoading(false);
+      if (runId === bootstrapRun.current) setIsSyncing(false);
     }
+    })();
   };
 
   // Session restore: token -> GET /api/auth/me -> user + bootstrap
@@ -970,7 +1150,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const { user } = await apiFetch<{ user: User }>('/api/auth/me');
         if (cancelled) return;
-        setCurrentUser(user);
+        try { localStorage.setItem('gabay_user_id', user.id); } catch {}
+        setCurrentUser(withStoredVisits(user));
         await refreshAll(user);
       } catch (err) {
         if (cancelled) return;
@@ -981,6 +1162,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setLastError(message);
           showAlert(message, 'Load Failed');
         }
+      } finally {
+        if (!cancelled) setAuthReady(true);
       }
     })();
     return () => {
@@ -999,7 +1182,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         body: { email: emailOrId, password },
       });
       setToken(token);
-      setCurrentUser(user);
+      try { localStorage.setItem('gabay_user_id', user.id); } catch {}
+      setCurrentUser(withStoredVisits(user));
       await refreshAll(user);
       return { success: true };
     } catch (err) {
@@ -1010,8 +1194,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const logout = () => {
     clearToken();
+    try { localStorage.removeItem('gabay_user_id'); } catch {}
+    bootstrapRun.current++;
     sprHydratedRef.current.clear();
     setCurrentUser(null);
+    setIsSyncing(false);
     setDb(emptyDb());
     setIsUserProfileModalOpen(false);
     setIsRoleModalOpen(false);
@@ -1020,7 +1207,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const switchRole = (role: UserRole) => {
     const userWithRole = db.users.find(u => u.role === role);
     if (userWithRole) {
-      setCurrentUser(userWithRole);
+      setCurrentUser(withStoredVisits(userWithRole));
     }
   };
 
@@ -1033,53 +1220,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
   const [isUserProfileModalOpen, setIsUserProfileModalOpen] = useState(false);
 
-// Alert & Confirmation Modal state
-  const [alertOptions, setAlertOptions] = useState<AlertModalOptions | null>(null);
-  const [isAlertOpen, setIsAlertOpen] = useState(false);
-
   // Notifications state (mirrors db.notifications so badges survive reload)
   const [notifications, setNotifications] = useState<Notification[]>([]);
-
-  useEffect(() => {
-    const stored = (db as LMSDatabase).notifications;
-    if (stored && Array.isArray(stored)) {
-      setNotifications(prev => {
-        if (prev.length === stored.length && prev.every((n, i) => n.id === stored[i]?.id && n.read === stored[i]?.read)) {
-          return prev;
-        }
-        return [...stored].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      });
-    }
-  }, [db.notifications]);
-
-  const showAlert = (options: string | AlertModalOptions, title?: string) => {
-    if (typeof options === 'string') {
-      setAlertOptions({
-        title: title || 'Notice',
-        message: options,
-        type: 'info'
-      });
-    } else {
-      setAlertOptions(options);
-    }
-    setIsAlertOpen(true);
-  };
-
-  const showConfirm = (message: string, onConfirm: () => void, title?: string) => {
-    setAlertOptions({
-      title: title || 'Confirmation',
-      message,
-      type: 'confirm',
-      confirmText: 'Confirm',
-      cancelText: 'Cancel',
-      onConfirm
-    });
-    setIsAlertOpen(true);
-  };
-
-  const closeAlert = () => {
-    setIsAlertOpen(false);
-  };
 
   // SpeedGrader
   const [activeSpeedGraderSubmissionId, setActiveSpeedGraderSubmissionId] = useState<string | null>(null);
@@ -1163,101 +1305,34 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const createAssignment = async (asgData: Partial<Assignment>): Promise<Assignment> => {
-    const courseId = asgData.courseId || activeCourseId || 'crs-cmsc131';
-    // Server persists array/blob fields as JSON (parsed back on read);
-    // client-only calendar mirroring stays local.
+  const deleteCourse = async (courseId: string): Promise<void> => {
     try {
-      const { assignment } = await apiFetch<{ assignment: Assignment }>(
-        `/api/courses/${encodeURIComponent(courseId)}/assignments`,
-        {
-          method: 'POST',
-          body: {
-            title: asgData.title || 'New Course Assignment',
-            instructions: asgData.instructions || 'Please review the guidelines and submit your work before the deadline.',
-            pointsPossible: asgData.pointsPossible ?? 100,
-            dueDate: asgData.dueDate || new Date(Date.now() + 7 * 86400000).toISOString(),
-            submissionTypes: asgData.submissionTypes || ['file', 'online_text'],
-            published: asgData.published ?? true,
-            category: asgData.category || 'Laboratory',
-            weight: asgData.weight ?? 20,
-            rubric: asgData.rubric || [
-              {
-                id: `rub-${Date.now()}-1`,
-                title: 'CHED Learning Outcome Alignment',
-                description: 'Demonstrates deep understanding of theoretical and practical concepts',
-                points: 50,
-                ratings: [
-                  { points: 50, description: 'Exemplary Mastery' },
-                  { points: 35, description: 'Proficient' },
-                  { points: 20, description: 'Needs Revision' }
-                ]
-              },
-              {
-                id: `rub-${Date.now()}-2`,
-                title: 'Code Quality & Technical Execution',
-                description: 'Follows clean code conventions, modular structure, and documentation',
-                points: 50,
-                ratings: [
-                  { points: 50, description: 'Industry Standards' },
-                  { points: 35, description: 'Adequate Quality' },
-                  { points: 20, description: 'Deficient' }
-                ]
-              }
-            ],
-            ...(asgData.fileName !== undefined ? { fileName: asgData.fileName } : {}),
-            ...(asgData.fileUrl !== undefined ? { fileUrl: asgData.fileUrl } : {}),
-            ...(asgData.fileSize !== undefined ? { fileSize: asgData.fileSize } : {}),
-            ...(asgData.availableFrom !== undefined ? { availableFrom: asgData.availableFrom } : {}),
-            ...(asgData.availableUntil !== undefined ? { availableUntil: asgData.availableUntil } : {}),
-            ...(asgData.sectionRestriction !== undefined ? { sectionRestriction: asgData.sectionRestriction } : {})
-          }
-        }
-      );
-      const merged = normalizeAssignment(assignment);
-      setDb(prev => ({
-        ...prev,
-        assignments: [merged, ...prev.assignments]
-      }));
-
-      // Also auto-create a corresponding calendar event
-      const newCalEvent: CalendarEvent = {
-        id: `evt-${Date.now()}`,
-        title: `Due: ${merged.title}`,
-        date: merged.dueDate.split('T')[0],
-        time: '11:59 PM',
-        courseId: merged.courseId,
-        type: 'assignment',
-        description: `Course assignment submission deadline for ${merged.title}`
-      };
-      setDb(prev => ({
-        ...prev,
-        calendarEvents: [...prev.calendarEvents, newCalEvent]
-      }));
-
-      return merged;
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Failed to create assignment.';
-      setLastError(message);
-      showAlert(message, 'Create Assignment Failed');
-      throw err;
-    }
-  };
-
-  const deleteAssignment = async (asgId: string): Promise<void> => {
-    try {
-      await apiFetch<{ ok: true }>(`/api/assignments/${encodeURIComponent(asgId)}`, {
+      await apiFetch<{ ok: true }>(`/api/courses/${encodeURIComponent(courseId)}`, {
         method: 'DELETE'
       });
       setDb(prev => ({
         ...prev,
-        assignments: prev.assignments.filter(a => a.id !== asgId),
-        submissions: prev.submissions.filter(s => s.assignmentId !== asgId)
+        courses: prev.courses.filter(c => c.id !== courseId),
+        modules: prev.modules.filter(m => m.courseId !== courseId),
+        quizzes: prev.quizzes.filter(q => q.courseId !== courseId),
+        activities: (prev.activities || []).filter(a => a.courseId !== courseId),
+        submissions: prev.submissions.filter(s => s.courseId !== courseId),
+        announcements: (prev.announcements || []).filter(a => a.courseId !== courseId),
+        discussions: (prev.discussions || []).filter(d => d.courseId !== courseId),
+        courseFiles: (prev.courseFiles || []).filter(f => f.courseId !== courseId),
+        courseFolders: (prev.courseFolders || []).filter(f => f.courseId !== courseId),
+        courseGrades: (prev.courseGrades || []).filter(g => g.courseId !== courseId),
+        courseSections: (prev.courseSections || []).filter(s => s.courseId !== courseId),
+        enrollmentRequests: (prev.enrollmentRequests || []).filter(r => r.courseId !== courseId),
+        calendarEvents: prev.calendarEvents.filter(e => e.courseId !== courseId),
+        messages: prev.messages.filter(m => m.courseId !== courseId),
+        chatGroups: (prev.chatGroups || []).filter(g => !g.courseId || g.courseId !== courseId),
       }));
+      if (activeCourseId === courseId) setActiveCourseId(null);
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Failed to delete assignment.';
+      const message = err instanceof ApiError ? err.message : 'Failed to delete course.';
       setLastError(message);
-      showAlert(message, 'Delete Assignment Failed');
+      showAlert(message, 'Delete Course Failed');
       throw err;
     }
   };
@@ -1343,7 +1418,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (itemData.required !== undefined) body.required = itemData.required;
     if (itemData.completionCondition !== undefined) body.completionCondition = itemData.completionCondition;
     if (itemData.content !== undefined && itemData.content !== null) body.content = itemData.content;
-    if (itemData.assignmentId !== undefined && itemData.assignmentId !== null) body.assignmentId = itemData.assignmentId;
+    if (itemData.activityId !== undefined && itemData.activityId !== null) body.activityId = itemData.activityId;
     if (itemData.quizId !== undefined && itemData.quizId !== null) body.quizId = itemData.quizId;
     if (itemData.fileUrl !== undefined && itemData.fileUrl !== null) body.fileUrl = itemData.fileUrl;
     if (itemData.fileName !== undefined && itemData.fileName !== null) body.fileName = itemData.fileName;
@@ -1360,6 +1435,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           mod.id === moduleId ? { ...mod, items: [...mod.items, item as ModuleItem] } : mod
         )
       }));
+      if (itemData.fileName !== undefined || itemData.fileUrl !== undefined) {
+        const filedCourseId =
+          db.modules.find(m => m.id === moduleId)?.courseId || activeCourseId;
+        if (filedCourseId) await refreshCourseFileScope(filedCourseId);
+      }
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to add module item.';
       setLastError(message);
@@ -1378,7 +1458,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const body: Record<string, string | boolean | number> = {};
       const stringFields = [
-        'title', 'type', 'completionCondition', 'content', 'assignmentId',
+        'title', 'type', 'completionCondition', 'content', 'activityId',
         'quizId', 'fileUrl', 'fileName', 'fileSize', 'fileType'
       ] as const;
       for (const key of stringFields) {
@@ -1409,6 +1489,13 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             )
           };
         });
+        if (updates.fileName !== undefined || updates.fileUrl !== undefined) {
+          const filedCourseId =
+            db.modules.find(m => m.id === destModuleId)?.courseId ||
+            db.modules.find(m => m.id === currentModuleId)?.courseId ||
+            activeCourseId;
+          if (filedCourseId) await refreshCourseFileScope(filedCourseId);
+        }
         return;
       }
       const { item } = await apiFetch<{ item: ModuleItem }>(
@@ -1423,6 +1510,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             : mod
         )
       }));
+      if (updates.fileName !== undefined || updates.fileUrl !== undefined) {
+        const filedCourseId =
+          db.modules.find(m => m.id === currentModuleId)?.courseId || activeCourseId;
+        if (filedCourseId) await refreshCourseFileScope(filedCourseId);
+      }
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to update module item.';
       setLastError(message);
@@ -1497,6 +1589,48 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const updateQuiz = async (quizId: string, updates: Omit<Partial<Quiz>, 'delayedUntil'> & { delayedUntil?: string | null }): Promise<Quiz> => {
+    // Mirrors PATCH /api/quizzes/:id. NOTE: the endpoint patches header fields
+    // only (title/instructions/published/time limits/schedule) — it does not
+    // replace questions, so the cached question set is always preserved here.
+    try {
+      const body: Record<string, unknown> = {};
+      if (updates.title !== undefined) body.title = updates.title;
+      if (updates.term !== undefined) body.term = updates.term;
+      if (updates.instructions !== undefined) body.instructions = updates.instructions;
+      if (updates.published !== undefined) body.published = updates.published;
+      if (updates.timeLimitMinutes !== undefined) body.timeLimitMinutes = updates.timeLimitMinutes;
+      if (updates.dueDate !== undefined) body.dueDate = updates.dueDate;
+      if (updates.delayedUntil !== undefined) body.delayedUntil = updates.delayedUntil;
+      const { quiz } = await apiFetch<{ quiz: Quiz }>(
+        `/api/quizzes/${encodeURIComponent(quizId)}`,
+        { method: 'PATCH', body }
+      );
+      const normalized = normalizeQuiz(quiz);
+      let merged: Quiz = normalized;
+      setDb(prev => {
+        const existing = prev.quizzes.find(q => q.id === quizId);
+        merged = {
+          ...normalized,
+          questions:
+            normalized.questions && normalized.questions.length > 0
+              ? normalized.questions
+              : existing?.questions || []
+        };
+        return {
+          ...prev,
+          quizzes: prev.quizzes.map(q => (q.id === quizId ? merged : q))
+        };
+      });
+      return merged;
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to update quiz.';
+      setLastError(message);
+      showAlert(message, 'Update Quiz Failed');
+      throw err;
+    }
+  };
+
   const recordQuizSubmission = async (
     quizId: string,
     studentId: string,
@@ -1513,7 +1647,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const merged = normalizeSubmission(submission);
       setDb(prev => {
         const idx = prev.submissions.findIndex(
-          s => s.assignmentId === merged.assignmentId && s.studentId === studentId
+          s => s.activityKey === merged.activityKey && s.studentId === studentId
         );
         if (idx >= 0) {
           const updatedSubs = [...prev.submissions];
@@ -1590,7 +1724,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const merged = normalizeSubmission(submission);
       setDb(prev => {
         const idx = (prev.submissions || []).findIndex(
-          s => s.assignmentId === merged.assignmentId && s.studentId === studentId
+          s => s.activityKey === merged.activityKey && s.studentId === studentId
         );
         if (idx >= 0) {
           const updatedSubs = [...prev.submissions];
@@ -1612,30 +1746,129 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const courseId = data.courseId || activeCourseId || 'crs-cmsc131';
     const questions = data.questions || [];
     const term = data.term ?? defaultTermForCourse(courseId);
+    const format = data.format ?? 'questionset';
     try {
+      const body: Record<string, unknown> =
+        format === 'classic'
+          ? {
+              courseId,
+              title: data.title?.trim() || 'New Course Activity',
+              instructions:
+                data.instructions || 'Please review the guidelines and submit your work before the deadline.',
+              pointsPossible: data.pointsPossible ?? 100,
+              dueDate: data.dueDate || new Date(Date.now() + 7 * 86400000).toISOString(),
+              ...(data.term !== undefined ? { term: data.term } : { term }),
+              submissionTypes: data.submissionTypes || ['file', 'online_text'],
+              published: data.published ?? true,
+              category: data.category || 'Laboratory',
+              weight: data.weight ?? 20,
+              // No predefined rubric: the Classic Activity form owns an
+              // opt-in custom rubric (ActivityFormValue.includeRubric); when
+              // unchecked the payload carries `rubric: []` and SpeedGrader
+              // falls back to plain score entry.
+              rubric: Array.isArray(data.rubric) ? data.rubric : [],
+              ...(data.fileName !== undefined ? { fileName: data.fileName } : {}),
+              ...(data.fileUrl !== undefined ? { fileUrl: data.fileUrl } : {}),
+              ...(data.fileSize !== undefined ? { fileSize: data.fileSize } : {}),
+              ...(data.availableFrom !== undefined ? { availableFrom: data.availableFrom } : {}),
+              ...(data.availableUntil !== undefined ? { availableUntil: data.availableUntil } : {}),
+              ...(data.sectionRestriction !== undefined ? { sectionRestriction: data.sectionRestriction } : {}),
+              format: 'classic',
+            }
+          : {
+              courseId,
+              title: data.title?.trim() || 'New Question-Set Activity',
+              term,
+              instructions: data.instructions || 'Answer all questions carefully.',
+              pointsPossible: data.pointsPossible ?? activityPointsPossible(questions),
+              ...(data.dueDate !== undefined ? { dueDate: data.dueDate } : {}),
+              published: data.published ?? true,
+              questions,
+              format: 'questionset',
+            };
       const { activity } = await apiFetch<{ activity: Activity }>('/api/activities', {
         method: 'POST',
-        body: {
-          courseId,
-          title: data.title?.trim() || 'New Question-Set Activity',
-          term,
-          instructions: data.instructions || 'Answer all questions carefully.',
-          pointsPossible: data.pointsPossible ?? activityPointsPossible(questions),
-          ...(data.dueDate !== undefined ? { dueDate: data.dueDate } : {}),
-          published: data.published ?? true,
-          questions
-        }
+        body,
       });
       const merged = normalizeActivity(activity);
       setDb(prev => ({
         ...prev,
         activities: [merged, ...(prev.activities || [])]
       }));
+
+      if (merged.format === 'classic' && merged.dueDate) {
+        // Client-only calendar mirroring (carried over from createAssignment).
+        const newCalEvent: CalendarEvent = {
+          id: `evt-${Date.now()}`,
+          title: `Due: ${merged.title}`,
+          date: merged.dueDate.split('T')[0],
+          time: '11:59 PM',
+          courseId: merged.courseId,
+          type: 'assignment',
+          description: `Course assignment submission deadline for ${merged.title}`
+        };
+        setDb(prev => ({
+          ...prev,
+          calendarEvents: [...prev.calendarEvents, newCalEvent]
+        }));
+      }
+
       return merged;
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to create activity.';
       setLastError(message);
       showAlert(message, 'Create Activity Failed');
+      throw err;
+    }
+  };
+
+  const updateActivity = async (activityId: string, updates: Partial<Activity>): Promise<Activity> => {
+    // Mirrors PATCH /api/activities/:id (union of classic + question-set
+    // fields — all classic fields supported). Questions are write-once, so
+    // the cached question set is preserved here.
+    try {
+      const body: Record<string, unknown> = {};
+      if (updates.title !== undefined) body.title = updates.title;
+      if (updates.term !== undefined) body.term = updates.term;
+      if (updates.instructions !== undefined) body.instructions = updates.instructions;
+      if (updates.published !== undefined) body.published = updates.published;
+      if (updates.dueDate !== undefined) body.dueDate = updates.dueDate;
+      if (updates.pointsPossible !== undefined) body.pointsPossible = updates.pointsPossible;
+      if (updates.submissionTypes !== undefined) body.submissionTypes = updates.submissionTypes;
+      if (updates.category !== undefined) body.category = updates.category;
+      if (updates.weight !== undefined) body.weight = updates.weight;
+      if (updates.rubric !== undefined) body.rubric = updates.rubric;
+      if (updates.fileName !== undefined) body.fileName = updates.fileName;
+      if (updates.fileUrl !== undefined) body.fileUrl = updates.fileUrl;
+      if (updates.fileSize !== undefined) body.fileSize = updates.fileSize;
+      if (updates.availableFrom !== undefined) body.availableFrom = updates.availableFrom;
+      if (updates.availableUntil !== undefined) body.availableUntil = updates.availableUntil;
+      if (updates.sectionRestriction !== undefined) body.sectionRestriction = updates.sectionRestriction;
+      const { activity } = await apiFetch<{ activity: Activity }>(
+        `/api/activities/${encodeURIComponent(activityId)}`,
+        { method: 'PATCH', body }
+      );
+      const normalized = normalizeActivity(activity);
+      let merged: Activity = normalized;
+      setDb(prev => {
+        const existing = (prev.activities || []).find(a => a.id === activityId);
+        merged = {
+          ...normalized,
+          questions:
+            normalized.questions && normalized.questions.length > 0
+              ? normalized.questions
+              : existing?.questions || []
+        };
+        return {
+          ...prev,
+          activities: (prev.activities || []).map(a => (a.id === activityId ? merged : a))
+        };
+      });
+      return merged;
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to update activity.';
+      setLastError(message);
+      showAlert(message, 'Update Activity Failed');
       throw err;
     }
   };
@@ -1657,7 +1890,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setDb(prev => {
         const updatedSubs = [...prev.submissions];
         const idx = updatedSubs.findIndex(
-          s => s.assignmentId === merged.assignmentId && s.studentId === studentId
+          s => s.activityKey === merged.activityKey && s.studentId === studentId
         );
         if (idx >= 0) {
           updatedSubs[idx] = merged;
@@ -1683,7 +1916,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setDb(prev => ({
         ...prev,
         activities: (prev.activities || []).filter(a => a.id !== activityId),
-        submissions: prev.submissions.filter(s => s.assignmentId !== `asg-activity-${activityId}`)
+        submissions: prev.submissions.filter(
+          s => s.activityKey !== activityId && s.activityKey !== `asg-activity-${activityId}`
+        )
       }));
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to delete activity.';
@@ -1700,8 +1935,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       name: person.name || 'New Enrollee',
       email: person.email || `user.${Date.now()}@dmmmsu.edu.ph`,
       role: person.role || 'student',
-      avatar: person.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
-      studentId: person.studentId || (person.role === 'student' ? `2026-SLUC-${Math.floor(1000 + Math.random() * 9000)}` : undefined),
+      avatar: person.avatar || '',
+      studentId: person.studentId?.trim() || undefined,
       department: person.department || 'BS Computer Science',
       title: person.title || (person.role === 'student' ? 'Enrolled Student' : 'Instructor'),
       enrolledCourseIds: person.enrolledCourseIds || (targetCourseId ? [targetCourseId] : [])
@@ -1785,16 +2020,17 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           email: userData.email?.trim() || '',
           role,
           password: userData.password || 'password123',
-          avatar: userData.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+          avatar: userData.avatar || '',
           department: userData.department || 'College of Computer Science',
           title: userData.title || (role === 'student' ? 'Undergraduate Student' : 'Faculty Instructor'),
         }
       });
       // The server returns the public user only — reattach the client-side
       // account extras (studentId, password, enrolledCourseIds).
+      // studentId is only set by the administrator at account creation.
       const merged: User = {
         ...user,
-        studentId: userData.studentId || (role === 'student' ? `2026-${Math.floor(10000 + Math.random() * 90000)}` : undefined),
+        studentId: userData.studentId?.trim() || undefined,
         password: userData.password || 'password123',
         enrolledCourseIds: userData.enrolledCourseIds || []
       };
@@ -1811,12 +2047,13 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const updateUser = async (id: string, updates: Partial<User>): Promise<boolean> => {
-    // Server PATCH accepts name/avatar/department/title plus
+  const updateUser = async (id: string, updates: Partial<User> & { banner?: string }): Promise<boolean> => {
+    // Server PATCH accepts name/avatar/banner/department/title plus
     // email/role/password (validated server-side).
     const patchBody: Record<string, string> = {};
     if (updates.name !== undefined) patchBody.name = updates.name;
     if (updates.avatar !== undefined) patchBody.avatar = updates.avatar;
+    if (updates.banner !== undefined) patchBody.banner = updates.banner ?? '';
     if (updates.department !== undefined) patchBody.department = updates.department;
     if (updates.title !== undefined) patchBody.title = updates.title;
     if (updates.email !== undefined) patchBody.email = updates.email;
@@ -1832,15 +2069,20 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           `/api/users/${encodeURIComponent(id)}`,
           { method: 'PATCH', body: patchBody }
         );
+        const merged = { ...user, ...localUpdates };
         setDb(prev => ({
           ...prev,
-          users: prev.users.map(u => (u.id === id ? { ...u, ...user, ...localUpdates } : u))
+          users: prev.users.map(u => (u.id === id ? { ...u, ...merged } : u))
         }));
+        // Active session reads from currentUser (not db.users) — sync it so
+        // avatar/banner/name changes render instantly without a reload.
+        setCurrentUser(prev => (prev && prev.id === id ? { ...prev, ...merged } : prev));
       } else {
         setDb(prev => ({
           ...prev,
           users: prev.users.map(u => (u.id === id ? { ...u, ...localUpdates } : u))
         }));
+        setCurrentUser(prev => (prev && prev.id === id ? { ...prev, ...localUpdates } : prev));
       }
       return true;
     } catch (err) {
@@ -2099,28 +2341,40 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const submitAssignment = async (
-    assignmentId: string,
+  const submitActivity = async (
+    activityId: string,
     submissionType: 'file' | 'online_text',
     content?: string,
-    fileName?: string
+    fileName?: string,
+    answers?: Record<string, string>
   ): Promise<void> => {
+    // Classic file/text submit rides POST /api/activities/:id/submissions;
+    // question-set answers submit rides POST /api/activities/:id/submit.
+    // Branch on the cached format (classic defaults stay on the file/text path
+    // unless answers are explicitly provided).
+    const cached = dbRef.current.activities?.find(a => a.id === activityId);
+    const isQuestionSet = answers !== undefined || cached?.format === 'questionset';
     try {
-      const { submission } = await apiFetch<{ submission: any }>(
-        `/api/assignments/${encodeURIComponent(assignmentId)}/submissions`,
-        {
-          method: 'POST',
-          body: {
-            submissionType,
-            ...(content !== undefined ? { content } : {}),
-            ...(fileName !== undefined ? { fileName } : {})
-          }
-        }
-      );
+      const { submission } = isQuestionSet
+        ? await apiFetch<{ submission: any }>(
+            `/api/activities/${encodeURIComponent(activityId)}/submit`,
+            { method: 'POST', body: { answers: answers ?? {} } }
+          )
+        : await apiFetch<{ submission: any }>(
+            `/api/activities/${encodeURIComponent(activityId)}/submissions`,
+            {
+              method: 'POST',
+              body: {
+                submissionType,
+                ...(content !== undefined ? { content } : {}),
+                ...(fileName !== undefined ? { fileName } : {})
+              }
+            }
+          );
       const merged = normalizeSubmission(submission);
       setDb(prev => {
         const idx = prev.submissions.findIndex(
-          s => s.assignmentId === assignmentId && s.studentId === merged.studentId
+          s => s.activityKey === merged.activityKey && s.studentId === merged.studentId
         );
         if (idx >= 0) {
           const updated = [...prev.submissions];
@@ -2130,9 +2384,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return { ...prev, submissions: [merged, ...prev.submissions] };
       });
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Failed to submit assignment.';
+      const message = err instanceof ApiError ? err.message : 'Failed to submit activity.';
       setLastError(message);
-      showAlert(message, 'Submit Assignment Failed');
+      showAlert(message, 'Submit Activity Failed');
       throw err;
     }
   };
@@ -2791,14 +3045,33 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const markTabVisited = (tab: string, courseId?: string) => {
     const key = courseId ? `${tab}:${courseId}` : tab;
     const stamp = new Date().toISOString();
+    const userId = activeUser?.id;
+    if (!userId) return;
+    // Root fix: badges read activeUser.lastVisitedAt where activeUser =
+    // currentUser (separate state from db.users). The old code only wrote
+    // db.users, so the stamp landed where nobody reads and the Files/grades/
+    // calendar badges never cleared. Update the presented user too and
+    // persist per-user stamps so a refresh keeps them cleared.
+    setCurrentUser(prev => {
+      const base = prev && prev.id === userId ? prev : activeUser;
+      if (!base || base.id !== userId) return prev;
+      return { ...base, lastVisitedAt: { ...(base.lastVisitedAt || {}), [key]: stamp } };
+    });
     setDb(prev => ({
       ...prev,
       users: prev.users.map(u =>
-        u.id === activeUser.id
+        u.id === userId
           ? { ...u, lastVisitedAt: { ...(u.lastVisitedAt || {}), [key]: stamp } }
           : u
       )
     }));
+    try {
+      const store = readVisitStore();
+      store[userId] = { ...(store[userId] || {}), [key]: stamp };
+      writeVisitStore(store);
+    } catch {
+      // Persistence is best-effort; in-memory state already updated.
+    }
   };
 
   const markModuleCommentsRead = async (moduleId: string): Promise<void> => {
@@ -3108,6 +3381,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...prev,
         courseFiles: [...(prev.courseFiles || []), data.file as CourseFile]
       }));
+      // Area uploads also ensure folders server-side (area:<area> /
+      // module:<id>) but return only the file — refresh folders so the new
+      // Module folder appears immediately instead of after reload.
+      if (fileData.area) await refreshCourseFileScope(courseId);
       return data.file as CourseFile;
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to upload file.';
@@ -3118,10 +3395,14 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteCourseFile = async (fileId: string): Promise<void> => {
-    // Virtual ids (mod-file-*, ann-file-*, asg-file-*, sub-file-*, quiz-*)
-    // are cache-only aggregations from useCourseFiles — they clear the source
-    // fields locally. Real CourseFile rows delete via the files endpoint.
-    const isVirtual = /^(mod-file-|ann-file-|asg-file-|sub-file-|quiz-file-|quiz-q-file-)/.test(fileId);
+    // Virtual ids (mod-file-*, ann-file-*, asg-file-*, asg-virtual-*,
+    // act-virtual-*, sub-file-*) are cache-only aggregations from
+    // useCourseFiles — they clear the source fields locally. Real CourseFile
+    // rows delete via the files endpoint. File-less assessment virtuals
+    // (asg-virtual-*, act-virtual-*) have no file fields to clear, so
+    // deleting them is a no-op below: assessments are removed from
+    // Activities instead.
+    const isVirtual = /^(mod-file-|ann-file-|asg-file-|asg-virtual-|act-virtual-|sub-file-)/.test(fileId);
     if (!isVirtual) {
       try {
         await apiFetch<{ ok: true }>(`/api/files/${encodeURIComponent(fileId)}`, {
@@ -3182,20 +3463,20 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
       }
 
-      // 4. Assignment / Activity handout file
-      let updatedAssignments = prev.assignments;
+      // 4. Classic activity handout file (asg-file- link-key values preserved)
+      let updatedActivities = prev.activities;
       if (fileId.startsWith('asg-file-')) {
-        const asgId = fileId.replace('asg-file-', '');
-        updatedAssignments = (prev.assignments || []).map(asg => {
-          if (asg.id === asgId) {
+        const actId = fileId.replace('asg-file-', '');
+        updatedActivities = (prev.activities || []).map(act => {
+          if (act.id === actId) {
             return {
-              ...asg,
+              ...act,
               fileName: undefined,
               fileUrl: undefined,
               fileSize: undefined
             };
           }
-          return asg;
+          return act;
         });
       }
 
@@ -3215,52 +3496,13 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
       }
 
-      // 6. Quiz reference or question file
-      let updatedQuizzes = prev.quizzes;
-      if (fileId.startsWith('quiz-file-')) {
-        const quizId = fileId.replace('quiz-file-', '');
-        updatedQuizzes = (prev.quizzes || []).map(q => {
-          if (q.id === quizId) {
-            return {
-              ...q,
-              fileName: undefined,
-              fileUrl: undefined,
-              fileSize: undefined
-            } as any;
-          }
-          return q;
-        });
-      } else if (fileId.startsWith('quiz-q-file-')) {
-        updatedQuizzes = (prev.quizzes || []).map(q => {
-          if (fileId.includes(q.id)) {
-            return {
-              ...q,
-              questions: (q.questions || []).map((question: any) => {
-                if (fileId.includes(question.id)) {
-                  return {
-                    ...question,
-                    imageUrl: undefined,
-                    imageName: undefined,
-                    fileUrl: undefined,
-                    fileName: undefined
-                  };
-                }
-                return question;
-              })
-            };
-          }
-          return q;
-        });
-      }
-
       return {
         ...prev,
         courseFiles: updatedCourseFiles,
         modules: updatedModules,
         announcements: updatedAnnouncements,
-        assignments: updatedAssignments,
-        submissions: updatedSubmissions,
-        quizzes: updatedQuizzes
+        activities: updatedActivities,
+        submissions: updatedSubmissions
       };
     });
   };
@@ -3305,9 +3547,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const renameCourseFile = async (fileId: string, newName: string): Promise<void> => {
     // Real CourseFile rows rename via the files endpoint; virtual
-    // aggregation ids (mod-file-*, ann-file-*, asg-file-*) rename the source
-    // fields locally below.
-    const isVirtual = /^(mod-file-|ann-file-|asg-file-|sub-file-|quiz-file-|quiz-q-file-)/.test(fileId);
+    // aggregation ids (mod-file-*, ann-file-*, asg-file-*, asg-virtual-*,
+    // act-virtual-*) rename the source fields/titles locally below.
+    const isVirtual = /^(mod-file-|ann-file-|asg-file-|asg-virtual-|act-virtual-|sub-file-)/.test(fileId);
     if (!isVirtual) {
       try {
         const { file } = await apiFetch<{ file: CourseFile }>(
@@ -3361,11 +3603,26 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
       }
 
-      let updatedAssignments = prev.assignments;
+      let updatedActivities = prev.activities;
       if (fileId.startsWith('asg-file-')) {
-        const asgId = fileId.replace('asg-file-', '');
-        updatedAssignments = (prev.assignments || []).map(asg =>
-          asg.id === asgId ? { ...asg, fileName: newName } : asg
+        const actId = fileId.replace('asg-file-', '');
+        updatedActivities = (prev.activities || []).map(act =>
+          act.id === actId ? { ...act, fileName: newName } : act
+        );
+      } else if (fileId.startsWith('asg-virtual-')) {
+        // File-less classic virtuals carry the assessment title as the file
+        // name, so renaming renames the assessment itself (link-key values
+        // preserved).
+        const actId = fileId.replace('asg-virtual-', '');
+        updatedActivities = (prev.activities || []).map(act =>
+          act.id === actId ? { ...act, title: newName } : act
+        );
+      }
+
+      if (fileId.startsWith('act-virtual-')) {
+        const actId = fileId.replace('act-virtual-', '');
+        updatedActivities = (prev.activities || []).map(act =>
+          act.id === actId ? { ...act, title: newName } : act
         );
       }
 
@@ -3374,7 +3631,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         courseFiles: updatedCourseFiles,
         modules: updatedModules,
         announcements: updatedAnnouncements,
-        assignments: updatedAssignments
+        activities: updatedActivities
       };
     });
   };
@@ -3437,7 +3694,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...prev,
         sprConfigs: config ? { ...(prev.sprConfigs ?? {}), [courseId]: config } : (prev.sprConfigs ?? {}),
         sprScores: mergeSPRCourseMaps(prev.sprScores, Object.keys(cells).length > 0 ? { [courseId]: cells } : {}),
-        courseGrades: mergeSPRGrades(prev.courseGrades, grades),
+        courseGrades: mergeByKey(prev.courseGrades, grades, gg => `${gg.courseId}:${gg.studentId}`),
       }));
     } catch (err) {
       // Lazy-only failure: never pop an alert over the workspace; sync
@@ -3499,7 +3756,6 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             column: col,
             studentId,
             submissions: snapshot.submissions,
-            assignments: snapshot.assignments,
             activities: snapshot.activities ?? [],
             quizzes: snapshot.quizzes,
           });
@@ -3598,16 +3854,6 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (col.linkedSource) linked.add(`${col.linkedSource.kind}:${col.linkedSource.sourceId}`);
     }
     const next: SPRColumn[] = [...(term === 'midterm' ? config.midtermColumns : config.finalColumns)];
-    for (const a of snapshot.assignments) {
-      if (a.courseId !== courseId || linked.has(`assignment:${a.id}`)) continue;
-      linked.add(`assignment:${a.id}`);
-      next.push({
-        id: crypto.randomUUID(),
-        title: a.title,
-        perfectScore: a.pointsPossible,
-        linkedSource: { kind: 'assignment', sourceId: a.id },
-      });
-    }
     for (const a of snapshot.activities ?? []) {
       if (a.courseId !== courseId || linked.has(`activity:${a.id}`)) continue;
       linked.add(`activity:${a.id}`);
@@ -3755,6 +4001,45 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return (db.courseSections || []).filter((s: CourseSection) => s.courseId === courseId);
   };
 
+  const renameCourseSection = async (courseId: string, name: string): Promise<boolean> => {
+    const trimmed = (name || '').trim();
+    if (!trimmed) {
+      showAlert({
+        title: 'Section Name Required',
+        message: 'Please provide a section name.',
+        type: 'warning'
+      });
+      return false;
+    }
+    try {
+      const { course } = await apiFetch<{ course: any }>(
+        `/api/courses/${encodeURIComponent(courseId)}`,
+        { method: 'PATCH', body: { section: trimmed } }
+      );
+      const normalized = normalizeCourseSyllabus(course);
+      const existing = (dbRef.current.courseSections || []).filter(
+        (s: CourseSection) => s.courseId === courseId
+      );
+      if (existing.length === 0) {
+        await createSection(courseId, { name: trimmed });
+      } else if (existing[0].name !== trimmed) {
+        await updateSection(existing[0].id, { name: trimmed });
+      }
+      setDb(prev => ({
+        ...prev,
+        courses: prev.courses.map(c =>
+          c.id === courseId ? { ...c, section: normalized.section ?? trimmed } : c
+        )
+      }));
+      return true;
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to rename section.';
+      setLastError(message);
+      showAlert(message, 'Rename Section Failed');
+      return false;
+    }
+  };
+
   const getStudentSection = (courseId: string): CourseSection | null => {
     const sectionId = activeUser.courseSections?.[courseId];
     if (!sectionId) return null;
@@ -3796,10 +4081,21 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const approveEnrollmentRequests = async (requestIds: string[]): Promise<boolean> => {
     if (activeRole !== 'faculty' && activeRole !== 'admin') return false;
+    // Faculty invitations are accepted by the student, never approved by
+    // faculty — strip them here (server also rejects) so bulk actions skip.
+    const cache = db.enrollmentRequests || [];
+    const approvableIds = requestIds.filter(id => {
+      const r = cache.find((x: EnrollmentRequest) => x.id === id);
+      return !r || r.type !== 'faculty_enroll';
+    });
+    if (approvableIds.length === 0) {
+      showAlert('Faculty invitations must be accepted by the student — they cannot be approved here.', 'Cannot Approve');
+      return false;
+    }
     const succeeded: string[] = [];
     try {
       // Per-id approve endpoints, in sequence per the endpoint map.
-      for (const requestId of requestIds) {
+      for (const requestId of approvableIds) {
         await apiFetch<{ request: EnrollmentRequest }>(
           `/api/requests/${encodeURIComponent(requestId)}/approve`,
           { method: 'POST' }
@@ -3808,11 +4104,20 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to approve requests.';
+      // Diagnostic breadcrumb: the browser's bare "Failed to load resource"
+      // line hides the endpoint + server code — log both for triage.
+      console.error('[approve] approve request failed:', {
+        requestIds: approvableIds,
+        succeeded,
+        status: err instanceof ApiError ? err.status : undefined,
+        code: err instanceof ApiError ? err.code : undefined,
+        message,
+      });
       setLastError(message);
       showAlert(message, 'Approve Failed');
       if (succeeded.length === 0) return false;
     }
-    const effectiveIds = succeeded.length > 0 ? succeeded : requestIds;
+    const effectiveIds = succeeded.length > 0 ? succeeded : approvableIds;
     setDb(prev => {
       const now = new Date().toISOString();
       const existingRequests = prev.enrollmentRequests || [];
@@ -4113,6 +4418,19 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const getApprovedRequestsForCourse = async (courseId: string): Promise<EnrollmentRequest[]> => {
+    try {
+      const { requests } = await apiFetch<{ requests: EnrollmentRequest[] }>(
+        `/api/courses/${encodeURIComponent(courseId)}/requests?status=approved`
+      );
+      return requests;
+    } catch (err) {
+      // Read path: stay silent (no modal) and serve the cache.
+      setLastError(err instanceof ApiError ? err.message : 'Failed to load requests.');
+      return (db.enrollmentRequests || []).filter((r: EnrollmentRequest) => r.courseId === courseId && r.status === 'approved');
+    }
+  };
+
   const getPendingRequestsForStudent = (): EnrollmentRequest[] => {
     return (db.enrollmentRequests || []).filter(
       (r: EnrollmentRequest) => r.studentId === activeUser.id && r.status === 'pending' && (r.type === 'faculty_enroll' || r.type === 'self_join' || r.type === 'section_switch')
@@ -4167,7 +4485,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         logout,
         switchRole,
         isLoading,
+        isSyncing,
         lastError,
+        authReady,
         activeCourseId,
         setActiveCourseId,
         db,
@@ -4186,8 +4506,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         showConfirm,
         closeAlert,
         createCourse,
-        createAssignment,
-        deleteAssignment,
+        deleteCourse,
         createModule,
         updateModule,
         deleteModule,
@@ -4195,10 +4514,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateModuleItem,
         deleteModuleItem,
         createQuiz,
+        updateQuiz,
         recordQuizSubmission,
         createExam,
         recordExamSubmission,
         createActivity,
+        updateActivity,
         recordActivitySubmission,
         deleteActivity,
         enrollPerson,
@@ -4214,7 +4535,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         effectiveTermsForCourse,
         importCommonsTemplate,
         gradeSubmission,
-        submitAssignment,
+        submitActivity,
         toggleModulePublish,
         toggleItemCompletion,
         addModuleComment,
@@ -4264,6 +4585,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         createSection,
         updateSection,
         deleteSection,
+        renameCourseSection,
         getCourseSections,
         getStudentSection,
         createEnrollmentRequest,
@@ -4274,6 +4596,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         selectSection,
         requestSectionSwitch,
         getPendingRequestsForCourse,
+        getApprovedRequestsForCourse,
         getPendingRequestsForStudent,
         requestJoinCourse,
         getMyRequest,
