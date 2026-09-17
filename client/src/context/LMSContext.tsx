@@ -3114,10 +3114,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteCourseFile = async (fileId: string): Promise<void> => {
-    // Virtual ids (mod-file-*, ann-file-*, asg-file-*, sub-file-*, quiz-*)
+    // Virtual ids (mod-file-*, ann-file-*, act-file-*, sub-file-*, quiz-*)
     // are cache-only aggregations from useCourseFiles — they clear the source
     // fields locally. Real CourseFile rows delete via the files endpoint.
-    const isVirtual = /^(mod-file-|ann-file-|asg-file-|sub-file-|quiz-file-|quiz-q-file-)/.test(fileId);
+    const isVirtual = /^(mod-file-|ann-file-|act-file-|sub-file-|quiz-file-|quiz-q-file-)/.test(fileId);
     if (!isVirtual) {
       try {
         await apiFetch<{ ok: true }>(`/api/files/${encodeURIComponent(fileId)}`, {
@@ -3180,8 +3180,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       // 4. Classic activity handout file (link-key values preserved)
       let updatedActivities = prev.activities;
-      if (fileId.startsWith('asg-file-')) {
-        const actId = fileId.replace('asg-file-', '');
+      if (fileId.startsWith('act-file-')) {
+        const actId = fileId.replace('act-file-', '');
         updatedActivities = (prev.activities || []).map(act => {
           if (act.id === actId) {
             return {
@@ -3301,9 +3301,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const renameCourseFile = async (fileId: string, newName: string): Promise<void> => {
     // Real CourseFile rows rename via the files endpoint; virtual
-    // aggregation ids (mod-file-*, ann-file-*, asg-file-*) rename the source
+    // aggregation ids (mod-file-*, ann-file-*, act-file-*) rename the source
     // fields locally below.
-    const isVirtual = /^(mod-file-|ann-file-|asg-file-|sub-file-|quiz-file-|quiz-q-file-)/.test(fileId);
+    const isVirtual = /^(mod-file-|ann-file-|act-file-|sub-file-|quiz-file-|quiz-q-file-)/.test(fileId);
     if (!isVirtual) {
       try {
         const { file } = await apiFetch<{ file: CourseFile }>(
@@ -3358,8 +3358,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       let updatedActivities = prev.activities;
-      if (fileId.startsWith('asg-file-')) {
-        const actId = fileId.replace('asg-file-', '');
+      if (fileId.startsWith('act-file-')) {
+        const actId = fileId.replace('act-file-', '');
         updatedActivities = (prev.activities || []).map(act =>
           act.id === actId ? { ...act, fileName: newName } : act
         );

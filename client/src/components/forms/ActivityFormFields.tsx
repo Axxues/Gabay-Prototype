@@ -13,7 +13,7 @@ import { FilePickerModal } from '../common/FilePickerModal';
 import { UploadProgress } from '../common/UploadProgress';
 import { useSimulatedUpload } from '../../hooks/useSimulatedUpload';
 import type { AggregatedCourseFile } from '../../hooks/useCourseFiles';
-import type { Assignment } from '../../types/lms';
+import type { Activity } from '../../types/lms';
 
 export interface ActivityAttachment {
   name: string;
@@ -59,13 +59,14 @@ export function validateActivityForm(v: ActivityFormValue): { title: string; mes
   return null;
 }
 
-export function buildAssignmentPayload(courseId: string, v: ActivityFormValue, publish: boolean): Partial<Assignment> {
+export function buildActivityPayload(courseId: string, v: ActivityFormValue, publish: boolean): Partial<Activity> {
   const submissionTypes: ('file' | 'online_text')[] = [];
   if (v.allowFileUpload) submissionTypes.push('file');
   if (v.allowOnlineText) submissionTypes.push('online_text');
 
   return {
     courseId,
+    format: 'classic',
     title: v.title.trim(),
     instructions: v.instructions.trim() || 'Complete the activity guidelines aligned with course syllabus objectives.',
     category: 'Activities',

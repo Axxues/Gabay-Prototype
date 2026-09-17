@@ -30,13 +30,13 @@ import { AddModuleItemPage } from './AddModuleItemPage';
 
 interface ModulesViewProps {
   courseId: string;
-  onSelectAssignment: (assignmentId: string) => void;
+  onSelectActivity: (activityId: string) => void;
   onSelectQuiz: (quizId: string) => void;
 }
 
 export const ModulesView: React.FC<ModulesViewProps> = ({
   courseId,
-  onSelectAssignment,
+  onSelectActivity,
   onSelectQuiz
 }) => {
   const {
@@ -223,7 +223,7 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
         return <FileText className="w-4 h-4 text-blue-600 dark:text-blue-400" />;
       case 'file':
         return <File className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />;
-      case 'assignment':
+      case 'activity':
         return <FileCheck2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />;
       case 'quiz':
         return <HelpCircle className="w-4 h-4 text-amber-600 dark:text-amber-400" />;
@@ -511,8 +511,8 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                             <div
                               className="flex items-start space-x-3.5 cursor-pointer flex-1"
                               onClick={() => {
-                                if (item.type === 'assignment' && item.assignmentId) {
-                                  onSelectAssignment(item.assignmentId);
+                                if (item.type === 'activity' && item.activityId) {
+                                  onSelectActivity(item.activityId);
                                 } else if (item.type === 'quiz' && item.quizId) {
                                   onSelectQuiz(item.quizId);
                                 } else if (item.fileName || item.fileUrl) {

@@ -23,7 +23,7 @@ export const COURSE_CHILDREN: NavItem[] = [
   { id: 'modules', label: 'Modules', icon: 'modules', roles: ALL },
   { id: 'syllabus', label: 'Syllabus', icon: 'syllabus', roles: ALL },
   { id: 'announcements', label: 'Announcements', icon: 'announcements', roles: ALL },
-  { id: 'assignments', label: 'Activities', icon: 'activities', roles: ALL },
+  { id: 'activities', label: 'Activities', icon: 'activities', roles: ALL },
   { id: 'quizzes', label: 'Quizzes', icon: 'quizzes', roles: ALL },
   { id: 'exams', label: 'Exams', icon: 'exams', roles: ALL },
   { id: 'files', label: 'Files', icon: 'files', roles: ALL },

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLMS } from '../context/LMSContext';
-import type { Activity, Assignment, ModuleItem, Quiz, TermId } from '../types/lms';
+import type { Activity, ModuleItem, Quiz, TermId } from '../types/lms';
 import {
   ArrowLeft,
   FileText,
@@ -30,7 +30,7 @@ import { FilePickerModal } from '../components/common/FilePickerModal';
 import type { AggregatedCourseFile } from '../hooks/useCourseFiles';
 import {
   ActivityFormFields,
-  buildAssignmentPayload,
+  buildActivityPayload as buildClassicActivityPayload,
   emptyActivityFormValue,
   validateActivityForm,
   type ActivityFormValue
@@ -87,7 +87,7 @@ const RESOURCE_TYPES: Array<{
       badgeColor: 'bg-muted text-muted-foreground border-border'
     },
     {
-      type: 'assignment',
+      type: 'activity',
       label: 'Activity milestone',
       badge: 'Activity',
       description: 'Graded student submission with deadline, instructions & rubric',
@@ -122,9 +122,9 @@ const toLocalDateTimeInput = (iso?: string): string => {
   return d.toISOString().slice(0, 16);
 };
 
-// Prefill the shared activity form from a linked assignment record.
-const assignmentToActivityForm = (
-  a: Assignment,
+// Prefill the shared activity form from a linked classic activity record.
+const classicActivityToForm = (
+  a: Activity,
   fallbackTitle: string,
   fallbackContent: string
 ): ActivityFormValue => ({
@@ -147,9 +147,9 @@ const MC_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'];
 // question-set activities are referenced as `asg-activity-<activityId>`.
 const QUESTION_SET_LINK_PREFIX = 'asg-activity-';
 const questionSetLinkOf = (activityId: string): string => `${QUESTION_SET_LINK_PREFIX}${activityId}`;
-const linkedActivityIdOf = (assignmentId?: string): string | undefined =>
-  assignmentId && assignmentId.startsWith(QUESTION_SET_LINK_PREFIX)
-    ? assignmentId.slice(QUESTION_SET_LINK_PREFIX.length)
+const linkedActivityIdOf = (activityId?: string | null): string | undefined =>
+  activityId && activityId.startsWith(QUESTION_SET_LINK_PREFIX)
+    ? activityId.slice(QUESTION_SET_LINK_PREFIX.length)
     : undefined;
 
 // Prefill the shared question-set builder from a linked activity record.
@@ -228,15 +228,21 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
     db,
     addModuleItem,
     updateModuleItem,
-    createAssignment,
-    updateAssignment,
     createActivity,
     updateActivity,
     createQuiz,
     updateQuiz,
     showAlert,
     effectiveTermsForCourse
-  } = useLMS();
+  // updateQuiz rides along as sibling-WIP: the context does not provide it
+  // yet (quiz header editing), so it is typed here to keep this page
+  // compiling until the quiz surface lands it.
+  } = useLMS() as ReturnType<typeof useLMS> & {
+    updateQuiz: (
+      quizId: string,
+      updates: Omit<Partial<Quiz>, 'delayedUntil'> & { delayedUntil?: string | null }
+    ) => Promise<Quiz>;
+  };
   const isEditing = Boolean(editingItem);
 
   const course = db.courses.find(c => c.id === courseId);
@@ -256,18 +262,18 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
   const [title, setTitle] = useState(editingItem?.title || '');
   const [content, setContent] = useState(editingItem?.content || '');
 
-  // Linked assessment records (real Assignments/Activities/Quizzes rows).
-  // Classic activities link via assignmentId; question-set activities via the
+  // Linked assessment records (real Activities/Quizzes rows).
+  // Classic activities link via activityId; question-set activities via the
   // synthetic `asg-activity-<id>` convention (same as submissions/badges).
-  const linkedAssignment =
-    editingItem?.type === 'assignment' &&
-    editingItem.assignmentId &&
-    !linkedActivityIdOf(editingItem.assignmentId)
-      ? db.assignments.find(a => a.id === editingItem.assignmentId)
+  const linkedClassicActivity =
+    editingItem?.type === 'activity' &&
+    editingItem.activityId &&
+    !linkedActivityIdOf(editingItem.activityId)
+      ? (db.activities || []).find(a => a.id === editingItem.activityId)
       : undefined;
   const linkedActivityId =
-    editingItem?.type === 'assignment'
-      ? linkedActivityIdOf(editingItem.assignmentId)
+    editingItem?.type === 'activity'
+      ? linkedActivityIdOf(editingItem.activityId)
       : undefined;
   const linkedActivity = linkedActivityId
     ? (db.activities ?? []).find(a => a.id === linkedActivityId)
@@ -280,12 +286,12 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
   // Assessment forms — the SAME inputs as the Activities / Quizzes pages,
   // prefilled from the linked record when editing.
   const [activityForm, setActivityForm] = useState<ActivityFormValue>(() =>
-    linkedAssignment
-      ? assignmentToActivityForm(linkedAssignment, editingItem?.title || '', editingItem?.content || '')
+    linkedClassicActivity
+      ? classicActivityToForm(linkedClassicActivity, editingItem?.title || '', editingItem?.content || '')
       : {
           ...emptyActivityFormValue(),
-          title: editingItem?.type === 'assignment' ? editingItem.title || '' : '',
-          instructions: editingItem?.type === 'assignment' ? editingItem.content || '' : ''
+          title: editingItem?.type === 'activity' ? editingItem.title || '' : '',
+          instructions: editingItem?.type === 'activity' ? editingItem.content || '' : ''
         }
   );
   const [quizBuilder, setQuizBuilder] = useState<QuizBuilderValue>(() =>
@@ -443,11 +449,11 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
           editingItem.id,
           {
             title: questionSet.title.trim(),
-            type: 'assignment',
+            type: 'activity',
             content:
               questionSet.instructions.trim() ||
               'Unit resource instructions aligned with syllabus requirements.',
-            assignmentId: questionSetLinkOf(linkedActivity.id)
+            activityId: questionSetLinkOf(linkedActivity.id)
           },
           targetModuleId
         );
@@ -482,9 +488,9 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
           editingItem.id,
           {
             title: savedTitle,
-            type: 'assignment',
+            type: 'activity',
             content: savedContent,
-            assignmentId: questionSetLinkOf(created.id)
+            activityId: questionSetLinkOf(created.id)
           },
           targetModuleId
         );
@@ -504,12 +510,12 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
       const created = await createActivity(buildActivityPayload(courseId, questionSet));
       await addModuleItem(targetModuleId, {
         title: savedTitle,
-        type: 'assignment',
+        type: 'activity',
         content: savedContent,
         published: true,
         required: false,
         completionCondition: 'submit',
-        assignmentId: questionSetLinkOf(created.id)
+        activityId: questionSetLinkOf(created.id)
       });
     } catch {
       // Context already surfaced the failure alert.
@@ -533,7 +539,7 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
     }
   };
 
-  // Assessment save: creates/updates the REAL assignment row, then links it.
+  // Assessment save: creates/updates the REAL classic activity row, then links it.
   const handleSaveActivity = async (addAnother: boolean = false) => {
     if (activityMode === 'question_set') {
       await handleSaveQuestionSet(addAnother);
@@ -556,22 +562,22 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
 
     if (isEditing && editingItem) {
       try {
-        let assignmentId = linkedAssignment?.id;
-        if (linkedAssignment) {
-          const payload = buildAssignmentPayload(courseId, activityForm, linkedAssignment.published);
+        let activityId = linkedClassicActivity?.id;
+        if (linkedClassicActivity) {
+          const payload = buildClassicActivityPayload(courseId, activityForm, linkedClassicActivity.published);
           const { courseId: _courseId, ...updates } = payload;
-          await updateAssignment(linkedAssignment.id, updates);
+          await updateActivity(linkedClassicActivity.id, updates);
         } else {
           // Legacy item without a linked row — create the row now and link it.
-          const created = await createAssignment(
-            buildAssignmentPayload(courseId, activityForm, editingItem.published)
+          const created = await createActivity(
+            buildClassicActivityPayload(courseId, activityForm, editingItem.published)
           );
-          assignmentId = created.id;
+          activityId = created.id;
         }
         await updateModuleItem(
           moduleId,
           editingItem.id,
-          { title: savedTitle, type: 'assignment', content: savedContent, assignmentId, ...fileFields },
+          { title: savedTitle, type: 'activity', content: savedContent, activityId, ...fileFields },
           targetModuleId
         );
         showAlert({
@@ -587,15 +593,15 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
     }
 
     try {
-      const created = await createAssignment(buildAssignmentPayload(courseId, activityForm, true));
+      const created = await createActivity(buildClassicActivityPayload(courseId, activityForm, true));
       await addModuleItem(targetModuleId, {
         title: savedTitle,
-        type: 'assignment',
+        type: 'activity',
         content: savedContent,
         published: true,
         required: false,
         completionCondition: 'submit',
-        assignmentId: created.id,
+        activityId: created.id,
         ...fileFields
       });
     } catch {
@@ -737,7 +743,7 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
 
   const handleSave = async (addAnother: boolean = false) => {
     if (upload.isUploading) return;
-    if (itemType === 'assignment') {
+    if (itemType === 'activity') {
       await handleSaveActivity(addAnother);
       return;
     }
@@ -881,7 +887,7 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
               {course ? `${course.code} • ` : ''}
               {isEditing
                 ? 'Update learning material, instructions, or attached files for this unit item.'
-                : 'Publish reading materials, assignments, quizzes, and attach downloadable files.'}
+                : 'Publish reading materials, activities, quizzes, and attach downloadable files.'}
             </p>
           </div>
         </div>
@@ -1071,7 +1077,7 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
 
             {/* Generic title/content — replaced by the Activities / Quizzes
                 inputs below when an assessment resource type is selected. */}
-            {(itemType !== 'assignment' && itemType !== 'quiz') && (
+            {(itemType !== 'activity' && itemType !== 'quiz') && (
               <>
                 <div>
                   <label className="block text-[12px] font-semibold text-muted-foreground mb-1.5">
@@ -1105,7 +1111,7 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
 
           {/* Assessment sections — the SAME inputs as the Activities page:
               Classic activity form or New Question Set builder. */}
-          {itemType === 'assignment' && (
+          {itemType === 'activity' && (
             <div className="space-y-4">
               <div>
                 <div className="p-1 w-full bg-muted/60 border border-border rounded-2xl grid grid-cols-2 gap-1">
@@ -1185,7 +1191,7 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
           {/* Section 2: File Attachment (Faculty Can Attach a File) — hidden for
               assessment types (the activity form carries its own handout attach;
               quizzes take no file on this page, same as the Quizzes page). */}
-          {(itemType !== 'assignment' && itemType !== 'quiz') && (
+          {(itemType !== 'activity' && itemType !== 'quiz') && (
           <div className="p-6 bg-card border border-border rounded-2xl space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-border/70">
               <div className="flex items-center space-x-2">

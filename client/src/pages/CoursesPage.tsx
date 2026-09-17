@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useLMS } from '../context/LMSContext';
 import { ModulesView } from './ModulesView';
 import { SyllabusView } from './SyllabusView';
-import { AssignmentsView } from './AssignmentsView';
+import { ActivitiesView } from './ActivitiesView';
 import { QuizzesView } from './QuizzesView';
 import { ExamsView } from './ExamsView';
 import { PeopleView } from './PeopleView';
@@ -35,7 +35,7 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
 
   const [subTab, setSubTab] = useState(initialSubTab);
   const [returnToTab, setReturnToTab] = useState<string | null>(null);
-  const [selectedAssignmentId, setSelectedAssignmentId] = useState<string | null>(null);
+  const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
   const [selectedQuizId, setSelectedQuizId] = useState<string | null>(null);
   const [selectedExamId, setSelectedExamId] = useState<string | null>(null);
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
@@ -93,14 +93,28 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
       badgeCount = getUnreadNotificationCount(activeUser.id, 'module_comment_reply');
     } else if (tab.id === 'announcements') {
       badgeCount = countUnreadAnnouncements(db.announcements || [], { id: activeUser.id, role: activeRole, sectionId: activeUser.courseSections?.[cid] ?? null }, cid);
-    } else if (tab.id === 'assignments') {
+    } else if (tab.id === 'activities') {
+      // Classic rows live in db.activities now (format === 'classic');
+      // question sets link submissions via the synthetic asg-activity-<id>
+      // key (values preserved).
+      const courseActivities = (db.activities || []).filter(a => a.courseId === cid);
+      const publishedActivities = courseActivities.filter(a => a.published);
+      const publishedIds = [
+        ...publishedActivities.filter(a => a.format === 'classic').map(a => a.id),
+        ...publishedActivities.filter(a => a.format !== 'classic').map(a => `asg-activity-${a.id}`),
+      ];
+      const allIds = [
+        ...courseActivities.filter(a => a.format === 'classic').map(a => a.id),
+        ...courseActivities.filter(a => a.format !== 'classic').map(a => `asg-activity-${a.id}`),
+      ];
+      const courseSubs = db.submissions.filter(s => s.courseId === cid);
       badgeCount = activeRole === 'faculty'
-        ? countFacultyGradingBadge(db.submissions.filter(s => s.courseId === cid), [...(db.assignments || []).filter(a => a.courseId === cid).map(a => a.id), ...(db.activities || []).filter(a => a.courseId === cid).map(a => `asg-activity-${a.id}`)])
-        : countStudentAssessmentBadge([...(db.assignments || []).filter(a => a.courseId === cid && a.published).map(a => a.id), ...(db.activities || []).filter(a => a.courseId === cid && a.published).map(a => `asg-activity-${a.id}`)], db.submissions.filter(s => s.courseId === cid && s.studentId === activeUser.id).map(s => s.assignmentId));
+        ? countFacultyGradingBadge(courseSubs.map(s => ({ ...s, assignmentId: s.activityKey ?? '' })), allIds)
+        : countStudentAssessmentBadge(publishedIds, courseSubs.filter(s => s.studentId === activeUser.id).map(s => s.activityKey ?? ''));
     } else if (tab.id === 'quizzes') {
       badgeCount = activeRole === 'faculty'
-        ? countFacultyGradingBadge(db.submissions.filter(s => s.courseId === cid), (db.quizzes || []).filter(q => q.courseId === cid).map(q => `asg-quiz-${q.id}`))
-        : (db.quizzes || []).filter(q => q.courseId === cid && q.published && !db.submissions.some(s => s.assignmentId === `asg-quiz-${q.id}` && s.studentId === activeUser.id)).length;
+        ? countFacultyGradingBadge(db.submissions.filter(s => s.courseId === cid).map(s => ({ ...s, assignmentId: s.activityKey ?? '' })), (db.quizzes || []).filter(q => q.courseId === cid).map(q => `asg-quiz-${q.id}`))
+        : (db.quizzes || []).filter(q => q.courseId === cid && q.published && !db.submissions.some(s => s.activityKey === `asg-quiz-${q.id}` && s.studentId === activeUser.id)).length;
     } else if (tab.id === 'files') {
       badgeCount = countNewFiles(db.courseFiles || [], cid, visits);
     } else if (tab.id === 'grades') {
@@ -138,10 +152,10 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
         {subTab === 'modules' && (
           <ModulesView
             courseId={activeCourse.id}
-            onSelectAssignment={asgId => {
-              setSelectedAssignmentId(asgId);
+            onSelectActivity={actId => {
+              setSelectedActivityId(actId);
               setReturnToTab('modules');
-              setSubTab('assignments');
+              setSubTab('activities');
             }}
             onSelectQuiz={quizId => {
               setSelectedQuizId(quizId);
@@ -155,15 +169,15 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
 
         {subTab === 'announcements' && <AnnouncementsView courseId={activeCourse.id} />}
 
-        {subTab === 'assignments' && (
-          <AssignmentsView
+        {subTab === 'activities' && (
+          <ActivitiesView
             courseId={activeCourse.id}
-            selectedAssignmentId={selectedAssignmentId}
-            onSelectAssignment={setSelectedAssignmentId}
+            selectedActivityId={selectedActivityId}
+            onSelectActivity={setSelectedActivityId}
             onBackToModules={
               returnToTab === 'modules'
                 ? () => {
-                    setSelectedAssignmentId(null);
+                    setSelectedActivityId(null);
                     setReturnToTab(null);
                     setSubTab('modules');
                   }

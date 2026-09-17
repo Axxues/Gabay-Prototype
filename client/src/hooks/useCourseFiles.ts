@@ -128,41 +128,42 @@ export const useCourseFiles = (courseId?: string) => {
     });
 
     // 4. Activities attached starter files and student file submissions
+    // (classic format rows live in db.activities after the merge).
     const activityFiles: AggregatedCourseFile[] = [];
-    const relevantAssignments = isPersonal
-      ? db.assignments || []
-      : (db.assignments || []).filter(a => a.courseId === courseId);
-    relevantAssignments.forEach(asg => {
-      if (asg.fileName || asg.fileUrl) {
-        const asgUrl = asg.fileUrl || `/public/uploads/${asg.fileName}`;
+    const relevantClassicActivities = (
+      isPersonal ? db.activities || [] : (db.activities || []).filter(a => a.courseId === courseId)
+    ).filter(a => a.format === 'classic');
+    relevantClassicActivities.forEach(act => {
+      if (act.fileName || act.fileUrl) {
+        const actUrl = act.fileUrl || `/public/uploads/${act.fileName}`;
         activityFiles.push({
-          id: `asg-file-${asg.id}`,
-          courseId: asg.courseId,
+          id: `act-file-${act.id}`,
+          courseId: act.courseId,
           folderId: null,
-          name: asg.fileName || `${asg.title}_Handout.pdf`,
+          name: act.fileName || `${act.title}_Handout.pdf`,
           size: 1024 * 1024,
-          formattedSize: asg.fileSize || '1.5 MB',
-          type: detectFileType(asg.fileName || asgUrl),
-          visibility: asg.published ? 'published' : 'unpublished',
-          updatedAt: asg.dueDate || new Date().toISOString(),
+          formattedSize: act.fileSize || '1.5 MB',
+          type: detectFileType(act.fileName || actUrl),
+          visibility: act.published ? 'published' : 'unpublished',
+          updatedAt: act.dueDate || new Date().toISOString(),
           uploadedBy: 'faculty',
           uploadedByName: 'Course Faculty',
-          url: asgUrl,
-          fileUrl: asgUrl,
-          content: asg.instructions,
+          url: actUrl,
+          fileUrl: actUrl,
+          content: act.instructions,
           source: 'activities',
-          sourceLabel: `Activity: ${asg.title}`
+          sourceLabel: `Activity: ${act.title}`
         });
       }
 
       const relevantSubs = (db.submissions || []).filter(
-        s => s.assignmentId === asg.id && (s.fileName || s.fileUrl)
+        s => s.activityKey === act.id && (s.fileName || s.fileUrl)
       );
       relevantSubs.forEach(sub => {
         const subUrl = sub.fileUrl || (sub.fileName ? `/public/uploads/${sub.fileName}` : undefined);
         activityFiles.push({
           id: `sub-file-${sub.id}`,
-          courseId: asg.courseId,
+          courseId: act.courseId,
           folderId: null,
           name: sub.fileName || `${sub.studentName}_Submission.pdf`,
           size: 1024 * 1024,

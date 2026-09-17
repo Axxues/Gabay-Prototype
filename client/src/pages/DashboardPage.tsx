@@ -47,26 +47,25 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   });
 
   const unsubmittedList = db.submissions.filter(s => s.status === 'submitted');
-  const studentAssignments = db.assignments.filter(a => a.published);
-  const studentActivities = (db.activities || []).filter(a => a.published);
+  const publishedActivities = (db.activities || []).filter(a => a.published);
   const todoItems = [
-    ...studentAssignments.map(asg => ({
-      id: asg.id,
-      courseId: asg.courseId,
-      title: asg.title,
-      category: asg.category,
-      pointsLabel: `${asg.pointsPossible} pts`,
-      dueDate: asg.dueDate,
-      submitted: db.submissions.some(s => s.assignmentId === asg.id && s.studentId === activeUser.id)
+    ...publishedActivities.filter(a => a.format === 'classic').map(act => ({
+      id: act.id,
+      courseId: act.courseId,
+      title: act.title,
+      category: act.category || 'Activity',
+      pointsLabel: `${act.pointsPossible} pts`,
+      dueDate: act.dueDate,
+      submitted: db.submissions.some(s => s.activityKey === act.id && s.studentId === activeUser.id)
     })),
-    ...studentActivities.map(a => ({
+    ...publishedActivities.filter(a => a.format !== 'classic').map(a => ({
       id: a.id,
       courseId: a.courseId,
       title: a.title,
       category: 'Question Set',
       pointsLabel: `${a.pointsPossible} pts`,
       dueDate: a.dueDate,
-      submitted: db.submissions.some(s => s.assignmentId === `asg-activity-${a.id}` && s.studentId === activeUser.id)
+      submitted: db.submissions.some(s => s.activityKey === `asg-activity-${a.id}` && s.studentId === activeUser.id)
     }))
   ];
   const hasRightSidebar = activeRole === 'student' || activeRole === 'faculty' || activeRole === 'admin';
@@ -360,7 +359,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                     return (
                       <div
                         key={item.id}
-                        onClick={() => onNavigateCourse(item.courseId, 'assignments')}
+                        onClick={() => onNavigateCourse(item.courseId, 'activities')}
                         className="p-3.5 bg-muted/50 rounded-xl border border-border hover:border-primary/40 cursor-pointer transition-all space-y-1.5 shadow-soft"
                       >
                         <div className="flex items-start justify-between">
@@ -402,7 +401,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                     <span className="font-sans font-extrabold text-emerald-700 dark:text-emerald-400 text-sm">96/100</span>
                   </div>
                   <p className="text-xs text-muted-foreground italic leading-relaxed">
-                    "Great work on the lab assignment! Code is clean and well structured."
+                    "Great work on the lab activity! Code is clean and well structured."
                   </p>
                   <div className="text-[10px] font-sans text-muted-foreground pt-1 border-t border-emerald-500/20">
                     Graded by {db.users.find(u => u.role === 'faculty')?.name || activeUser.name}
@@ -427,7 +426,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
               <div className="space-y-3">
                 {unsubmittedList.map(sub => {
-                  const asg = db.assignments.find(a => a.id === sub.assignmentId);
+                  const act = (db.activities || []).find(a => a.id === sub.activityKey || `asg-activity-${a.id}` === sub.activityKey);
                   return (
                     <div
                       key={sub.id}
@@ -439,7 +438,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                             {sub.studentName}
                           </h4>
                           <p className="text-[11px] text-muted-foreground">
-                            {asg?.title}
+                            {act?.title}
                           </p>
                         </div>
                         <span className="text-[10px] font-sans text-muted-foreground">
