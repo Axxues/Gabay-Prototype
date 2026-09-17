@@ -8,6 +8,7 @@ export interface User {
   email: string;
   role: UserRole;
   avatar: string;
+  banner?: string | null;
   studentId?: string;
   department: string;
   title: string;
@@ -77,7 +78,7 @@ export interface ModuleItem {
   completionCondition?: 'view' | 'submit' | 'min_score';
   minScore?: number;
   content?: string;
-  assignmentId?: string;
+  activityId?: string | null;
   quizId?: string;
   fileUrl?: string;
   fileName?: string;
@@ -146,18 +147,21 @@ export interface RubricCriterion {
   ratings: RubricRating[];
 }
 
-export interface Assignment {
+export interface Activity {
   id: string;
   courseId: string;
   title: string;
   instructions: string;
+  term: TermId;
+  questions: QuizQuestion[];
   pointsPossible: number;
-  dueDate: string;
-  submissionTypes: ('file' | 'online_text')[];
+  dueDate?: string;
   published: boolean;
-  category: string;
-  weight: number; // percentage (e.g. 20 for 20%)
-  rubric: RubricCriterion[];
+  format: 'classic' | 'questionset';
+  submissionTypes?: string[];
+  category?: string;
+  weight?: number;
+  rubric?: RubricCriterion[];
   fileName?: string;
   fileUrl?: string;
   fileSize?: string;
@@ -177,7 +181,7 @@ export interface SubmissionComment {
 
 export interface Submission {
   id: string;
-  assignmentId: string;
+  activityKey: string;
   courseId: string;
   studentId: string;
   studentName: string;
@@ -232,18 +236,6 @@ export interface Quiz {
   fileName?: string;
   fileUrl?: string;
   fileSize?: string;
-}
-
-export interface Activity {
-  id: string;
-  courseId: string;
-  title: string;
-  instructions: string;
-  term: TermId;
-  questions: QuizQuestion[];
-  pointsPossible: number;
-  dueDate?: string;
-  published: boolean;
 }
 
 export interface Exam {
@@ -471,7 +463,7 @@ export interface CourseStudentGrade {
   updatedAt?: string;
 }
 
-export interface SPRSourceLink { kind: 'assignment' | 'activity' | 'quiz' | 'exam'; sourceId: string }
+export interface SPRSourceLink { kind: 'activity' | 'quiz' | 'exam'; sourceId: string }
 export interface SPRColumn { id: string; title: string; perfectScore: number; linkedSource?: SPRSourceLink }
 export interface SPRConfig { courseId: string; prelimColumns?: SPRColumn[]; midtermColumns: SPRColumn[]; finalColumns: SPRColumn[]; mtExamPerfect: number; ftExamPerfect: number }
 export type SPRCellMap = Record<string, Record<string, number | null>>;
@@ -481,7 +473,6 @@ export interface LMSDatabase {
   users: User[];
   courses: Course[];
   modules: Module[];
-  assignments: Assignment[];
   submissions: Submission[];
   quizzes: Quiz[];
   activities?: Activity[];

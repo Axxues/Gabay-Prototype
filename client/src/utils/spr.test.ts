@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   autoScoreFraction,
+  bucketColumnsByTerm,
   buildAutoColumns,
   classStandingPercent,
   finalPercent,
@@ -12,7 +13,6 @@ import {
 } from './spr';
 import type {
   Activity,
-  Assignment,
   Exam,
   Quiz,
   SPRColumn,
@@ -23,7 +23,7 @@ function baseWeights() {
   return resolveSPRWeights(null);
 }
 
-function makeSubmission(over: Partial<Submission> & { assignmentId: string; studentId: string }): Submission {
+function makeSubmission(over: Partial<Submission> & { activityKey: string; studentId: string }): Submission {
   return {
     id: 'sub-1',
     courseId: 'c1',
@@ -38,20 +38,18 @@ function makeSubmission(over: Partial<Submission> & { assignmentId: string; stud
   } as Submission;
 }
 
-function makeAssignment(over: Partial<Assignment> & { id: string }): Assignment {
+function makeActivity(over: Partial<Activity> & { id: string }): Activity {
   return {
     courseId: 'c1',
     title: 'A',
     instructions: '',
+    term: 'midterm',
+    questions: [],
     pointsPossible: 100,
-    dueDate: '2026-01-01',
-    submissionTypes: ['online_text'],
     published: true,
-    category: 'x',
-    weight: 0,
-    rubric: [],
+    format: 'classic',
     ...over,
-  } as Assignment;
+  } as Activity;
 }
 
 describe('resolveSPRWeights', () => {
@@ -141,20 +139,19 @@ describe('autoScoreFraction', () => {
 
   it('returns null when unlinked', () => {
     expect(
-      autoScoreFraction({ column: col(), studentId: 's1', submissions: [], assignments: [], activities: [], quizzes: [] }),
+      autoScoreFraction({ column: col(), studentId: 's1', submissions: [], activities: [], quizzes: [] }),
     ).toBeNull();
   });
 
-  it('scores assignment submissions as raw points fraction', () => {
-    const assignments = [makeAssignment({ id: 'a1', pointsPossible: 50 })];
-    const submissions = [makeSubmission({ assignmentId: 'a1', studentId: 's1', grade: 25 })];
+  it('scores classic activity submissions as raw points fraction', () => {
+    const activities = [makeActivity({ id: 'a1', pointsPossible: 50 })];
+    const submissions = [makeSubmission({ activityKey: 'a1', studentId: 's1', grade: 25 })];
     expect(
       autoScoreFraction({
-        column: col({ kind: 'assignment', sourceId: 'a1' }),
+        column: col({ kind: 'activity', sourceId: 'a1' }),
         studentId: 's1',
         submissions,
-        assignments,
-        activities: [],
+        activities,
         quizzes: [],
       }),
     ).toBeCloseTo(0.5, 5);
@@ -162,30 +159,28 @@ describe('autoScoreFraction', () => {
 
   it('scores quiz submissions as percent fraction', () => {
     const quizzes: Quiz[] = [{ id: 'q1', courseId: 'c1', title: 'Q', instructions: '', timeLimitMinutes: 10, published: true, questions: [{ id: 'qq1', text: 'Q', type: 'multiple_choice', points: 10 }] } as Quiz];
-    const submissions = [makeSubmission({ assignmentId: 'asg-quiz-q1', studentId: 's1', grade: 80 })];
+    const submissions = [makeSubmission({ activityKey: 'asg-quiz-q1', studentId: 's1', grade: 80 })];
     expect(
       autoScoreFraction({
         column: col({ kind: 'quiz', sourceId: 'q1' }),
         studentId: 's1',
         submissions,
-        assignments: [],
         activities: [],
         quizzes,
       }),
     ).toBeCloseTo(0.8, 5);
   });
 
-  it('scores activity submissions as percent fraction', () => {
+  it('scores questionset activity submissions as percent fraction', () => {
     const activities: Activity[] = [
-      { id: 'act1', courseId: 'c1', title: 'Act', instructions: '', questions: [], pointsPossible: 20, published: true } as Activity,
+      { id: 'act1', courseId: 'c1', title: 'Act', instructions: '', term: 'midterm', questions: [], pointsPossible: 20, published: true, format: 'questionset' } as Activity,
     ];
-    const submissions = [makeSubmission({ assignmentId: 'asg-activity-act1', studentId: 's1', grade: 90 })];
+    const submissions = [makeSubmission({ activityKey: 'asg-activity-act1', studentId: 's1', grade: 90 })];
     expect(
       autoScoreFraction({
         column: col({ kind: 'activity', sourceId: 'act1' }),
         studentId: 's1',
         submissions,
-        assignments: [],
         activities,
         quizzes: [],
       }),
@@ -193,19 +188,18 @@ describe('autoScoreFraction', () => {
   });
 
   it('picks the latest graded submission and ignores ungraded ones', () => {
-    const assignments = [makeAssignment({ id: 'a1', pointsPossible: 100 })];
+    const activities = [makeActivity({ id: 'a1', pointsPossible: 100 })];
     const submissions = [
-      makeSubmission({ id: 'old', assignmentId: 'a1', studentId: 's1', grade: 10, submittedAt: '2026-01-01T00:00:00.000Z', gradedAt: '2026-01-02T00:00:00.000Z' }),
-      makeSubmission({ id: 'new', assignmentId: 'a1', studentId: 's1', grade: 70, submittedAt: '2026-02-01T00:00:00.000Z', gradedAt: '2026-02-02T00:00:00.000Z' }),
-      makeSubmission({ id: 'ungraded', assignmentId: 'a1', studentId: 's1', submittedAt: '2026-03-01T00:00:00.000Z', status: 'submitted' }),
+      makeSubmission({ id: 'old', activityKey: 'a1', studentId: 's1', grade: 10, submittedAt: '2026-01-01T00:00:00.000Z', gradedAt: '2026-01-02T00:00:00.000Z' }),
+      makeSubmission({ id: 'new', activityKey: 'a1', studentId: 's1', grade: 70, submittedAt: '2026-02-01T00:00:00.000Z', gradedAt: '2026-02-02T00:00:00.000Z' }),
+      makeSubmission({ id: 'ungraded', activityKey: 'a1', studentId: 's1', submittedAt: '2026-03-01T00:00:00.000Z', status: 'submitted' }),
     ];
     expect(
       autoScoreFraction({
-        column: col({ kind: 'assignment', sourceId: 'a1' }),
+        column: col({ kind: 'activity', sourceId: 'a1' }),
         studentId: 's1',
         submissions,
-        assignments,
-        activities: [],
+        activities,
         quizzes: [],
       }),
     ).toBeCloseTo(0.7, 5);
@@ -214,61 +208,104 @@ describe('autoScoreFraction', () => {
   it('returns null when source is missing, has no points, or has no graded submission', () => {
     const args = { studentId: 's1', submissions: [] as Submission[], activities: [] as Activity[], quizzes: [] as Quiz[] };
     // missing source
-    expect(autoScoreFraction({ ...args, column: col({ kind: 'assignment', sourceId: 'nope' }), assignments: [] })).toBeNull();
+    expect(autoScoreFraction({ ...args, column: col({ kind: 'activity', sourceId: 'nope' }) })).toBeNull();
     // zero pointsPossible
     expect(
-      autoScoreFraction({ ...args, column: col({ kind: 'assignment', sourceId: 'a1' }), assignments: [makeAssignment({ id: 'a1', pointsPossible: 0 })] }),
+      autoScoreFraction({ ...args, column: col({ kind: 'activity', sourceId: 'a1' }), activities: [makeActivity({ id: 'a1', pointsPossible: 0 })] }),
     ).toBeNull();
     // no graded submission
     expect(
       autoScoreFraction({
         ...args,
-        column: col({ kind: 'assignment', sourceId: 'a1' }),
-        assignments: [makeAssignment({ id: 'a1' })],
-        submissions: [makeSubmission({ assignmentId: 'a1', studentId: 's1', status: 'submitted' })],
+        column: col({ kind: 'activity', sourceId: 'a1' }),
+        activities: [makeActivity({ id: 'a1' })],
+        submissions: [makeSubmission({ activityKey: 'a1', studentId: 's1', status: 'submitted' })],
       }),
     ).toBeNull();
   });
 
   it('clamps fractions to 0..1', () => {
-    const assignments = [makeAssignment({ id: 'a1', pointsPossible: 100 })];
-    const over = [makeSubmission({ assignmentId: 'a1', studentId: 's1', grade: 500 })];
-    const under = [makeSubmission({ assignmentId: 'a1', studentId: 's1', grade: -20 })];
-    const colA = col({ kind: 'assignment', sourceId: 'a1' });
-    expect(autoScoreFraction({ column: colA, studentId: 's1', submissions: over, assignments, activities: [], quizzes: [] })).toBe(1);
-    expect(autoScoreFraction({ column: colA, studentId: 's1', submissions: under, assignments, activities: [], quizzes: [] })).toBe(0);
+    const activities = [makeActivity({ id: 'a1', pointsPossible: 100 })];
+    const over = [makeSubmission({ activityKey: 'a1', studentId: 's1', grade: 500 })];
+    const under = [makeSubmission({ activityKey: 'a1', studentId: 's1', grade: -20 })];
+    const colA = col({ kind: 'activity', sourceId: 'a1' });
+    expect(autoScoreFraction({ column: colA, studentId: 's1', submissions: over, activities, quizzes: [] })).toBe(1);
+    expect(autoScoreFraction({ column: colA, studentId: 's1', submissions: under, activities, quizzes: [] })).toBe(0);
   });
 
   it('builds auto columns from published activities+quizzes, skipping drafts', () => {
     const cols = buildAutoColumns('c1', {
-      activities: [{ id: 'a1', courseId: 'c1', title: 'Act', published: true, pointsPossible: 20 } as Activity],
+      activities: [{ id: 'a1', courseId: 'c1', title: 'Act', published: true, pointsPossible: 20, format: 'questionset' } as Activity],
       quizzes: [{ id: 'q1', courseId: 'c1', title: 'Q', published: true, questions: [{ points: 10 }] } as unknown as Quiz, { id: 'q2', courseId: 'c1', title: 'Draft', published: false, questions: [] } as unknown as Quiz],
     });
     expect(cols.map(c => c.linkedSource?.sourceId).sort()).toEqual(['a1', 'q1']);
   });
-  it('builds an auto column for each published classic assignment', () => {
+  it('builds an auto column for each published classic activity', () => {
     const cols = buildAutoColumns('c1', {
-      activities: [],
-      quizzes: [],
-      assignments: [
-        makeAssignment({ id: 'asg1', courseId: 'c1', title: 'Lab 1', published: true, pointsPossible: 50 }),
-        makeAssignment({ id: 'asg2', courseId: 'c1', title: 'Draft', published: false, pointsPossible: 50 }),
-        makeAssignment({ id: 'asg3', courseId: 'other', title: 'Other course', published: true, pointsPossible: 50 }),
+      activities: [
+        makeActivity({ id: 'asg1', courseId: 'c1', title: 'Lab 1', published: true, pointsPossible: 50 }),
+        makeActivity({ id: 'asg2', courseId: 'c1', title: 'Draft', published: false, pointsPossible: 50 }),
+        makeActivity({ id: 'asg3', courseId: 'other', title: 'Other course', published: true, pointsPossible: 50 }),
       ],
+      quizzes: [],
     });
-    expect(cols.map(c => c.linkedSource)).toEqual([{ kind: 'assignment', sourceId: 'asg1' }]);
+    expect(cols.map(c => c.linkedSource)).toEqual([{ kind: 'activity', sourceId: 'asg1' }]);
     expect(cols[0].title).toBe('Lab 1');
     expect(cols[0].perfectScore).toBe(50);
   });
   it('scores exam submissions as percent fraction', () => {
     const exams = [{ id: 'e1', courseId: 'c1', title: 'MT', published: true, term: 'midterm', questions: [{ points: 60 }] } as unknown as Exam];
-    const subs = [makeSubmission({ assignmentId: 'asg-exam-e1', studentId: 's1', grade: 45 })];
-    expect(autoScoreFraction({ column: col({ kind: 'exam', sourceId: 'e1' }), studentId: 's1', submissions: subs, assignments: [], activities: [], quizzes: [], exams })).toBeCloseTo(0.75, 5);
+    const subs = [makeSubmission({ activityKey: 'asg-exam-e1', studentId: 's1', grade: 45 })];
+    expect(autoScoreFraction({ column: col({ kind: 'exam', sourceId: 'e1' }), studentId: 's1', submissions: subs, activities: [], quizzes: [], exams })).toBeCloseTo(0.75, 5);
   });
   it('clamps exam raw scores to [0, perfect]', () => {
     const exams = [{ id: 'e1', courseId: 'c1', title: 'MT', published: true, term: 'midterm', questions: [{ points: 60 }] } as unknown as Exam];
-    const over = [makeSubmission({ assignmentId: 'asg-exam-e1', studentId: 's1', grade: 500 })];
+    const over = [makeSubmission({ activityKey: 'asg-exam-e1', studentId: 's1', grade: 500 })];
     expect(resolveExamScore('c1', 'midterm', 's1', { exams, submissions: over }).score).toBe(60);
+  });
+  it('routes tagged classic activities to their term bucket', () => {
+    const tagged = makeActivity({ id: 'asg1', courseId: 'c1', title: 'Lab', published: true, pointsPossible: 50, term: 'prelim' });
+    const untagged = { ...makeActivity({ id: 'asg2', courseId: 'c1', title: 'Lab 2', published: true, pointsPossible: 50 }), term: undefined } as unknown as Activity;
+    const cols = buildAutoColumns('c1', { activities: [tagged, untagged], quizzes: [] });
+    const { columnsByTerm, legacyUnmappedCount } = bucketColumnsByTerm(
+      cols,
+      { activities: [tagged, untagged], quizzes: [] },
+      ['prelim', 'midterm', 'finals'],
+    );
+    expect(columnsByTerm.prelim.map(c => c.linkedSource?.sourceId)).toEqual(['asg1']);
+    expect(columnsByTerm.midterm.map(c => c.linkedSource?.sourceId)).toEqual(['asg2']);
+    expect(legacyUnmappedCount).toBe(1);
+  });
+  it('routes tagged items to their own bucket under the classic midterm/finals pair', () => {
+    const activities: Activity[] = [
+      { id: 'act-mt', courseId: 'c1', title: 'Act 4 midterms', published: true, pointsPossible: 150, term: 'midterm', format: 'questionset' } as Activity,
+      { id: 'act-ft', courseId: 'c1', title: 'finals, act 1', published: true, pointsPossible: 100, term: 'finals', format: 'questionset' } as Activity,
+    ];
+    const quizzes: Quiz[] = [
+      { id: 'q-mt', courseId: 'c1', title: 'Quiz 1', published: true, term: 'midterm', questions: [{ points: 220 }] } as unknown as Quiz,
+      { id: 'q-ft', courseId: 'c1', title: 'Quiz 2', published: true, term: 'finals', questions: [{ points: 220 }] } as unknown as Quiz,
+    ];
+    const cols = buildAutoColumns('c1', { activities, quizzes });
+    const { columnsByTerm, legacyUnmappedCount } = bucketColumnsByTerm(
+      cols,
+      { activities, quizzes },
+      ['midterm', 'finals'],
+    );
+    expect(columnsByTerm.midterm.map(c => c.linkedSource?.sourceId).sort()).toEqual(['act-mt', 'q-mt']);
+    expect(columnsByTerm.finals.map(c => c.linkedSource?.sourceId).sort()).toEqual(['act-ft', 'q-ft']);
+    expect(legacyUnmappedCount).toBe(0);
+  });
+  it('falls back untagged legacy items to midterm under the classic pair', () => {
+    const untagged = { ...makeActivity({ id: 'asg2', courseId: 'c1', title: 'Lab 2', published: true, pointsPossible: 50 }), term: undefined } as unknown as Activity;
+    const cols = buildAutoColumns('c1', { activities: [untagged], quizzes: [] });
+    const { columnsByTerm, legacyUnmappedCount } = bucketColumnsByTerm(
+      cols,
+      { activities: [untagged], quizzes: [] },
+      ['midterm', 'finals'],
+    );
+    expect(columnsByTerm.midterm.map(c => c.linkedSource?.sourceId)).toEqual(['asg2']);
+    expect(columnsByTerm.finals).toEqual([]);
+    expect(legacyUnmappedCount).toBe(1);
   });
 });
 

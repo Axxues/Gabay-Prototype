@@ -1,7 +1,6 @@
 // src/utils/spr.ts
 import type {
   Activity,
-  Assignment,
   Exam,
   Quiz,
   SPRColumn,
@@ -59,15 +58,11 @@ function quizPointsPossible(quiz: Quiz): number {
   return quiz.questions.reduce((sum, q) => sum + (q.points ?? 0), 0);
 }
 
-export function buildAutoColumns(courseId: string, db: { activities?: Activity[]; quizzes: Quiz[]; assignments?: Assignment[] }): SPRColumn[] {
+export function buildAutoColumns(courseId: string, db: { activities?: Activity[]; quizzes: Quiz[] }): SPRColumn[] {
   const cols: SPRColumn[] = [];
   for (const a of db.activities ?? []) {
     if (a.courseId !== courseId || !a.published) continue;
     cols.push({ id: `auto-activity-${a.id}`, title: a.title, perfectScore: Math.max(1, a.pointsPossible || 0), linkedSource: { kind: 'activity', sourceId: a.id } });
-  }
-  for (const a of db.assignments ?? []) {
-    if (a.courseId !== courseId || !a.published) continue;
-    cols.push({ id: `auto-assignment-${a.id}`, title: a.title, perfectScore: Math.max(1, a.pointsPossible || 0), linkedSource: { kind: 'assignment', sourceId: a.id } });
   }
   for (const q of db.quizzes ?? []) {
     if (q.courseId !== courseId || !q.published) continue;
@@ -81,29 +76,28 @@ export function autoScoreFraction(args: {
   column: SPRColumn;
   studentId: string;
   submissions: Submission[];
-  assignments: Assignment[];
   activities: Activity[];
   quizzes: Quiz[];
   exams?: Exam[];
 }): number | null {
-  const { column, studentId, submissions, assignments, activities, quizzes, exams } = args;
+  const { column, studentId, submissions, activities, quizzes, exams } = args;
   const link = column.linkedSource;
   if (!link) return null;
 
   let assignmentKey: string;
   let divisor: number;
-  if (link.kind === 'assignment') {
-    const source = assignments.find((a) => a.id === link.sourceId);
-    if (!source) return null;
-    if (typeof source.pointsPossible !== 'number' || source.pointsPossible <= 0) return null;
-    assignmentKey = link.sourceId;
-    divisor = source.pointsPossible;
-  } else if (link.kind === 'activity') {
+  if (link.kind === 'activity') {
     const source = activities.find((a) => a.id === link.sourceId);
     if (!source) return null;
-    if (typeof source.pointsPossible !== 'number' || source.pointsPossible <= 0) return null;
-    assignmentKey = `asg-activity-${link.sourceId}`;
-    divisor = 100;
+    if (source.format === 'classic') {
+      if (typeof source.pointsPossible !== 'number' || source.pointsPossible <= 0) return null;
+      assignmentKey = link.sourceId;
+      divisor = source.pointsPossible;
+    } else {
+      if (typeof source.pointsPossible !== 'number' || source.pointsPossible <= 0) return null;
+      assignmentKey = `asg-activity-${link.sourceId}`;
+      divisor = 100;
+    }
   } else if (link.kind === 'quiz') {
     const source = quizzes.find((q) => q.id === link.sourceId);
     if (!source) return null;
@@ -124,7 +118,7 @@ export function autoScoreFraction(args: {
   const candidates = submissions.filter(
     (s) =>
       s.studentId === studentId &&
-      s.assignmentId === assignmentKey &&
+      s.activityKey === assignmentKey &&
       s.status === 'graded' &&
       typeof s.grade === 'number' &&
       !Number.isNaN(s.grade),
@@ -151,7 +145,7 @@ export function resolveExamScore(courseId: string, term: 'midterm' | 'final' | T
   if (!exam) return { score: null, perfect: 100 };
   const pts = exam.questions.reduce((s, q) => s + (q.points ?? 0), 0);
   const perfect = Math.max(1, pts);
-  const cands = db.submissions.filter(s => s.studentId === studentId && s.assignmentId === `asg-exam-${exam.id}` && s.status === 'graded' && typeof s.grade === 'number');
+  const cands = db.submissions.filter(s => s.studentId === studentId && s.activityKey === `asg-exam-${exam.id}` && s.status === 'graded' && typeof s.grade === 'number');
   if (!cands.length) return { score: null, perfect };
   cands.sort((a, b) => String(b.gradedAt ?? b.submittedAt ?? '') > String(a.gradedAt ?? a.submittedAt ?? '') ? 1 : -1);
   return { score: Math.min(Math.max(cands[0].grade as number, 0), perfect), perfect };
@@ -220,29 +214,20 @@ export function finalPercentTerms(
   return round2(acc);
 }
 
-function isClassicTermPair(terms: TermId[]): boolean {
-  return terms.length === 2 && terms.includes('midterm') && terms.includes('finals');
-}
-
 export interface TermBucketing {
   columnsByTerm: Record<TermId, SPRColumn[]>;
   legacyUnmappedCount: number;
 }
 
-// Task 7: bucket auto columns by source-item term for N-term gradebooks.
-// The classic ['midterm','finals'] pair is the 2-term projection of the map:
-// both period blocks share the full column set, so classic courses compute
-// byte-identically to the pre-change pipeline. Otherwise items route by
-// their stored quiz/activity term; assignments carry no grading term and
-// legacy/unmapped tags fall back to midterm (counted for the one-time UI flag).
+// Bucket auto columns by source-item term for every term set, including the
+// classic ['midterm','finals'] pair: each activity/quiz renders
+// only in its own term block. Legacy/unmapped tags fall back to midterm
+// (counted for the one-time UI flag).
 export function bucketColumnsByTerm(
   allCols: SPRColumn[],
   db: { activities?: Activity[]; quizzes?: Quiz[] },
   terms: TermId[],
 ): TermBucketing {
-  if (isClassicTermPair(terms)) {
-    return { columnsByTerm: { prelim: [], midterm: allCols, finals: allCols }, legacyUnmappedCount: 0 };
-  }
   const columnsByTerm: Record<TermId, SPRColumn[]> = { prelim: [], midterm: [], finals: [] };
   let legacyUnmappedCount = 0;
   const fallback: TermId = terms.includes('midterm') ? 'midterm' : (terms[0] ?? 'midterm');
