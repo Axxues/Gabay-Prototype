@@ -144,6 +144,9 @@ export const ActivityRunnerView: React.FC<ActivityRunnerViewProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      // recordActivitySubmission hits the same endpoint as submitActivity
+      // (POST /api/activities/:id/submit); Task-6 follow-up: unify the
+      // runner on submitActivity (comment only, no behavior change).
       const serverSub = await recordActivitySubmission(activity.id, activeUser.id, answers);
       // Instant feedback keeps using the client scorer; the cached server
       // row records the submission for SpeedGrader/gradebook.

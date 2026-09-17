@@ -111,16 +111,16 @@ export function countUpcomingCalendar(
 
 export function countStudentAssessmentBadge(
   publishedIds: string[],
-  submittedAssignmentIds: string[]
+  submittedActivityKeys: string[]
 ): number {
-  const submitted = new Set(submittedAssignmentIds);
+  const submitted = new Set(submittedActivityKeys);
   return publishedIds.filter(id => !submitted.has(id)).length;
 }
 
 export function countFacultyGradingBadge(
-  submissions: Array<{ assignmentId: string; status: string }>,
-  assignmentIds: string[]
+  submissions: Array<{ activityKey?: string; status: string }>,
+  activityKeys: string[]
 ): number {
-  const wanted = new Set(assignmentIds);
-  return submissions.filter(s => wanted.has(s.assignmentId) && s.status === 'submitted').length;
+  const wanted = new Set(activityKeys);
+  return submissions.filter(s => s.activityKey !== undefined && wanted.has(s.activityKey) && s.status === 'submitted').length;
 }

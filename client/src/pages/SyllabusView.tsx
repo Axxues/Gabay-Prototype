@@ -219,7 +219,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
     if (!file) return;
     const lower = file.name.toLowerCase();
     if (!lower.endsWith('.pdf') && !lower.endsWith('.docx')) {
-      setScanError('Invalid file type. Please upload an official syllabus as .pdf or .docx — other documents (assignments, images, spreadsheets) are rejected.');
+      setScanError('Invalid file type. Please upload an official syllabus as .pdf or .docx — other documents (activities, images, spreadsheets) are rejected.');
       if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
@@ -671,7 +671,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-5 items-start">
           {/* Main review column */}
           <div className="space-y-5 min-w-0">
-            {/* 01 — Faculty assignment */}
+            {/* 01 — Instructor selection */}
             <section className="p-5 bg-card border border-border rounded-2xl shadow-subtle space-y-4">
               <div className="flex items-center gap-3 pb-3 border-b border-border">
                 <span className="text-xs font-bold text-primary bg-primary/10 rounded-lg px-2 py-1 shrink-0">01</span>
@@ -1090,7 +1090,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
       </div>
 
       {/* =========================================================
-          SECTION 1: Faculty Assignments & Section Schedules
+          SECTION 1: Faculty & Section Schedules
           ========================================================= */}
       <div className="bg-card border border-border rounded-2xl overflow-hidden transition-all">
         <button

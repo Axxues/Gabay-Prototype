@@ -41,7 +41,7 @@ export const GlobalSearchDialog: React.FC<GlobalSearchDialogProps> = ({
 
   const filteredResults = useMemo(() => {
     const q = searchTerm.toLowerCase().trim();
-    if (!q) return { pages: [], courses: [], assignments: [], quizzes: [] };
+    if (!q) return { pages: [], courses: [], activities: [], quizzes: [] };
 
     const pages = navItems.filter(i => i.label.toLowerCase().includes(q));
     const courses = db.courses.filter(c =>
@@ -49,21 +49,21 @@ export const GlobalSearchDialog: React.FC<GlobalSearchDialogProps> = ({
       c.title.toLowerCase().includes(q) ||
       c.section.toLowerCase().includes(q)
     );
-    const assignments = db.assignments.filter(a =>
+    const activities = (db.activities || []).filter(a =>
       a.title.toLowerCase().includes(q) ||
-      a.category.toLowerCase().includes(q)
+      (a.category ?? '').toLowerCase().includes(q)
     );
     const quizzes = db.quizzes.filter(qz =>
       qz.title.toLowerCase().includes(q)
     );
 
-    return { pages, courses, assignments, quizzes };
-  }, [searchTerm, db.courses, db.assignments, db.quizzes]);
+    return { pages, courses, activities, quizzes };
+  }, [searchTerm, db.courses, db.activities, db.quizzes]);
 
   const hasResults =
     filteredResults.pages?.length > 0 ||
     filteredResults.courses?.length > 0 ||
-    filteredResults.assignments?.length > 0 ||
+    filteredResults.activities?.length > 0 ||
     filteredResults.quizzes?.length > 0;
 
   return (
@@ -88,7 +88,7 @@ export const GlobalSearchDialog: React.FC<GlobalSearchDialogProps> = ({
                   startClose();
                 }
               }}
-              placeholder="Search views, courses, assignments, quizzes... (Esc to close)"
+              placeholder="Search views, courses, activities, quizzes... (Esc to close)"
               className="w-full bg-transparent border-none outline-none text-base text-foreground placeholder:text-muted-foreground font-sans font-medium"
             />
             {searchTerm && (
@@ -125,7 +125,7 @@ export const GlobalSearchDialog: React.FC<GlobalSearchDialogProps> = ({
                     Global System Search
                   </h3>
                   <p className="text-xs text-muted-foreground leading-relaxed">
-                    Type keywords to immediately jump to course shells, syllabus specs, speedgrader rubrics, assignments, or quizzes.
+                    Type keywords to immediately jump to course shells, syllabus specs, speedgrader rubrics, activities, or quizzes.
                   </p>
                 </div>
                 <div className="pt-2 flex flex-wrap justify-center gap-2 max-w-lg">
@@ -150,7 +150,7 @@ export const GlobalSearchDialog: React.FC<GlobalSearchDialogProps> = ({
                 <div className="space-y-1">
                   <p className="font-bold text-foreground text-sm">No matching resources found</p>
                   <p className="text-xs text-muted-foreground max-w-sm leading-relaxed">
-                    No items matched &ldquo;<span className="text-foreground font-semibold font-sans">{searchTerm}</span>&rdquo;. Try searching by subject code, title, or assignment name.
+                    No items matched &ldquo;<span className="text-foreground font-semibold font-sans">{searchTerm}</span>&rdquo;. Try searching by subject code, title, or activity name.
                   </p>
                 </div>
               </div>
@@ -215,18 +215,18 @@ export const GlobalSearchDialog: React.FC<GlobalSearchDialogProps> = ({
                   </div>
                 )}
 
-                {/* Assignments */}
-                {filteredResults.assignments.length > 0 && (
+                {/* Activities */}
+                {filteredResults.activities.length > 0 && (
                   <div>
                     <div className="px-2 py-1 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
                       Activities
                     </div>
                     <div className="space-y-1 mt-1">
-                      {filteredResults.assignments.map(asg => (
+                      {filteredResults.activities.map(act => (
                         <button
-                          key={asg.id}
+                          key={act.id}
                           onClick={() => {
-                            if (onNavigateCourse) onNavigateCourse(asg.courseId, 'assignments');
+                            if (onNavigateCourse) onNavigateCourse(act.courseId, 'activities');
                             startClose();
                           }}
                           className="w-full flex items-center justify-between p-2.5 rounded-xl hover:bg-accent text-left transition-colors cursor-pointer group"
@@ -234,8 +234,8 @@ export const GlobalSearchDialog: React.FC<GlobalSearchDialogProps> = ({
                           <div className="flex items-center space-x-2.5">
                             <FileText className="w-4 h-4 text-primary" />
                             <div>
-                              <div className="font-bold text-foreground text-xs">{asg.title}</div>
-                              <div className="text-[10px] text-muted-foreground font-sans">{asg.category} • {asg.pointsPossible} pts</div>
+                              <div className="font-bold text-foreground text-xs">{act.title}</div>
+                              <div className="text-[10px] text-muted-foreground font-sans">{act.category ? `${act.category} • ` : ''}{act.pointsPossible} pts</div>
                             </div>
                           </div>
                           <ArrowRight className="w-3.5 h-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />

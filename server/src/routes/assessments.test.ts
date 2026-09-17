@@ -153,7 +153,7 @@ describe('assessments router', () => {
     );
     expect(prisma.notification.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ type: 'assignment_submitted', recipientId: 'u-fac' }),
+        data: expect.objectContaining({ type: 'activity_submitted', recipientId: 'u-fac' }),
       })
     );
   });

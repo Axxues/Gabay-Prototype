@@ -17,7 +17,7 @@ const LMS_ICONS: Record<string, React.ReactNode> = {
 };
 const COURSE_ICONS: Record<string, React.ReactNode> = {
   modules: <Layers className="h-4 w-4" />, syllabus: <FileText className="h-4 w-4" />,
-  announcements: <Megaphone className="h-4 w-4" />, assignments: <FileCheck2 className="h-4 w-4" />,
+  announcements: <Megaphone className="h-4 w-4" />, activities: <FileCheck2 className="h-4 w-4" />,
   quizzes: <QuizIcon className="h-4 w-4" />, exams: <QuizIcon className="h-4 w-4" />, files: <Folder className="h-4 w-4" />,
   grades: <Award className="h-4 w-4" />, people: <Users className="h-4 w-4" />,
   'pending-requests': <Users className="h-4 w-4" />,
@@ -59,15 +59,24 @@ export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: strin
         const sectionId = activeUser.courseSections?.[cid] ?? null;
         return countUnreadAnnouncements(db.announcements || [], { id: activeUser.id, role: activeRole, sectionId }, cid);
       }
-      if (tabId === 'assignments') {
+      if (tabId === 'activities') {
         if (activeRole === 'faculty') {
-          const ids = [...(db.assignments || []).filter(a => a.courseId === cid).map(a => a.id),
-            ...(db.activities || []).filter(a => a.courseId === cid).map(a => `asg-activity-${a.id}`)];
+          // Classic rows live in db.activities (format === 'classic');
+          // question sets link submissions via the synthetic
+          // asg-activity-<id> key (values preserved).
+          const courseActivities = (db.activities || []).filter(a => a.courseId === cid);
+          const ids = [
+            ...courseActivities.filter(a => a.format === 'classic').map(a => a.id),
+            ...courseActivities.filter(a => a.format !== 'classic').map(a => `asg-activity-${a.id}`),
+          ];
           return countFacultyGradingBadge(db.submissions.filter(s => s.courseId === cid), ids);
         }
-        const pub = [...(db.assignments || []).filter(a => a.courseId === cid && a.published).map(a => a.id),
-          ...(db.activities || []).filter(a => a.courseId === cid && a.published).map(a => `asg-activity-${a.id}`)];
-        const mine = db.submissions.filter(s => s.courseId === cid && s.studentId === activeUser.id).map(s => s.assignmentId);
+        const publishedActivities = (db.activities || []).filter(a => a.courseId === cid && a.published);
+        const pub = [
+          ...publishedActivities.filter(a => a.format === 'classic').map(a => a.id),
+          ...publishedActivities.filter(a => a.format !== 'classic').map(a => `asg-activity-${a.id}`),
+        ];
+        const mine = db.submissions.filter(s => s.courseId === cid && s.studentId === activeUser.id).map(s => s.activityKey ?? '');
         return countStudentAssessmentBadge(pub, mine);
       }
       if (tabId === 'quizzes') {
@@ -76,7 +85,7 @@ export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: strin
           return countFacultyGradingBadge(db.submissions.filter(s => s.courseId === cid), ids);
         }
         const pub = (db.quizzes || []).filter(q => q.courseId === cid && q.published).map(q => q.id);
-        const taken = db.submissions.filter(s => s.courseId === cid && s.studentId === activeUser.id && s.assignmentId.startsWith('asg-quiz-')).map(s => s.assignmentId.replace('asg-quiz-', ''));
+        const taken = db.submissions.filter(s => s.courseId === cid && s.studentId === activeUser.id && (s.activityKey ?? '').startsWith('asg-quiz-')).map(s => (s.activityKey ?? '').replace('asg-quiz-', ''));
         const submitted = new Set(taken);
         return pub.filter(id => !submitted.has(id)).length;
       }

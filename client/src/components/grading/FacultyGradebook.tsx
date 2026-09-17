@@ -106,9 +106,9 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
     () => buildAutoColumns(courseId, { activities: db.activities, quizzes: db.quizzes }),
     [courseId, db.activities, db.quizzes]
   );
-  // Bucket auto columns by source-item term; the classic 2-term pair shares
-  // the full set in both blocks (byte-identical math). Legacy items without
-  // a term count toward midterm (flagged once in the UI below).
+  // Bucket auto columns by source-item term: each activity/quiz
+  // renders only in its own term block. Legacy items without a term count
+  // toward midterm (flagged once in the UI below).
   const { columnsByTerm, legacyUnmappedCount } = useMemo(
     () => bucketColumnsByTerm(autoCols, { activities: db.activities, quizzes: db.quizzes }, terms),
     [autoCols, db.activities, db.quizzes, terms]
@@ -126,9 +126,6 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
   const getSourceTitle = (column: SPRColumn): string | null => {
     const link = column.linkedSource;
     if (!link) return null;
-    if (link.kind === 'assignment') {
-      return db.assignments.find(a => a.id === link.sourceId)?.title ?? null;
-    }
     if (link.kind === 'activity') {
       return (db.activities ?? []).find(a => a.id === link.sourceId)?.title ?? null;
     }
@@ -159,7 +156,7 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
       for (const term of terms) {
         const cols = columnsByTerm[term] ?? [];
         const cells: SPRRowCell[] = cols.map(col => {
-          const fraction = autoScoreFraction({ column: col, studentId: student.id, submissions: db.submissions, assignments: db.assignments, activities: db.activities ?? [], quizzes: db.quizzes });
+          const fraction = autoScoreFraction({ column: col, studentId: student.id, submissions: db.submissions, activities: db.activities ?? [], quizzes: db.quizzes });
           const sourceTitle = getSourceTitle(col);
           if (fraction === null) return { score: null, isManual: false, sourceTitle };
           return { score: fraction * col.perfectScore, isManual: false, sourceTitle };
@@ -182,7 +179,7 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
       const final = finalPercentTerms(termGrades, termWeights);
       return { studentId: student.id, terms: perTerm, final };
     });
-  }, [filteredStudents, columnsByTerm, db.exams, db.submissions, db.assignments, db.activities, db.quizzes, weights, termWeights, courseId, terms]);
+  }, [filteredStudents, columnsByTerm, db.exams, db.submissions, db.activities, db.quizzes, weights, termWeights, courseId, terms]);
 
   const sprRowById = useMemo(() => {
     const map = new Map<string, SPRRow>();

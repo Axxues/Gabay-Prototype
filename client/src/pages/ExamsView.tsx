@@ -639,7 +639,7 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
             ) : (
           visibleExams.map(exam => {
             const existingSub = db.submissions.find(
-              s => s.assignmentId === `asg-exam-${exam.id}` && s.studentId === activeUser.id
+              s => s.activityKey === `asg-exam-${exam.id}` && s.studentId === activeUser.id
             );
 
             const questionCount = exam.questions.filter(

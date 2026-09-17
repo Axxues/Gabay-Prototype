@@ -305,7 +305,7 @@ CREATE TABLE [dbo].[Discussion] (
     [pinned] BIT NOT NULL CONSTRAINT [Discussion_pinned_df] DEFAULT 0,
     [locked] BIT NOT NULL CONSTRAINT [Discussion_locked_df] DEFAULT 0,
     [usersMustPostBeforeReplies] BIT NOT NULL CONSTRAINT [Discussion_usersMustPostBeforeReplies_df] DEFAULT 0,
-    [groupAssignment] NVARCHAR(128),
+    [groupActivity] NVARCHAR(128),
     CONSTRAINT [Discussion_pkey] PRIMARY KEY CLUSTERED ([id])
 );
 

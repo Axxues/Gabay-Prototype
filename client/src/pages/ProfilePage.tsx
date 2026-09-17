@@ -554,7 +554,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                 <div>
                   <div className="font-bold text-foreground">SpeedGrader & Submission Alerts</div>
                   <p className="text-[11px] text-muted-foreground leading-relaxed mt-0.5">
-                    Trigger desktop toast alerts when assignments are graded or submitted for evaluation.
+                    Trigger desktop toast alerts when activities are graded or submitted for evaluation.
                   </p>
                 </div>
               </div>

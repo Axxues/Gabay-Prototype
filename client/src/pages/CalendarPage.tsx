@@ -208,7 +208,7 @@ export const CalendarPage: React.FC = () => {
       <div className="pb-3 border-b border-border space-y-4">
         <PageHeader
           title="Academic Calendar & Scheduler"
-          description="Course milestones, assignment deadlines, lectures, and faculty advising office hours."
+          description="Course milestones, activity deadlines, lectures, and faculty advising office hours."
           actions={
             !isReadOnlyCalendar && (
               <button

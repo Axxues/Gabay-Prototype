@@ -84,32 +84,32 @@ export function autoScoreFraction(args: {
   const link = column.linkedSource;
   if (!link) return null;
 
-  let assignmentKey: string;
+  let activityKey: string;
   let divisor: number;
   if (link.kind === 'activity') {
     const source = activities.find((a) => a.id === link.sourceId);
     if (!source) return null;
     if (source.format === 'classic') {
       if (typeof source.pointsPossible !== 'number' || source.pointsPossible <= 0) return null;
-      assignmentKey = link.sourceId;
+      activityKey = link.sourceId;
       divisor = source.pointsPossible;
     } else {
       if (typeof source.pointsPossible !== 'number' || source.pointsPossible <= 0) return null;
-      assignmentKey = `asg-activity-${link.sourceId}`;
+      activityKey = `asg-activity-${link.sourceId}`;
       divisor = 100;
     }
   } else if (link.kind === 'quiz') {
     const source = quizzes.find((q) => q.id === link.sourceId);
     if (!source) return null;
     if (quizPointsPossible(source) <= 0) return null;
-    assignmentKey = `asg-quiz-${link.sourceId}`;
+    activityKey = `asg-quiz-${link.sourceId}`;
     divisor = 100;
   } else if (link.kind === 'exam') {
     const source = (exams ?? []).find((e) => e.id === link.sourceId);
     if (!source) return null;
     const pts = source.questions.reduce((s, qq) => s + (qq.points ?? 0), 0);
     if (pts <= 0) return null;
-    assignmentKey = `asg-exam-${link.sourceId}`;
+    activityKey = `asg-exam-${link.sourceId}`;
     divisor = pts;
   } else {
     return null;
@@ -118,7 +118,7 @@ export function autoScoreFraction(args: {
   const candidates = submissions.filter(
     (s) =>
       s.studentId === studentId &&
-      s.activityKey === assignmentKey &&
+      s.activityKey === activityKey &&
       s.status === 'graded' &&
       typeof s.grade === 'number' &&
       !Number.isNaN(s.grade),

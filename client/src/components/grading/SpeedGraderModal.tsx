@@ -34,11 +34,11 @@ export const SpeedGraderModal: React.FC = () => {
   const currentSubmission = db.submissions.find(s => s.id === activeSpeedGraderSubmissionId);
   if (!currentSubmission) return null;
 
-  const assignment = db.assignments.find(a => a.id === currentSubmission.assignmentId);
+  const activity = (db.activities ?? []).find(a => a.id === currentSubmission.activityKey);
   const course = db.courses.find(c => c.id === currentSubmission.courseId);
 
-  const assignmentSubmissions = db.submissions.filter(s => s.assignmentId === currentSubmission.assignmentId);
-  const currentIndex = assignmentSubmissions.findIndex(s => s.id === currentSubmission.id);
+  const activitySubmissions = db.submissions.filter(s => s.activityKey === currentSubmission.activityKey);
+  const currentIndex = activitySubmissions.findIndex(s => s.id === currentSubmission.id);
 
   const [gradeInput, setGradeInput] = useState<number>(currentSubmission.grade ?? 0);
   const [rubricScores, setRubricScores] = useState<Record<string, number>>(currentSubmission.rubricScores || {});
@@ -95,7 +95,7 @@ export const SpeedGraderModal: React.FC = () => {
             </span>
           )}
           <span className="text-muted-foreground/60">|</span>
-          <span className="font-bold text-sm text-foreground">{assignment?.title}</span>
+          <span className="font-bold text-sm text-foreground">{activity?.title}</span>
           <span className="text-xs font-sans text-muted-foreground">({course?.code})</span>
         </div>
 
@@ -105,7 +105,7 @@ export const SpeedGraderModal: React.FC = () => {
             disabled={currentIndex <= 0}
             onClick={() => {
               if (currentIndex > 0) {
-                const prevSub = assignmentSubmissions[currentIndex - 1];
+                const prevSub = activitySubmissions[currentIndex - 1];
                 useLMS().openSpeedGrader(prevSub.id);
               }
             }}
@@ -116,14 +116,14 @@ export const SpeedGraderModal: React.FC = () => {
 
           <div className="text-center font-sans text-xs">
             <span className="font-bold text-foreground">{currentSubmission.studentName}</span>
-            <span className="text-muted-foreground ml-2">({currentIndex + 1} of {assignmentSubmissions.length})</span>
+            <span className="text-muted-foreground ml-2">({currentIndex + 1} of {activitySubmissions.length})</span>
           </div>
 
           <button
-            disabled={currentIndex >= assignmentSubmissions.length - 1}
+            disabled={currentIndex >= activitySubmissions.length - 1}
             onClick={() => {
-              if (currentIndex < assignmentSubmissions.length - 1) {
-                const nextSub = assignmentSubmissions[currentIndex + 1];
+              if (currentIndex < activitySubmissions.length - 1) {
+                const nextSub = activitySubmissions[currentIndex + 1];
                 useLMS().openSpeedGrader(nextSub.id);
               }
             }}
@@ -191,13 +191,13 @@ export const SpeedGraderModal: React.FC = () => {
                   Assessment Score:
                 </span>
                 <span className="font-sans text-muted-foreground">
-                  out of {assignment?.pointsPossible || 100} pts
+                  out of {activity?.pointsPossible || 100} pts
                 </span>
               </div>
               <input
                 type="number"
                 min={0}
-                max={assignment?.pointsPossible || 100}
+                max={activity?.pointsPossible || 100}
                 value={gradeInput}
                 disabled={isAdmin}
                 onChange={e => setGradeInput(Number(e.target.value))}
@@ -206,7 +206,7 @@ export const SpeedGraderModal: React.FC = () => {
             </div>
 
             {/* Rubric Criteria */}
-            {assignment?.rubric && assignment.rubric.length > 0 && (
+            {activity?.rubric && activity.rubric.length > 0 && (
               <div className="space-y-3">
                 <div className="flex items-center space-x-1.5 font-bold text-foreground uppercase tracking-wider text-[11px]">
                   <Award className="w-4 h-4 text-emerald-500" />
@@ -214,7 +214,7 @@ export const SpeedGraderModal: React.FC = () => {
                 </div>
 
                 <div className="space-y-3">
-                  {assignment.rubric.map(r => (
+                  {activity.rubric.map(r => (
                     <div key={r.id} className="p-3.5 bg-muted/30 border border-border rounded-xl space-y-2">
                       <div className="flex justify-between font-bold text-foreground">
                         <span>{r.title}</span>
@@ -254,7 +254,7 @@ export const SpeedGraderModal: React.FC = () => {
             <div className="space-y-3">
               <div className="flex items-center space-x-1.5 font-bold text-foreground uppercase tracking-wider text-[11px]">
                 <MessageSquare className="w-4 h-4 text-blue-500" />
-                <span>Assignment Feedback Comments</span>
+                <span>Activity Feedback Comments</span>
               </div>
 
               {[...currentSubmission.comments]

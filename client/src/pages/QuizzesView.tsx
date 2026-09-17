@@ -641,7 +641,7 @@ export const QuizzesView: React.FC<QuizzesViewProps> = ({
             ) : (
           visibleQuizzes.map(quiz => {
             const existingSub = db.submissions.find(
-              s => s.assignmentId === `asg-quiz-${quiz.id}` && s.studentId === activeUser.id
+              s => s.activityKey === `asg-quiz-${quiz.id}` && s.studentId === activeUser.id
             );
 
             const questionCount = quiz.questions.filter(

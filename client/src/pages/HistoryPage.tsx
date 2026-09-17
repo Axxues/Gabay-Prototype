@@ -64,7 +64,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
         // Extract subTab if present
         const parts = path.split('/');
         const subTab = parts[parts.length - 1];
-        const validSubTabs = ['modules', 'syllabus', 'assignments', 'quizzes', 'grades', 'people'];
+        const validSubTabs = ['modules', 'syllabus', 'activities', 'quizzes', 'grades', 'people'];
         const targetSubTab = validSubTabs.includes(subTab) ? subTab : 'modules';
 
         if (onNavigateCourse) {

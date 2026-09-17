@@ -25,7 +25,7 @@ interface StudentGradebookProps {
 // Per-term breakdown descriptions (classic Midterm/Final wording preserved).
 const TERM_DESC: Record<TermId, string> = {
   prelim: 'Prelim quizzes and activities class standing (no exam)',
-  midterm: 'Quizzes, assignments, laboratory activities and midterm exam',
+  midterm: 'Quizzes, activities, laboratory activities and midterm exam',
   finals: 'Quizzes, projects, final practical outputs and final examination',
 };
 
@@ -66,7 +66,7 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
     for (const term of terms) {
       const cols = columnsByTerm[term] ?? [];
       const scores = cols.map(col => {
-        const f = autoScoreFraction({ column: col, studentId: activeUser.id, submissions: db.submissions, assignments: db.assignments, activities: db.activities ?? [], quizzes: db.quizzes });
+        const f = autoScoreFraction({ column: col, studentId: activeUser.id, submissions: db.submissions, activities: db.activities ?? [], quizzes: db.quizzes });
         return f === null ? null : f * col.perfectScore;
       });
       const cs = classStandingPercent(scores, cols.map(c => c.perfectScore));
@@ -79,7 +79,7 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
       }
     }
     return out;
-  }, [terms, columnsByTerm, courseId, activeUser.id, db.submissions, db.assignments, db.activities, db.quizzes, db.exams, weights]);
+  }, [terms, columnsByTerm, courseId, activeUser.id, db.submissions, db.activities, db.quizzes, db.exams, weights]);
 
   const hasParseError = weights.parseError === true;
 

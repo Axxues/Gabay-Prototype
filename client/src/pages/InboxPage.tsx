@@ -827,7 +827,7 @@ export const InboxPage: React.FC = () => {
                     type="button"
                     onClick={() => {
                       setPendingAttachment({
-                        name: `Lab_Assignment_Output_${Date.now().toString().slice(-4)}.pdf`,
+                        name: `Lab_Activity_Output_${Date.now().toString().slice(-4)}.pdf`,
                         size: '1.8 MB'
                       });
                       inputRef.current?.focus();

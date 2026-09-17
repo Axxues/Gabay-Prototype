@@ -329,7 +329,7 @@ model Discussion {
   pinned                     Boolean           @default(false)
   locked                     Boolean           @default(false)
   usersMustPostBeforeReplies Boolean           @default(false)
-  groupAssignment            String?           @db.NVarChar(128)
+  groupActivity              String?           @db.NVarChar(128)
   replies                    DiscussionReply[]
 }
 

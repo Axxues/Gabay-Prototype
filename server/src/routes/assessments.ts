@@ -669,7 +669,7 @@ function buildAssessmentRouter(kind: AssessmentKind) {
             },
           });
       await createNotification({
-        type: 'assignment_submitted',
+        type: 'activity_submitted',
         recipientId: course.instructorId,
         actorId: auth.sub,
         actorName: me?.name ?? '',
@@ -732,7 +732,7 @@ function buildAssessmentRouter(kind: AssessmentKind) {
             },
           });
       await createNotification({
-        type: 'assignment_submitted',
+        type: 'activity_submitted',
         recipientId: course.instructorId,
         actorId: auth.sub,
         actorName: me?.name ?? '',

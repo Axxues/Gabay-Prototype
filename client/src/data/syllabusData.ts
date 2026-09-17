@@ -321,7 +321,7 @@ export const OFFICIAL_SYLLABUS_CSPC112: OfficialSyllabusData = {
       'Design and develop of a real-world computerized system'
     ],
     other: [
-      'Quizzes, assignments, presentations, individual and group activity'
+      'Quizzes, activities, presentations, individual and group activity'
     ]
   },
   gradingSystem: {
@@ -329,7 +329,7 @@ export const OFFICIAL_SYLLABUS_CSPC112: OfficialSyllabusData = {
     finalFormula: 'Final Grade = 40% Midterm Grade + 60% Final Term Grade',
     classStandingComponents: [
       'Quizzes',
-      'Assignments',
+      'Activities',
       'Oral Presentations',
       'Individual & Group Laboratory Activities',
       'Software Engineering Group Project'

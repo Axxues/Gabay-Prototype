@@ -418,7 +418,7 @@ const normalizeSubmissionComment = (raw: any): SubmissionComment => ({
 
 const normalizeSubmission = (raw: any): Submission => ({
   id: raw.id,
-  activityKey: raw.activityKey ?? raw.assignmentId ?? undefined,
+  activityKey: raw.activityKey ?? undefined,
   courseId: raw.courseId,
   studentId: raw.studentId,
   studentName: raw.studentName ?? '',
@@ -1541,17 +1541,16 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }));
 
       if (merged.format === 'classic' && merged.dueDate) {
-        // Client-only calendar mirroring (carried over from the old
-        // createAssignment). `type: 'assignment'` below is a preserved
-        // CalendarEvent enum value, not an assignment leftover.
+        // Client-only calendar mirroring: classic activities get a deadline
+        // event (CalendarEvent type 'activity').
         const newCalEvent: CalendarEvent = {
           id: `evt-${Date.now()}`,
           title: `Due: ${merged.title}`,
           date: merged.dueDate.split('T')[0],
           time: '11:59 PM',
           courseId: merged.courseId,
-          type: 'assignment',
-          description: `Course assignment submission deadline for ${merged.title}`
+          type: 'activity',
+          description: `Course activity submission deadline for ${merged.title}`
         };
         setDb(prev => ({
           ...prev,
@@ -2867,7 +2866,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         pinned: (discussion as Discussion).pinned ?? data.pinned ?? false,
         locked: (discussion as Discussion).locked ?? data.locked ?? false,
         usersMustPostBeforeReplies: data.usersMustPostBeforeReplies ?? false,
-        groupAssignment: data.groupAssignment || 'All Students',
+        groupActivity: data.groupActivity || 'All Students',
         replies: []
       };
       setDb(prev => ({

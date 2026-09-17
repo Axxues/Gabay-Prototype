@@ -10,7 +10,6 @@ vi.mock('../db.js', () => ({
     enrollmentRequest: { findFirst: vi.fn() },
     quiz: { findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
     activity: { findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
-    assignment: { findUnique: vi.fn() },
     quizQuestion: { create: vi.fn() },
     submission: { findFirst: vi.fn(), findUnique: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn() },
     submissionComment: { create: vi.fn() },
@@ -28,14 +27,13 @@ process.env.JWT_SECRET ??= 'test-secret';
 import { prisma } from '../db.js';
 import jwt from 'jsonwebtoken';
 import express from 'express';
-import { assignmentsRouter } from './assignments.js';
-import { quizzesRouter, activitiesRouter } from './assessments.js';
+import { quizzesRouter, activitiesRouter, submissionsRouter } from './assessments.js';
 import { errorMiddleware } from '../utils/errors.js';
 
 function app() {
   const a = express();
   a.use(express.json());
-  a.use('/api', assignmentsRouter);
+  a.use('/api', submissionsRouter);
   a.use('/api/quizzes', quizzesRouter);
   a.use('/api/activities', activitiesRouter);
   a.use(errorMiddleware);
@@ -106,14 +104,14 @@ describe('quiz/activity submission lists + synthetic-aware grading', () => {
     );
   });
 
-  it('grade on a quiz submission (synthetic assignmentId + real quizId) succeeds instead of 404', async () => {
+  it('grade on a quiz submission (synthetic activityKey + real quizId) succeeds instead of 404', async () => {
     (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
       sub: 'u-fac',
       role: 'faculty',
     });
     (prisma.submission.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: 'sub1',
-      assignmentId: 'asg-quiz-qz1',
+      activityKey: 'asg-quiz-qz1',
       quizId: 'qz1',
       activityId: null,
       studentId: 'u-a',
@@ -136,7 +134,7 @@ describe('quiz/activity submission lists + synthetic-aware grading', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.submission.grade).toBe(9);
-    expect(prisma.assignment.findUnique).not.toHaveBeenCalled();
+    expect(prisma.activity.findUnique).not.toHaveBeenCalled();
     expect(prisma.notification.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ relatedId: 'qz1', relatedTitle: 'Quiz 1' }),
@@ -144,19 +142,20 @@ describe('quiz/activity submission lists + synthetic-aware grading', () => {
     );
   });
 
-  it('grade on an assignment submission still works (regression)', async () => {
+  it('grade on a classic activity submission (activityKey link) still works (regression)', async () => {
     (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
       sub: 'u-fac',
       role: 'faculty',
     });
     (prisma.submission.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: 'sub9',
-      assignmentId: 'asg1',
+      activityKey: 'asg1',
       quizId: null,
       activityId: null,
+      examId: null,
       studentId: 'u-a',
     });
-    (prisma.assignment.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+    (prisma.activity.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: 'asg1',
       courseId: 'c1',
       title: 'Essay 1',
@@ -178,6 +177,6 @@ describe('quiz/activity submission lists + synthetic-aware grading', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.submission.grade).toBe(80);
-    expect(prisma.assignment.findUnique).toHaveBeenCalledWith({ where: { id: 'asg1' } });
+    expect(prisma.activity.findUnique).toHaveBeenCalledWith({ where: { id: 'asg1' } });
   });
 });

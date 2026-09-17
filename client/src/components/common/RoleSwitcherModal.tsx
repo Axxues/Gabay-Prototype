@@ -51,7 +51,7 @@ export const RoleSwitcherModal: React.FC = () => {
       icon: <UserCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />,
       badgeColor: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20',
       scope: 'Assigned course sections (CMSC 131, CMSC 150, CMSC 170).',
-      allowed: 'Course authoring (Modules, Assignments, Quizzes), SpeedGrader submission review, Gradebook editing, advising scheduler.',
+      allowed: 'Course authoring (Modules, Activities, Quizzes), SpeedGrader submission review, Gradebook editing, advising scheduler.',
       restrictions: 'Zero visibility into gradebooks or private drafts handled by other instructors.'
     },
     {
@@ -60,7 +60,7 @@ export const RoleSwitcherModal: React.FC = () => {
       personName: 'Staff 1',
       icon: <ShieldCheck className="w-5 h-5 text-amber-600 dark:text-amber-400" />,
       badgeColor: 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20',
-      scope: 'College student directory, section assignments & official roster records.',
+      scope: 'College student directory, section placements & official roster records.',
       allowed: 'Enrollment verification, roster audits, transcript hold notifications, course catalog inspect.',
       restrictions: 'Zero access to grading tools, LMS content editors, or direct quiz authoring.'
     },
@@ -71,8 +71,8 @@ export const RoleSwitcherModal: React.FC = () => {
       studentId: '2022-00412-SLUC',
       icon: <GraduationCap className="w-5 h-5 text-primary" />,
       badgeColor: 'bg-primary/10 text-primary border-primary/20',
-      scope: 'Personal course enrollments, active assignment submissions & individual grade records.',
-      allowed: 'Module navigation, assignment submission, online quiz attempts, What-If grade calculation, faculty consultation booking.',
+      scope: 'Personal course enrollments, active activity submissions & individual grade records.',
+      allowed: 'Module navigation, activity submission, online quiz attempts, What-If grade calculation, faculty consultation booking.',
       restrictions: 'Zero access to other students\' grades, course settings, or SpeedGrader.'
     }
   ];

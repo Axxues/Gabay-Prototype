@@ -108,12 +108,12 @@ export interface ModuleComment {
 
 export interface Notification {
   id: string;
-  type: 'module_comment_reply' | 'announcement_reply' | 'quiz_draft_saved' | 'assignment_submitted' | 'calendar_event' | 'file_uploaded' | 'grade_posted';
+  type: 'module_comment_reply' | 'announcement_reply' | 'quiz_draft_saved' | 'activity_submitted' | 'calendar_event' | 'file_uploaded' | 'grade_posted';
   recipientId: string;
   actorId: string;
   actorName: string;
   actorAvatar: string;
-  relatedId: string; // moduleId or announcementId or quizId or assignmentId
+  relatedId: string; // moduleId or announcementId or quizId or activityKey
   relatedTitle: string;
   content: string;
   read: boolean;
@@ -256,7 +256,7 @@ export interface CalendarEvent {
   time: string;
   courseId?: string;
   courseCode?: string;
-  type: 'assignment' | 'milestone' | 'advising' | 'lecture' | 'exam' | 'event' | 'holiday' | 'virtual_meeting';
+  type: 'activity' | 'milestone' | 'advising' | 'lecture' | 'exam' | 'event' | 'holiday' | 'virtual_meeting';
   description: string;
   createdAt?: string;
   startAt?: string;
@@ -403,7 +403,7 @@ export interface Discussion {
   pinned: boolean;
   locked: boolean;
   usersMustPostBeforeReplies: boolean;
-  groupAssignment?: string;
+  groupActivity?: string;
   replies: DiscussionReply[];
 }
 

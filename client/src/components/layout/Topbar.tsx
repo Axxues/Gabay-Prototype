@@ -109,7 +109,7 @@ export const Topbar: React.FC<TopbarProps> = ({
             <div className="flex items-center min-w-0">
               <Search className="h-4 w-4 text-muted-foreground mr-3 flex-shrink-0" />
               <span className="text-sm font-semibold text-muted-foreground truncate font-sans">
-                Search courses, modules, assignments, calendar...
+                Search courses, modules, activities, calendar...
               </span>
             </div>
 

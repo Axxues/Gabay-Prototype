@@ -109,11 +109,11 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
       ];
       const courseSubs = db.submissions.filter(s => s.courseId === cid);
       badgeCount = activeRole === 'faculty'
-        ? countFacultyGradingBadge(courseSubs.map(s => ({ ...s, assignmentId: s.activityKey ?? '' })), allIds)
+        ? countFacultyGradingBadge(courseSubs, allIds)
         : countStudentAssessmentBadge(publishedIds, courseSubs.filter(s => s.studentId === activeUser.id).map(s => s.activityKey ?? ''));
     } else if (tab.id === 'quizzes') {
       badgeCount = activeRole === 'faculty'
-        ? countFacultyGradingBadge(db.submissions.filter(s => s.courseId === cid).map(s => ({ ...s, assignmentId: s.activityKey ?? '' })), (db.quizzes || []).filter(q => q.courseId === cid).map(q => `asg-quiz-${q.id}`))
+        ? countFacultyGradingBadge(db.submissions.filter(s => s.courseId === cid), (db.quizzes || []).filter(q => q.courseId === cid).map(q => `asg-quiz-${q.id}`))
         : (db.quizzes || []).filter(q => q.courseId === cid && q.published && !db.submissions.some(s => s.activityKey === `asg-quiz-${q.id}` && s.studentId === activeUser.id)).length;
     } else if (tab.id === 'files') {
       badgeCount = countNewFiles(db.courseFiles || [], cid, visits);

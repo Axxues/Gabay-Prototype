@@ -508,7 +508,7 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
               </div>
             </div>
 
-            {/* Instructor Assignment */}
+            {/* Instructor selection */}
             <div className="p-6 bg-card border border-border rounded-2xl space-y-4">
               <div className="flex items-center space-x-2 pb-2 border-b border-border/70">
                 <GraduationCap className="w-4 h-4 text-muted-foreground" />

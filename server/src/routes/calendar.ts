@@ -13,7 +13,7 @@ function newId(prefix: string): string {
 // Client-verbatim CalendarEvent unions (src/types/lms.ts). Domain values from
 // the client contract, not the Task 1 auth/request allow-lists.
 const EVENT_TYPES = [
-  'assignment',
+  'activity',
   'milestone',
   'advising',
   'lecture',

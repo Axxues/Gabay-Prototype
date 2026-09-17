@@ -641,6 +641,14 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
         return;
       }
       try {
+        if (typeof updateQuiz !== 'function') {
+          showAlert({
+            title: 'Quiz Editing Unavailable',
+            message: 'Quiz header editing is not provided by the course store yet. Your changes were not saved.',
+            type: 'warning'
+          });
+          return;
+        }
         await updateQuiz(linkedQuiz.id, {
           title: quizBuilder.title.trim(),
           instructions:

@@ -63,8 +63,8 @@ const EVENT_TYPE_OPTIONS: EventTypeOption[] = [
     defaultColor: '#d97706'
   },
   {
-    value: 'assignment',
-    label: 'Assignment Deadline',
+    value: 'activity',
+    label: 'Activity Deadline',
     icon: FileCheck2,
     iconColor: 'text-emerald-500',
     defaultColor: '#059669'
@@ -744,7 +744,7 @@ export const CalendarEventFormDialog: React.FC<CalendarEventFormDialogProps> = (
                 rows={2}
                 value={description}
                 onChange={e => setDescription(e.target.value)}
-                placeholder="Add agenda, assignment instructions, or advising notes..."
+                placeholder="Add agenda, activity instructions, or advising notes..."
                 className="w-full p-2.5 bg-background border border-border focus:ring-2 focus:ring-primary/30 rounded-xl text-foreground text-xs font-sans"
               />
             </div>

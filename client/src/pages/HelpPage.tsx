@@ -32,17 +32,17 @@ export const HelpPage: React.FC<HelpPageProps> = ({ onNavigateTab }) => {
     {
       id: 1,
       question: "How do faculty instructors assess student submissions using SpeedGrader™?",
-      answer: "Navigate to your assigned course shell, select Assignments, and click 'Launch SpeedGrader' next to any pending submission. You can review the attached document, enter scores directly into CHED-compliant rubric criteria, type private feedback comments, and post grades directly to the faculty gradebook matrix."
+      answer: "Navigate to your assigned course shell, select Activities, and click 'Launch SpeedGrader' next to any pending submission. You can review the attached document, enter scores directly into CHED-compliant rubric criteria, type private feedback comments, and post grades directly to the faculty gradebook matrix."
     },
     {
       id: 2,
       question: "How does the student 'What-If' grade calculator work?",
-      answer: "Under the student Grades tab, students can move interactive range sliders next to unsubmitted or hypothetical assignments to simulate score projections. The calculated total course grade updates in real-time, allowing students to test passing requirements or honor standing without modifying actual instructor records."
+      answer: "Under the student Grades tab, students can move interactive range sliders next to unsubmitted or hypothetical activities to simulate score projections. The calculated total course grade updates in real-time, allowing students to test passing requirements or honor standing without modifying actual instructor records."
     },
     {
       id: 3,
       question: "How does GABAY LMS enforce CHED CMO 25 s. 2015 OBE compliance?",
-      answer: "Every syllabus and course shell has Course Learning Outcomes (CLOs) mapped to program educational objectives. Modules, assignments, and speedgrader rubrics link directly to specific CLO competencies to generate institutional compliance evidence for accreditation."
+      answer: "Every syllabus and course shell has Course Learning Outcomes (CLOs) mapped to program educational objectives. Modules, activities, and speedgrader rubrics link directly to specific CLO competencies to generate institutional compliance evidence for accreditation."
     },
     {
       id: 4,
@@ -179,7 +179,7 @@ export const HelpPage: React.FC<HelpPageProps> = ({ onNavigateTab }) => {
                     Student Orientation & What-If Calculator Manual
                   </h4>
                   <p className="text-[10px] font-sans text-muted-foreground mt-0.5">
-                    Assignment submissions, quiz taking, and grade projections
+                    Activity submissions, quiz taking, and grade projections
                   </p>
                 </div>
               </div>
@@ -278,7 +278,7 @@ export const HelpPage: React.FC<HelpPageProps> = ({ onNavigateTab }) => {
             <span>Republic Act 10173 (Data Privacy Act)</span>
           </div>
           <p className="text-xs text-muted-foreground leading-relaxed">
-            Student assignment payloads, individual grades, private instructor annotations, and identity records are guarded by strict role-based access control and encrypted session transport.
+            Student activity payloads, individual grades, private instructor annotations, and identity records are guarded by strict role-based access control and encrypted session transport.
           </p>
         </div>
       </div>

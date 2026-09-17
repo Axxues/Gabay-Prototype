@@ -69,8 +69,8 @@ const EVENT_TYPE_OPTIONS: EventTypeOption[] = [
     defaultColor: '#d97706'
   },
   {
-    value: 'assignment',
-    label: 'Assignment Deadline',
+    value: 'activity',
+    label: 'Activity deadline',
     description: 'Homework submission cutoff or project due date',
     icon: FileCheck2,
     iconColor: 'text-emerald-500',
@@ -385,7 +385,7 @@ export const CreateEventPage: React.FC<CreateEventPageProps> = ({
               <p className="text-xs sm:text-sm text-muted-foreground font-medium pl-0.5">
                 {isEditing
                   ? 'Update timing, virtual links, course attachments, and calendar badge options.'
-                  : 'Add academic milestones, assignment deadlines, virtual meetings, or course lectures to the institutional schedule.'}
+                  : 'Add academic milestones, activity deadlines, virtual meetings, or course lectures to the institutional schedule.'}
               </p>
             </div>
 
