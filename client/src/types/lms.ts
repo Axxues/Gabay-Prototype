@@ -8,7 +8,6 @@ export interface User {
   email: string;
   role: UserRole;
   avatar: string;
-  banner?: string | null;
   studentId?: string;
   department: string;
   title: string;
@@ -72,7 +71,7 @@ export interface EnrollmentRequest {
 export interface ModuleItem {
   id: string;
   title: string;
-  type: 'page' | 'assignment' | 'quiz' | 'file' | 'external_url';
+  type: 'page' | 'activity' | 'quiz' | 'file' | 'external_url';
   published: boolean;
   required: boolean;
   completionCondition?: 'view' | 'submit' | 'min_score';
