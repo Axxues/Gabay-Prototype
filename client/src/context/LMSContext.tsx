@@ -117,6 +117,7 @@ interface LMSContextType {
   updateCourseSyllabus: (courseId: string, syllabus: OfficialSyllabusData) => Promise<void>;
   removeCourseSyllabus: (courseId: string) => Promise<void>;
   updateCourseGradingTerms: (courseId: string, gradingTerms: TermId[] | null) => Promise<void>;
+  setGradesReleased: (courseId: string, term: TermId, released: boolean) => Promise<void>;
   effectiveTermsForCourse: (courseId: string) => TermId[];
   importCommonsTemplate: (templateId: string, targetCourseId: string) => Promise<{ success: boolean; message: string }>;
 
@@ -2006,6 +2007,42 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const message = err instanceof ApiError ? err.message : 'Failed to update grading terms.';
       setLastError(message);
       showAlert(message, 'Update Grading Terms Failed');
+      throw err;
+    }
+  };
+
+  const setGradesReleased = async (courseId: string, term: TermId, released: boolean): Promise<void> => {
+    const prev = db.courses.find(c => c.id === courseId)?.gradesReleased;
+    const optimistic = { ...(prev || {}), [term]: released };
+    setDb(prevDb => ({
+      ...prevDb,
+      courses: prevDb.courses.map(c => (c.id === courseId ? { ...c, gradesReleased: optimistic } : c))
+    }));
+    try {
+      const { course } = await apiFetch<{ course: Course }>(
+        `/api/courses/${encodeURIComponent(courseId)}/grades-release`,
+        { method: 'PATCH', body: { term, released } }
+      );
+      const normalized = normalizeCourseSyllabus(course);
+      setDb(prevDb => ({
+        ...prevDb,
+        courses: prevDb.courses.map(c => (c.id === courseId ? normalized : c))
+      }));
+      showAlert({
+        title: released ? 'Grades Released' : 'Grades Un-released',
+        message: `${term} grades are now ${released ? 'visible to students' : 'hidden from students'}.`,
+        type: 'success'
+      });
+    } catch (err) {
+      setDb(prevDb => ({
+        ...prevDb,
+        courses: prevDb.courses.map(c =>
+          c.id === courseId ? { ...c, gradesReleased: prev || {} } : c
+        )
+      }));
+      const message = err instanceof ApiError ? err.message : 'Failed to update grade release.';
+      setLastError(message);
+      showAlert(message, 'Grade Release Failed');
       throw err;
     }
   };
@@ -4194,6 +4231,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateCourseSyllabus,
         removeCourseSyllabus,
         updateCourseGradingTerms,
+        setGradesReleased,
         effectiveTermsForCourse,
         importCommonsTemplate,
         gradeSubmission,
