@@ -1,6 +1,6 @@
 // client/src/utils/gradingTerms.test.ts
-import { describe, expect, it } from 'vitest';
-import { effectiveTerms, normalizeTermId, resolveCourseTerms } from './gradingTerms';
+import { describe, expect, it, test } from 'vitest';
+import { effectiveTerms, normalizeGradesReleased, normalizeTermId, resolveCourseTerms } from './gradingTerms';
 
 const outline = (title: string, topics: string[] = []) => ({ title, topics });
 
@@ -37,5 +37,20 @@ describe('effectiveTerms', () => {
   it('falls back to detection with no override', () => {
     expect(effectiveTerms({}, { courseOutline: [outline('Midterm Examination Period')] }))
       .toEqual(['midterm']);
+  });
+});
+
+describe('normalizeGradesReleased', () => {
+  test('parses a JSON map, drops unknown terms and non-boolean values', () => {
+    expect(
+      normalizeGradesReleased(JSON.stringify({ midterm: true, finals: 1, quarter: true }))
+    ).toEqual({ midterm: true });
+  });
+
+  test('accepts an object, null, garbage, and undefined as unreleased', () => {
+    expect(normalizeGradesReleased({ prelim: true })).toEqual({ prelim: true });
+    expect(normalizeGradesReleased(null)).toEqual({});
+    expect(normalizeGradesReleased('{bad json')).toEqual({});
+    expect(normalizeGradesReleased(undefined)).toEqual({});
   });
 });

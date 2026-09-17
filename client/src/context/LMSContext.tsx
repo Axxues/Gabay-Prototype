@@ -40,7 +40,7 @@ import {
   termGrade,
 } from '../utils/spr';
 import { commonsTemplates } from '../data/commonsTemplates';
-import { effectiveTerms, normalizeTermId } from '../utils/gradingTerms';
+import { effectiveTerms, normalizeGradesReleased, normalizeTermId } from '../utils/gradingTerms';
 import { AlertModal, type AlertModalOptions } from '../components/common/AlertModal';
 import { canPickSection } from '../utils/sections';
 import type { OfficialSyllabusData } from '../data/syllabusData';
@@ -554,7 +554,7 @@ const normalizeCourseSyllabus = (raw: any): Course => {
       parsedSyllabus = null;
     }
   }
-  return { ...raw, syllabus: parsedSyllabus, gradingTerms: normalizeCourseGradingTerms(raw?.gradingTerms) };
+  return { ...raw, syllabus: parsedSyllabus, gradingTerms: normalizeCourseGradingTerms(raw?.gradingTerms), gradesReleased: normalizeGradesReleased(raw?.gradesReleased) };
 };
 
 export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {

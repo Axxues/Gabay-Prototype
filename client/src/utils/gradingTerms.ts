@@ -39,3 +39,21 @@ export function effectiveTerms(
   }
   return resolveCourseTerms(syllabus);
 }
+
+export function normalizeGradesReleased(raw: unknown): Record<TermId, boolean> {
+  const out: Record<TermId, boolean> = {};
+  let obj: unknown = raw;
+  if (typeof raw === 'string' && raw) {
+    try {
+      obj = JSON.parse(raw);
+    } catch {
+      return {};
+    }
+  }
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return {};
+  for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+    const term = normalizeTermId(k);
+    if (term !== null && typeof v === 'boolean') out[term] = v;
+  }
+  return out;
+}
