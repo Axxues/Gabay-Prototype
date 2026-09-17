@@ -188,7 +188,7 @@ CREATE TABLE [dbo].[QuizQuestion] (
     [type] NVARCHAR(32) NOT NULL,
     [options] NVARCHAR(max) NOT NULL,
     [correctAnswer] NVARCHAR(1024),
-    [points] FLOAT(53) NOT NULL CONSTRAINT [QuizQuestion_points_df] DEFAULT 1,
+    [points] FLOAT(53) NOT NULL CONSTRAINT [QuizQuestion_points_df] DEFAULT 5,
     [description] NVARCHAR(max),
     [rubricNotes] NVARCHAR(max),
     [imageUrl] NVARCHAR(1024),
