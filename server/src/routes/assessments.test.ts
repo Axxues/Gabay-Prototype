@@ -570,4 +570,60 @@ describe('assessments router', () => {
     expect(res.body.submission.grade).toBe(80);
     expect(prisma.activity.findUnique).toHaveBeenCalledWith({ where: { id: 'asg1' } });
   });
+
+  it('POST /api/activities/:id/submissions on a question-set activity returns 400', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-stu',
+      role: 'student',
+    });
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(course);
+    (prisma.enrollmentRequest.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: 'approved',
+    });
+    (prisma.activity.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'act1',
+      courseId: 'c1',
+      title: 'Activity 1',
+      format: 'questionset',
+      questions: [],
+    });
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .post('/api/activities/act1/submissions')
+      .set('Authorization', 'Bearer x')
+      .send({ content: 'hello' });
+
+    expect(res.status).toBe(400);
+    expect(prisma.submission.create).not.toHaveBeenCalled();
+    expect(prisma.submission.update).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/activities/:id/submit on a classic activity returns 400', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-stu',
+      role: 'student',
+    });
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(course);
+    (prisma.enrollmentRequest.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: 'approved',
+    });
+    (prisma.activity.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'asg-1',
+      courseId: 'c1',
+      title: 'Lab 1',
+      format: 'classic',
+      questions: [],
+    });
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .post('/api/activities/asg-1/submit')
+      .set('Authorization', 'Bearer x')
+      .send({ answers: { qq1: 'A' } });
+
+    expect(res.status).toBe(400);
+    expect(prisma.submission.create).not.toHaveBeenCalled();
+    expect(prisma.submission.update).not.toHaveBeenCalled();
+  });
 });

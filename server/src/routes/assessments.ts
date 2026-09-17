@@ -627,6 +627,9 @@ function buildAssessmentRouter(kind: AssessmentKind) {
       const row = await loadOr404(req.params.id);
       const course = await loadCourseOr404(row.courseId);
       await assertCourseAccess(course, auth);
+      if (!isQuiz && !isExam && row.format !== 'classic') {
+        throw new ApiError(400, 'bad_request', 'This endpoint only accepts classic-format activities.');
+      }
       const body = (req.body ?? {}) as Record<string, unknown>;
       const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
       const content =
@@ -691,6 +694,9 @@ function buildAssessmentRouter(kind: AssessmentKind) {
       const row = await loadOr404(req.params.id);
       const course = await loadCourseOr404(row.courseId);
       await assertCourseAccess(course, auth);
+      if (!isQuiz && !isExam && row.format === 'classic') {
+        throw new ApiError(400, 'bad_request', 'This endpoint only accepts question-set activities.');
+      }
       const body = (req.body ?? {}) as Record<string, unknown>;
       if (typeof body.answers !== 'object' || body.answers === null || Array.isArray(body.answers)) {
         throw new ApiError(400, 'bad_request', 'Field answers must be an object.');
