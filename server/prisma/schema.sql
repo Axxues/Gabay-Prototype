@@ -93,7 +93,7 @@ CREATE TABLE [dbo].[ModuleItem] (
     [completionCondition] NVARCHAR(32),
     [minScore] FLOAT(53),
     [content] NVARCHAR(max),
-    [assignmentId] NVARCHAR(64),
+    [activityId] NVARCHAR(64),
     [quizId] NVARCHAR(64),
     [fileUrl] NVARCHAR(1024),
     [fileName] NVARCHAR(256),
@@ -129,31 +129,9 @@ CREATE TABLE [dbo].[ModuleCommentLike] (
 );
 
 -- CreateTable
-CREATE TABLE [dbo].[Assignment] (
-    [id] NVARCHAR(64) NOT NULL,
-    [courseId] NVARCHAR(64) NOT NULL,
-    [title] NVARCHAR(256) NOT NULL,
-    [instructions] NVARCHAR(max) NOT NULL,
-    [pointsPossible] FLOAT(53) NOT NULL,
-    [dueDate] DATETIME2 NOT NULL,
-    [submissionTypes] NVARCHAR(64) NOT NULL,
-    [published] BIT NOT NULL CONSTRAINT [Assignment_published_df] DEFAULT 0,
-    [category] NVARCHAR(64) NOT NULL,
-    [weight] FLOAT(53) NOT NULL CONSTRAINT [Assignment_weight_df] DEFAULT 0,
-    [rubric] NVARCHAR(max) NOT NULL,
-    [fileName] NVARCHAR(256),
-    [fileUrl] NVARCHAR(1024),
-    [fileSize] NVARCHAR(32),
-    [availableFrom] DATETIME2,
-    [availableUntil] DATETIME2,
-    [sectionRestriction] NVARCHAR(128),
-    CONSTRAINT [Assignment_pkey] PRIMARY KEY CLUSTERED ([id])
-);
-
--- CreateTable
 CREATE TABLE [dbo].[Submission] (
     [id] NVARCHAR(64) NOT NULL,
-    [assignmentId] NVARCHAR(64),
+    [activityKey] NVARCHAR(64),
     [quizId] NVARCHAR(64),
     [activityId] NVARCHAR(64),
     [courseId] NVARCHAR(64) NOT NULL,
@@ -210,7 +188,7 @@ CREATE TABLE [dbo].[QuizQuestion] (
     [type] NVARCHAR(32) NOT NULL,
     [options] NVARCHAR(max) NOT NULL,
     [correctAnswer] NVARCHAR(1024),
-    [points] FLOAT(53) NOT NULL CONSTRAINT [QuizQuestion_points_df] DEFAULT 5,
+    [points] FLOAT(53) NOT NULL CONSTRAINT [QuizQuestion_points_df] DEFAULT 1,
     [description] NVARCHAR(max),
     [rubricNotes] NVARCHAR(max),
     [imageUrl] NVARCHAR(1024),
@@ -229,6 +207,17 @@ CREATE TABLE [dbo].[Activity] (
     [pointsPossible] FLOAT(53) NOT NULL,
     [dueDate] DATETIME2,
     [published] BIT NOT NULL CONSTRAINT [Activity_published_df] DEFAULT 0,
+    [format] NVARCHAR(16) NOT NULL CONSTRAINT [Activity_format_df] DEFAULT 'questionset',
+    [submissionTypes] NVARCHAR(64),
+    [category] NVARCHAR(64),
+    [weight] FLOAT(53),
+    [rubric] NVARCHAR(max),
+    [fileName] NVARCHAR(256),
+    [fileUrl] NVARCHAR(1024),
+    [fileSize] NVARCHAR(32),
+    [availableFrom] DATETIME2,
+    [availableUntil] DATETIME2,
+    [sectionRestriction] NVARCHAR(128),
     CONSTRAINT [Activity_pkey] PRIMARY KEY CLUSTERED ([id])
 );
 
