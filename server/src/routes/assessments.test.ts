@@ -10,7 +10,7 @@ vi.mock('../db.js', () => ({
     activity: { findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
     exam: { findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
     quizQuestion: { create: vi.fn() },
-    submission: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
+    submission: { findFirst: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
     notification: { create: vi.fn(), findMany: vi.fn(), deleteMany: vi.fn() },
   },
 }));
@@ -25,7 +25,7 @@ process.env.JWT_SECRET ??= 'test-secret';
 import { prisma } from '../db.js';
 import jwt from 'jsonwebtoken';
 import express from 'express';
-import { quizzesRouter, activitiesRouter, examsRouter } from './assessments.js';
+import { quizzesRouter, activitiesRouter, examsRouter, submissionsRouter } from './assessments.js';
 import { errorMiddleware } from '../utils/errors.js';
 
 function app() {
@@ -34,6 +34,7 @@ function app() {
   a.use('/api/quizzes', quizzesRouter);
   a.use('/api/activities', activitiesRouter);
   a.use('/api/exams', examsRouter);
+  a.use('/api', submissionsRouter);
   a.use(errorMiddleware);
   return a;
 }
@@ -468,5 +469,105 @@ describe('assessments router', () => {
 
     expect(res.status).toBe(400);
     expect(prisma.activity.create).not.toHaveBeenCalled();
+  });
+
+  it('GET /api/activities/:id/submissions on a classic activity lists rows linked by raw activityKey', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-fac',
+      role: 'faculty',
+    });
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(course);
+    (prisma.activity.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'asg-1',
+      courseId: 'c1',
+      title: 'Lab 1',
+      format: 'classic',
+      submissionTypes: '[]',
+      rubric: '[]',
+      questions: [],
+    });
+    (prisma.submission.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 'sub1', activityKey: 'asg-1', studentId: 'u-a', rubricScores: '{}' },
+    ]);
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .get('/api/activities/asg-1/submissions')
+      .set('Authorization', 'Bearer x');
+
+    expect(res.status).toBe(200);
+    expect(res.body.submissions).toHaveLength(1);
+    expect(prisma.submission.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { activityKey: 'asg-1' } })
+    );
+  });
+
+  it('GET /api/activities/:id/submissions on a question-set activity lists rows linked by activityId FK', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-fac',
+      role: 'faculty',
+    });
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(course);
+    (prisma.activity.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'act1',
+      courseId: 'c1',
+      title: 'Activity 1',
+      format: 'questionset',
+      submissionTypes: null,
+      rubric: null,
+      questions: [],
+    });
+    (prisma.submission.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 'sub2', activityKey: 'asg-activity-act1', activityId: 'act1', studentId: 'u-a', rubricScores: '{}' },
+    ]);
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .get('/api/activities/act1/submissions')
+      .set('Authorization', 'Bearer x');
+
+    expect(res.status).toBe(200);
+    expect(res.body.submissions).toHaveLength(1);
+    expect(prisma.submission.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { activityId: 'act1' } })
+    );
+  });
+
+  it('POST /api/submissions/:id/grade resolves a classic submission via activityKey', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-fac',
+      role: 'faculty',
+    });
+    (prisma.submission.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'sub9',
+      activityKey: 'asg1',
+      quizId: null,
+      activityId: null,
+      examId: null,
+      studentId: 'u-a',
+    });
+    (prisma.activity.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'asg1',
+      courseId: 'c1',
+      title: 'Essay 1',
+    });
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(course);
+    (prisma.submission.update as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'sub9',
+      grade: 80,
+      status: 'graded',
+      rubricScores: '{}',
+    });
+    (prisma.notification.create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'n1' });
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .post('/api/submissions/sub9/grade')
+      .set('Authorization', 'Bearer x')
+      .send({ grade: 80 });
+
+    expect(res.status).toBe(200);
+    expect(res.body.submission.grade).toBe(80);
+    expect(prisma.activity.findUnique).toHaveBeenCalledWith({ where: { id: 'asg1' } });
   });
 });

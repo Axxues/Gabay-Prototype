@@ -37,6 +37,7 @@ interface AssessmentRow {
   courseId: string;
   title: string;
   questions: RawQuestion[];
+  format?: string | null;
 }
 
 async function loadCourseOr404(courseId: string) {
@@ -584,8 +585,18 @@ function buildAssessmentRouter(kind: AssessmentKind) {
       const auth = req.auth!;
       const row = await loadOr404(req.params.id);
       const course = await loadCourseOr404(row.courseId);
+      // Classic activities link submissions by the raw activityKey row id;
+      // question-set activities link via the activityId FK (synthetic
+      // asg-activity-<id> key). Quiz/exam branches stay FK-only.
+      const isClassic = !isQuiz && !isExam && row.format === 'classic';
       const where = (
-        isQuiz ? { quizId: row.id } : isExam ? { examId: row.id } : { activityKey: row.id }
+        isQuiz
+          ? { quizId: row.id }
+          : isExam
+            ? { examId: row.id }
+            : isClassic
+              ? { activityKey: row.id }
+              : { activityId: row.id }
       ) as Record<string, string>;
       if (auth.role === 'faculty' || auth.role === 'admin') {
         assertCourseOwner(course, auth);
@@ -749,10 +760,10 @@ submissionsRouter.post(
       where: { id: req.params.submissionId },
     });
     if (!submission) throw new ApiError(404, 'not_found', 'Submission not found.');
-    // Quiz/activity/exam submissions carry the synthetic asg-quiz-*/
-    // asg-activity-*/asg-exam-* activityKey (no classic row for question-set
-    // kinds) — resolve ownership through the quiz/activity/exam course
-    // instead. Classic submissions carry the activity row id as activityKey.
+    // Quiz/activity submissions carry the synthetic asg-quiz-*/asg-activity-*
+    // activityKey (no classic Activity row for question-set kinds) — resolve
+    // ownership through the quiz/activity course instead. Classic submissions
+    // carry the activity row id as activityKey.
     let relatedId: string;
     let relatedTitle: string;
     let course;
@@ -772,13 +783,6 @@ submissionsRouter.post(
       assertCourseOwner(course, auth);
       relatedId = activity.id;
       relatedTitle = activity.title;
-    } else if (submission.examId) {
-      const exam = await prisma.exam.findUnique({ where: { id: submission.examId } });
-      if (!exam) throw new ApiError(404, 'not_found', 'Exam not found.');
-      course = await loadCourseOr404(exam.courseId);
-      assertCourseOwner(course, auth);
-      relatedId = exam.id;
-      relatedTitle = exam.title;
     } else {
       if (!submission.activityKey) throw new ApiError(404, 'not_found', 'Activity not found.');
       const activity = await prisma.activity.findUnique({
@@ -842,8 +846,8 @@ submissionsRouter.post(
       where: { id: req.params.submissionId },
     });
     if (!submission) throw new ApiError(404, 'not_found', 'Submission not found.');
-    // Same synthetic-aware resolution as the grade path: quiz/activity/exam
-    // submissions resolve their course through the quiz/activity/exam row,
+    // Same synthetic-aware resolution as the grade path: quiz/activity
+    // submissions resolve their course through the quiz/activity row,
     // classic submissions through the activityKey activity row.
     let course;
     if (submission.quizId) {
@@ -856,10 +860,6 @@ submissionsRouter.post(
       });
       if (!activity) throw new ApiError(404, 'not_found', 'Activity not found.');
       course = await loadCourseOr404(activity.courseId);
-    } else if (submission.examId) {
-      const exam = await prisma.exam.findUnique({ where: { id: submission.examId } });
-      if (!exam) throw new ApiError(404, 'not_found', 'Exam not found.');
-      course = await loadCourseOr404(exam.courseId);
     } else {
       if (!submission.activityKey) throw new ApiError(404, 'not_found', 'Activity not found.');
       const activity = await prisma.activity.findUnique({
