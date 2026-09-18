@@ -1,7 +1,9 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { useLMS, generateCourseJoinCode } from '../context/LMSContext';
 import { useSimulatedUpload } from '../hooks/useSimulatedUpload';
+import { uploadFileToPublic } from '../utils/fileUploader';
 import { UploadProgress } from '../components/common/UploadProgress';
+import { UserAvatar } from '../components/common/UserAvatar';
 import { getAcademicTermOptions, getDefaultAcademicTerm } from '../utils/academicTerms';
 import {
   ArrowLeft,
@@ -118,7 +120,7 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
     };
   }, [isTermOpen]);
 
-  const processImageFile = (file: File) => {
+  const processImageFile = async (file: File) => {
     if (!file.type.startsWith('image/')) {
       showAlert({
         title: 'Invalid File Type',
@@ -139,30 +141,29 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
 
     if (upload.isUploading) return;
     upload.start(file.name);
-
-    const finishUpload = (dataUrl: string | null) => {
-      if (typeof dataUrl === 'string') {
-        setCourseImage(dataUrl);
-        setUploadedFileName(file.name);
-        upload.complete();
-      } else {
-        upload.fail();
+    try {
+      // Persist to /uploads and store the URL — never a data URL. A 10MB
+      // photo inlines to ~13MB of base64, which once lived in the Course
+      // row and made every course query (list + all access checks) ~1s.
+      const result = await uploadFileToPublic(file);
+      setCourseImage(result.url);
+      setUploadedFileName(result.name);
+      upload.complete();
+      if (result.url.startsWith('data:')) {
+        showAlert({
+          title: 'Stored Without Upload',
+          message: 'The image server was unreachable, so this cover is embedded in the course. Re-upload it later for faster loading.',
+          type: 'warning'
+        });
       }
-    };
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      finishUpload(typeof event.target?.result === 'string' ? event.target.result : null);
-    };
-    reader.onerror = () => {
+    } catch {
       upload.fail();
       showAlert({
         title: 'Upload Failed',
-        message: 'Could not read that image. Please try a different file.',
+        message: 'Could not upload that image. Please try a different file.',
         type: 'warning'
       });
-    };
-    reader.readAsDataURL(file);
+    }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -520,9 +521,9 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
               {/* Automatic Creator-As-Instructor Card */}
               <div className="p-4 bg-muted/40 border border-border rounded-xl flex items-center justify-between gap-3">
                 <div className="flex items-center space-x-3">
-                  <img
+                  <UserAvatar
+                    name={activeUser.name}
                     src={activeUser.avatar}
-                    alt={activeUser.name}
                     className="w-10 h-10 rounded-full object-cover border border-border shadow-soft shrink-0"
                   />
                   <div>

@@ -1,4 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { useGabayChat } from '../context/GabayChatContext';
+import { ChatMarkdown } from '../components/rag/ChatMarkdown';
+import { ChatProgressTimeline } from '../components/rag/ChatProgressTimeline';
 import {
   Sparkles,
   Plus,
@@ -9,8 +12,6 @@ import {
   Check,
   ThumbsUp,
   ThumbsDown,
-  Paperclip,
-  Mic,
   PanelLeftClose,
   PanelLeftOpen,
   FileText,
@@ -18,133 +19,76 @@ import {
   CalendarDays,
   GraduationCap,
   X,
+  Edit2,
+  Download,
+  BarChart3,
 } from 'lucide-react';
 
-interface ChatMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: string;
-  sources?: { label: string; detail: string }[];
-}
-
-interface Conversation {
-  id: string;
-  title: string;
-  messages: ChatMessage[];
-  createdAt: string;
-}
-
 const SUGGESTIONS = [
-  { icon: <BookOpen className="h-4 w-4" />, title: 'Explain a module topic', prompt: 'Can you explain the key concepts from Module 3 of my course?' },
-  { icon: <CalendarDays className="h-4 w-4" />, title: 'Check my schedule', prompt: 'What activities and quizzes are due this week?' },
-  { icon: <GraduationCap className="h-4 w-4" />, title: 'Study help', prompt: 'Help me review for my upcoming quiz with practice questions.' },
-  { icon: <FileText className="h-4 w-4" />, title: 'Summarize a file', prompt: 'Summarize the course syllabus and grading breakdown.' },
+  {
+    icon: <BookOpen className="h-4 w-4" />,
+    title: 'Student Enrollment',
+    prompt: 'How many students are currently enrolled in the school system?',
+  },
+  {
+    icon: <BarChart3 className="h-4 w-4" />,
+    title: 'Visual Breakdown',
+    prompt: 'Can you show me a chart breakdown of enrolled students by status?',
+  },
+  {
+    icon: <CalendarDays className="h-4 w-4" />,
+    title: 'Academic Subjects',
+    prompt: 'What courses and subjects are offered for the academic term?',
+  },
+  {
+    icon: <GraduationCap className="h-4 w-4" />,
+    title: 'Scholarships & Fees',
+    prompt: 'What scholarships are available and what are their benefits?',
+  },
 ];
 
-function getMockResponse(query: string): { content: string; sources: { label: string; detail: string }[] } {
-  const q = query.toLowerCase();
-  if (q.includes('syllabus') || q.includes('grading') || q.includes('grade breakdown')) {
-    return {
-      content: 'Based on your course syllabus, here is the grading breakdown:\n\n• Activities & laboratory exercises — 30%\n• Quizzes — 20%\n• Major examinations — 30%\n• Attendance & participation — 20%\n\nA passing mark requires a final grade of 75% or higher. Let me know if you want the full week-by-week topic outline.',
-      sources: [
-        { label: 'Syllabus_CMSC131.pdf', detail: 'Section 4 · Grading system' },
-        { label: 'Course outline', detail: 'Week 1–16 schedule' },
-      ],
-    };
-  }
-  if (q.includes('due') || q.includes('deadline') || q.includes('activit') || q.includes('quiz')) {
-    return {
-      content: 'Here is what I found due this week:\n\n• Lab Activity 4: ER Diagramming — due Friday, 11:59 PM\n• Quiz 3: Normalization (Modules 4–5) — due Sunday, 11:59 PM\n• Announcement: make-up class on Saturday, 9:00 AM\n\nWant me to draft a study plan for Quiz 3?',
-      sources: [
-        { label: 'Calendar', detail: 'This week · 3 items' },
-        { label: 'Modules 4–5', detail: 'Normalization handouts' },
-      ],
-    };
-  }
-  if (q.includes('module 3') || q.includes('explain') || q.includes('concept')) {
-    return {
-      content: 'Module 3 covers relational modeling in three ideas:\n\n1. Entities become tables — each entity set maps to a table with a primary key.\n2. Relationships become keys — one-to-many relationships use foreign keys; many-to-many relationships need a junction table.\n3. Constraints protect data — NOT NULL, UNIQUE, and referential integrity keep rows consistent.\n\nTry this check: in a Students–Courses enrollment, which table holds the foreign keys, and why?',
-      sources: [
-        { label: 'Module 3 handout', detail: 'Relational modeling · pp. 4–9' },
-        { label: 'Lab 3 rubric', detail: 'ER-to-relational mapping' },
-      ],
-    };
-  }
-  if (q.includes('review') || q.includes('practice') || q.includes('study')) {
-    return {
-      content: 'Great — here is a quick 3-question review to start:\n\n1. What is the difference between a primary key and a foreign key?\n2. When does a many-to-many relationship require a junction table?\n3. Which normal form removes partial dependencies?\n\nReply with your answers and I will check them one by one.',
-      sources: [{ label: 'Quiz bank', detail: 'Modules 1–5 · sample items' }],
-    };
-  }
-  if (q.includes('enroll') || q.includes('join code') || q.includes('section')) {
-    return {
-      content: 'To join a course section, open Courses, pick your course, and enter the join code shared by your instructor (it looks like GABAY-XXXX). If the code does not work, confirm you are enrolling in the correct section — codes are section-specific.',
-      sources: [{ label: 'Help guide', detail: 'Enrollment · join codes' }],
-    };
-  }
-  return {
-    content: 'I searched your course materials for that. Here is a helpful starting point — tell me which course or module this is about and I can pull the exact handout, announcement, or rubric section.\n\nMeanwhile, you can ask me to explain a topic, summarize the syllabus, list what is due this week, or quiz you for review.',
-    sources: [{ label: 'Course materials', detail: 'Top matches across modules' }],
-  };
-}
-
-const uid = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-
 export const GabayRAGPage: React.FC = () => {
-  const [conversations, setConversations] = useState<Conversation[]>([
-    {
-      id: 'welcome-thread',
-      title: 'Getting started with Gabay',
-      createdAt: new Date().toISOString(),
-      messages: [
-        {
-          id: 'welcome-msg',
-          role: 'assistant',
-          timestamp: new Date().toISOString(),
-          content: 'Hi! I am Gabay RAG — I answer from your course materials: modules, syllabus, announcements, and rubrics. Ask me anything about your classes.',
-          sources: [{ label: 'Course materials', detail: 'Connected · 12 documents' }],
-        },
-      ],
-    },
-  ]);
-  const [activeId, setActiveId] = useState<string>('welcome-thread');
+  const {
+    conversations,
+    activeSessionId,
+    activeConversation,
+    startNewChat,
+    selectSession,
+    renameSession,
+    deleteSession,
+    sendMessage,
+    isExecuting,
+    sessionStartTimes,
+    ragStatus,
+  } = useGabayChat();
+
   const [input, setInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
-  const [streamingId, setStreamingId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [exportCopied, setExportCopied] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false);
 
+  // Inline rename state
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState('');
+
   const feedRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const typingTimer = useRef<number | null>(null);
-
-  const activeConversation = useMemo(
-    () => conversations.find(c => c.id === activeId) ?? conversations[0] ?? null,
-    [conversations, activeId]
-  );
 
   const filteredConversations = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return conversations;
     return conversations.filter(
-      c =>
+      (c) =>
         c.title.toLowerCase().includes(q) ||
-        c.messages.some(m => m.content.toLowerCase().includes(q))
+        c.messages.some((m) => m.content.toLowerCase().includes(q))
     );
   }, [conversations, searchQuery]);
 
   useEffect(() => {
     feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: 'smooth' });
-  }, [activeConversation?.messages.length, isTyping, streamingId]);
-
-  useEffect(() => {
-    return () => {
-      if (typingTimer.current) window.clearTimeout(typingTimer.current);
-    };
-  }, []);
+  }, [activeConversation?.messages.length, isExecuting]);
 
   const autoGrow = () => {
     const el = textareaRef.current;
@@ -153,79 +97,23 @@ export const GabayRAGPage: React.FC = () => {
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   };
 
-  const startNewChat = () => {
-    const convo: Conversation = {
-      id: uid(),
-      title: 'New conversation',
-      createdAt: new Date().toISOString(),
-      messages: [],
-    };
-    setConversations(prev => [convo, ...prev]);
-    setActiveId(convo.id);
+  const handleStartNewChat = () => {
+    startNewChat();
     setMobileHistoryOpen(false);
     setInput('');
     requestAnimationFrame(() => textareaRef.current?.focus());
   };
 
-  const streamAssistantReply = (convoId: string, fullContent: string, sources: ChatMessage['sources']) => {
-    const msgId = uid();
-    setStreamingId(msgId);
-    const pending: ChatMessage = { id: msgId, role: 'assistant', content: '', timestamp: new Date().toISOString(), sources };
-    setConversations(prev =>
-      prev.map(c => (c.id === convoId ? { ...c, messages: [...c.messages, pending] } : c))
-    );
-    let i = 0;
-    const chunk = Math.max(2, Math.ceil(fullContent.length / 90));
-    const timer = window.setInterval(() => {
-      i += chunk;
-      const slice = fullContent.slice(0, i);
-      setConversations(prev =>
-        prev.map(c =>
-          c.id === convoId
-            ? { ...c, messages: c.messages.map(m => (m.id === msgId ? { ...m, content: slice } : m)) }
-            : c
-        )
-      );
-      if (i >= fullContent.length) {
-        window.clearInterval(timer);
-        setStreamingId(null);
-        setIsTyping(false);
-      }
-    }, 18);
-  };
-
   const handleSend = (raw?: string) => {
     const text = (raw ?? input).trim();
-    if (!text || isTyping || !activeConversation) return;
-    const convoId = activeConversation.id;
-    const userMsg: ChatMessage = { id: uid(), role: 'user', content: text, timestamp: new Date().toISOString() };
-    setConversations(prev =>
-      prev.map(c => {
-        if (c.id !== convoId) return c;
-        const title = c.messages.length <= 1 && c.title === 'New conversation' ? text.slice(0, 42) : c.title;
-        return { ...c, title, messages: [...c.messages, userMsg] };
-      })
-    );
+    if (!text || isExecuting || !activeConversation) return;
+
     setInput('');
     requestAnimationFrame(() => {
       if (textareaRef.current) textareaRef.current.style.height = 'auto';
     });
-    setIsTyping(true);
-    const { content, sources } = getMockResponse(text);
-    typingTimer.current = window.setTimeout(() => streamAssistantReply(convoId, content, sources), 750);
-  };
 
-  const handleDelete = (id: string) => {
-    setConversations(prev => {
-      const next = prev.filter(c => c.id !== id);
-      if (next.length === 0) {
-        const fresh: Conversation = { id: uid(), title: 'New conversation', createdAt: new Date().toISOString(), messages: [] };
-        setActiveId(fresh.id);
-        return [fresh];
-      }
-      if (id === activeId) setActiveId(next[0].id);
-      return next;
-    });
+    sendMessage(text, activeConversation.id);
   };
 
   const handleCopy = async (id: string, content: string) => {
@@ -234,16 +122,53 @@ export const GabayRAGPage: React.FC = () => {
       setCopiedId(id);
       window.setTimeout(() => setCopiedId(null), 1500);
     } catch {
-      /* clipboard unavailable in some contexts */
+      /* clipboard fallback */
     }
   };
 
+  const handleExportChat = async () => {
+    if (!activeConversation) return;
+    const title = activeConversation.title;
+    const date = new Date(activeConversation.createdAt).toLocaleDateString();
+    let md = `# LIKHA School System Report: ${title}\n*Generated on: ${date}*\n\n---\n\n`;
+
+    activeConversation.messages.forEach((m) => {
+      const speaker = m.role === 'user' ? '👤 **User**' : '✨ **GABAY (School Assistant)**';
+      md += `${speaker} (${new Date(m.timestamp).toLocaleTimeString()}):\n\n${m.content}\n\n`;
+      if (m.chart) {
+        md += `*Attached Chart: ${m.chart.title || m.chart.type}*\n\n`;
+      }
+      md += `---\n\n`;
+    });
+
+    try {
+      await navigator.clipboard.writeText(md);
+      setExportCopied(true);
+      window.setTimeout(() => setExportCopied(false), 2000);
+    } catch {
+      /* fallback */
+    }
+  };
+
+  const startInlineEdit = (id: string, currentTitle: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingId(id);
+    setEditingTitle(currentTitle);
+  };
+
+  const commitInlineEdit = (id: string) => {
+    if (editingTitle.trim()) {
+      renameSession(id, editingTitle.trim());
+    }
+    setEditingId(null);
+  };
+
   const historyPanel = (
-    <div className="flex h-full flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
       <div className="p-3">
         <button
           type="button"
-          onClick={startNewChat}
+          onClick={handleStartNewChat}
           className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-3 py-2.5 text-xs font-bold text-primary-foreground shadow-primary-sm transition-all hover:bg-primary/90 active:scale-[0.98] cursor-pointer"
         >
           <Plus className="h-4 w-4" />
@@ -254,8 +179,8 @@ export const GabayRAGPage: React.FC = () => {
           <input
             type="text"
             value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Search chats..."
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search conversations..."
             className="w-full rounded-xl border border-border bg-background py-2 pl-9 pr-8 text-xs text-foreground outline-none transition-all placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20"
           />
           {searchQuery && (
@@ -270,178 +195,325 @@ export const GabayRAGPage: React.FC = () => {
           )}
         </div>
       </div>
-      <div className="custom-scrollbar flex-1 space-y-1 overflow-y-auto px-2 pb-2">
+
+      <div className="custom-scrollbar min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-2">
         {filteredConversations.length === 0 ? (
-          <p className="px-2 py-6 text-center text-[11px] text-muted-foreground">No conversations found.</p>
+          <p className="px-2 py-6 text-center text-[11px] text-muted-foreground">
+            No conversations found.
+          </p>
         ) : (
-          filteredConversations.map(c => {
-            const selected = c.id === activeId;
-            const preview = c.messages.length > 0 ? c.messages[c.messages.length - 1].content : 'No messages yet';
+          filteredConversations.map((c) => {
+            const selected = c.id === activeSessionId;
+            const preview =
+              c.messages.length > 0
+                ? c.messages[c.messages.length - 1].content.slice(0, 60)
+                : 'No messages yet';
+
             return (
-              <div
-                key={c.id}
-                className={`group relative rounded-xl border px-3 py-2.5 transition-all ${selected ? 'border-primary/30 bg-primary/10' : 'border-transparent hover:bg-muted/70'}`}
-              >
-                <button
-                  type="button"
-                  onClick={() => { setActiveId(c.id); setMobileHistoryOpen(false); }}
-                  className="w-full text-left cursor-pointer"
+                <div
+                  key={c.id}
+                  className={`group relative rounded-xl border px-3 py-2.5 transition-all ${
+                    selected
+                      ? 'border-border bg-muted shadow-soft'
+                      : 'border-transparent hover:bg-muted/50'
+                  }`}
                 >
-                  <p className={`truncate text-xs font-bold ${selected ? 'text-primary' : 'text-foreground'}`}>{c.title}</p>
-                  <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{preview}</p>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDelete(c.id)}
-                  title="Delete conversation"
-                  className="absolute right-2 top-2 hidden rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive group-hover:block cursor-pointer"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
+                {editingId === c.id ? (
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="text"
+                      value={editingTitle}
+                      onChange={(e) => setEditingTitle(e.target.value)}
+                      onBlur={() => commitInlineEdit(c.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') commitInlineEdit(c.id);
+                        if (e.key === 'Escape') setEditingId(null);
+                      }}
+                      autoFocus
+                      className="w-full rounded border border-primary bg-background px-1.5 py-0.5 text-xs font-bold text-foreground outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => commitInlineEdit(c.id)}
+                      className="rounded p-1 text-primary hover:bg-primary/20"
+                    >
+                      <Check className="h-3 w-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => {
+                      selectSession(c.id);
+                      setMobileHistoryOpen(false);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        selectSession(c.id);
+                        setMobileHistoryOpen(false);
+                      }
+                    }}
+                    className="flex w-full items-start gap-2.5 text-left cursor-pointer"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p
+                        className={`truncate text-[13px] font-bold tracking-tight ${
+                          selected ? 'text-foreground' : 'text-foreground'
+                        }`}
+                      >
+                        {c.title}
+                      </p>
+                      <p className="mt-0.5 truncate text-[12px] text-muted-foreground">
+                        {preview}
+                      </p>
+                    </div>
+
+                    <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                      <button
+                        type="button"
+                        onClick={(e) => startInlineEdit(c.id, c.title, e)}
+                        className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                        title="Rename conversation"
+                      >
+                        <Edit2 className="h-3 w-3" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteSession(c.id);
+                        }}
+                        className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                        title="Delete conversation"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })
         )}
       </div>
-      <div className="border-t border-border p-3">
-        <div className="flex items-center gap-2 rounded-xl bg-muted/50 px-3 py-2">
-          <span className="live-dot shrink-0" />
-          <p className="text-[10px] leading-snug text-muted-foreground">Prototype mode — answers are simulated from sample course materials.</p>
+
+      <div className="border-t border-border/70 p-3">
+        <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+          <span className="flex items-center gap-1.5">
+            <span
+              className={`h-2 w-2 rounded-full ${
+                ragStatus === 'live'
+                  ? 'bg-emerald-500'
+                  : ragStatus === 'connecting'
+                  ? 'bg-amber-500 animate-pulse'
+                  : 'bg-muted-foreground/40'
+              }`}
+            />
+            {ragStatus === 'live' ? 'RAG active' : ragStatus === 'connecting' ? 'Processing…' : 'RAG offline'}
+          </span>
+          <span className="tabular-nums">{conversations.length} sessions</span>
         </div>
       </div>
     </div>
   );
 
   return (
-    <div className="flex h-full min-h-0 w-full overflow-hidden bg-background font-sans">
+    <div className="flex min-h-0 min-w-0 flex-1 bg-background">
       {/* Desktop history sidebar */}
       {sidebarOpen && (
-        <aside className="hidden w-72 shrink-0 flex-col border-r border-border bg-card/60 backdrop-blur-md md:flex lg:w-80">
+        <div className="hidden min-h-0 w-72 shrink-0 border-r border-border bg-card md:flex md:flex-col">
           {historyPanel}
-        </aside>
+        </div>
       )}
+
       {/* Mobile history drawer */}
       {mobileHistoryOpen && (
-        <div className="fixed inset-0 z-40 md:hidden">
-          <div className="overlay-backdrop absolute inset-0" onClick={() => setMobileHistoryOpen(false)} />
-          <aside className="absolute left-0 top-0 bottom-0 w-72 bg-card shadow-xl animate-slide-in-right">
+        <div className="fixed inset-0 z-50 flex md:hidden">
+          <div
+            className="fixed inset-0 bg-black/40 backdrop-blur-xs"
+            onClick={() => setMobileHistoryOpen(false)}
+          />
+          <div className="relative flex w-80 max-w-[85vw] flex-col bg-card shadow-2xl">
+            <div className="flex items-center justify-between border-b border-border p-3">
+              <span className="text-xs font-bold text-foreground">Conversations</span>
+              <button
+                type="button"
+                onClick={() => setMobileHistoryOpen(false)}
+                className="rounded-lg p-1 text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
             {historyPanel}
-          </aside>
+          </div>
         </div>
       )}
 
       {/* Main chat column */}
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {/* Header */}
-        <div className="flex shrink-0 items-center justify-between border-b border-border bg-card/80 px-3 py-2.5 backdrop-blur-md sm:px-5">
-          <div className="flex min-w-0 items-center gap-2">
+        <div className="flex shrink-0 items-center justify-between border-b border-border/70 bg-card px-3 py-2.5 sm:px-5">
+          <div className="flex min-w-0 items-center gap-2.5">
             <button
               type="button"
               onClick={() => setMobileHistoryOpen(true)}
-              className="rounded-xl p-2 text-muted-foreground hover:bg-muted hover:text-foreground md:hidden cursor-pointer"
+              className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground md:hidden cursor-pointer"
               aria-label="Open chat history"
             >
               <PanelLeftOpen className="h-4 w-4" />
             </button>
             <button
               type="button"
-              onClick={() => setSidebarOpen(v => !v)}
-              className="hidden rounded-xl p-2 text-muted-foreground hover:bg-muted hover:text-foreground md:block cursor-pointer"
+              onClick={() => setSidebarOpen((v) => !v)}
+              className="hidden rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground md:block cursor-pointer"
               aria-label="Toggle chat history"
               title="Toggle chat history"
             >
-              {sidebarOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
+              {sidebarOpen ? (
+                <PanelLeftClose className="h-4 w-4" />
+              ) : (
+                <PanelLeftOpen className="h-4 w-4" />
+              )}
             </button>
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-sm font-black text-white shadow-primary-sm">G</div>
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-foreground text-[13px] font-extrabold text-background">
+              G
+            </div>
             <div className="min-w-0">
-              <h1 className="truncate text-sm font-extrabold tracking-tight text-foreground">Gabay RAG</h1>
-              <p className="truncate text-[11px] text-muted-foreground">{activeConversation?.title ?? 'New conversation'}</p>
+              <h1 className="truncate text-[14px] font-extrabold tracking-tight text-foreground">
+                Gabay assistant
+              </h1>
+              <p className="truncate text-[12px] text-muted-foreground">
+                {activeConversation?.title ?? 'New conversation'}
+              </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={startNewChat}
-            className="flex items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-2 text-xs font-bold text-foreground shadow-subtle transition-all hover:border-primary/40 hover:text-primary cursor-pointer"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">New chat</span>
-          </button>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleExportChat}
+              title="Export conversation as markdown"
+              className="flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-[12px] font-semibold text-muted-foreground transition-all hover:bg-muted hover:text-foreground cursor-pointer"
+            >
+              {exportCopied ? (
+                <>
+                  <Check className="h-3.5 w-3.5 text-emerald-600" />
+                  <span className="text-emerald-600">Copied</span>
+                </>
+              ) : (
+                <>
+                  <Download className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Export</span>
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleStartNewChat}
+              className="flex items-center gap-1.5 rounded-xl bg-primary px-3 py-1.5 text-[12px] font-bold text-primary-foreground shadow-primary-sm transition-all hover:bg-primary/90 cursor-pointer"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">New chat</span>
+            </button>
+          </div>
         </div>
 
-        {/* Feed */}
-        <div ref={feedRef} className="custom-scrollbar flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6">
-            {(activeConversation?.messages.length ?? 0) === 0 ? (
-              <div className="flex min-h-[50vh] flex-col items-center justify-center text-center">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-2xl font-black text-white shadow-primary-sm">
+        {/* Chat scroll feed */}
+        <div ref={feedRef} className="custom-scrollbar min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6">
+          <div className="mx-auto max-w-3xl">
+            {(!activeConversation || activeConversation.messages.length === 0) ? (
+              <div className="flex flex-col items-center justify-center py-10 text-center sm:py-16">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-muted border border-border text-lg font-extrabold text-foreground">
                   G
                 </div>
-                <h2 className="mt-4 text-xl font-black tracking-tight text-foreground sm:text-2xl">How can Gabay help you study today?</h2>
-                <p className="mt-1.5 max-w-md text-xs leading-relaxed text-muted-foreground">
-                  I retrieve answers from your enrolled course materials — modules, syllabus, announcements, and rubrics.
+                <h2 className="mt-4 text-[18px] font-extrabold tracking-tight text-foreground">
+                  How can I help?
+                </h2>
+                <p className="mt-1.5 max-w-md text-[12.5px] text-muted-foreground leading-relaxed">
+                  Ask about enrollment, courses, scholarships, and school records.
                 </p>
-                <div className="mt-6 grid w-full grid-cols-1 gap-2.5 sm:grid-cols-2">
-                  {SUGGESTIONS.map(s => (
+
+                <div className="mt-8 grid w-full max-w-xl grid-cols-1 gap-2 sm:grid-cols-2">
+                  {SUGGESTIONS.map((item, idx) => (
                     <button
-                      key={s.title}
+                      key={idx}
                       type="button"
-                      onClick={() => handleSend(s.prompt)}
-                      className="card-hover group rounded-2xl border border-border bg-card p-3.5 text-left shadow-subtle cursor-pointer"
+                      onClick={() => handleSend(item.prompt)}
+                      disabled={isExecuting}
+                      className="flex items-start gap-3 rounded-2xl border border-border bg-card p-3 text-left transition-all hover:border-muted-foreground/30 hover:shadow-soft active:scale-[0.99] disabled:opacity-50 cursor-pointer"
                     >
-                      <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-white">
-                        {s.icon}
-                      </span>
-                      <span className="mt-2.5 block text-xs font-bold text-foreground">{s.title}</span>
-                      <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">{s.prompt}</span>
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-muted border border-border text-muted-foreground">
+                        {item.icon}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[12.5px] font-bold tracking-tight text-foreground">{item.title}</p>
+                        <p className="mt-0.5 line-clamp-2 text-[12px] text-muted-foreground">
+                          {item.prompt}
+                        </p>
+                      </div>
                     </button>
                   ))}
                 </div>
               </div>
             ) : (
-              <div className="space-y-5 pb-4">
-                {activeConversation?.messages.map(msg =>
+              <div className="space-y-6">
+                {activeConversation.messages.map((msg) =>
                   msg.role === 'user' ? (
                     <div key={msg.id} className="flex justify-end">
-                      <div className="max-w-[85%] rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-[13px] leading-relaxed text-primary-foreground shadow-primary-sm sm:max-w-[75%]">
-                        <p className="whitespace-pre-line">{msg.content}</p>
+                      <div className="max-w-[85%] rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-[13px] text-primary-foreground sm:max-w-[75%]">
+                        <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
                       </div>
                     </div>
                   ) : (
                     <div key={msg.id} className="flex items-start gap-3">
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary text-xs font-black text-white">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-muted border border-border text-muted-foreground">
                         <Sparkles className="h-4 w-4" />
                       </div>
-                      <div className="min-w-0 flex-1 rounded-2xl rounded-tl-md border border-border bg-card px-4 py-3 shadow-subtle">
-                        {msg.content ? (
-                          <p className="whitespace-pre-line text-[13px] leading-relaxed text-foreground">
-                            {msg.content}
-                            {streamingId === msg.id && <span className="ml-1 inline-block h-4 w-1.5 animate-pulse rounded bg-primary align-middle" />}
-                          </p>
+                      <div className="min-w-0 flex-1 rounded-2xl rounded-tl-md border border-border bg-card px-4 py-3">
+                        {msg.isPending ? (
+                          <ChatProgressTimeline isPending={true} prompt={msg.prompt} sessionId={activeSessionId} startTime={msg.startTime || (msg.timestamp ? new Date(msg.timestamp).getTime() : undefined) || sessionStartTimes[activeSessionId]} />
+                        ) : msg.content ? (
+                          <>
+                            {/* Rich Markdown with Tables & Embedded Charts */}
+                            <ChatMarkdown content={msg.content} attachedChart={msg.chart} />
+
+                            {/* Collapsible Timeline of completed execution */}
+                            {msg.progress && (
+                              <ChatProgressTimeline isPending={false} progress={msg.progress} prompt={msg.prompt} startTime={msg.startTime} />
+                            )}
+                          </>
                         ) : (
                           <div className="flex items-center gap-1.5 py-1" aria-label="Gabay is typing">
-                            <span className="h-2 w-2 animate-bounce rounded-full bg-primary [animation-delay:-0.3s]" />
-                            <span className="h-2 w-2 animate-bounce rounded-full bg-primary [animation-delay:-0.15s]" />
-                            <span className="h-2 w-2 animate-bounce rounded-full bg-primary" />
+                            <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:-0.3s]" />
+                            <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:-0.15s]" />
+                            <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/50" />
                           </div>
                         )}
-                        {msg.content && msg.sources && msg.sources.length > 0 && streamingId !== msg.id && (
+
+                        {msg.content && msg.sources && msg.sources.length > 0 && (
                           <div className="mt-3 border-t border-border/70 pt-2.5">
-                            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Sources</p>
+                            <p className="text-[11px] font-semibold text-muted-foreground">
+                              Sources
+                            </p>
                             <div className="mt-1.5 flex flex-wrap gap-1.5">
-                              {msg.sources.map(s => (
+                              {msg.sources.map((s) => (
                                 <span
                                   key={s.label}
                                   title={s.detail}
-                                  className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-border bg-muted/60 px-2 py-1 text-[10px] font-semibold text-foreground"
+                                  className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-border/70 bg-muted/40 px-2 py-1 text-[11px] font-semibold text-foreground"
                                 >
-                                  <FileText className="h-3 w-3 shrink-0 text-primary" />
+                                  <FileText className="h-3 w-3 shrink-0 text-muted-foreground" />
                                   <span className="truncate">{s.label}</span>
                                 </span>
                               ))}
                             </div>
                           </div>
                         )}
-                        {msg.content && streamingId !== msg.id && (
+
+                        {msg.content && (
                           <div className="mt-2 flex items-center gap-1">
                             <button
                               type="button"
@@ -449,12 +521,24 @@ export const GabayRAGPage: React.FC = () => {
                               className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
                               title="Copy response"
                             >
-                              {copiedId === msg.id ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+                              {copiedId === msg.id ? (
+                                <Check className="h-3.5 w-3.5 text-emerald-500" />
+                              ) : (
+                                <Copy className="h-3.5 w-3.5" />
+                              )}
                             </button>
-                            <button type="button" className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer" title="Good response">
+                            <button
+                              type="button"
+                              className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
+                              title="Good response"
+                            >
                               <ThumbsUp className="h-3.5 w-3.5" />
                             </button>
-                            <button type="button" className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer" title="Bad response">
+                            <button
+                              type="button"
+                              className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
+                              title="Bad response"
+                            >
                               <ThumbsDown className="h-3.5 w-3.5" />
                             </button>
                           </div>
@@ -463,15 +547,14 @@ export const GabayRAGPage: React.FC = () => {
                     </div>
                   )
                 )}
-                {isTyping && !streamingId && (
+
+                {isExecuting && !activeConversation.messages.some((m) => m.isPending) && (
                   <div className="flex items-start gap-3">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary text-xs font-black text-white">
-                      <Sparkles className="h-4 w-4" />
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-muted border border-border text-muted-foreground">
+                      <Sparkles className="h-4 w-4 animate-spin" />
                     </div>
-                    <div className="flex items-center gap-1.5 rounded-2xl rounded-tl-md border border-border bg-card px-4 py-3.5 shadow-subtle">
-                      <span className="h-2 w-2 animate-bounce rounded-full bg-primary [animation-delay:-0.3s]" />
-                      <span className="h-2 w-2 animate-bounce rounded-full bg-primary [animation-delay:-0.15s]" />
-                      <span className="h-2 w-2 animate-bounce rounded-full bg-primary" />
+                    <div className="min-w-0 flex-1 rounded-2xl rounded-tl-md border border-border bg-card px-4 py-3">
+                      <ChatProgressTimeline isPending={true} prompt={activeConversation.messages.filter((m) => m.role === 'user').slice(-1)[0]?.content} sessionId={activeSessionId} startTime={sessionStartTimes[activeSessionId]} />
                     </div>
                   </div>
                 )}
@@ -481,42 +564,55 @@ export const GabayRAGPage: React.FC = () => {
         </div>
 
         {/* Composer */}
-        <div className="shrink-0 border-t border-border bg-card/80 backdrop-blur-md">
+        <div className="shrink-0 border-t border-border/70 bg-card">
           <div className="mx-auto w-full max-w-3xl px-4 py-3 sm:px-6">
-            <div className="flex items-end gap-2 rounded-2xl border border-border bg-background p-2 shadow-subtle transition-all focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20">
-              <button type="button" title="Attach a file (coming soon)" className="rounded-xl p-2.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer">
-                <Paperclip className="h-4 w-4" />
-              </button>
+            <div className="flex items-end gap-2 rounded-2xl border border-border bg-background p-2 transition-all focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/20">
+
+
               <textarea
                 ref={textareaRef}
                 value={input}
-                onChange={e => { setInput(e.target.value); autoGrow(); }}
-                onKeyDown={e => {
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  autoGrow();
+                }}
+                onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
                     handleSend();
                   }
                 }}
+                placeholder={
+                  isExecuting
+                    ? 'GABAY is processing your query...'
+                    : 'Ask GABAY about students, subjects, scholarships, operations...'
+                }
                 rows={1}
-                placeholder="Ask about your courses, modules, deadlines..."
-                className="max-h-40 min-h-[44px] flex-1 resize-none bg-transparent px-1 py-2.5 text-[13px] text-foreground outline-none placeholder:text-muted-foreground"
+                disabled={isExecuting}
+                className="custom-scrollbar max-h-40 min-h-[2.5rem] flex-1 resize-none bg-transparent px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-50"
               />
-              <button type="button" title="Voice input (coming soon)" className="rounded-xl p-2.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer">
-                <Mic className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSend()}
-                disabled={!input.trim() || isTyping}
-                title="Send message"
-                className="rounded-xl bg-primary p-2.5 text-primary-foreground shadow-primary-sm transition-all hover:bg-primary/90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
-              >
-                <Send className="h-4 w-4" />
-              </button>
+
+              <div className="flex items-center gap-1.5 pb-0.5">
+                <button
+                  type="button"
+                  onClick={() => handleSend()}
+                  disabled={!input.trim() || isExecuting}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-primary-sm transition-all hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                  aria-label="Send message"
+                >
+                  {isExecuting ? (
+                    <Sparkles className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
             </div>
-            <p className="mt-2 text-center text-[10px] text-muted-foreground">
-              Gabay RAG can make mistakes. Verify important deadlines against official announcements.
-            </p>
+
+            <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
+              <span>RAG answers from school records</span>
+              <span>Enter to send</span>
+            </div>
           </div>
         </div>
       </div>

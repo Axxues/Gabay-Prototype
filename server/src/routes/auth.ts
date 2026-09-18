@@ -12,6 +12,7 @@ const PUBLIC_USER = {
   email: true,
   role: true,
   avatar: true,
+  banner: true,
   department: true,
   title: true,
 } as const;

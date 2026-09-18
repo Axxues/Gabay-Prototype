@@ -1,7 +1,18 @@
 import { useMemo } from 'react';
 import { useLMS } from '../context/LMSContext';
-import type { CourseFile } from '../types/lms';
-import { resolveFiledSourceLabel } from '../utils/autoFolder';
+import type { CourseFile, CourseFolder, TermId } from '../types/lms';
+import {
+  areaFolderAutoKey,
+  findFolderByAutoKey,
+  moduleFolderAutoKey,
+  resolveFiledSourceLabel,
+} from '../utils/autoFolder';
+import { normalizeTermId } from '../utils/gradingTerms';
+import { TERM_LABELS } from '../components/common/TermSelect';
+
+export const ACTIVITIES_ROOT_FOLDER_ID = 'vf-activities';
+export const activitiesTermFolderId = (term: TermId): string => `vf-activities-${term}`;
+const TERM_ORDER: TermId[] = ['prelim', 'midterm', 'finals'];
 
 export type AggregatedCourseFile = CourseFile & {
   source: string;
@@ -49,8 +60,40 @@ export const useCourseFiles = (courseId?: string) => {
   const isPersonal = !courseId || courseId === 'personal';
   const effectiveScopeId = isPersonal ? `user-${activeUser.id}` : courseId;
 
-  const allFiles = useMemo<AggregatedCourseFile[]>(() => {
-    if (!db) return [];
+  const { allFiles, virtualFolders } = useMemo<{
+    allFiles: AggregatedCourseFile[];
+    virtualFolders: CourseFolder[];
+  }>(() => {
+    if (!db) return { allFiles: [], virtualFolders: [] };
+
+    const folders = db.courseFolders || [];
+    const scopeModules = isPersonal
+      ? db.modules || []
+      : (db.modules || []).filter((m: any) => m.courseId === courseId);
+
+    // Module item linkage (same conventions as AddModuleItemPage):
+    // classic activity -> item.activityId, question set -> the synthetic
+    // `asg-activity-<id>`, quiz -> item.quizId.
+    const findLinkedModuleId = (pred: (item: any) => boolean): string | null => {
+      for (const mod of scopeModules) {
+        for (const item of (mod as any).items || []) {
+          if (pred(item)) return (mod as any).id;
+        }
+      }
+      return null;
+    };
+
+    // Module-linked assessment entries live inside their source module's
+    // folder (module:<id>), falling back to the Modules area folder when
+    // the child folder isn't cached yet.
+    const folderIdForModule = (moduleId: string | null): string | null => {
+      if (!moduleId) return null;
+      const scopeId = effectiveScopeId as string;
+      const child = findFolderByAutoKey(folders, scopeId, moduleFolderAutoKey(moduleId));
+      if (child) return (child as any).id;
+      const area = findFolderByAutoKey(folders, scopeId, areaFolderAutoKey('modules'));
+      return area ? (area as any).id : null;
+    };
 
     // 1. Direct course files
     const directFiles: AggregatedCourseFile[] = (db.courseFiles || [])
@@ -133,13 +176,28 @@ export const useCourseFiles = (courseId?: string) => {
     const relevantClassicActivities = (
       isPersonal ? db.activities || [] : (db.activities || []).filter(a => a.courseId === courseId)
     ).filter(a => a.format === 'classic');
+    // Page-created (unlinked) activities file under Activities/{Term}.
+    // Module-linked ones keep their module-folder placement above.
+    const unlinkedTerms = new Set<TermId>();
+    const activityFolderId = (term: TermId | null | undefined, moduleId: string | null): string => {
+      if (moduleId) return folderIdForModule(moduleId) ?? activitiesTermFolderId(term ?? 'midterm');
+      const resolved = term ?? 'midterm';
+      unlinkedTerms.add(resolved);
+      return activitiesTermFolderId(resolved);
+    };
+
     relevantClassicActivities.forEach(act => {
+      const actTerm: TermId = normalizeTermId(act.term) ?? 'midterm';
+      const actFolderId = activityFolderId(
+        actTerm,
+        findLinkedModuleId(item => item.activityId === act.id)
+      );
       if (act.fileName || act.fileUrl) {
         const actUrl = act.fileUrl || `/public/uploads/${act.fileName}`;
         activityFiles.push({
           id: `act-file-${act.id}`,
           courseId: act.courseId,
-          folderId: null,
+          folderId: actFolderId,
           name: act.fileName || `${act.title}_Handout.pdf`,
           size: 1024 * 1024,
           formattedSize: act.fileSize || '1.5 MB',
@@ -150,6 +208,29 @@ export const useCourseFiles = (courseId?: string) => {
           uploadedByName: 'Course Faculty',
           url: actUrl,
           fileUrl: actUrl,
+          content: act.instructions,
+          source: 'activities',
+          sourceLabel: `Activity: ${act.title}`
+        });
+      }
+
+      // Virtual entry so every classic activity counts in Files even with
+      // no starter file attached (e.g. created via Add module item).
+      if (!act.fileName && !act.fileUrl) {
+        activityFiles.push({
+          id: `asg-virtual-${act.id}`,
+          courseId: act.courseId,
+          folderId: actFolderId,
+          name: (act.title || 'Untitled activity').trim() || 'Untitled activity',
+          size: 0,
+          formattedSize: 'Assessment',
+          type: 'document',
+          visibility: act.published ? 'published' : 'unpublished',
+          updatedAt: act.dueDate || new Date().toISOString(),
+          uploadedBy: 'faculty',
+          uploadedByName: 'Course Faculty',
+          url: undefined,
+          fileUrl: undefined,
           content: act.instructions,
           source: 'activities',
           sourceLabel: `Activity: ${act.title}`
@@ -182,75 +263,85 @@ export const useCourseFiles = (courseId?: string) => {
       });
     });
 
-    // 5. Quizzes attached starter files / images / question assets
-    const quizFiles: AggregatedCourseFile[] = [];
-    const relevantQuizzes = isPersonal
-      ? db.quizzes || []
-      : (db.quizzes || []).filter(q => q.courseId === courseId);
-    relevantQuizzes.forEach(quiz => {
-      if ((quiz as any).fileName || (quiz as any).fileUrl) {
-        const qUrl = (quiz as any).fileUrl || `/public/uploads/${(quiz as any).fileName}`;
-        quizFiles.push({
-          id: `quiz-file-${quiz.id}`,
-          courseId: quiz.courseId,
-          folderId: null,
-          name: (quiz as any).fileName || `${quiz.title}_Quiz_Reference.pdf`,
-          size: 1024 * 1024,
-          formattedSize: (quiz as any).fileSize || '950 KB',
-          type: detectFileType((quiz as any).fileName || qUrl),
-          visibility: quiz.published ? 'published' : 'unpublished',
-          updatedAt: new Date().toISOString(),
-          uploadedBy: 'faculty',
-          uploadedByName: 'Course Faculty',
-          url: qUrl,
-          fileUrl: qUrl,
-          content: quiz.instructions,
-          source: 'quizzes',
-          sourceLabel: `Quiz: ${quiz.title}`
-        });
-      }
-
-      (quiz.questions || []).forEach((q: any, qIdx: number) => {
-        if (q.imageUrl || q.imageName || q.fileUrl || q.fileName) {
-          const qName = q.fileName || q.imageName || `${quiz.title}_Q${qIdx + 1}_Diagram.png`;
-          const qUrl = q.fileUrl || q.imageUrl || `/public/uploads/${qName}`;
-          quizFiles.push({
-            id: `quiz-q-file-${quiz.id}-${q.id || qIdx}`,
-            courseId: quiz.courseId,
-            folderId: null,
-            name: qName,
-            size: 512 * 1024,
-            formattedSize: '512 KB',
-            type: detectFileType(qName || qUrl),
-            visibility: quiz.published ? 'published' : 'unpublished',
-            updatedAt: new Date().toISOString(),
-            uploadedBy: 'faculty',
-            uploadedByName: 'Course Faculty',
-            url: qUrl,
-            fileUrl: qUrl,
-            content: q.text,
-            source: 'quizzes',
-            sourceLabel: `Quiz Question: ${quiz.title} (Q${qIdx + 1})`
-          });
-        }
+    // 4b. Question-set activities (non-classic db.activities rows) aggregate
+    // as virtual entries so the Files Activities tab counts quiz-style sets
+    // made via Add module item.
+    const relevantQuestionSets = (
+      isPersonal ? db.activities || [] : (db.activities || []).filter((a: any) => a.courseId === courseId)
+    ).filter((a: any) => a.format !== 'classic');
+    relevantQuestionSets.forEach((act: any) => {
+      const actTerm: TermId = normalizeTermId(act.term) ?? 'midterm';
+      activityFiles.push({
+        id: `act-virtual-${act.id}`,
+        courseId: act.courseId,
+        folderId: activityFolderId(
+          actTerm,
+          findLinkedModuleId(item => item.activityId === `asg-activity-${act.id}`)
+        ),
+        name: (act.title || 'Untitled question set').trim() || 'Untitled question set',
+        size: 0,
+        formattedSize: 'Assessment',
+        type: 'document',
+        visibility: act.published ? 'published' : 'unpublished',
+        updatedAt: act.dueDate || new Date().toISOString(),
+        uploadedBy: 'faculty',
+        uploadedByName: 'Course Faculty',
+        url: undefined,
+        fileUrl: undefined,
+        content: act.instructions,
+        source: 'activities',
+        sourceLabel: `Activity: ${act.title} (Question set)`
       });
     });
+
+    // Quizzes save no files on the system, so nothing quiz-sourced is
+    // aggregated here (no Quizzes tab on the Files page).
+
+    // Synthetic Activities area: an `Activities` root plus one child per
+    // grading term that holds page-created (module-unlinked) activities —
+    // i.e. Activities/{Prelim,Midterm,Finals}. Only synthesized for terms
+    // that actually hold entries, so no empty folders are promised.
+    const nowIso = new Date().toISOString();
+    const scopeId = (effectiveScopeId as string) ?? (courseId as string);
+    const virtualFolders: CourseFolder[] =
+      unlinkedTerms.size === 0
+        ? []
+        : [
+            {
+              id: ACTIVITIES_ROOT_FOLDER_ID,
+              courseId: scopeId,
+              parentId: null,
+              name: 'Activities',
+              updatedAt: nowIso,
+              autoKey: 'area:activities',
+            },
+            ...TERM_ORDER.filter(t => unlinkedTerms.has(t)).map(
+              (t): CourseFolder => ({
+                id: activitiesTermFolderId(t),
+                courseId: scopeId,
+                parentId: ACTIVITIES_ROOT_FOLDER_ID,
+                name: TERM_LABELS[t],
+                updatedAt: nowIso,
+                autoKey: `activities-term:${t}`,
+              })
+            ),
+          ];
 
     const combinedRawFiles = [
       ...directFiles,
       ...moduleFiles,
       ...announcementFiles,
-      ...activityFiles,
-      ...quizFiles
+      ...activityFiles
     ];
 
     const seenFileKeys = new Set<string>();
-    return combinedRawFiles.filter(item => {
+    const deduped = combinedRawFiles.filter(item => {
       const key = `${item.name}-${item.url || item.fileUrl || item.id}`;
       if (seenFileKeys.has(key)) return false;
       seenFileKeys.add(key);
       return true;
     });
+    return { allFiles: deduped, virtualFolders };
   }, [db, isPersonal, effectiveScopeId, courseId]);
 
   const sourceCounts = useMemo(
@@ -259,11 +350,10 @@ export const useCourseFiles = (courseId?: string) => {
       modules: allFiles.filter(f => f.source === 'modules').length,
       announcements: allFiles.filter(f => f.source === 'announcements').length,
       activities: allFiles.filter(f => f.source === 'activities').length,
-      quizzes: allFiles.filter(f => f.source === 'quizzes').length,
       uploads: allFiles.filter(f => f.source === 'uploads').length
     }),
     [allFiles]
   );
 
-  return { isPersonal, effectiveScopeId, allFiles, sourceCounts, detectFileType };
+  return { isPersonal, effectiveScopeId, allFiles, virtualFolders, sourceCounts, detectFileType };
 };

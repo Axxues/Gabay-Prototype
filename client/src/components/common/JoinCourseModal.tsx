@@ -5,7 +5,8 @@ import { DialogFrame } from './DialogFrame';
 import {
   AlertCircle,
   BookOpen,
-  ArrowRight
+  ArrowRight,
+  Loader2
 } from 'lucide-react';
 
 interface JoinCourseModalProps {
@@ -23,6 +24,7 @@ export const JoinCourseModal: React.FC<JoinCourseModalProps> = ({
   const { db, activeUser, joinCourseByCode, showAlert } = useLMS();
   const [code, setCode] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isJoining, setIsJoining] = useState(false);
 
   // Live match detection
   const matchedCourse = useMemo(() => {
@@ -47,6 +49,7 @@ export const JoinCourseModal: React.FC<JoinCourseModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isJoining) return;
     setErrorMessage(null);
 
     const cleanCode = code.trim().toUpperCase();
@@ -55,21 +58,26 @@ export const JoinCourseModal: React.FC<JoinCourseModalProps> = ({
       return;
     }
 
-    const res = await joinCourseByCode(cleanCode);
-    if (!res.success) {
-      setErrorMessage(res.message);
-      return;
-    }
+    setIsJoining(true);
+    try {
+      const res = await joinCourseByCode(cleanCode);
+      if (!res.success) {
+        setErrorMessage(res.message);
+        return;
+      }
 
-    onClose();
-    // A successful join only creates a PENDING request — never navigate into
-    // the course shell. The student gains access after faculty approval (and
-    // section selection); until then every course endpoint returns 403.
-    showAlert({
-      title: 'Join Request Sent',
-      message: res.message,
-      type: 'success'
-    });
+      onClose();
+      // A successful join only creates a PENDING request — never navigate into
+      // the course shell. The student gains access after faculty approval (and
+      // section selection); until then every course endpoint returns 403.
+      showAlert({
+        title: 'Join Request Sent',
+        message: res.message,
+        type: 'success'
+      });
+    } finally {
+      setIsJoining(false);
+    }
   };
 
   return (
@@ -82,8 +90,8 @@ export const JoinCourseModal: React.FC<JoinCourseModalProps> = ({
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Input */}
             <div>
-              <label className="block text-xs font-bold text-foreground mb-1.5">
-                Course Join Code
+              <label className="block text-[12px] font-semibold text-muted-foreground mb-1.5">
+                Course join code
               </label>
               <div className="relative">
                 <input
@@ -95,10 +103,10 @@ export const JoinCourseModal: React.FC<JoinCourseModalProps> = ({
                     setErrorMessage(null);
                   }}
                   placeholder="e.g. CMSC-170C or GBY-8K21"
-                  className="w-full p-3 bg-background border border-border rounded-xl text-foreground font-mono font-bold text-sm tracking-wider uppercase placeholder:normal-case placeholder:font-sans placeholder:font-normal placeholder:tracking-normal placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/30 text-center"
+                  className="w-full p-3 bg-background border border-border rounded-xl text-foreground font-mono font-bold text-sm tracking-wider uppercase placeholder:normal-case placeholder:font-sans placeholder:font-normal placeholder:tracking-normal placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-center"
                 />
               </div>
-              <p className="text-[11px] text-muted-foreground mt-1.5 font-sans">
+              <p className="text-[12px] text-muted-foreground mt-1.5 font-sans">
                 Join codes are typically 6-9 characters with a dash (e.g. <span className="font-mono font-semibold text-foreground">CMSC-170C</span>).
               </p>
             </div>
@@ -151,15 +159,16 @@ export const JoinCourseModal: React.FC<JoinCourseModalProps> = ({
               </button>
               <button
                 type="submit"
-                disabled={!code.trim() || isAlreadyEnrolled || isAlreadyPending}
+                disabled={!code.trim() || isAlreadyEnrolled || isAlreadyPending || isJoining}
                 className={`px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center space-x-1.5 ${
-                  !code.trim() || isAlreadyEnrolled || isAlreadyPending
+                  !code.trim() || isAlreadyEnrolled || isAlreadyPending || isJoining
                     ? 'bg-muted text-muted-foreground cursor-not-allowed'
                     : 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-primary-sm cursor-pointer'
-                }`}
+                } ${isJoining ? 'opacity-70 cursor-wait' : ''}`}
               >
-                <span>Join Course</span>
-                <ArrowRight className="w-3.5 h-3.5" />
+                {isJoining && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <span>{isJoining ? 'Sending...' : 'Join Course'}</span>
+                {!isJoining && <ArrowRight className="w-3.5 h-3.5" />}
               </button>
             </div>
           </form>

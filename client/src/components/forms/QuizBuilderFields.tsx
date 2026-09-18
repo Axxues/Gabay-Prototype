@@ -72,7 +72,7 @@ export function emptyQuizBuilderValue(): QuizBuilderValue {
         type: 'multiple_choice',
         options: ['', '', '', ''],
         correctAnswer: 'A',
-        points: 5,
+        points: 1,
         required: true
       }
     ]
@@ -144,7 +144,7 @@ export function compileQuizQuestions(v: QuizBuilderValue): QuizQuestion[] {
         type: 'true_false',
         options: ['True', 'False'],
         correctAnswer: item.correctAnswer === 'False' ? 'False' : 'True',
-        points: Number(item.points) || 5
+        points: Number(item.points) || 1
       };
     }
 
@@ -154,7 +154,7 @@ export function compileQuizQuestions(v: QuizBuilderValue): QuizQuestion[] {
         text: item.text.trim(),
         type: 'identification',
         correctAnswer: item.correctAnswer.trim(),
-        points: Number(item.points) || 5,
+        points: Number(item.points) || 1,
         description: item.description?.trim()
       };
     }
@@ -164,7 +164,7 @@ export function compileQuizQuestions(v: QuizBuilderValue): QuizQuestion[] {
         id: item.id || `q-${Date.now()}-${idx + 1}`,
         text: item.text.trim(),
         type: 'essay',
-        points: Number(item.points) || 10,
+        points: Number(item.points) || 1,
         rubricNotes: item.rubricNotes?.trim()
       };
     }
@@ -201,7 +201,7 @@ export function compileQuizQuestions(v: QuizBuilderValue): QuizQuestion[] {
       type: 'multiple_choice',
       options: validOptions,
       correctAnswer: correctAns,
-      points: Number(item.points) || 5
+      points: Number(item.points) || 1
     };
   });
 }
@@ -326,7 +326,7 @@ export const QuizBuilderFields: React.FC<{ value: QuizBuilderValue; onChange: (v
         type: 'multiple_choice',
         options: ['', '', '', ''],
         correctAnswer: 'A',
-        points: 5,
+        points: 1,
         required: true
       };
     } else if (type === 'identification') {
@@ -336,7 +336,7 @@ export const QuizBuilderFields: React.FC<{ value: QuizBuilderValue; onChange: (v
         type: 'identification',
         options: [],
         correctAnswer: '',
-        points: 5,
+        points: 1,
         description: 'Short answer prompt. Responses are matched against the answer key.',
         required: true
       };
@@ -347,7 +347,7 @@ export const QuizBuilderFields: React.FC<{ value: QuizBuilderValue; onChange: (v
         type: 'true_false',
         options: ['True', 'False'],
         correctAnswer: 'True',
-        points: 5,
+        points: 1,
         required: true
       };
     } else if (type === 'essay') {
@@ -357,7 +357,7 @@ export const QuizBuilderFields: React.FC<{ value: QuizBuilderValue; onChange: (v
         type: 'essay',
         options: [],
         correctAnswer: '',
-        points: 10,
+        points: 1,
         rubricNotes: 'Graded based on clarity, depth, and relevance to the topic.',
         required: true
       };
@@ -435,7 +435,7 @@ export const QuizBuilderFields: React.FC<{ value: QuizBuilderValue; onChange: (v
         if (newType === 'description' || newType === 'page_break') {
           points = 0;
         } else if (points === 0) {
-          points = newType === 'essay' ? 10 : 5;
+          points = 1;
         }
 
         let options = item.options;

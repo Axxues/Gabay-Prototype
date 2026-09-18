@@ -126,6 +126,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
   // syllabus outline). Edited only inside the gradingSystem section.
   const [gradingTermsOverride, setGradingTermsOverride] = useState<TermId[] | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isApplying, setIsApplying] = useState(false);
   const upload = useSimulatedUpload();
 
   const cloneSyllabus = (s: OfficialSyllabusData): OfficialSyllabusData =>
@@ -367,7 +368,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
   }, [data?.facultyMembers, currentCourse, activeUser]);
 
   const handleApplySyllabus = async () => {
-    if (!scanResult || !currentCourse || upload.isUploading) return;
+    if (!scanResult || !currentCourse || upload.isUploading || isApplying) return;
 
     // Find the chosen faculty member
     const chosenFaculty = facultyUsers.find(u => u.id === selectedFacultyId)
@@ -408,39 +409,44 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
       }
     };
 
+    setIsApplying(true);
     try {
-      await updateCourseSyllabus(courseId, boundSyllabus);
-    } catch {
-      // Context already surfaced the alert; do not file the document.
-      return;
-    }
-    // Syllabus apply sends the file: server files it (area: syllabus) and
-    // the scanned bytes ride the multipart upload when still retained.
-    upload.start(scannedFile?.name ?? scanResult.fileName);
-    try {
-      await uploadCourseFile({
-        courseId,
-        area: 'syllabus',
-        name: scanResult.fileName,
-        rawFile: scannedFile ?? undefined,
-        formattedSize: scanResult.fileSize,
-        type: scanResult.fileType === 'pdf' ? 'pdf' : 'document',
-        visibility: 'published',
+      try {
+        await updateCourseSyllabus(courseId, boundSyllabus);
+      } catch {
+        // Context already surfaced the alert; do not file the document.
+        return;
+      }
+      // Syllabus apply sends the file: server files it (area: syllabus) and
+      // the scanned bytes ride the multipart upload when still retained.
+      upload.start(scannedFile?.name ?? scanResult.fileName);
+      try {
+        await uploadCourseFile({
+          courseId,
+          area: 'syllabus',
+          name: scanResult.fileName,
+          rawFile: scannedFile ?? undefined,
+          formattedSize: scanResult.fileSize,
+          type: scanResult.fileType === 'pdf' ? 'pdf' : 'document',
+          visibility: 'published',
+        });
+        upload.complete();
+      } catch {
+        // Context already surfaced the alert; the syllabus itself is saved.
+        upload.fail();
+        return;
+      }
+      showAlert({
+        title: 'Syllabus Updated Successfully',
+        message: `Course syllabus for ${currentCourse.code} synchronized with "${scanResult.fileName}". Assigned Faculty: ${chosenFaculty.name}.`,
+        type: 'success'
       });
-      upload.complete();
-    } catch {
-      // Context already surfaced the alert; the syllabus itself is saved.
-      upload.fail();
-      return;
+      setIsUploadModalOpen(false);
+      setScanResult(null);
+      setScannedFile(null);
+    } finally {
+      setIsApplying(false);
     }
-    showAlert({
-      title: 'Syllabus Updated Successfully',
-      message: `Course syllabus for ${currentCourse.code} synchronized with "${scanResult.fileName}". Assigned Faculty: ${chosenFaculty.name}.`,
-      type: 'success'
-    });
-    setIsUploadModalOpen(false);
-    setScanResult(null);
-    setScannedFile(null);
   };
 
   const handleResetToDefault = async () => {
@@ -885,11 +891,13 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               <button
                 type="button"
                 onClick={handleApplySyllabus}
-                disabled={upload.isUploading}
+                disabled={upload.isUploading || isApplying}
                 className="w-full py-2.5 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all shadow-primary-sm cursor-pointer flex items-center justify-center space-x-2 disabled:opacity-60 disabled:cursor-wait"
               >
-                <Check className="w-4 h-4" />
-                <span>Apply syllabus</span>
+                {isApplying
+                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                  : <Check className="w-4 h-4" />}
+                <span>{isApplying ? 'Applying…' : 'Apply syllabus'}</span>
               </button>
               <button
                 type="button"
@@ -1093,8 +1101,10 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
           SECTION 1: Faculty & Section Schedules
           ========================================================= */}
       <div className="bg-card border border-border rounded-2xl overflow-hidden transition-all">
-        <button
-          type="button"
+        <div
+          role="button"
+          tabIndex={0}
+          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } }}
           onClick={() => toggleSection('facultySchedule')}
           className="w-full p-4 sm:p-5 flex items-center justify-between text-left cursor-pointer hover:bg-muted/40 transition-colors group"
         >
@@ -1130,7 +1140,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               <ChevronDown className="w-4 h-4" />
             </div>
           </div>
-        </button>
+        </div>
 
         <div
           className={`grid transition-all duration-300 ease-in-out overflow-hidden ${
@@ -1306,8 +1316,10 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
           SECTION 2: Institutional VGMO, Core Values & Attributes (Part I)
           ========================================================= */}
       <div className="bg-card border border-border rounded-2xl overflow-hidden transition-all">
-        <button
-          type="button"
+        <div
+          role="button"
+          tabIndex={0}
+          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } }}
           onClick={() => toggleSection('vgmo')}
           className="w-full p-4 sm:p-5 flex items-center justify-between text-left cursor-pointer hover:bg-muted/40 transition-colors group"
         >
@@ -1343,7 +1355,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               <ChevronDown className="w-4 h-4" />
             </div>
           </div>
-        </button>
+        </div>
 
         <div
           className={`grid transition-all duration-300 ease-in-out overflow-hidden ${
@@ -1587,8 +1599,10 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
           SECTION 3: BSCS Program Outcomes (PO 1 to PO 11)
           ========================================================= */}
       <div className="bg-card border border-border rounded-2xl overflow-hidden transition-all">
-        <button
-          type="button"
+        <div
+          role="button"
+          tabIndex={0}
+          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } }}
           onClick={() => toggleSection('programOutcomes')}
           className="w-full p-4 sm:p-5 flex items-center justify-between text-left cursor-pointer hover:bg-muted/40 transition-colors group"
         >
@@ -1620,7 +1634,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               <ChevronDown className="w-4 h-4" />
             </div>
           </div>
-        </button>
+        </div>
 
         <div
           className={`grid transition-all duration-300 ease-in-out overflow-hidden ${
@@ -1700,8 +1714,10 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
           SECTION 4: Course Outcomes (CO1 to CO9)
           ========================================================= */}
       <div className="bg-card border border-border rounded-2xl overflow-hidden transition-all">
-        <button
-          type="button"
+        <div
+          role="button"
+          tabIndex={0}
+          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } }}
           onClick={() => toggleSection('courseOutcomes')}
           className="w-full p-4 sm:p-5 flex items-center justify-between text-left cursor-pointer hover:bg-muted/40 transition-colors group"
         >
@@ -1733,7 +1749,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               <ChevronDown className="w-4 h-4" />
             </div>
           </div>
-        </button>
+        </div>
 
         <div
           className={`grid transition-all duration-300 ease-in-out overflow-hidden ${
@@ -1810,8 +1826,10 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
           SECTION 5: Requirements & Official Grading System (60/40)
           ========================================================= */}
       <div className="bg-card border border-border rounded-2xl overflow-hidden transition-all">
-        <button
-          type="button"
+        <div
+          role="button"
+          tabIndex={0}
+          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } }}
           onClick={() => toggleSection('gradingSystem')}
           className="w-full p-4 sm:p-5 flex items-center justify-between text-left cursor-pointer hover:bg-muted/40 transition-colors group"
         >
@@ -1843,7 +1861,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               <ChevronDown className="w-4 h-4" />
             </div>
           </div>
-        </button>
+        </div>
 
         <div
           className={`grid transition-all duration-300 ease-in-out overflow-hidden ${
@@ -2088,8 +2106,10 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
           SECTION 6: Group Project Presentation & Documentation Rubrics
           ========================================================= */}
       <div className="bg-card border border-border rounded-2xl overflow-hidden transition-all">
-        <button
-          type="button"
+        <div
+          role="button"
+          tabIndex={0}
+          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } }}
           onClick={() => toggleSection('projectRubrics')}
           className="w-full p-4 sm:p-5 flex items-center justify-between text-left cursor-pointer hover:bg-muted/40 transition-colors group"
         >
@@ -2121,7 +2141,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               <ChevronDown className="w-4 h-4" />
             </div>
           </div>
-        </button>
+        </div>
 
         <div
           className={`grid transition-all duration-300 ease-in-out overflow-hidden ${
@@ -2234,8 +2254,10 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
           SECTION 7: Classroom Policies & Standards of Conduct
           ========================================================= */}
       <div className="bg-card border border-border rounded-2xl overflow-hidden transition-all">
-        <button
-          type="button"
+        <div
+          role="button"
+          tabIndex={0}
+          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } }}
           onClick={() => toggleSection('classroomPolicies')}
           className="w-full p-4 sm:p-5 flex items-center justify-between text-left cursor-pointer hover:bg-muted/40 transition-colors group"
         >
@@ -2267,7 +2289,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               <ChevronDown className="w-4 h-4" />
             </div>
           </div>
-        </button>
+        </div>
 
         <div
           className={`grid transition-all duration-300 ease-in-out overflow-hidden ${
@@ -2338,8 +2360,10 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
           SECTION 8: Course Outline & Timeline (Part II)
           ========================================================= */}
       <div className="bg-card border border-border rounded-2xl overflow-hidden transition-all">
-        <button
-          type="button"
+        <div
+          role="button"
+          tabIndex={0}
+          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } }}
           onClick={() => toggleSection('courseOutline')}
           className="w-full p-4 sm:p-5 flex items-center justify-between text-left cursor-pointer hover:bg-muted/40 transition-colors group"
         >
@@ -2371,7 +2395,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               <ChevronDown className="w-4 h-4" />
             </div>
           </div>
-        </button>
+        </div>
 
         <div
           className={`grid transition-all duration-300 ease-in-out overflow-hidden ${
@@ -2478,8 +2502,10 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
           SECTION 9: Detailed 18-Week Learning Plan (Part III)
           ========================================================= */}
       <div className="bg-card border border-border rounded-2xl overflow-hidden transition-all">
-        <button
-          type="button"
+        <div
+          role="button"
+          tabIndex={0}
+          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } }}
           onClick={() => toggleSection('learningPlan')}
           className="w-full p-4 sm:p-5 flex items-center justify-between text-left cursor-pointer hover:bg-muted/40 transition-colors group"
         >
@@ -2511,7 +2537,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               <ChevronDown className="w-4 h-4" />
             </div>
           </div>
-        </button>
+        </div>
 
         <div
           className={`grid transition-all duration-300 ease-in-out overflow-hidden ${
@@ -2812,8 +2838,10 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
           SECTION 10: Curriculum Course Map (Part IV)
           ========================================================= */}
       <div className="bg-card border border-border rounded-2xl overflow-hidden transition-all">
-        <button
-          type="button"
+        <div
+          role="button"
+          tabIndex={0}
+          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } }}
           onClick={() => toggleSection('curriculumMap')}
           className="w-full p-4 sm:p-5 flex items-center justify-between text-left cursor-pointer hover:bg-muted/40 transition-colors group"
         >
@@ -2845,7 +2873,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               <ChevronDown className="w-4 h-4" />
             </div>
           </div>
-        </button>
+        </div>
 
         <div
           className={`grid transition-all duration-300 ease-in-out overflow-hidden ${
@@ -2980,8 +3008,10 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
           SECTION 11: Academic References & Official Signatories (Parts V & VI)
           ========================================================= */}
       <div className="bg-card border border-border rounded-2xl overflow-hidden transition-all">
-        <button
-          type="button"
+        <div
+          role="button"
+          tabIndex={0}
+          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } }}
           onClick={() => toggleSection('referencesSignatures')}
           className="w-full p-4 sm:p-5 flex items-center justify-between text-left cursor-pointer hover:bg-muted/40 transition-colors group"
         >
@@ -3013,7 +3043,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               <ChevronDown className="w-4 h-4" />
             </div>
           </div>
-        </button>
+        </div>
 
         <div
           className={`grid transition-all duration-300 ease-in-out overflow-hidden ${

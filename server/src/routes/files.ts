@@ -40,7 +40,10 @@ async function loadScopeOr404(courseId: string, auth: AuthPayload) {
     }
     return null;
   }
-  const course = await prisma.course.findUnique({ where: { id: courseId } });
+  const course = await prisma.course.findUnique({
+    where: { id: courseId },
+    select: { id: true, instructorId: true },
+  });
   if (!course) throw new ApiError(404, 'not_found', 'Course not found.');
   return course;
 }
@@ -408,7 +411,7 @@ filesRouter.post(
     });
     const storedName = dedupeFileName(
       req.file.originalname,
-      siblings.map((f) => f.name)
+      siblings.map((f: { name: string }) => f.name)
     );
     const dir = path.join(uploadsRoot(), scopeId);
     mkdirSync(dir, { recursive: true });

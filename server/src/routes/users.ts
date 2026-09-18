@@ -17,11 +17,12 @@ const PUBLIC_USER = {
   email: true,
   role: true,
   avatar: true,
+  banner: true,
   department: true,
   title: true,
 } as const;
 
-const EDITABLE_FIELDS = ['name', 'avatar', 'department', 'title', 'email', 'role', 'password'] as const;
+const EDITABLE_FIELDS = ['name', 'avatar', 'banner', 'department', 'title', 'email', 'role', 'password'] as const;
 type EditableField = (typeof EDITABLE_FIELDS)[number];
 
 usersRouter.get(
@@ -70,12 +71,13 @@ usersRouter.post(
     if (typeof password !== 'string' || password.length < 8) {
       throw new ApiError(400, 'bad_request', 'Field password must be at least 8 characters.');
     }
-    const optional: Record<'avatar' | 'department' | 'title', string> = {
+    const optional: Record<'avatar' | 'banner' | 'department' | 'title', string> = {
       avatar: '',
+      banner: '',
       department: '',
       title: '',
     };
-    for (const key of ['avatar', 'department', 'title'] as const) {
+    for (const key of ['avatar', 'banner', 'department', 'title'] as const) {
       const value = body[key];
       if (value === undefined) continue;
       if (typeof value !== 'string') {
@@ -93,6 +95,7 @@ usersRouter.post(
         passwordHash: await bcrypt.hash(password, 10),
         role,
         avatar: optional.avatar,
+        banner: optional.banner || null,
         department: optional.department,
         title: optional.title,
       },

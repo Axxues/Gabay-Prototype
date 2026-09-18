@@ -22,7 +22,7 @@ import {
   FolderOpen
 } from 'lucide-react';
 
-import { uploadFileToPublic } from '../utils/fileUploader';
+import { uploadFileToPublic, formatFileSize, FILE_UPLOAD_MAX_BYTES, toShortFileType, isFileTooLarge } from '../utils/fileUploader';
 import { normalizeTermId } from '../utils/gradingTerms';
 import { UploadProgress } from '../components/common/UploadProgress';
 import { useSimulatedUpload } from '../hooks/useSimulatedUpload';
@@ -138,7 +138,9 @@ const classicActivityToForm = (
   allowOnlineText: (a.submissionTypes || []).includes('online_text'),
   attachedFile: a.fileName
     ? { name: a.fileName, size: a.fileSize || '', url: a.fileUrl || '' }
-    : null
+    : null,
+  includeRubric: Array.isArray(a.rubric) && a.rubric.length > 0,
+  rubric: Array.isArray(a.rubric) ? a.rubric : []
 });
 
 const MC_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'];
@@ -232,6 +234,7 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
     updateActivity,
     createQuiz,
     updateQuiz,
+    uploadCourseFile,
     showAlert,
     effectiveTermsForCourse
   // updateQuiz rides along as sibling-WIP: the context does not provide it
@@ -341,15 +344,17 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
   const upload = useSimulatedUpload();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isFilePickerOpen, setIsFilePickerOpen] = useState(false);
+  // Pending flag for slow item saves — show loading + block double-submit
+  const [isSaving, setIsSaving] = useState(false);
 
   const selectedModule = courseModules.find(m => m.id === targetModuleId);
   const currentResourceType = RESOURCE_TYPES.find(r => r.type === itemType) || RESOURCE_TYPES[0];
 
   const handleProcessFile = async (file: globalThis.File) => {
-    if (file.size > 50 * 1024 * 1024) {
+    if (isFileTooLarge(file.size)) {
       showAlert({
         title: 'File Too Large',
-        message: 'Please attach a document or media file smaller than 50MB.',
+        message: `Please attach a document or media file smaller than ${FILE_UPLOAD_MAX_BYTES / 1024 / 1024}MB.`,
         type: 'warning'
       });
       return;
@@ -358,11 +363,57 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
     if (upload.isUploading) return;
     upload.start(file.name);
     try {
-      const result = await uploadFileToPublic(file);
-      setAttachedFileUrl(result.url);
-      setAttachedFileName(result.name);
-      setAttachedFileSize(result.size);
-      setAttachedFileType(result.type || 'file');
+      // Upload order matters:
+      // 1. Vite dev middleware (/api/upload) first — instant short /uploads/…
+      //    URL when running `npm run dev`, with no auth alert side effects.
+      // 2. Backend multipart upload (same pattern as Files/Syllabus) when the
+      //    Vite endpoint is absent (production) or returned a data URL.
+      // Data URLs longer than ~900 chars can never be saved: the
+      // ModuleItem.fileUrl column is NVarChar(1024), so embedding them made
+      // the items POST fail with 500.
+      const viaVite = await uploadFileToPublic(file);
+      if (!viaVite.url.startsWith('data:')) {
+        setAttachedFileUrl(viaVite.url);
+        setAttachedFileName(viaVite.name);
+        setAttachedFileSize(viaVite.size);
+        setAttachedFileType(toShortFileType(file.name));
+      } else {
+        let url = '';
+        let name = file.name;
+        try {
+          const saved = await uploadCourseFile({
+            courseId,
+            name: file.name,
+            rawFile: file,
+            area: 'modules',
+            moduleId: targetModuleId || moduleId,
+            moduleTitle: selectedModule?.title || courseModules.find(m => m.id === (targetModuleId || moduleId))?.title,
+            visibility: 'published'
+          });
+          url = saved.fileUrl || saved.url || '';
+          name = saved.name || file.name;
+        } catch {
+          url = '';
+        }
+        if (!url) {
+          // Never embed a data URL: ModuleItem.fileUrl is NVarChar(1024) and
+          // Activity.fileUrl is NVarChar(1024) — embedding always 400/500s.
+          // The file was already validated against the 25MB server cap above,
+          // so a missing URL means the upload service itself failed.
+          showAlert({
+            title: 'Upload Service Unavailable',
+            message: 'The file could not be stored on the server (upload service unreachable). Please ensure the backend is running and try again.',
+            type: 'error'
+          });
+          upload.fail();
+          return;
+        } else {
+          setAttachedFileUrl(url);
+          setAttachedFileName(name);
+          setAttachedFileSize(formatFileSize(file.size));
+          setAttachedFileType(toShortFileType(name));
+        }
+      }
 
       // Auto-populate title if empty
       if (!title.trim()) {
@@ -750,89 +801,94 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
   };
 
   const handleSave = async (addAnother: boolean = false) => {
-    if (upload.isUploading) return;
-    if (itemType === 'activity') {
-      await handleSaveActivity(addAnother);
-      return;
-    }
-    if (itemType === 'quiz') {
-      await handleSaveQuizItem(addAnother);
-      return;
-    }
-    if (!title.trim()) {
-      showAlert({
-        title: 'Missing Resource Title',
-        message: 'Please provide a title for this module item.',
-        type: 'warning'
-      });
-      return;
-    }
-
-    const savedTitle = title.trim();
-
-    if (isEditing && editingItem) {
-      try {
-        await updateModuleItem(
-          moduleId,
-          editingItem.id,
-          {
-            title: savedTitle,
-            type: itemType,
-            content: content.trim() || 'Unit resource instructions aligned with syllabus requirements.',
-            fileName: attachedFileName || undefined,
-            fileSize: attachedFileSize || undefined,
-            fileType: attachedFileType || undefined,
-            fileUrl: attachedFileUrl || undefined
-          },
-          targetModuleId
-        );
-
+    if (upload.isUploading || isSaving) return;
+    setIsSaving(true);
+    try {
+      if (itemType === 'activity') {
+        await handleSaveActivity(addAnother);
+        return;
+      }
+      if (itemType === 'quiz') {
+        await handleSaveQuizItem(addAnother);
+        return;
+      }
+      if (!title.trim()) {
         showAlert({
-          title: 'Module Item Updated',
-          message: `"${savedTitle}" has been updated successfully.`,
+          title: 'Missing Resource Title',
+          message: 'Please provide a title for this module item.',
+          type: 'warning'
+        });
+        return;
+      }
+
+      const savedTitle = title.trim();
+
+      if (isEditing && editingItem) {
+        try {
+          await updateModuleItem(
+            moduleId,
+            editingItem.id,
+            {
+              title: savedTitle,
+              type: itemType,
+              content: content.trim() || 'Unit resource instructions aligned with syllabus requirements.',
+              fileName: attachedFileName || undefined,
+              fileSize: attachedFileSize || undefined,
+              fileType: attachedFileType || undefined,
+              fileUrl: attachedFileUrl || undefined
+            },
+            targetModuleId
+          );
+
+          showAlert({
+            title: 'Module Item Updated',
+            message: `"${savedTitle}" has been updated successfully.`,
+            type: 'success'
+          });
+          onBack();
+        } catch {
+          // Context already surfaced the failure alert.
+        }
+        return;
+      }
+
+      try {
+        await addModuleItem(targetModuleId, {
+          title: savedTitle,
+          type: itemType,
+          content: content.trim() || 'Unit resource instructions aligned with syllabus requirements.',
+          published: true,
+          required: false,
+          completionCondition: 'view',
+          fileName: attachedFileName || undefined,
+          fileSize: attachedFileSize || undefined,
+          fileType: attachedFileType || undefined,
+          fileUrl: attachedFileUrl || undefined
+        });
+      } catch {
+        // Context already surfaced the failure alert.
+        return;
+      }
+
+      if (addAnother) {
+        showAlert({
+          title: 'Item Added to Module',
+          message: `"${savedTitle}" has been added. You can add another item now.`,
+          type: 'success'
+        });
+        setTitle('');
+        setContent('');
+        handleRemoveAttachment();
+      } else {
+        showAlert({
+          title: 'Item Added to Module',
+          message: `"${savedTitle}" has been added to ${selectedModule?.title || 'the module'}.`,
           type: 'success'
         });
         onBack();
-      } catch {
-        // Context already surfaced the failure alert.
       }
-      return;
-    }
-
-    try {
-      await addModuleItem(targetModuleId, {
-        title: savedTitle,
-        type: itemType,
-        content: content.trim() || 'Unit resource instructions aligned with syllabus requirements.',
-        published: true,
-        required: false,
-        completionCondition: 'view',
-        fileName: attachedFileName || undefined,
-        fileSize: attachedFileSize || undefined,
-        fileType: attachedFileType || undefined,
-        fileUrl: attachedFileUrl || undefined
-      });
-    } catch {
-      // Context already surfaced the failure alert.
-      return;
-    }
-
-    if (addAnother) {
-      showAlert({
-        title: 'Item Added to Module',
-        message: `"${savedTitle}" has been added. You can add another item now.`,
-        type: 'success'
-      });
-      setTitle('');
-      setContent('');
-      handleRemoveAttachment();
-    } else {
-      showAlert({
-        title: 'Item Added to Module',
-        message: `"${savedTitle}" has been added to ${selectedModule?.title || 'the module'}.`,
-        type: 'success'
-      });
-      onBack();
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -1306,7 +1362,7 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
                 </div>
 
                 {upload.isUploading && upload.fileName && (
-                  <UploadProgress fileName={upload.fileName} progress={upload.progress} hint="Saving file to /public/uploads/..." />
+                  <UploadProgress fileName={upload.fileName} progress={upload.progress} hint="Uploading file..." />
                 )}
 
                 {/* Browse uploaded files */}
@@ -1340,18 +1396,29 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
               onClick={() => {
                 void handleSave(true);
               }}
-              className="px-5 py-2.5 text-xs font-semibold hover:bg-muted text-muted-foreground hover:text-foreground rounded-xl transition-all cursor-pointer active:scale-[0.98] flex items-center justify-center space-x-1.5"
+              disabled={isSaving}
+              className="px-5 py-2.5 text-xs font-semibold hover:bg-muted text-muted-foreground hover:text-foreground rounded-xl transition-all cursor-pointer active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-1.5"
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Save & add another</span>
+              {isSaving ? (
+                <span className="block w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin opacity-60" />
+              ) : (
+                <Plus className="w-3.5 h-3.5" />
+              )}
+              <span>{isSaving ? 'Saving...' : 'Save & add another'}</span>
             </button>
           )}
           <button
             type="submit"
-            className="px-6 py-2.5 text-xs font-semibold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all shadow-primary-sm cursor-pointer active:scale-[0.98] flex items-center justify-center space-x-2"
+            disabled={isSaving}
+            title={isSaving ? 'Saving...' : 'Save item'}
+            className="px-6 py-2.5 text-xs font-semibold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all shadow-primary-sm cursor-pointer active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
           >
-            <Check className="w-4 h-4" />
-            <span>{isEditing ? 'Save changes' : 'Save & add to module'}</span>
+            {isSaving ? (
+              <span className="block w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+            ) : (
+              <Check className="w-4 h-4" />
+            )}
+            <span>{isSaving ? 'Saving...' : isEditing ? 'Save changes' : 'Save & add to module'}</span>
           </button>
         </div>
       </form>

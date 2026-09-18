@@ -117,17 +117,17 @@ export const TableActionToolbar: React.FC<TableActionToolbarProps> = ({ tableRef
   };
 
   return (
-    <div className="flex items-center justify-end gap-2 border-t border-slate-100 bg-slate-50/70 px-3 py-1.5 text-xs text-slate-500">
+    <div className="flex items-center justify-end gap-2 border-t border-border bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground">
       <button
         type="button"
         onClick={copyTable}
-        className="flex items-center gap-1 rounded px-2 py-1 transition-colors hover:bg-slate-200/70 hover:text-slate-700"
+        className="flex items-center gap-1.5 rounded-lg px-2 py-1 transition-all hover:bg-muted hover:text-foreground active:scale-95 cursor-pointer text-muted-foreground"
         title="Copy table to clipboard as TSV"
       >
         {copied ? (
           <>
-            <Check className="h-3.5 w-3.5 text-emerald-600" />
-            <span className="text-emerald-600 font-medium">Copied</span>
+            <Check className="h-3.5 w-3.5 text-emerald-500" />
+            <span className="text-emerald-500 font-semibold">Copied</span>
           </>
         ) : (
           <>
@@ -140,7 +140,7 @@ export const TableActionToolbar: React.FC<TableActionToolbarProps> = ({ tableRef
       <button
         type="button"
         onClick={exportCsv}
-        className="flex items-center gap-1 rounded px-2 py-1 font-medium text-emerald-700 transition-colors hover:bg-emerald-100/70"
+        className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 font-semibold text-emerald-600 dark:text-emerald-400 transition-all hover:bg-emerald-500/15 active:scale-95 cursor-pointer"
         title="Download table data as CSV spreadsheet"
       >
         <Download className="h-3.5 w-3.5" />

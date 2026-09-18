@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Bell } from 'lucide-react';
+import { Bell, Loader2 } from 'lucide-react';
 import { useLMS } from '../../context/LMSContext';
 import type { EnrollmentRequest } from '../../types/lms';
 import { canPickSection } from '../../utils/sections';
+import { useProcessing } from '../../hooks/useProcessing';
+import { UserAvatar } from './UserAvatar';
 
 interface NotificationBellProps {
   onNavigateCourse?: (courseId: string, subTab?: string) => void;
@@ -42,6 +44,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
 
   const [open, setOpen] = useState(false);
   const bellRef = useRef<HTMLDivElement>(null);
+  const { isProcessing, run } = useProcessing();
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -68,7 +71,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
     return (db.courseSections || []).find(s => s.id === sectionId)?.name ?? null;
   };
 
-  const handleApprove = async (req: EnrollmentRequest) => {
+  const handleApprove = (req: EnrollmentRequest) => {
     if (req.type === 'section_switch' && req.targetSectionId) {
       const target = (db.courseSections || []).find(s => s.id === req.targetSectionId);
       if (target && !canPickSection(target)) {
@@ -80,13 +83,27 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
         return;
       }
     }
-    const ok = await approveEnrollmentRequests([req.id]);
-    if (ok) setOpen(false);
+    void run(`approve:${req.id}`, async () => {
+      const ok = await approveEnrollmentRequests([req.id]);
+      if (ok) setOpen(false);
+    });
   };
 
-  const handleReject = async (req: EnrollmentRequest) => {
-    const ok = await rejectEnrollmentRequests([req.id]);
-    if (ok) setOpen(false);
+  const handleReject = (req: EnrollmentRequest) => {
+    void run(`reject:${req.id}`, async () => {
+      const ok = await rejectEnrollmentRequests([req.id]);
+      if (ok) setOpen(false);
+    });
+  };
+
+  const handleStudentAction = (key: string, fn: () => Promise<boolean>, after?: () => void) => {
+    void run(key, async () => {
+      const ok = await fn();
+      if (ok) {
+        setOpen(false);
+        after?.();
+      }
+    });
   };
 
   return (
@@ -99,9 +116,9 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
             : 'text-muted-foreground hover:text-foreground hover:bg-accent border-border bg-background'
           }`}
       >
-        <Bell className="h-4 w-4 text-primary" />
+        <Bell className={`h-4 w-4 ${open ? 'text-white' : 'text-primary'}`} />
         <span
-          className={`absolute -top-0.5 -right-0.5 rounded-full bg-primary text-xs text-primary-foreground h-4 w-4 flex items-center justify-center ${unreadCount > 0 ? '' : 'hidden'}`}
+          className={`absolute -top-0.5 -right-0.5 rounded-full text-xs h-4 w-4 flex items-center justify-center ${unreadCount > 0 ? '' : 'hidden'} ${open ? 'bg-white text-primary' : 'bg-primary text-primary-foreground'}`}
         >
           {unreadCount}
         </span>
@@ -139,17 +156,30 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
                           </div>
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
+                          {req.type === 'faculty_enroll' ? (
+                            <span
+                              title="Invitation sent — waiting for the student to accept."
+                              className="px-2.5 py-1 text-[11px] font-bold bg-amber-500/10 text-amber-700 dark:text-amber-400 rounded-lg border border-amber-500/20"
+                            >
+                              Awaiting student
+                            </span>
+                          ) : (
                           <button
                             onClick={() => handleApprove(req)}
-                            className="px-2.5 py-1 text-[11px] font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20 rounded-lg transition-colors cursor-pointer"
+                            disabled={isProcessing(`approve:${req.id}`) || isProcessing(`reject:${req.id}`)}
+                            className="px-2.5 py-1 text-[11px] font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20 rounded-lg transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-wait flex items-center gap-1"
                           >
-                            Approve
+                            {isProcessing(`approve:${req.id}`) && <Loader2 className="w-3 h-3 animate-spin" />}
+                            {isProcessing(`approve:${req.id}`) ? '...' : 'Approve'}
                           </button>
+                          )}
                           <button
                             onClick={() => handleReject(req)}
-                            className="px-2.5 py-1 text-[11px] font-bold bg-red-500/10 text-red-700 dark:text-red-400 hover:bg-red-500/20 rounded-lg transition-colors cursor-pointer"
+                            disabled={isProcessing(`approve:${req.id}`) || isProcessing(`reject:${req.id}`)}
+                            className="px-2.5 py-1 text-[11px] font-bold bg-red-500/10 text-red-700 dark:text-red-400 hover:bg-red-500/20 rounded-lg transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-wait flex items-center gap-1"
                           >
-                            Reject
+                            {isProcessing(`reject:${req.id}`) && <Loader2 className="w-3 h-3 animate-spin" />}
+                            {isProcessing(`reject:${req.id}`) ? '...' : 'Reject'}
                           </button>
                         </div>
                       </div>
@@ -183,13 +213,12 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
                             </div>
                           </div>
                           <button
-                            onClick={async () => {
-                              const ok = await studentDeclineInvitation(req.id);
-                              if (ok) setOpen(false);
-                            }}
-                            className="px-2.5 py-1 text-[11px] font-bold bg-red-500/10 text-red-600 hover:bg-red-500/20 rounded-lg transition-colors cursor-pointer shrink-0"
+                            onClick={() => handleStudentAction(`withdraw:${req.id}`, () => studentDeclineInvitation(req.id))}
+                            disabled={isProcessing(`withdraw:${req.id}`)}
+                            className="px-2.5 py-1 text-[11px] font-bold bg-red-500/10 text-red-600 hover:bg-red-500/20 rounded-lg transition-colors cursor-pointer shrink-0 disabled:opacity-60 disabled:cursor-wait flex items-center gap-1"
                           >
-                            Withdraw
+                            {isProcessing(`withdraw:${req.id}`) && <Loader2 className="w-3 h-3 animate-spin" />}
+                            {isProcessing(`withdraw:${req.id}`) ? '...' : 'Withdraw'}
                           </button>
                         </div>
                       </div>
@@ -209,24 +238,20 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
                           </div>
                           <div className="flex items-center gap-1.5 shrink-0">
                             <button
-                              onClick={async () => {
-                                const ok = await studentApproveInvitation(req.id);
-                                if (!ok) return;
-                                setOpen(false);
-                                onNavigateCourse?.(req.courseId, 'section-selection');
-                              }}
-                              className="px-2.5 py-1 text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors cursor-pointer"
+                              onClick={() => handleStudentAction(`accept:${req.id}`, () => studentApproveInvitation(req.id), () => onNavigateCourse?.(req.courseId, 'section-selection'))}
+                              disabled={isProcessing(`accept:${req.id}`) || isProcessing(`decline:${req.id}`)}
+                              className="px-2.5 py-1 text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-wait flex items-center gap-1"
                             >
-                              Accept
+                              {isProcessing(`accept:${req.id}`) && <Loader2 className="w-3 h-3 animate-spin" />}
+                              {isProcessing(`accept:${req.id}`) ? '...' : 'Accept'}
                             </button>
                             <button
-                              onClick={async () => {
-                                const ok = await studentDeclineInvitation(req.id);
-                                if (ok) setOpen(false);
-                              }}
-                              className="px-2.5 py-1 text-[11px] font-bold bg-red-500/10 text-red-600 hover:bg-red-500/20 rounded-lg transition-colors cursor-pointer"
+                              onClick={() => handleStudentAction(`decline:${req.id}`, () => studentDeclineInvitation(req.id))}
+                              disabled={isProcessing(`accept:${req.id}`) || isProcessing(`decline:${req.id}`)}
+                              className="px-2.5 py-1 text-[11px] font-bold bg-red-500/10 text-red-600 hover:bg-red-500/20 rounded-lg transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-wait flex items-center gap-1"
                             >
-                              Decline
+                              {isProcessing(`decline:${req.id}`) && <Loader2 className="w-3 h-3 animate-spin" />}
+                              {isProcessing(`decline:${req.id}`) ? '...' : 'Decline'}
                             </button>
                           </div>
                         </div>
@@ -245,13 +270,12 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
                           </div>
                         </div>
                         <button
-                          onClick={async () => {
-                            const ok = await studentDeclineInvitation(req.id);
-                            if (ok) setOpen(false);
-                          }}
-                          className="px-2.5 py-1 text-[11px] font-bold bg-red-500/10 text-red-600 hover:bg-red-500/20 rounded-lg transition-colors cursor-pointer shrink-0"
+                          onClick={() => handleStudentAction(`withdraw:${req.id}`, () => studentDeclineInvitation(req.id))}
+                          disabled={isProcessing(`withdraw:${req.id}`)}
+                          className="px-2.5 py-1 text-[11px] font-bold bg-red-500/10 text-red-600 hover:bg-red-500/20 rounded-lg transition-colors cursor-pointer shrink-0 disabled:opacity-60 disabled:cursor-wait flex items-center gap-1"
                         >
-                          Withdraw
+                          {isProcessing(`withdraw:${req.id}`) && <Loader2 className="w-3 h-3 animate-spin" />}
+                          {isProcessing(`withdraw:${req.id}`) ? '...' : 'Withdraw'}
                         </button>
                       </div>
                     </div>
@@ -306,9 +330,9 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
                       }}
                       className={`flex w-full items-start gap-2.5 px-3 py-2 rounded-xl text-left hover:bg-accent/60 transition-colors cursor-pointer ${n.read ? 'opacity-60' : ''}`}
                     >
-                      <img
+                      <UserAvatar
+                        name={n.actorName}
                         src={n.actorAvatar}
-                        alt={n.actorName}
                         className="w-7 h-7 rounded-full object-cover border border-border shrink-0"
                       />
                       <span className="min-w-0">

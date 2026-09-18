@@ -18,7 +18,12 @@ interface CourseRow {
 }
 
 async function loadCourseOr404(courseId: string) {
-  const course = await prisma.course.findUnique({ where: { id: courseId } });
+  // Narrow select: access checks only need id/instructorId. A full row drag
+  // would pull the multi-MB image/syllabus blobs on every course-scoped call.
+  const course = await prisma.course.findUnique({
+    where: { id: courseId },
+    select: { id: true, instructorId: true },
+  });
   if (!course) throw new ApiError(404, 'not_found', 'Course not found.');
   return course;
 }
@@ -64,6 +69,22 @@ function resolveModuleReplyRecipient(
 }
 
 const FILE_TYPES = ['pdf', 'document', 'slide', 'code', 'archive', 'image'] as const;
+
+// Raw MIME strings must never reach the NVarChar(64) fileType column:
+// office MIME types (e.g. application/vnd.openxmlformats-officedocument.
+// wordprocessingml.document, 71 chars) exceed it. Normalize to the short
+// union used by CourseFile (same rule as files.ts detectFileType).
+function normalizeFileType(raw: string | null | undefined, fileName?: string | null): string | null {
+  if (raw === null || raw === undefined) return null;
+  if ((FILE_TYPES as readonly string[]).includes(raw)) return raw;
+  const lower = `${raw} ${fileName ?? ''}`.toLowerCase();
+  if (lower.includes('pdf')) return 'pdf';
+  if (lower.includes('image/') || /\.(png|jpg|jpeg|gif|webp|svg|bmp|avif)\b/.test(lower)) return 'image';
+  if (lower.includes('zip') || lower.includes('archive') || /\.(zip|tar|gz|rar|7z)\b/.test(lower)) return 'archive';
+  if (lower.includes('presentation') || lower.includes('slide') || /\.(ppt|pptx)\b/.test(lower)) return 'slide';
+  if (lower.includes('code') || /\.(ts|tsx|js|jsx|py|json|html|css|java|c|cpp)\b/.test(lower)) return 'code';
+  return 'document';
+}
 
 // Mirrors the client's fileUploadToArea/ensureModuleFolder filing rules:
 // ensure area:modules folder, ensure module:<id> child folder, dedupe the
@@ -113,7 +134,7 @@ async function fileModuleItem(input: {
     where: { courseId: input.courseId, folderId: moduleFolder.id },
     select: { name: true },
   });
-  const name = dedupeFileName(input.name, siblings.map((f) => f.name));
+  const name = dedupeFileName(input.name, siblings.map((f: { name: string }) => f.name));
   const type = (FILE_TYPES as readonly string[]).includes(input.type ?? '')
     ? input.type!
     : 'document';
@@ -147,7 +168,7 @@ modulesRouter.get(
       where: { courseId: course.id },
       include: { items: true, comments: { include: { likedBy: true } } },
     });
-    res.json({ modules: modules.map((m) => ({ ...m, comments: m.comments.map(mapComment) })) });
+    res.json({ modules: modules.map((m: typeof modules[number]) => ({ ...m, comments: m.comments.map(mapComment) })) });
   })
 );
 
@@ -246,6 +267,39 @@ const ITEM_STRING_FIELDS = [
   'fileType',
 ] as const;
 
+// Column widths (schema.prisma): oversized values would otherwise surface as
+// an opaque 500 from the driver. Reject early with an honest 400 instead.
+const ITEM_STRING_MAX: Record<(typeof ITEM_STRING_FIELDS)[number], number | null> = {
+  title: 256,
+  type: 32,
+  completionCondition: 32,
+  content: null,
+  activityId: 64,
+  quizId: 64,
+  fileUrl: 1024,
+  fileName: 256,
+  fileSize: 32,
+  fileType: 64,
+};
+
+function assertItemStringLengths(body: Record<string, unknown>): void {
+  for (const key of ITEM_STRING_FIELDS) {
+    // fileType is normalized (raw MIME -> short union) before the write, so
+    // it is exempt from the length guard here.
+    if (key === 'fileType') continue;
+    const value = body[key];
+    if (typeof value !== 'string') continue;
+    const max = ITEM_STRING_MAX[key];
+    if (max !== null && value.length > max) {
+      throw new ApiError(
+        400,
+        'bad_request',
+        `Field '${key}' exceeds the ${max}-character limit. Upload the file to the server first instead of embedding it as a data URL.`
+      );
+    }
+  }
+}
+
 modulesRouter.post(
   '/modules/:moduleId/items',
   authenticateToken,
@@ -263,7 +317,10 @@ modulesRouter.post(
         throw new ApiError(400, 'bad_request', `Field '${key}' must be a string.`);
       }
     }
+    assertItemStringLengths(body);
     const me = await prisma.user.findUnique({ where: { id: auth.sub } });
+    const normalizedFileType =
+      typeof body.fileType === 'string' ? normalizeFileType(body.fileType, typeof body.fileName === 'string' ? body.fileName : null) : null;
     const item = await prisma.moduleItem.create({
       data: {
         id: newId('item'),
@@ -282,7 +339,7 @@ modulesRouter.post(
         fileUrl: strOrNull(body.fileUrl),
         fileName: strOrNull(body.fileName),
         fileSize: strOrNull(body.fileSize),
-        fileType: strOrNull(body.fileType),
+        fileType: normalizedFileType,
         authorId: auth.sub,
         authorName: me?.name ?? '',
       },
@@ -327,6 +384,11 @@ modulesRouter.patch(
         throw new ApiError(400, 'bad_request', `Field '${key}' must be a string.`);
       }
       data[key] = value;
+    }
+    assertItemStringLengths(body);
+    if (typeof body.fileType === 'string') {
+      const fileName = typeof body.fileName === 'string' ? body.fileName : (prev.fileName as string | null);
+      data.fileType = normalizeFileType(body.fileType, fileName) ?? '';
     }
     if (body.published !== undefined) {
       if (typeof body.published !== 'boolean') {

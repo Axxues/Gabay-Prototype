@@ -23,3 +23,12 @@ export function transitionRequestStatus(
   if (from !== 'pending') throw new Error(`Cannot ${action} a ${from} request`);
   return action === 'approve' ? 'approved' : 'rejected';
 }
+
+export function getDisplaySectionName(
+  course: { section?: string },
+  courseSections: Array<{ name?: string }> | undefined
+): string {
+  const sectionName = (courseSections?.[0]?.name || '').trim();
+  if (sectionName) return sectionName;
+  return (course.section || '').trim();
+}

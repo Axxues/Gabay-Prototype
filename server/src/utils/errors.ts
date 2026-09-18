@@ -22,6 +22,13 @@ export function errorMiddleware(err: unknown, _req: Request, res: Response, _nex
     res.status(err.status).json({ error: { code: err.code, message: err.message } });
     return;
   }
+  // Multer file-size rejections (25MB cap in files.ts) surface here, not via
+  // asyncHandler — translate to an honest 413 instead of an opaque 500.
+  const code = (err as { code?: unknown })?.code;
+  if (code === 'LIMIT_FILE_SIZE') {
+    res.status(413).json({ error: { code: 'file_too_large', message: 'File exceeds the 25MB upload limit.' } });
+    return;
+  }
   const status = (err as { status?: unknown })?.status;
   const errType = (err as { type?: unknown })?.type;
   if (status === 413 || errType === 'entity.too.large') {

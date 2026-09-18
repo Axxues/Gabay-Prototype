@@ -111,10 +111,10 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
           description={`${course?.code}: ${course?.title} • Grading Policy: ${weights.mtWeight}% Midterm + ${weights.ftWeight}% Final`}
           actions={
             <>
-              <span className="px-3 py-1 rounded-xl bg-primary/10 text-primary border border-primary/20 font-bold">
+              <span className="px-3 py-1 rounded-full bg-muted text-muted-foreground border border-border font-semibold text-[12px] tabular-nums">
                 Midterm ({weights.mtWeight}%)
               </span>
-              <span className="px-3 py-1 rounded-xl bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 font-bold">
+              <span className="px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 font-semibold text-[12px] tabular-nums">
                 Final ({weights.ftWeight}%)
               </span>
             </>

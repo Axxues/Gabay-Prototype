@@ -23,6 +23,16 @@ describe('threadReplies', () => {
     const groups = groupRepliesByRoot(rows);
     expect(groups.get('c1')?.map(r => r.id)).toEqual(['c2', 'c3']);
   });
+  it('repro: direct reply is grouped under its top-level root (reported: reply invisible)', () => {
+    // Mirrors the reporter's thread: top-level "hello" (c1) + 1 reply (c2).
+    // Callers must pass the FULL list (parents included) so roots resolve.
+    const all = [
+      { id: 'c1', authorId: 'u-faculty', createdAt: '2026-09-16T09:19:00Z' },
+      { id: 'c2', parentId: 'c1', authorId: 'u-student', createdAt: '2026-09-16T09:20:00Z' },
+    ];
+    const groups = groupRepliesByRoot(all);
+    expect(groups.get('c1')?.map(r => r.id)).toEqual(['c2']);
+  });
   it('notifies parent + root, skipping self and deduping', () => {
     expect(
       resolveSecondLayerRecipients({

@@ -37,7 +37,16 @@ function fileUploadPlugin(): Plugin {
               fileBuffer = body;
             }
 
-            const uploadsDir = path.resolve(process.cwd(), 'public/uploads');
+            // Write into server/uploads: that is the directory the backend
+            // serves at /uploads (see server/src/index.ts), and Vite proxies
+            // /uploads to the backend — so files written to client/public
+            // would 404. Supports vite being run from client/ or repo root.
+            const candidates = [
+              path.resolve(process.cwd(), '../server/uploads'),
+              path.resolve(process.cwd(), 'server/uploads'),
+            ];
+            const uploadsDir =
+              candidates.find(dir => fs.existsSync(dir)) ?? candidates[0];
             if (!fs.existsSync(uploadsDir)) {
               fs.mkdirSync(uploadsDir, { recursive: true });
             }

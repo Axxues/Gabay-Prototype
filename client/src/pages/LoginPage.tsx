@@ -67,7 +67,7 @@ export const LoginPage: React.FC = () => {
       <div className="absolute top-5 right-5 z-20">
         <button
           onClick={toggleTheme}
-          className="h-9 w-9 flex items-center justify-center rounded-xl border border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground transition-all shadow-subtle cursor-pointer"
+          className="h-9 w-9 flex items-center justify-center rounded-xl border border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground transition-all cursor-pointer"
           title="Toggle theme"
         >
           {theme === 'dark' ? (
@@ -79,12 +79,14 @@ export const LoginPage: React.FC = () => {
       </div>
 
       {/* Cellwego Glass Login Card */}
-      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8 shadow-elevated space-y-6 z-10 animate-scale-in">
+      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8 space-y-6 z-10 animate-scale-in">
         {/* Simple Brand Header */}
         <div className="text-center space-y-2">
-          <div className="w-12 h-12 mx-auto rounded-xl bg-primary text-primary-foreground flex items-center justify-center font-extrabold text-xl shadow-primary-sm">
-            G
-          </div>
+          <img
+            src="/gabay-logo.png"
+            alt="GABAY logo"
+            className="w-16 h-16 mx-auto rounded-2xl object-contain bg-transparent"
+          />
           <div>
             <h1 className="text-xl font-extrabold tracking-tight text-foreground font-sans">
               GABAY
@@ -106,7 +108,7 @@ export const LoginPage: React.FC = () => {
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-foreground">
+            <label className="text-[12px] font-semibold text-muted-foreground">
               Email or ID
             </label>
             <div className="relative">
@@ -127,7 +129,7 @@ export const LoginPage: React.FC = () => {
 
           <div className="space-y-1">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-foreground">Password</label>
+              <label className="text-[12px] font-semibold text-muted-foreground">Password</label>
               <button
                 type="button"
                 onClick={() => {
@@ -188,7 +190,7 @@ export const LoginPage: React.FC = () => {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full py-2.5 bg-primary hover:bg-primary/90 active:scale-[0.99] text-primary-foreground rounded-xl text-xs font-bold transition-all shadow-primary-sm flex items-center justify-center cursor-pointer disabled:opacity-50"
+            className="w-full py-2.5 bg-primary hover:bg-primary/90 active:scale-[0.99] text-primary-foreground rounded-xl text-xs font-bold transition-all flex items-center justify-center cursor-pointer disabled:opacity-50"
           >
             {isLoading ? (
               <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -200,8 +202,8 @@ export const LoginPage: React.FC = () => {
 
         {/* Clean Demo Accounts */}
         <div className="pt-3 border-t border-border space-y-2">
-          <span className="text-[10px] uppercase font-bold text-muted-foreground block text-center tracking-wider font-sans">
-            Quick Demo Login
+          <span className="text-[12px] font-semibold text-muted-foreground block text-center font-sans">
+            Quick demo login
           </span>
           <div className="grid grid-cols-2 gap-2">
             <button

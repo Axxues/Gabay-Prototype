@@ -5,24 +5,28 @@ import React from 'react';
 
 const mocks = vi.hoisted(() => ({
   isLoading: false,
+  activeRole: 'faculty',
+  activeUser: { id: 'u-fac-1', name: 'Faculty', role: 'faculty' } as any,
+  pendingRequests: [] as any[],
+  db: {
+    courses: [],
+    enrollmentRequests: [],
+    users: [],
+    submissions: [],
+    activities: [],
+    quizzes: [],
+    modules: [],
+  } as any,
 }));
 
 vi.mock('../context/LMSContext', () => ({
   useLMS: () => ({
-    activeRole: 'faculty',
-    activeUser: { id: 'u-fac-1', name: 'Faculty', role: 'faculty' },
-    db: {
-      courses: [],
-      enrollmentRequests: [],
-      users: [],
-      submissions: [],
-      activities: [],
-      quizzes: [],
-      modules: [],
-    },
+    activeRole: mocks.activeRole,
+    activeUser: mocks.activeUser,
+    db: mocks.db,
     isLoading: mocks.isLoading,
     openSpeedGrader: vi.fn(),
-    getPendingRequestsForStudent: () => [],
+    getPendingRequestsForStudent: () => mocks.pendingRequests,
     studentApproveInvitation: vi.fn(),
     studentDeclineInvitation: vi.fn(),
     deleteCourse: vi.fn(),
@@ -56,5 +60,55 @@ describe('DashboardPage refresh loading', () => {
     renderPage();
     expect(screen.getByText(/no enrolled courses/i)).toBeInTheDocument();
     expect(screen.queryByTestId('dashboard-courses-loading')).not.toBeInTheDocument();
+  });
+});
+
+describe('DashboardPage pending requests', () => {
+  beforeEach(() => {
+    mocks.isLoading = false;
+    mocks.activeRole = 'student';
+    mocks.activeUser = { id: 'u-stud-1', name: 'Student 1', role: 'student' } as any;
+    // Target course is NOT in the cached (enrolled-only) course list.
+    mocks.db = {
+      courses: [],
+      enrollmentRequests: [],
+      users: [],
+      submissions: [],
+      activities: [],
+      quizzes: [],
+      modules: [],
+    } as any;
+    mocks.pendingRequests = [
+      {
+        id: 'req-pending-1',
+        courseId: 'c-unknown',
+        studentId: 'u-stud-1',
+        type: 'self_join',
+        status: 'pending',
+        courseCode: 'CMSC 180',
+        courseTitle: 'Artificial Intelligence & Expert Systems',
+      },
+    ];
+  });
+
+  test('shows the course snapshot when the course is not cached', () => {
+    renderPage();
+    expect(screen.getByText('CMSC 180 — Artificial Intelligence & Expert Systems')).toBeInTheDocument();
+  });
+
+  test('never renders a bare dash for an unresolvable course', () => {
+    mocks.pendingRequests = [
+      {
+        id: 'req-pending-2',
+        courseId: 'c-gone',
+        studentId: 'u-stud-1',
+        type: 'self_join',
+        status: 'pending',
+        courseCode: null,
+        courseTitle: null,
+      },
+    ];
+    renderPage();
+    expect(screen.getByText('Pending course request')).toBeInTheDocument();
   });
 });

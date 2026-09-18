@@ -18,7 +18,12 @@ interface CourseRow {
 }
 
 async function loadCourseOr404(courseId: string) {
-  const course = await prisma.course.findUnique({ where: { id: courseId } });
+  // Narrow select: access checks only need id/instructorId. A full row drag
+  // would pull the multi-MB image/syllabus blobs on every course-scoped call.
+  const course = await prisma.course.findUnique({
+    where: { id: courseId },
+    select: { id: true, instructorId: true },
+  });
   if (!course) throw new ApiError(404, 'not_found', 'Course not found.');
   return course;
 }
@@ -133,7 +138,7 @@ async function fileAnnouncementAttachment(input: {
     where: { courseId: input.courseId, folderId: areaFolder.id },
     select: { name: true },
   });
-  const name = dedupeFileName(input.name, siblings.map((f) => f.name));
+  const name = dedupeFileName(input.name, siblings.map((f: { name: string }) => f.name));
   return prisma.courseFile.create({
     data: {
       id: newId('file'),
@@ -173,7 +178,7 @@ announcementsRouter.get(
     let items = rows;
     if (auth.role !== 'faculty' && auth.role !== 'admin') {
       const viewerSectionId = await resolveStudentSectionId(course.id, auth.sub);
-      items = rows.filter((a) => isVisibleToViewer(a.sectionId, viewerSectionId, auth.role));
+      items = rows.filter((a: typeof rows[number]) => isVisibleToViewer(a.sectionId, viewerSectionId, auth.role));
     }
     res.json({ announcements: items.map(mapAnnouncement) });
   })

@@ -30,7 +30,8 @@ import {
   Split,
   ChevronDown,
   RefreshCcw,
-  Upload
+  Upload,
+  Loader2
 } from 'lucide-react';
 
 interface CreateExamPageProps {
@@ -133,7 +134,7 @@ export const CreateExamPage: React.FC<CreateExamPageProps> = ({
       type: 'multiple_choice',
       options: ['', '', '', ''],
       correctAnswer: 'A',
-      points: 5,
+      points: 1,
       required: true
     }
   ]);
@@ -155,6 +156,11 @@ export const CreateExamPage: React.FC<CreateExamPageProps> = ({
   const [showPasteFallback, setShowPasteFallback] = useState(false);
   const [pastedText, setPastedText] = useState('');
 
+  // Which save is in flight (null when idle). One shared flag so the
+  // clicked button can spin while every save button disables — and
+  // double-clicks can't double-submit.
+  const [savingAction, setSavingAction] = useState<'publish' | 'draft' | null>(null);
+
   const handleAddItem = (type: QuizItemType, insertAfterIndex?: number) => {
     let newItem: QuestionDraft;
     const newId = `item-${Date.now()}-${items.length + 1}`;
@@ -166,7 +172,7 @@ export const CreateExamPage: React.FC<CreateExamPageProps> = ({
         type: 'multiple_choice',
         options: ['', '', '', ''],
         correctAnswer: 'A',
-        points: 5,
+        points: 1,
         required: true
       };
     } else if (type === 'identification') {
@@ -176,7 +182,7 @@ export const CreateExamPage: React.FC<CreateExamPageProps> = ({
         type: 'identification',
         options: [],
         correctAnswer: '',
-        points: 5,
+        points: 1,
         description: 'Short answer prompt. Responses are matched against the answer key.',
         required: true
       };
@@ -187,7 +193,7 @@ export const CreateExamPage: React.FC<CreateExamPageProps> = ({
         type: 'true_false',
         options: ['True', 'False'],
         correctAnswer: 'True',
-        points: 5,
+        points: 1,
         required: true
       };
     } else if (type === 'essay') {
@@ -197,7 +203,7 @@ export const CreateExamPage: React.FC<CreateExamPageProps> = ({
         type: 'essay',
         options: [],
         correctAnswer: '',
-        points: 10,
+        points: 1,
         rubricNotes: 'Graded based on clarity, depth, and relevance to the topic.',
         required: true
       };
@@ -277,7 +283,7 @@ export const CreateExamPage: React.FC<CreateExamPageProps> = ({
         if (newType === 'description' || newType === 'page_break') {
           points = 0;
         } else if (points === 0) {
-          points = newType === 'essay' ? 10 : 5;
+          points = 1;
         }
 
         let options = item.options;
@@ -350,6 +356,7 @@ export const CreateExamPage: React.FC<CreateExamPageProps> = ({
   const totalPages = items.filter(i => i.type === 'page_break').length + 1;
 
   const handleSaveExam = async (published: boolean) => {
+    if (savingAction) return;
     if (!title.trim()) {
       showAlert({
         title: 'Missing Exam Title',
@@ -409,7 +416,7 @@ export const CreateExamPage: React.FC<CreateExamPageProps> = ({
           type: 'true_false',
           options: ['True', 'False'],
           correctAnswer: item.correctAnswer === 'False' ? 'False' : 'True',
-          points: Number(item.points) || 5
+          points: Number(item.points) || 1
         };
       }
 
@@ -419,7 +426,7 @@ export const CreateExamPage: React.FC<CreateExamPageProps> = ({
           text: item.text.trim(),
           type: 'identification',
           correctAnswer: item.correctAnswer.trim(),
-          points: Number(item.points) || 5,
+          points: Number(item.points) || 1,
           description: item.description?.trim()
         };
       }
@@ -429,7 +436,7 @@ export const CreateExamPage: React.FC<CreateExamPageProps> = ({
           id: item.id || `q-${Date.now()}-${idx + 1}`,
           text: item.text.trim(),
           type: 'essay',
-          points: Number(item.points) || 10,
+          points: Number(item.points) || 1,
           rubricNotes: item.rubricNotes?.trim()
         };
       }
@@ -466,27 +473,32 @@ export const CreateExamPage: React.FC<CreateExamPageProps> = ({
         type: 'multiple_choice',
         options: validOptions,
         correctAnswer: correctAns,
-        points: Number(item.points) || 5
+        points: Number(item.points) || 1
       };
     });
 
-    const created = await createExam({
-      courseId,
-      title: title.trim(),
-      instructions: instructions.trim() || 'Answer all questions carefully within the allotted time limit.',
-      timeLimitMinutes: Number(timeLimitMinutes) || 30,
-      published,
-      term: safeTerm,
-      questions: compiledQuestions
-    });
+    setSavingAction(published ? 'publish' : 'draft');
+    try {
+      const created = await createExam({
+        courseId,
+        title: title.trim(),
+        instructions: instructions.trim() || 'Answer all questions carefully within the allotted time limit.',
+        timeLimitMinutes: Number(timeLimitMinutes) || 30,
+        published,
+        term: safeTerm,
+        questions: compiledQuestions
+      });
 
-    showAlert({
-      title: published ? 'Exam Published' : 'Exam Draft Saved',
-      message: `"${title.trim()}" created with ${totalQuestions} question(s) across ${totalPages} page(s), totaling ${totalPoints} pts.`,
-      type: 'success'
-    });
+      showAlert({
+        title: published ? 'Exam Published' : 'Exam Draft Saved',
+        message: `"${title.trim()}" created with ${totalQuestions} question(s) across ${totalPages} page(s), totaling ${totalPoints} pts.`,
+        type: 'success'
+      });
 
-    onExamCreated(created.id);
+      onExamCreated(created.id);
+    } finally {
+      setSavingAction(null);
+    }
   };
 
   const handleUploadExamFile = async (file: File) => {
@@ -605,17 +617,22 @@ export const CreateExamPage: React.FC<CreateExamPageProps> = ({
               <button
                 type="button"
                 onClick={() => handleSaveExam(false)}
-                className="px-4 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-all cursor-pointer active:scale-98"
+                disabled={savingAction !== null}
+                className="px-4 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-all cursor-pointer active:scale-98 disabled:opacity-60 disabled:cursor-wait flex items-center space-x-1.5"
               >
-                Save draft
+                {savingAction === 'draft' && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <span>{savingAction === 'draft' ? 'Saving…' : 'Save draft'}</span>
               </button>
               <button
                 type="button"
                 onClick={() => handleSaveExam(true)}
-                className="px-4 py-2 text-xs font-semibold text-primary-foreground bg-primary hover:bg-primary/90 rounded-xl transition-all shadow-primary-sm cursor-pointer active:scale-98 flex items-center space-x-1.5"
+                disabled={savingAction !== null}
+                className="px-4 py-2 text-xs font-semibold text-primary-foreground bg-primary hover:bg-primary/90 rounded-xl transition-all shadow-primary-sm cursor-pointer active:scale-98 flex items-center space-x-1.5 disabled:opacity-60 disabled:cursor-wait"
               >
-                <Check className="w-3.5 h-3.5" />
-                <span>Publish exam</span>
+                {savingAction === 'publish'
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  : <Check className="w-3.5 h-3.5" />}
+                <span>{savingAction === 'publish' ? 'Publishing…' : 'Publish exam'}</span>
               </button>
             </div>
           </div>
@@ -1476,16 +1493,21 @@ export const CreateExamPage: React.FC<CreateExamPageProps> = ({
               <button
                 type="button"
                 onClick={() => handleSaveExam(false)}
-                className="flex-1 sm:flex-initial px-5 py-2.5 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-all cursor-pointer active:scale-98"
+                disabled={savingAction !== null}
+                className="flex-1 sm:flex-initial px-5 py-2.5 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-all cursor-pointer active:scale-98 disabled:opacity-60 disabled:cursor-wait flex items-center justify-center space-x-2"
               >
-                Save as unpublished draft
+                {savingAction === 'draft' && <Loader2 className="w-4 h-4 animate-spin" />}
+                <span>{savingAction === 'draft' ? 'Saving…' : 'Save as unpublished draft'}</span>
               </button>
               <button
                 type="submit"
-                className="flex-1 sm:flex-initial px-6 py-2.5 text-xs font-semibold text-primary-foreground bg-primary hover:bg-primary/90 rounded-xl transition-all shadow-primary-sm cursor-pointer active:scale-98 flex items-center justify-center space-x-2"
+                disabled={savingAction !== null}
+                className="flex-1 sm:flex-initial px-6 py-2.5 text-xs font-semibold text-primary-foreground bg-primary hover:bg-primary/90 rounded-xl transition-all shadow-primary-sm cursor-pointer active:scale-98 flex items-center justify-center space-x-2 disabled:opacity-60 disabled:cursor-wait"
               >
-                <Check className="w-4 h-4" />
-                <span>Publish exam form</span>
+                {savingAction === 'publish'
+                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                  : <Check className="w-4 h-4" />}
+                <span>{savingAction === 'publish' ? 'Publishing…' : 'Publish exam form'}</span>
               </button>
             </div>
           </div>

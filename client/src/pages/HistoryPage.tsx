@@ -24,7 +24,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
   onNavigateCourse,
   onNavigateTab
 }) => {
-  const { db, clearHistory, setActiveCourseId, showConfirm } = useLMS();
+  const { db, isLoading, isSyncing, clearHistory, setActiveCourseId, showConfirm } = useLMS();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'courses' | 'lms'>('all');
 
@@ -76,22 +76,22 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
       }
     }
 
-    if (path.includes('/dashboard')) onNavigateTab && onNavigateTab('dashboard');
-    else if (path.includes('/calendar')) onNavigateTab && onNavigateTab('calendar');
-    else if (path.includes('/inbox')) onNavigateTab && onNavigateTab('inbox');
-    else if (path.includes('/profile')) onNavigateTab && onNavigateTab('profile');
-    else if (onNavigateTab) onNavigateTab('dashboard');
+    if (path.includes('/dashboard')) onNavigateTab?.('dashboard');
+    else if (path.includes('/calendar')) onNavigateTab?.('calendar');
+    else if (path.includes('/inbox')) onNavigateTab?.('inbox');
+    else if (path.includes('/profile')) onNavigateTab?.('profile');
+    else onNavigateTab?.('dashboard');
   };
 
   const getLogIcon = (path: string) => {
-    if (path.includes('/courses/')) return <BookOpen className="w-4 h-4 text-primary" />;
-    if (path.includes('/calendar')) return <Calendar className="w-4 h-4 text-blue-600 dark:text-blue-400" />;
-    if (path.includes('/inbox')) return <Inbox className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />;
-    return <LayoutDashboard className="w-4 h-4 text-primary" />;
+    if (path.includes('/courses/')) return <BookOpen className="w-4 h-4 text-muted-foreground" />;
+    if (path.includes('/calendar')) return <Calendar className="w-4 h-4 text-muted-foreground" />;
+    if (path.includes('/inbox')) return <Inbox className="w-4 h-4 text-muted-foreground" />;
+    return <LayoutDashboard className="w-4 h-4 text-muted-foreground" />;
   };
 
   return (
-    <div className="space-y-6">
+    <div className="flex min-h-full w-full flex-1 flex-col space-y-6">
       {/* Top Header & Breadcrumb Bar */}
       <div className="flex items-start gap-3">
         <button
@@ -122,32 +122,32 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
 
       {/* Metrics Row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="p-4 bg-card border border-border rounded-2xl shadow-subtle space-y-1">
-          <span className="text-[11px] font-sans text-muted-foreground uppercase">Total Events</span>
-          <div className="text-2xl font-extrabold font-sans text-primary">
+        <div className="p-4 bg-card border border-border rounded-2xl space-y-1">
+          <span className="text-[12px] font-semibold font-sans text-muted-foreground">Total events</span>
+          <div className="text-2xl font-extrabold font-sans text-foreground tabular-nums">
             {historyLogs.length}
           </div>
-          <p className="text-[10px] text-muted-foreground">Recorded this session</p>
+          <p className="text-[12px] text-muted-foreground">Recorded this session</p>
         </div>
 
-        <div className="p-4 bg-card border border-border rounded-2xl shadow-subtle space-y-1">
-          <span className="text-[11px] font-sans text-muted-foreground uppercase">Course Shells</span>
-          <div className="text-2xl font-extrabold font-sans text-foreground">
+        <div className="p-4 bg-card border border-border rounded-2xl space-y-1">
+          <span className="text-[12px] font-semibold font-sans text-muted-foreground">Course shells</span>
+          <div className="text-2xl font-extrabold font-sans text-foreground tabular-nums">
             {historyLogs.filter(l => l.path.includes('/courses/')).length}
           </div>
-          <p className="text-[10px] text-muted-foreground">Subject page transitions</p>
+          <p className="text-[12px] text-muted-foreground">Subject page transitions</p>
         </div>
 
-        <div className="p-4 bg-card border border-border rounded-2xl shadow-subtle space-y-1">
-          <span className="text-[11px] font-sans text-muted-foreground uppercase">Session State</span>
-          <div className="text-2xl font-extrabold font-sans text-emerald-600">
+        <div className="p-4 bg-card border border-border rounded-2xl space-y-1">
+          <span className="text-[12px] font-semibold font-sans text-muted-foreground">Session state</span>
+          <div className="text-2xl font-extrabold font-sans text-foreground">
             Active
           </div>
-          <p className="text-[10px] text-muted-foreground">DMMMSU-SLUC SSO</p>
+          <p className="text-[12px] text-muted-foreground">DMMMSU-SLUC SSO</p>
         </div>
 
-        <div className="p-4 bg-card border border-border rounded-2xl shadow-subtle space-y-1">
-          <span className="text-[11px] font-sans text-muted-foreground uppercase">Security Guard</span>
+        <div className="p-4 bg-card border border-border rounded-2xl space-y-1">
+          <span className="text-[12px] font-semibold font-sans text-muted-foreground">Security guard</span>
           <div className="text-xs font-sans font-bold text-foreground mt-1.5 flex items-center space-x-1">
             <Shield className="w-3.5 h-3.5 text-primary" />
             <span>RA 10173 Audit</span>
@@ -157,7 +157,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
       </div>
 
       {/* Search & Filter Controls */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-card border border-border rounded-2xl shadow-subtle">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-card border border-border rounded-2xl">
         <div className="relative flex-1 max-w-md">
           <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-2.5" />
           <input
@@ -205,7 +205,19 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
 
       {/* History Log Timeline Cards */}
       <div className="space-y-3">
-        {filteredLogs.length === 0 ? (
+        {((isLoading || isSyncing) && historyLogs.length === 0) ? (
+          <div data-testid="history-loading" className="space-y-3" aria-hidden="true">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={`history-skeleton-${i}`} className="p-4 bg-card border border-border rounded-2xl flex items-center gap-3.5 animate-pulse">
+                <div className="p-2.5 bg-muted/60 rounded-xl border border-border shrink-0 w-11 h-11" />
+                <div className="flex-1 space-y-1.5">
+                  <div className="h-4 w-1/2 rounded bg-muted" />
+                  <div className="h-3 w-2/3 rounded bg-muted/70" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : filteredLogs.length === 0 ? (
           <EmptyState
             title="No navigation records found"
             body={
@@ -219,24 +231,24 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
             <div
               key={log.id || index}
               onClick={() => handleOpenLog(log.path)}
-              className="p-4 bg-card border border-border hover:border-primary/40 rounded-2xl shadow-subtle hover:shadow-lifted card-hover transition-all flex items-center justify-between gap-4 cursor-pointer group"
+              className="p-4 bg-card border border-border hover:ring-1 hover:ring-primary/15 rounded-2xl transition-all flex items-center justify-between gap-4 cursor-pointer group"
             >
               <div className="flex items-center space-x-3.5 min-w-0">
-                <div className="p-2.5 bg-muted/60 rounded-xl border border-border shrink-0 group-hover:bg-primary/10 transition-colors">
+                <div className="p-2.5 bg-muted/60 rounded-xl border border-border shrink-0 transition-colors">
                   {getLogIcon(log.path)}
                 </div>
                 <div className="min-w-0">
                   <div className="flex items-center space-x-2">
-                    <h4 className="font-bold text-xs text-foreground group-hover:text-primary transition-colors truncate">
+                    <h4 className="font-semibold text-[14px] text-foreground truncate">
                       {log.title}
                     </h4>
                     {log.path.includes('/courses/') && (
-                      <span className="px-2 py-0.5 text-[9px] font-sans font-bold uppercase rounded bg-primary/10 text-primary border border-primary/20 shrink-0">
+                      <span className="px-2 py-0.5 text-[11px] font-sans font-medium rounded-full bg-muted text-muted-foreground border border-border shrink-0">
                         Course
                       </span>
                     )}
                   </div>
-                  <p className="text-[11px] font-sans text-muted-foreground truncate mt-0.5">
+                  <p className="text-[12px] font-sans text-muted-foreground truncate mt-0.5">
                     {log.path}
                   </p>
                 </div>

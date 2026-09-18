@@ -28,6 +28,6 @@ export async function pruneNotifications(recipientId: string) {
   });
   const overflow = mine.slice(CAP);
   if (overflow.length > 0) {
-    await prisma.notification.deleteMany({ where: { id: { in: overflow.map(n => n.id) } } });
+    await prisma.notification.deleteMany({ where: { id: { in: overflow.map((n: { id: string }) => n.id) } } });
   }
 }

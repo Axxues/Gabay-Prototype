@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useLMS } from '../context/LMSContext';
 import type { Exam, QuizQuestion, TermId } from '../types/lms';
 import { normalizeTermId } from '../utils/gradingTerms';
-import { TERM_LABELS } from '../components/common/TermSelect';
+import { TERM_LABELS, TermFilterSelect } from '../components/common/TermSelect';
 import {
   HelpCircle,
   Play,
@@ -37,8 +37,11 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
     activeRole,
     activeUser,
     db,
-    recordExamSubmission
-  } = useLMS();
+    isLoading,
+    isSyncing,
+    recordExamSubmission,
+    effectiveTermsForCourse
+  } = useLMS() as ReturnType<typeof useLMS> & { effectiveTermsForCourse?: (courseId: string) => TermId[] };
 
   const courseExams = (db.exams || []).filter(q => q.courseId === courseId);
   const [activeExam, setActiveExam] = useState<Exam | null>(null);
@@ -51,7 +54,15 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
   const [isCreatingExam, setIsCreatingExam] = useState(false);
 
   // Grading-term filter for the list (legacy 'final' rows read as 'finals').
+  // Options follow the scanned syllabus via effectiveTermsForCourse.
+  const effectiveTerms: TermId[] =
+    courseId && typeof effectiveTermsForCourse === 'function'
+      ? effectiveTermsForCourse(courseId)
+      : ['prelim', 'midterm', 'finals'];
   const [termFilter, setTermFilter] = useState<'all' | TermId>('all');
+  useEffect(() => {
+    if (termFilter !== 'all' && !effectiveTerms.includes(termFilter)) setTermFilter('all');
+  }, [courseId]); // eslint-disable-line react-hooks/exhaustive-deps
   const visibleExams = termFilter === 'all'
     ? courseExams
     : courseExams.filter(e => (normalizeTermId(e.term) ?? 'midterm') === termFilter);
@@ -200,31 +211,31 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
         </button>
 
         {/* Top Header Card */}
-        <div className="bg-card border-t-8 border-t-primary border-x border-b border-border/80 rounded-2xl p-6 space-y-4 shadow-subtle">
+        <div className="bg-card border border-border border-t-4 border-t-primary rounded-2xl p-6 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 border-b border-border pb-4">
             <div className="space-y-1">
-              <span className="px-2.5 py-0.5 text-[10px] font-sans font-bold uppercase bg-amber-500/10 text-amber-700 dark:text-amber-400 rounded-md border border-amber-500/20">
-                GABAY ONLINE ASSESSMENT RUNNER
+              <span className="px-2.5 py-0.5 text-[11px] font-sans font-semibold bg-muted text-muted-foreground rounded-full border border-border">
+                Assessment runner
               </span>
-              <h1 className="text-xl sm:text-2xl font-black tracking-tight text-foreground mt-2">
+              <h1 className="text-[22px] sm:text-[28px] leading-tight font-extrabold tracking-tight text-foreground mt-2">
                 {activeExam.title}
               </h1>
-              <p className="text-xs text-muted-foreground font-sans mt-1 leading-relaxed">
+              <p className="text-[13px] text-muted-foreground font-sans mt-1 leading-relaxed">
                 {activeExam.instructions}
               </p>
             </div>
 
             {examSubmitted && score !== null && (
               <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-right shrink-0">
-                <div className="text-[10px] font-sans font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">
-                  Automated Evaluation
+                <div className="text-[11px] font-sans font-semibold text-emerald-700 dark:text-emerald-400">
+                  Automated evaluation
                 </div>
-                <div className="text-3xl font-black font-sans text-emerald-700 dark:text-emerald-400">
+                <div className="text-3xl font-extrabold font-sans text-emerald-700 dark:text-emerald-400">
                   {score}%
                 </div>
-                <div className="text-[10px] text-emerald-700 dark:text-emerald-400 font-sans font-bold mt-0.5 flex items-center justify-end space-x-1">
+                <div className="text-[11px] text-emerald-700 dark:text-emerald-400 font-sans font-medium mt-0.5 flex items-center justify-end space-x-1">
                   <CheckCircle2 className="w-3 h-3" />
-                  <span>Recorded in Gradebook</span>
+                  <span>Recorded in gradebook</span>
                 </div>
               </div>
             )}
@@ -232,19 +243,19 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
 
           {/* Exam Metadata & Progress Indicator */}
           <div className="space-y-2">
-            <div className="flex items-center justify-between text-xs text-muted-foreground font-sans">
+            <div className="flex items-center justify-between text-[12px] text-muted-foreground font-sans">
               <div className="flex items-center space-x-3">
-                <span className="flex items-center space-x-1.5 font-bold text-foreground">
-                  <Clock className="w-3.5 h-3.5 text-primary" />
-                  <span>{activeExam.timeLimitMinutes} Mins</span>
+                <span className="flex items-center space-x-1.5 font-semibold text-foreground">
+                  <Clock className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span>{activeExam.timeLimitMinutes} mins</span>
                 </span>
-                <span>•</span>
+                <span>·</span>
                 <span>
-                  {activeExam.questions.filter(q => q.type !== 'description' && q.type !== 'page_break').length} Questions
+                  {activeExam.questions.filter(q => q.type !== 'description' && q.type !== 'page_break').length} questions
                 </span>
-                <span>•</span>
-                <span className="text-primary font-bold">
-                  {activeExam.questions.reduce((sum, q) => sum + (q.points || 0), 0)} Total Points
+                <span>·</span>
+                <span className="font-semibold text-foreground">
+                  {activeExam.questions.reduce((sum, q) => sum + (q.points || 0), 0)} total points
                 </span>
               </div>
 
@@ -272,16 +283,16 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
           <form onSubmit={handleSubmitExam} className="space-y-6">
             {/* If section title differs from exam title, show Section Banner */}
             {currentPage.sectionTitle && currentPage.sectionTitle !== activeExam.title && (
-              <div className="p-5 bg-card border-l-4 border-l-primary border-y border-r border-border rounded-2xl shadow-subtle space-y-1">
-                <div className="flex items-center space-x-2 text-primary font-bold text-xs">
+              <div className="p-5 bg-card border border-border rounded-2xl space-y-1">
+                <div className="flex items-center space-x-2 text-muted-foreground font-semibold text-[12px]">
                   <Layers className="w-4 h-4" />
                   <span>Section {currentPageIndex + 1}</span>
                 </div>
-                <h3 className="text-base font-bold text-foreground">
+                <h3 className="text-[14px] font-bold tracking-tight text-foreground">
                   {currentPage.sectionTitle}
                 </h3>
                 {currentPage.sectionDesc && (
-                  <p className="text-xs text-muted-foreground leading-relaxed">
+                  <p className="text-[12px] text-muted-foreground leading-relaxed">
                     {currentPage.sectionDesc}
                   </p>
                 )}
@@ -300,9 +311,9 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
                   return (
                     <div
                       key={q.id}
-                      className="p-5 bg-sky-500/5 border border-sky-500/30 rounded-2xl shadow-subtle space-y-2"
+                      className="p-5 bg-muted/40 border border-border rounded-2xl space-y-2"
                     >
-                      <div className="flex items-center space-x-2 text-sky-700 dark:text-sky-400 font-bold text-xs">
+                      <div className="flex items-center space-x-2 text-muted-foreground font-semibold text-[12px]">
                         <FileText className="w-4 h-4" />
                         <span>{q.text}</span>
                       </div>
@@ -318,19 +329,19 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
                 return (
                   <div
                     key={q.id}
-                    className="p-5 bg-card rounded-2xl border border-border space-y-4 shadow-subtle"
+                    className="p-5 bg-card rounded-2xl border border-border space-y-4"
                   >
                     {/* Question Header */}
                     <div className="flex justify-between items-start gap-3">
                       <div className="space-y-1">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                          Question {questionNumber} • {q.type === 'multiple_choice' ? 'Multiple Choice' : q.type === 'identification' ? 'Identification' : q.type === 'true_false' ? 'True or False' : 'Essay Response'}
+                        <span className="text-[11.5px] font-semibold text-muted-foreground">
+                          Question {questionNumber} · {q.type === 'multiple_choice' ? 'Multiple choice' : q.type === 'identification' ? 'Identification' : q.type === 'true_false' ? 'True or false' : 'Essay response'}
                         </span>
-                        <h4 className="font-bold text-xs sm:text-sm text-foreground leading-relaxed">
+                        <h4 className="font-bold text-[14px] tracking-tight text-foreground leading-relaxed">
                           {q.text}
                         </h4>
                       </div>
-                      <span className="px-2.5 py-1 text-[11px] font-bold font-sans rounded-lg bg-muted text-foreground border border-border shrink-0">
+                      <span className="px-2.5 py-1 text-[11px] font-semibold font-sans rounded-full bg-muted text-muted-foreground border border-border shrink-0">
                         {q.points} pts
                       </span>
                     </div>
@@ -507,17 +518,17 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
                   return (
                     <div
                       key={q.id}
-                      className="p-5 rounded-2xl border border-border bg-card space-y-3 text-xs shadow-subtle"
+                      className="p-5 rounded-2xl border border-border bg-card space-y-3 text-xs"
                     >
                       <div className="flex justify-between items-start gap-2">
                         <div className="space-y-0.5">
-                          <span className="text-[10px] font-bold uppercase text-muted-foreground">
-                            Question {idx + 1} • {q.type}
+                          <span className="text-[11.5px] font-semibold text-muted-foreground">
+                            Question {idx + 1} · {q.type}
                           </span>
-                          <h4 className="font-bold text-foreground">{q.text}</h4>
+                          <h4 className="font-bold text-[14px] tracking-tight text-foreground">{q.text}</h4>
                         </div>
                         <span
-                          className={`px-2.5 py-1 rounded-lg text-xs font-bold border shrink-0 ${
+                          className={`px-2.5 py-1 rounded-full text-xs font-semibold border shrink-0 ${
                             isCorrect
                               ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20'
                               : 'bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/20'
@@ -608,7 +619,19 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
       />
 
       <div className="space-y-3">
-        {courseExams.length === 0 ? (
+        {((isLoading || isSyncing) && courseExams.length === 0) ? (
+          <div data-testid="exams-loading" className="space-y-3" aria-hidden="true">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={`exams-skeleton-${i}`} className="p-4 bg-card border border-border rounded-2xl flex items-center gap-3.5 animate-pulse">
+                <div className="w-10 h-10 rounded-xl bg-muted shrink-0" />
+                <div className="flex-1 space-y-1.5">
+                  <div className="h-4 w-1/2 rounded bg-muted" />
+                  <div className="h-3 w-1/3 rounded bg-muted/70" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : courseExams.length === 0 ? (
           <EmptyState
             title="No exams published for this course yet."
             actionLabel={activeRole === 'faculty' ? 'Create your first exam now' : undefined}
@@ -617,20 +640,13 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
         ) : (
           <>
             <div className="flex items-center justify-end gap-2">
-              <label htmlFor="exams-term-filter" className="text-[11.5px] font-semibold text-muted-foreground select-none">
-                Filter by term:
-              </label>
-              <select
+              <TermFilterSelect
                 id="exams-term-filter"
                 value={termFilter}
-                onChange={e => setTermFilter(e.target.value as 'all' | TermId)}
-                className="px-2.5 py-1.5 bg-card border border-border rounded-xl text-[12px] font-semibold text-foreground outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 cursor-pointer"
-              >
-                <option value="all">All terms</option>
-                <option value="prelim">Prelim</option>
-                <option value="midterm">Midterm</option>
-                <option value="finals">Finals</option>
-              </select>
+                onChange={setTermFilter}
+                prefixLabel="Filter by term:"
+                terms={effectiveTerms}
+              />
             </div>
             {visibleExams.length === 0 ? (
               <p className="text-[12.5px] text-muted-foreground text-center py-6">
@@ -659,42 +675,42 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
             return (
               <div
                 key={exam.id}
-                className="p-5 bg-card border rounded-2xl shadow-subtle transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 group border-border hover:border-primary/40"
+                className="p-4 bg-card border border-border rounded-2xl hover:border-muted-foreground/25 hover:shadow-card transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 group"
               >
                 <div className="flex items-start space-x-3.5">
-                  <div className="p-2.5 rounded-xl border shrink-0 mt-0.5 bg-primary/10 text-primary border-primary/20">
+                  <div className="w-10 h-10 rounded-xl bg-muted border border-border text-muted-foreground flex items-center justify-center shrink-0 mt-0.5">
                     <HelpCircle className="w-5 h-5" />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <div className="flex items-center space-x-2 flex-wrap gap-y-1">
-                      <h3 className="font-bold text-sm text-foreground group-hover:text-primary transition-colors">
+                      <h3 className="font-bold text-[14px] tracking-tight truncate text-foreground group-hover:text-primary transition-colors">
                         {exam.title}
                       </h3>
                       <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium border flex items-center space-x-1 ${termChipCls}`}>
                         <span>{TERM_LABELS[termId]} exam</span>
                       </span>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
+                    <p className="text-[12px] text-muted-foreground mt-0.5 line-clamp-1">
                       {exam.instructions}
                     </p>
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground font-sans mt-2">
+                    <div className="flex flex-wrap items-center gap-2 text-[12px] text-muted-foreground font-sans mt-2">
                       <span className="flex items-center space-x-1">
                         <Clock className="w-3.5 h-3.5 text-muted-foreground" />
-                        <span>{exam.timeLimitMinutes} Mins</span>
+                        <span>{exam.timeLimitMinutes} mins</span>
                       </span>
-                      <span>•</span>
-                      <span>{questionCount} Question{questionCount !== 1 ? 's' : ''}</span>
+                      <span>·</span>
+                      <span>{questionCount} question{questionCount !== 1 ? 's' : ''}</span>
                       {pageCount > 1 && (
                         <>
-                          <span>•</span>
-                          <span className="px-1.5 py-0.2 rounded bg-muted text-[11px] font-bold text-foreground">
-                            {pageCount} Pages
+                          <span>·</span>
+                          <span className="text-[12px] font-medium text-muted-foreground">
+                            {pageCount} pages
                           </span>
                         </>
                       )}
-                      <span>•</span>
-                      <span className="text-emerald-700 dark:text-emerald-400 font-bold">
-                        {totalPts} Total Points
+                      <span>·</span>
+                      <span className="font-semibold text-foreground">
+                        {totalPts} total points
                       </span>
                     </div>
                   </div>
@@ -702,8 +718,8 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
 
                 <div className="flex items-center space-x-3 self-end sm:self-auto">
                   {existingSub && existingSub.grade !== undefined && (
-                    <span className="px-3 py-1 text-xs font-sans font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 rounded-xl border border-emerald-500/20">
-                      Score: {existingSub.grade}%
+                    <span className="px-3 py-1 text-xs font-sans font-semibold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 rounded-full border border-emerald-500/20">
+                      Scored {existingSub.grade}%
                     </span>
                   )}
 

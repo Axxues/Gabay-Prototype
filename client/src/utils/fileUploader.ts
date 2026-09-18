@@ -13,6 +13,47 @@ export interface UploadResult {
   isImage?: boolean;
 }
 
+// Single source of truth for the client-side upload cap (matches the
+// server multer limit in server/src/routes/files.ts).
+export const FILE_UPLOAD_MAX_BYTES = 25 * 1024 * 1024;
+
+export const isFileTooLarge = (sizeBytes: number): boolean =>
+  sizeBytes > FILE_UPLOAD_MAX_BYTES;
+
+// Short CourseFile/ModuleItem type union (mirrors the server detectFileType
+// in server/src/routes/files.ts). NEVER store a raw MIME string here:
+// office MIME types (e.g. ...wordprocessingml.document, 71 chars) exceed
+// the ModuleItem.fileType NVarChar(64) column and cause a 400.
+export const toShortFileType = (nameOrMime: string): string => {
+  const lower = (nameOrMime || '').toLowerCase();
+  if (lower.endsWith('.pdf') || lower.includes('pdf')) return 'pdf';
+  if (
+    lower.includes('image/') ||
+    lower.startsWith('data:image/') ||
+    /\.(png|jpg|jpeg|gif|webp|svg|bmp|avif)$/.test(lower)
+  )
+    return 'image';
+  if (
+    lower.includes('zip') ||
+    lower.includes('archive') ||
+    /\.(zip|tar|gz|rar|7z)$/.test(lower)
+  )
+    return 'archive';
+  if (
+    lower.includes('presentation') ||
+    lower.includes('slide') ||
+    lower.endsWith('.ppt') ||
+    lower.endsWith('.pptx')
+  )
+    return 'slide';
+  if (
+    lower.includes('code') ||
+    /\.(ts|tsx|js|jsx|py|json|html|css|java|c|cpp)$/.test(lower)
+  )
+    return 'code';
+  return 'document';
+};
+
 export const formatFileSize = (bytes: number): string => {
   if (bytes === 0) return '0 B';
   const k = 1024;
@@ -61,7 +102,7 @@ export const uploadFileToPublic = async (file: File): Promise<UploadResult> => {
           name: file.name,
           size: formattedSize,
           url: data.url, // e.g. "/uploads/1725900000_filename.pdf"
-          type: file.type || file.name.split('.').pop() || 'file',
+          type: toShortFileType(file.name),
           isImage: isImg
         };
       }
@@ -75,7 +116,7 @@ export const uploadFileToPublic = async (file: File): Promise<UploadResult> => {
     name: file.name,
     size: formattedSize,
     url: dataUrl,
-    type: file.type || file.name.split('.').pop() || 'file',
+    type: toShortFileType(file.name),
     isImage: isImg
   };
 };

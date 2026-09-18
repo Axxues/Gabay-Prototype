@@ -6,14 +6,17 @@ import {
   FileCheck2,
   HelpCircle,
   ChevronRight,
+  ChevronDown,
   Plus,
   X,
   Paperclip,
   Download,
   Eye,
+  ExternalLink,
   File,
   FileCode,
   FileArchive,
+  Globe,
   Image as ImageIcon,
   MessageSquare,
   Send,
@@ -25,6 +28,7 @@ import {
 import { ModalPortal } from '../components/common/ModalPortal';
 import { groupRepliesByRoot } from '../utils/threadReplies';
 import { PageHeader } from '../components/common/PageHeader';
+import { UserAvatar } from '../components/common/UserAvatar';
 import { EmptyState } from '../components/common/EmptyState';
 import { AddModuleItemPage } from './AddModuleItemPage';
 
@@ -43,6 +47,8 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
     activeRole,
     activeUser,
     db,
+    isLoading,
+    isSyncing,
     createModule,
     updateModule,
     deleteModule,
@@ -54,7 +60,8 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
     deleteModuleComment,
     toggleLikeModuleComment,
     markModuleCommentsRead
-  } = useLMS();
+  // Sibling-WIP refresh flag: read when the provider supplies it.
+  } = useLMS() as ReturnType<typeof useLMS> & { isSyncing?: boolean };
 
   const courseModules = db.modules.filter(m => m.courseId === courseId);
   // Modules sorted with latest at the top
@@ -75,6 +82,10 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
   const [replyToIds, setReplyToIds] = useState<Record<string, string | null>>({});
   const [replyTexts, setReplyTexts] = useState<Record<string, string>>({});
 
+  // Pending flags for slow comment posts — show loading + block double-submit
+  const [postingCommentIds, setPostingCommentIds] = useState<Record<string, boolean>>({});
+  const [postingReplyIds, setPostingReplyIds] = useState<Record<string, boolean>>({});
+
   // Module Comment Editing State (Author only)
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editingContent, setEditingContent] = useState<string>('');
@@ -91,8 +102,15 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
   const [addingItemModuleId, setAddingItemModuleId] = useState<string | null>(null);
   const [editingItemState, setEditingItemState] = useState<{ item: ModuleItem; moduleId: string } | null>(null);
 
-  // Document Preview Modal State
+  // Document Preview Modal State (file full-page — opened ONLY via file chip / preview button)
   const [previewItem, setPreviewItem] = useState<ModuleItem | null>(null);
+
+  // Expanded item content (Content / syllabus instructions / URL) — toggled by clicking the item row
+  const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
+
+  const toggleItemExpand = (itemId: string) => {
+    setExpandedItems(prev => ({ ...prev, [itemId]: !prev[itemId] }));
+  };
 
   // Permission helpers (Only faculty can author and edit course modules)
   const canEditModule = (mod: Module) => {
@@ -117,16 +135,53 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
     setExpandedComments(prev => ({ ...prev, [modId]: !prev[modId] }));
   };
 
+  const handlePostComment = async (modId: string) => {
+    const text = (commentInputs[modId] || '').trim();
+    if (!text || postingCommentIds[modId]) return;
+    // Server creates the reply notification inline.
+    setPostingCommentIds(prev => ({ ...prev, [modId]: true }));
+    try {
+      await addModuleComment(modId, text);
+      setCommentInputs(prev => ({ ...prev, [modId]: '' }));
+    } catch {
+      // Context already surfaced the failure alert.
+    } finally {
+      setPostingCommentIds(prev => ({ ...prev, [modId]: false }));
+    }
+  };
+
+  const handlePostModuleReply = async (modId: string) => {
+    const text = (replyTexts[modId] || '').trim();
+    const targetId = replyToIds[modId] ?? null;
+    if (!text || !targetId || postingReplyIds[modId]) return;
+    setPostingReplyIds(prev => ({ ...prev, [modId]: true }));
+    try {
+      await addModuleComment(modId, text, targetId);
+      setReplyToIds(prev => ({ ...prev, [modId]: null }));
+      setReplyTexts(prev => ({ ...prev, [modId]: '' }));
+    } catch {
+      // Context already surfaced the failure alert.
+    } finally {
+      setPostingReplyIds(prev => ({ ...prev, [modId]: false }));
+    }
+  };
+
+  const [isCreatingModule, setIsCreatingModule] = useState(false);
+  const [isSavingModule, setIsSavingModule] = useState(false);
+
   const handleCreateModule = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newModuleTitle.trim()) return;
+    if (!newModuleTitle.trim() || isCreatingModule) return;
 
+    setIsCreatingModule(true);
     try {
       await createModule(courseId, newModuleTitle.trim());
       setNewModuleTitle('');
       setIsAddModuleOpen(false);
     } catch {
       // Context already surfaced the failure alert.
+    } finally {
+      setIsCreatingModule(false);
     }
   };
 
@@ -138,7 +193,8 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
 
   const handleSaveEditModule = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingModule || !editModuleTitle.trim()) return;
+    if (!editingModule || !editModuleTitle.trim() || isSavingModule) return;
+    setIsSavingModule(true);
     try {
       await updateModule(editingModule.id, { title: editModuleTitle.trim() });
       showAlert({
@@ -149,6 +205,8 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
       setEditingModule(null);
     } catch {
       // Context already surfaced the failure alert.
+    } finally {
+      setIsSavingModule(false);
     }
   };
 
@@ -220,33 +278,69 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
   const getItemIcon = (type: string) => {
     switch (type) {
       case 'page':
-        return <FileText className="w-4 h-4 text-blue-600 dark:text-blue-400" />;
+        return <FileText className="w-4 h-4 text-muted-foreground" />;
       case 'file':
-        return <File className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />;
+        return <File className="w-4 h-4 text-muted-foreground" />;
       case 'activity':
-        return <FileCheck2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />;
+        return <FileCheck2 className="w-4 h-4 text-muted-foreground" />;
       case 'quiz':
-        return <HelpCircle className="w-4 h-4 text-amber-600 dark:text-amber-400" />;
+        return <HelpCircle className="w-4 h-4 text-muted-foreground" />;
+      case 'external_url':
+        return <Globe className="w-4 h-4 text-muted-foreground" />;
       default:
         return <FileText className="w-4 h-4 text-muted-foreground" />;
     }
   };
 
+  const getItemTypeLabel = (type: string) => {
+    switch (type) {
+      case 'external_url':
+        return 'link';
+      default:
+        return type;
+    }
+  };
+
+  const URL_PATTERN = /(https?:\/\/[^\s]+|www\.[^\s]+)/g;
+
+  const renderContentWithLinks = (text: string) => {
+    const parts = text.split(URL_PATTERN);
+    return parts.map((part, i) => {
+      if (/^(https?:\/\/|www\.)/i.test(part)) {
+        const href = /^https?:\/\//i.test(part) ? part : `https://${part}`;
+        return (
+          <a
+            key={i}
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={e => e.stopPropagation()}
+            className="text-primary hover:underline break-all inline-flex items-center gap-1"
+          >
+            <span className="break-all">{part}</span>
+            <ExternalLink className="w-3 h-3 shrink-0" />
+          </a>
+        );
+      }
+      return <span key={i}>{part}</span>;
+    });
+  };
+
   const getAttachmentIcon = (name: string) => {
     const lower = name.toLowerCase();
     if (/\.(jpg|jpeg|png|gif|svg|webp)$/.test(lower)) {
-      return <ImageIcon className="w-3.5 h-3.5 text-emerald-500" />;
+      return <ImageIcon className="w-3.5 h-3.5 text-muted-foreground" />;
     }
     if (lower.endsWith('.pdf')) {
-      return <FileText className="w-3.5 h-3.5 text-rose-500" />;
+      return <FileText className="w-3.5 h-3.5 text-muted-foreground" />;
     }
     if (/\.(py|js|ts|jsx|tsx|html|css|json|java|c|cpp)$/.test(lower)) {
-      return <FileCode className="w-3.5 h-3.5 text-amber-500" />;
+      return <FileCode className="w-3.5 h-3.5 text-muted-foreground" />;
     }
     if (/\.(zip|rar|7z|tar|gz)$/.test(lower)) {
-      return <FileArchive className="w-3.5 h-3.5 text-purple-500" />;
+      return <FileArchive className="w-3.5 h-3.5 text-muted-foreground" />;
     }
-    return <Paperclip className="w-3.5 h-3.5 text-primary" />;
+    return <Paperclip className="w-3.5 h-3.5 text-muted-foreground" />;
   };
 
   // If user clicked "Add Item", render the dedicated full page!
@@ -350,11 +444,11 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
               </button>
               <button
                 type="submit"
-                disabled={!newModuleTitle.trim()}
+                disabled={!newModuleTitle.trim() || isCreatingModule}
                 className="px-4 py-2 text-xs font-bold font-sans bg-primary hover:bg-primary/90 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none text-primary-foreground rounded-xl transition-all shadow-subtle cursor-pointer flex items-center space-x-1.5"
               >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Add Module</span>
+                {isCreatingModule ? <span className="block w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                <span>{isCreatingModule ? 'Adding...' : 'Add Module'}</span>
               </button>
             </div>
           </div>
@@ -363,19 +457,35 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
 
       {/* Modules List */}
       <div className="space-y-4">
-        {sortedModules.length === 0 ? (
+        {(isLoading || isSyncing) && sortedModules.length === 0 ? (
+          <div data-testid="modules-loading" className="space-y-4" aria-hidden="true">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={`modules-skeleton-${i}`} className="bg-card border border-border rounded-2xl overflow-hidden animate-pulse">
+                <div className="px-5 py-3.5 bg-muted/40 border-b border-border flex items-center justify-between">
+                  <div className="h-4 w-48 rounded bg-muted" />
+                  <div className="h-6 w-16 rounded-full bg-muted" />
+                </div>
+                <div className="px-5 py-3 space-y-2">
+                  <div className="h-3 w-3/4 rounded bg-muted" />
+                  <div className="h-3 w-1/2 rounded bg-muted/70" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : sortedModules.length === 0 ? (
           <EmptyState
             title="No modules available for this course section yet."
           />
         ) : (
-          sortedModules.map(mod => {
+          sortedModules.map((mod, idx) => {
             const isExpanded = expandedModules[mod.id] ?? false;
             const isCommentsExpanded = expandedComments[mod.id] ?? false;
 
             return (
               <div
                 key={mod.id}
-                className="bg-card text-card-foreground border border-border rounded-2xl overflow-hidden shadow-subtle transition-all"
+                style={{ '--i': Math.min(idx, 5) } as React.CSSProperties}
+                className="anim-stagger-item bg-card text-card-foreground border border-border rounded-2xl overflow-hidden hover:border-muted-foreground/25 hover:shadow-card transition-all"
               >
                 {/* Header Bar - Full Panel Clickable */}
                 <div
@@ -411,12 +521,12 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                       <div className="flex items-center space-x-1.5 shrink-0">
                         <button
                           type="submit"
-                          disabled={!editModuleTitle.trim()}
-                          title="Save Title"
+                          disabled={!editModuleTitle.trim() || isSavingModule}
+                          title={isSavingModule ? 'Saving...' : 'Save Title'}
                           className="px-2.5 py-1.5 text-xs font-bold font-sans bg-primary hover:bg-primary/90 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none text-primary-foreground rounded-xl transition-all shadow-subtle flex items-center space-x-1 cursor-pointer"
                         >
-                          <Check className="w-3.5 h-3.5" />
-                          <span>Save</span>
+                          {isSavingModule ? <span className="block w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                          <span>{isSavingModule ? 'Saving...' : 'Save'}</span>
                         </button>
                         <button
                           type="button"
@@ -449,7 +559,7 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                           <h3 className="font-bold text-sm text-foreground group-hover:text-primary transition-colors font-sans">
                             {mod.title}
                           </h3>
-                          <span className="text-[11px] font-sans font-medium text-muted-foreground">
+                          <span className="text-[12px] font-sans font-medium text-muted-foreground">
                             {mod.items.length} learning resources attached
                           </span>
                         </div>
@@ -503,10 +613,13 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                           No learning items in this unit yet.
                         </div>
                       ) : (
-                        [...mod.items].slice().reverse().map(item => (
+                        [...mod.items].slice().reverse().map(item => {
+                          const isItemExpanded = expandedItems[item.id] ?? false;
+                          const isNavigable = (item.type === 'activity' && Boolean(item.activityId)) || (item.type === 'quiz' && Boolean(item.quizId));
+                          return (
                           <div
                             key={item.id}
-                            className="px-6 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between hover:bg-muted/30 transition-colors text-xs gap-3 group/item"
+                            className="px-6 py-3.5 flex flex-col sm:flex-row sm:items-start justify-between hover:bg-muted/30 transition-colors text-xs gap-3 group/item"
                           >
                             <div
                               className="flex items-start space-x-3.5 cursor-pointer flex-1"
@@ -515,44 +628,70 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                                   onSelectActivity(item.activityId);
                                 } else if (item.type === 'quiz' && item.quizId) {
                                   onSelectQuiz(item.quizId);
-                                } else if (item.fileName || item.fileUrl) {
-                                  setPreviewItem(item);
                                 } else {
-                                  showAlert({
-                                    title: item.title,
-                                    message: item.content || 'No text content available for this unit item.',
-                                    type: 'info',
-                                    confirmText: 'Close'
-                                  });
+                                  toggleItemExpand(item.id);
                                 }
                               }}
                             >
-                              <div className="p-2 rounded-xl bg-muted border border-border shrink-0 mt-0.5">
+                              <div className="w-10 h-10 rounded-xl bg-muted border border-border flex items-center justify-center shrink-0 mt-0.5">
                                 {getItemIcon(item.type)}
                               </div>
-                              <div className="space-y-1">
+                              <div className="space-y-1 min-w-0">
                                 <div className="flex items-center space-x-2 flex-wrap gap-y-1">
-                                  <span className="font-bold text-foreground hover:text-primary transition-colors font-sans">
+                                  <span className="font-bold text-[14px] tracking-tight text-foreground hover:text-primary transition-colors truncate">
                                     {item.title}
                                   </span>
                                   {item.required && (
-                                    <span className="px-2 py-0.5 text-[9px] font-sans font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 rounded">
-                                      REQUIRED
+                                    <span className="px-2 py-0.5 text-[11px] font-sans font-semibold bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 rounded-full">
+                                      Required
                                     </span>
+                                  )}
+                                  {!isNavigable && (
+                                    <ChevronDown
+                                      className={`w-3.5 h-3.5 text-muted-foreground transition-transform duration-200 ${isItemExpanded ? 'rotate-180' : 'rotate-0'}`}
+                                    />
                                   )}
                                 </div>
 
-                                <div className="text-[11px] font-sans text-muted-foreground capitalize">
-                                  Type: {item.type} {item.completionCondition && `• Must ${item.completionCondition}`}
+                                <div className="text-[12px] font-sans text-muted-foreground">
+                                  {getItemTypeLabel(item.type)} {item.completionCondition && `· Must ${item.completionCondition}`}
                                 </div>
 
-                                {/* Attached File Chip */}
+                                {/* Inline Content / syllabus instructions / URL — visible only when the item is clicked */}
+                                {!isNavigable && isItemExpanded && (
+                                  <div
+                                    className="mt-2 p-3 bg-muted/40 border border-border/70 rounded-xl text-xs text-foreground font-sans leading-relaxed whitespace-pre-line break-words animate-fade-in"
+                                    onClick={e => e.stopPropagation()}
+                                  >
+                                    {item.content ? (
+                                      renderContentWithLinks(item.content)
+                                    ) : (
+                                      <span className="italic text-muted-foreground">No text content available for this unit item.</span>
+                                    )}
+                                    {item.fileName && (
+                                      <p className="mt-2 pt-2 border-t border-border/60 text-[11px] text-muted-foreground whitespace-normal">
+                                        Attached file below — click the file chip to open its full-page preview.
+                                      </p>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* Attached File Chip — ONLY this opens the file full-page preview */}
                                 {item.fileName && (
                                   <div className="pt-0.5 flex items-center space-x-2">
                                     <span
+                                      role="button"
+                                      tabIndex={0}
+                                      title="Open file full-page preview"
                                       onClick={e => {
                                         e.stopPropagation();
                                         setPreviewItem(item);
+                                      }}
+                                      onKeyDown={e => {
+                                        if (e.key === 'Enter' || e.key === ' ') {
+                                          e.stopPropagation();
+                                          setPreviewItem(item);
+                                        }
                                       }}
                                       className="inline-flex items-center space-x-1.5 px-2.5 py-1 bg-primary/10 hover:bg-primary/20 border border-primary/20 text-primary font-sans text-[11px] font-bold rounded-lg cursor-pointer transition-colors shadow-subtle"
                                     >
@@ -617,7 +756,8 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                               )}
                             </div>
                           </div>
-                        ))
+                          );
+                        })
                       )}
                     </div>
 
@@ -674,7 +814,7 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                                   const isEdited = Boolean(c.isEdited);
                                   const isLiked = (c.likedBy || []).includes(activeUser.id);
                                   const isEditing = editingCommentId === c.id;
-                                  const childThreads = groupRepliesByRoot((mod.comments || []).filter(cc => cc.parentId)).get(c.id) || [];
+                                  const childThreads = groupRepliesByRoot(mod.comments || []).get(c.id) || [];
                                   const moduleReplyToId = replyToIds[mod.id] ?? null;
                                   const moduleReplyText = replyTexts[mod.id] ?? '';
                                   const replyTarget = moduleReplyToId
@@ -685,55 +825,49 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                                   return (
                                     <div
                                       key={c.id}
-                                      className={`p-3 bg-card border rounded-xl space-y-1.5 shadow-subtle transition-colors ${isDeleted
+                                      className={`p-3 bg-card border rounded-xl space-y-1.5 transition-colors ${isDeleted
                                         ? 'border-border/40 opacity-75 bg-muted/20'
                                         : 'border-border/70 hover:border-border'
                                         }`}
                                     >
                                       <div className="flex items-center justify-between">
                                         <div className="flex items-center space-x-2 flex-wrap gap-y-1">
-                                          {c.authorAvatar ? (
-                                            <img
-                                              src={c.authorAvatar}
-                                              alt={c.authorName}
-                                              className="w-6 h-6 rounded-full object-cover border border-border shrink-0"
-                                            />
-                                          ) : (
-                                            <div className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0 font-sans">
-                                              {c.authorName.charAt(0)}
-                                            </div>
-                                          )}
+                                          <UserAvatar
+                                            name={c.authorName}
+                                            src={c.authorAvatar}
+                                            className="w-6 h-6 rounded-full object-cover border border-border shrink-0"
+                                          />
                                           <span className="text-xs font-bold text-foreground font-sans">
                                             {c.authorName}
                                           </span>
                                           <span
-                                            className={`px-1.5 py-0.5 text-[9px] font-sans font-bold rounded uppercase tracking-wider ${c.authorRole === 'faculty'
-                                              ? 'bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30'
+                                            className={`px-2 py-0.5 text-[11px] font-sans font-semibold rounded-full border ${c.authorRole === 'faculty'
+                                              ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20'
                                               : c.authorRole === 'admin'
-                                                ? 'bg-purple-500/15 text-purple-700 dark:text-purple-400 border border-purple-500/30'
-                                                : 'bg-muted text-muted-foreground border border-border'
+                                                ? 'bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/20'
+                                                : 'bg-muted text-muted-foreground border-border'
                                               }`}
                                           >
                                             {c.authorRole}
                                           </span>
-                                          <span className="text-[10px] text-muted-foreground font-sans">
-                                            • {c.createdAt.includes('T') ? new Date(c.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : c.createdAt}
+                                          <span className="text-[11px] text-muted-foreground font-sans">
+                                            · {c.createdAt.includes('T') ? new Date(c.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : c.createdAt}
                                           </span>
 
                                           {/* Edited Mark */}
                                           {isEdited && !isDeleted && (
                                             <span
-                                              className="px-1.5 py-0.5 text-[9px] font-sans font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 rounded"
+                                              className="px-2 py-0.5 text-[11px] font-sans font-medium bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 rounded-full"
                                               title={c.editedAt ? `Edited on ${c.editedAt}` : 'Edited'}
                                             >
-                                              (edited)
+                                              Edited
                                             </span>
                                           )}
 
                                           {/* Deleted Mark */}
                                           {isDeleted && (
                                             <span
-                                              className="px-1.5 py-0.5 text-[9px] font-sans font-bold bg-zinc-500/15 text-zinc-600 dark:text-zinc-400 border border-zinc-500/25 rounded"
+                                              className="px-2 py-0.5 text-[11px] font-sans font-semibold bg-muted text-muted-foreground border border-border rounded-full"
                                               title={c.deletedAt ? `Deleted on ${c.deletedAt}` : 'Deleted'}
                                             >
                                               Deleted
@@ -875,17 +1009,11 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                                           <div key={child.id} className="ml-8 border-l border-border pl-3 space-y-1">
                                             <div className="flex items-center justify-between">
                                               <div className="flex items-center space-x-2 flex-wrap gap-y-1">
-                                                {child.authorAvatar ? (
-                                                  <img
-                                                    src={child.authorAvatar}
-                                                    alt={child.authorName}
-                                                    className="w-5 h-5 rounded-full object-cover border border-border shrink-0"
-                                                  />
-                                                ) : (
-                                                  <div className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0 font-sans">
-                                                    {child.authorName.charAt(0)}
-                                                  </div>
-                                                )}
+                                                <UserAvatar
+                                                  name={child.authorName}
+                                                  src={child.authorAvatar}
+                                                  className="w-5 h-5 rounded-full object-cover border border-border shrink-0"
+                                                />
                                                 <span className="text-xs font-bold text-foreground font-sans">
                                                   {child.authorName}
                                                 </span>
@@ -1023,14 +1151,7 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                                         <form
                                           onSubmit={e => {
                                             e.preventDefault();
-                                            const text = moduleReplyText.trim();
-                                            if (!text || !moduleReplyToId) return;
-                                            void addModuleComment(mod.id, text, moduleReplyToId)
-                                              .then(() => {
-                                                setReplyToIds(prev => ({ ...prev, [mod.id]: null }));
-                                                setReplyTexts(prev => ({ ...prev, [mod.id]: '' }));
-                                              })
-                                              .catch(() => {});
+                                            void handlePostModuleReply(mod.id);
                                           }}
                                           className="ml-8 border-l border-border pl-3 pt-1 space-y-2"
                                         >
@@ -1049,10 +1170,13 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                                             />
                                             <button
                                               type="submit"
-                                              disabled={!moduleReplyText.trim()}
-                                              className="px-3 py-2 bg-primary hover:bg-primary/90 disabled:opacity-40 text-primary-foreground text-xs font-bold font-sans rounded-xl transition-all shadow-subtle cursor-pointer disabled:cursor-not-allowed shrink-0"
+                                              disabled={!moduleReplyText.trim() || postingReplyIds[mod.id]}
+                                              className="px-3 py-2 bg-primary hover:bg-primary/90 disabled:opacity-40 text-primary-foreground text-xs font-bold font-sans rounded-xl transition-all shadow-subtle cursor-pointer disabled:cursor-not-allowed shrink-0 flex items-center space-x-1.5"
                                             >
-                                              Reply
+                                              {postingReplyIds[mod.id] ? (
+                                                <span className="block w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                                              ) : null}
+                                              <span>{postingReplyIds[mod.id] ? 'Posting...' : 'Reply'}</span>
                                             </button>
                                             <button
                                               type="button"
@@ -1077,12 +1201,7 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                           <form
                             onSubmit={e => {
                               e.preventDefault();
-                              const text = (commentInputs[mod.id] || '').trim();
-                              if (!text) return;
-                              // Server creates the reply notification inline.
-                              void addModuleComment(mod.id, text)
-                                .then(() => setCommentInputs(prev => ({ ...prev, [mod.id]: '' })))
-                                .catch(() => {});
+                              void handlePostComment(mod.id);
                             }}
                             className="flex items-center space-x-2.5 p-1.5 pb-2"
                           >
@@ -1097,11 +1216,16 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                             />
                             <button
                               type="submit"
-                              disabled={!(commentInputs[mod.id] || '').trim()}
+                              disabled={!(commentInputs[mod.id] || '').trim() || postingCommentIds[mod.id]}
+                              title={postingCommentIds[mod.id] ? 'Posting...' : 'Post comment'}
                               className="px-4 py-2.5 bg-primary hover:bg-primary/90 disabled:opacity-40 text-primary-foreground text-xs font-bold font-sans rounded-xl transition-all shadow-subtle flex items-center space-x-1.5 cursor-pointer disabled:cursor-not-allowed shrink-0 active:scale-[0.98]"
                             >
-                              <Send className="w-3.5 h-3.5" />
-                              <span className="hidden sm:inline">Post</span>
+                              {postingCommentIds[mod.id] ? (
+                                <span className="block w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                              ) : (
+                                <Send className="w-3.5 h-3.5" />
+                              )}
+                              <span className="hidden sm:inline">{postingCommentIds[mod.id] ? 'Posting...' : 'Post'}</span>
                             </button>
                           </form>
                         </div>
@@ -1127,10 +1251,10 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                   </div>
                   <div className="truncate">
                     <h3 className="text-sm font-bold text-foreground font-sans truncate">{previewItem.title}</h3>
-                    <div className="flex items-center space-x-2 text-[10px] font-sans font-medium text-muted-foreground truncate">
+                    <div className="flex items-center space-x-2 text-[12px] font-sans font-medium text-muted-foreground truncate">
                       {previewItem.fileName && <span>{previewItem.fileName}</span>}
-                      {previewItem.fileSize && <span>• {previewItem.fileSize}</span>}
-                      <span>• Full Screen Preview</span>
+                      {previewItem.fileSize && <span>· {previewItem.fileSize}</span>}
+                      <span>· Full screen preview</span>
                     </div>
                   </div>
                 </div>

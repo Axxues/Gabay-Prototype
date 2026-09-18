@@ -11,7 +11,8 @@ import {
   MessageSquare,
   Heart,
   Calendar,
-  FolderOpen
+  FolderOpen,
+  Loader2
 } from 'lucide-react';
 import { FilePickerModal } from '../components/common/FilePickerModal';
 import { UploadProgress } from '../components/common/UploadProgress';
@@ -44,6 +45,7 @@ export const CreateAnnouncementPage: React.FC<CreateAnnouncementPageProps> = ({
   const upload = useSimulatedUpload();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isFilePickerOpen, setIsFilePickerOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const isImageFileName = (name: string, url?: string): boolean => {
     return isImageFile(name, undefined, url);
@@ -102,7 +104,7 @@ export const CreateAnnouncementPage: React.FC<CreateAnnouncementPageProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (upload.isUploading) return;
+    if (upload.isUploading || isSubmitting) return;
     if (!title.trim() || !content.trim()) {
       showAlert({
         title: 'Missing Required Fields',
@@ -116,6 +118,7 @@ export const CreateAnnouncementPage: React.FC<CreateAnnouncementPageProps> = ({
       ? [{ name: attachedFile.name, size: attachedFile.size, url: attachedFile.url }]
       : [];
 
+    setIsSubmitting(true);
     try {
       // Server files attachments automatically (area:announcements).
       // One section per course: announcements always post to the whole course.
@@ -135,6 +138,8 @@ export const CreateAnnouncementPage: React.FC<CreateAnnouncementPageProps> = ({
     } catch {
       // Context already surfaced the failure alert.
       return;
+    } finally {
+      setIsSubmitting(false);
     }
 
     showAlert({
@@ -296,7 +301,7 @@ export const CreateAnnouncementPage: React.FC<CreateAnnouncementPageProps> = ({
                 </p>
               </div>
               {upload.isUploading && upload.fileName && (
-                <UploadProgress fileName={upload.fileName} progress={upload.progress} hint="Saving file to /public/uploads/..." />
+                <UploadProgress fileName={upload.fileName} progress={upload.progress} hint="Uploading file..." />
               )}
               </>
             )}
@@ -387,10 +392,13 @@ export const CreateAnnouncementPage: React.FC<CreateAnnouncementPageProps> = ({
           </button>
           <button
             type="submit"
-            className="px-5 py-2 text-xs font-semibold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all shadow-primary-sm cursor-pointer flex items-center space-x-2"
+            disabled={isSubmitting || upload.isUploading}
+            className="px-5 py-2 text-xs font-semibold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all shadow-primary-sm cursor-pointer disabled:opacity-60 disabled:cursor-wait flex items-center space-x-2"
           >
-            <Megaphone className="w-3.5 h-3.5" />
-            <span>Publish announcement</span>
+            {isSubmitting
+              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              : <Megaphone className="w-3.5 h-3.5" />}
+            <span>{isSubmitting ? 'Publishing…' : 'Publish announcement'}</span>
           </button>
         </div>
       </form>

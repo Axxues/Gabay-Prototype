@@ -75,23 +75,23 @@ export const HelpPage: React.FC<HelpPageProps> = ({ onNavigateTab }) => {
   };
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-6 animate-fade-in pb-16 select-none">
+    <div className="flex min-h-full w-full flex-1 flex-col p-6 max-w-6xl mx-auto space-y-6 animate-fade-in pb-16 select-none">
       {/* Top Header Bar */}
       <div className="flex items-start gap-3">
         <button
           onClick={() => onNavigateTab && onNavigateTab('dashboard')}
-          className="p-2 bg-card border border-border hover:bg-muted text-muted-foreground hover:text-foreground rounded-xl transition-all shadow-subtle cursor-pointer active:scale-[0.98] shrink-0 mt-0.5"
+          className="p-2 bg-card border border-border hover:bg-muted text-muted-foreground hover:text-foreground rounded-xl transition-all shadow-none cursor-pointer active:scale-[0.98] shrink-0 mt-0.5"
           title="Back to Dashboard"
         >
           <ArrowLeft className="w-4 h-4" />
         </button>
         <div className="flex-1">
           <PageHeader
-            title="Help & Support"
+            title="Help & support"
             description="Frequently asked questions and guides."
             actions={
-              <span className="px-3 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs font-sans font-bold text-emerald-700 dark:text-emerald-400 self-start sm:self-auto shadow-soft">
-                All Services Operational
+              <span className="px-3 py-1 rounded-full bg-muted border border-border text-xs font-sans font-semibold text-muted-foreground self-start sm:self-auto">
+                All services operational
               </span>
             }
           />
@@ -106,7 +106,7 @@ export const HelpPage: React.FC<HelpPageProps> = ({ onNavigateTab }) => {
       )}
 
       {/* Search Input */}
-      <div className="p-4 bg-card border border-border rounded-2xl shadow-subtle">
+      <div className="p-4 bg-card border border-border rounded-2xl shadow-none">
         <div className="relative max-w-xl">
           <Search className="w-4 h-4 text-muted-foreground absolute left-3.5 top-3" />
           <input
@@ -122,11 +122,11 @@ export const HelpPage: React.FC<HelpPageProps> = ({ onNavigateTab }) => {
       {/* 2-Column Grid: Manuals & Support */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Card 1: Official Documentation */}
-        <div className="p-6 bg-card border border-border rounded-2xl shadow-subtle space-y-4">
+        <div className="p-6 bg-card border border-border rounded-2xl shadow-none space-y-4">
           <div className="flex items-center space-x-2">
-            <BookOpen className="w-4 h-4 text-primary" />
-            <h2 className="font-bold text-sm text-foreground uppercase tracking-wider text-[11px]">
-              DMMMSU-SLUC Academic User Manuals
+            <BookOpen className="w-4 h-4 text-muted-foreground" />
+            <h2 className="font-semibold text-[12px] text-muted-foreground">
+              DMMMSU-SLUC academic user manuals
             </h2>
           </div>
           <p className="text-xs text-muted-foreground leading-relaxed">
@@ -215,11 +215,11 @@ export const HelpPage: React.FC<HelpPageProps> = ({ onNavigateTab }) => {
         </div>
 
         {/* Card 2: ICT Support & Ticketing Desk */}
-        <div className="p-6 bg-card border border-border rounded-2xl shadow-subtle space-y-4">
+        <div className="p-6 bg-card border border-border rounded-2xl shadow-none space-y-4">
           <div className="flex items-center space-x-2">
-            <Mail className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-            <h2 className="font-bold text-sm text-foreground uppercase tracking-wider text-[11px]">
-              DMMMSU ICT Services Ticketing Desk
+            <Mail className="w-4 h-4 text-muted-foreground" />
+            <h2 className="font-semibold text-[12px] text-muted-foreground">
+              DMMMSU ICT services ticketing desk
             </h2>
           </div>
           <p className="text-xs text-muted-foreground leading-relaxed">
@@ -228,30 +228,30 @@ export const HelpPage: React.FC<HelpPageProps> = ({ onNavigateTab }) => {
 
           <div className="space-y-3 pt-2 text-xs">
             <div className="p-3.5 bg-muted/30 rounded-xl border border-border space-y-1">
-              <div className="flex items-center space-x-2 text-muted-foreground">
-                <Mail className="w-3.5 h-3.5 text-primary" />
-                <span className="font-bold text-foreground">ICT Services Email Support</span>
-              </div>
+                <div className="flex items-center space-x-2 text-muted-foreground">
+                  <Mail className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span className="font-semibold text-foreground">ICT services email support</span>
+                </div>
               <p className="font-sans text-foreground font-semibold text-[11px] pl-5.5">
                 it.support@dmmmsu.edu.ph
               </p>
             </div>
 
             <div className="p-3.5 bg-muted/30 rounded-xl border border-border space-y-1">
-              <div className="flex items-center space-x-2 text-muted-foreground">
-                <Phone className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span className="font-bold text-foreground">Campus Helpdesk Hotline</span>
-              </div>
+                <div className="flex items-center space-x-2 text-muted-foreground">
+                  <Phone className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span className="font-semibold text-foreground">Campus helpdesk hotline</span>
+                </div>
               <p className="font-sans text-foreground font-semibold text-[11px] pl-5.5">
                 +63 (072) 710-0492 / Local Ext. 402
               </p>
             </div>
 
             <div className="p-3.5 bg-muted/30 rounded-xl border border-border space-y-1">
-              <div className="flex items-center space-x-2 text-muted-foreground">
-                <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                <span className="font-bold text-foreground">Physical Office Hours</span>
-              </div>
+                <div className="flex items-center space-x-2 text-muted-foreground">
+                  <Clock className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span className="font-semibold text-foreground">Physical office hours</span>
+                </div>
               <p className="text-[11px] text-muted-foreground pl-5.5">
                 Monday to Friday • 8:00 AM to 5:00 PM (SLUC ICT Center, 2nd Floor)
               </p>
@@ -262,7 +262,7 @@ export const HelpPage: React.FC<HelpPageProps> = ({ onNavigateTab }) => {
 
       {/* Compliance & Security Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div className="p-5 bg-card border border-border rounded-2xl shadow-subtle space-y-2">
+        <div className="p-5 bg-card border border-border rounded-2xl shadow-none space-y-2">
           <div className="flex items-center space-x-2 font-bold text-sm text-foreground">
             <FileText className="w-4 h-4 text-primary" />
             <span>CHED CMO 25 s. 2015 Compliance Guard</span>
@@ -272,7 +272,7 @@ export const HelpPage: React.FC<HelpPageProps> = ({ onNavigateTab }) => {
           </p>
         </div>
 
-        <div className="p-5 bg-card border border-border rounded-2xl shadow-subtle space-y-2">
+        <div className="p-5 bg-card border border-border rounded-2xl shadow-none space-y-2">
           <div className="flex items-center space-x-2 font-bold text-sm text-foreground">
             <Shield className="w-4 h-4 text-amber-600 dark:text-amber-400" />
             <span>Republic Act 10173 (Data Privacy Act)</span>
@@ -284,9 +284,9 @@ export const HelpPage: React.FC<HelpPageProps> = ({ onNavigateTab }) => {
       </div>
 
       {/* Frequently Asked Questions (Accordion) */}
-      <div className="bg-card border border-border rounded-2xl p-6 shadow-subtle space-y-4">
-        <h2 className="font-bold text-sm text-foreground uppercase tracking-wider text-[11px]">
-          Frequently Asked Questions (FAQ)
+      <div className="bg-card border border-border rounded-2xl p-6 shadow-none space-y-4">
+        <h2 className="font-semibold text-[12px] text-muted-foreground">
+          Frequently asked questions
         </h2>
 
         <div className="space-y-2.5">
@@ -327,10 +327,10 @@ export const HelpPage: React.FC<HelpPageProps> = ({ onNavigateTab }) => {
       </div>
 
       {/* Prototype Reset Card */}
-      <div className="p-6 bg-card border border-border rounded-2xl shadow-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="p-6 bg-card border border-border rounded-2xl shadow-none flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="space-y-1">
-          <h3 className="font-bold text-sm text-foreground uppercase tracking-wider text-[11px]">
-            Session Management
+          <h3 className="font-semibold text-[12px] text-muted-foreground">
+            Session management
           </h3>
           <p className="text-xs text-muted-foreground">
             Sign out and clear the locally cached session data.
@@ -338,7 +338,7 @@ export const HelpPage: React.FC<HelpPageProps> = ({ onNavigateTab }) => {
         </div>
         <button
           onClick={handleReset}
-          className="inline-flex items-center space-x-2 px-4 py-2.5 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all shadow-primary-sm active:scale-[0.98] cursor-pointer shrink-0"
+          className="inline-flex items-center space-x-2 px-4 py-2.5 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all active:scale-[0.98] cursor-pointer shrink-0"
         >
           <RefreshCw className="w-3.5 h-3.5" />
           <span>Sign Out & Clear Cache</span>

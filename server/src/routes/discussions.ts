@@ -17,7 +17,12 @@ interface CourseRow {
 }
 
 async function loadCourseOr404(courseId: string) {
-  const course = await prisma.course.findUnique({ where: { id: courseId } });
+  // Narrow select: access checks only need id/instructorId. A full row drag
+  // would pull the multi-MB image/syllabus blobs on every course-scoped call.
+  const course = await prisma.course.findUnique({
+    where: { id: courseId },
+    select: { id: true, instructorId: true },
+  });
   if (!course) throw new ApiError(404, 'not_found', 'Course not found.');
   return course;
 }

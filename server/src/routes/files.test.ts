@@ -182,6 +182,23 @@ describe('files + grades routers', () => {
     expect(prisma.courseFile.create).not.toHaveBeenCalled();
   });
 
+  it('faculty PUT grades for unenrolled student → 403', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-fac',
+      role: 'faculty',
+    });
+    (prisma.enrollmentRequest.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .put('/api/courses/c1/grades/u-stranger')
+      .set('Authorization', 'Bearer x')
+      .send({ midtermGrade: 90 });
+
+    expect(res.status).toBe(403);
+    expect(prisma.courseGrade.upsert).not.toHaveBeenCalled();
+  });
+
   it('student GET grades of another student → 403', async () => {
     (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
       sub: 'u-stu',

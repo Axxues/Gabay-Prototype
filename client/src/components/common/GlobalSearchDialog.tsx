@@ -32,6 +32,8 @@ export const GlobalSearchDialog: React.FC<GlobalSearchDialogProps> = ({
     { label: 'Dashboard', tab: 'dashboard', category: 'Pages', icon: <Search className="w-4 h-4" /> },
     { label: 'Course Catalog & Sections', tab: 'courses', category: 'Pages', icon: <BookOpen className="w-4 h-4" /> },
     { label: 'Create New Course Shell', tab: 'create-course', category: 'Actions', icon: <BookOpen className="w-4 h-4" /> },
+    { label: 'Create New College Account', tab: 'create-account', category: 'Actions', icon: <BookOpen className="w-4 h-4" /> },
+    { label: 'Manage College Accounts', tab: 'accounts', category: 'Pages', icon: <BookOpen className="w-4 h-4" /> },
     { label: 'Academic Calendar & Schedule', tab: 'calendar', category: 'Pages', icon: <Calendar className="w-4 h-4" /> },
     { label: 'Conversations & Inbox', tab: 'inbox', category: 'Pages', icon: <Inbox className="w-4 h-4" /> },
     { label: 'User Profile & Identity', tab: 'profile', category: 'Pages', icon: <Search className="w-4 h-4" /> },
@@ -70,7 +72,7 @@ export const GlobalSearchDialog: React.FC<GlobalSearchDialogProps> = ({
     <AnimatedModal
       isOpen={isOpen}
       onClose={onClose}
-      panelClassName="w-full max-w-3xl h-[560px] max-h-[88vh] bg-card border border-border rounded-2xl shadow-elevated overflow-hidden flex flex-col"
+      panelClassName="w-full max-w-3xl h-[560px] max-h-[88vh] bg-card border border-border rounded-2xl overflow-hidden flex flex-col"
     >
       {({ startClose }) => (
         <>
@@ -117,7 +119,7 @@ export const GlobalSearchDialog: React.FC<GlobalSearchDialogProps> = ({
           <div className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-4 text-xs">
             {!searchTerm.trim() ? (
               <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-4">
-                <div className="p-4 rounded-2xl bg-primary/10 text-primary border border-primary/20 shadow-soft">
+                <div className="p-4 rounded-2xl bg-muted text-muted-foreground border border-border">
                   <Command className="w-8 h-8" />
                 </div>
                 <div className="space-y-1 max-w-md">
@@ -159,8 +161,8 @@ export const GlobalSearchDialog: React.FC<GlobalSearchDialogProps> = ({
                 {/* Pages */}
                 {filteredResults.pages.length > 0 && (
                   <div>
-                    <div className="px-2 py-1 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                      Navigation Pages
+                    <div className="px-2 py-1 text-[12px] font-semibold text-muted-foreground">
+                      Navigation pages
                     </div>
                     <div className="space-y-1 mt-1">
                       {filteredResults.pages.map(page => (
@@ -188,8 +190,8 @@ export const GlobalSearchDialog: React.FC<GlobalSearchDialogProps> = ({
                 {/* Courses */}
                 {filteredResults.courses.length > 0 && (
                   <div>
-                    <div className="px-2 py-1 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                      Course Shells
+                    <div className="px-2 py-1 text-[12px] font-semibold text-muted-foreground">
+                      Course shells
                     </div>
                     <div className="space-y-1 mt-1">
                       {filteredResults.courses.map(course => (
@@ -218,7 +220,7 @@ export const GlobalSearchDialog: React.FC<GlobalSearchDialogProps> = ({
                 {/* Activities */}
                 {filteredResults.activities.length > 0 && (
                   <div>
-                    <div className="px-2 py-1 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                    <div className="px-2 py-1 text-[12px] font-semibold text-muted-foreground">
                       Activities
                     </div>
                     <div className="space-y-1 mt-1">
@@ -248,8 +250,8 @@ export const GlobalSearchDialog: React.FC<GlobalSearchDialogProps> = ({
                 {/* Quizzes */}
                 {filteredResults.quizzes.length > 0 && (
                   <div>
-                    <div className="px-2 py-1 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                      Quizzes & Exams
+                    <div className="px-2 py-1 text-[12px] font-semibold text-muted-foreground">
+                      Quizzes & exams
                     </div>
                     <div className="space-y-1 mt-1">
                       {filteredResults.quizzes.map(quiz => (
@@ -279,9 +281,9 @@ export const GlobalSearchDialog: React.FC<GlobalSearchDialogProps> = ({
           </div>
 
           {/* Footer */}
-          <div className="px-4 py-2.5 border-t border-border bg-muted/40 flex items-center justify-between text-[11px] text-muted-foreground font-sans">
-            <span>Cellwego-Style Search Engine</span>
-            <span>Navigate: ↑↓ • Select: Enter • Dismiss: Esc</span>
+          <div className="px-4 py-2.5 border-t border-border/70 bg-muted/40 flex items-center justify-between text-[12px] text-muted-foreground font-sans">
+            <span>Global search</span>
+            <span className="tabular-nums">Navigate: ↑↓ • Select: Enter • Dismiss: Esc</span>
           </div>
         </>
       )}

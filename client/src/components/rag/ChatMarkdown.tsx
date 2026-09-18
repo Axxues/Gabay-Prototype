@@ -90,14 +90,20 @@ export const ChatMarkdown: React.FC<ChatMarkdownProps> = ({ content, attachedCha
             const lang = match ? match[1] : '';
             const codeText = String(children).replace(/\n$/, '');
 
-            if (lang === 'chart') {
+            // Render as InteractiveChart if marked as chart, or if valid chart JSON in json/plain code blocks
+            if (lang === 'chart' || lang === 'json' || !lang) {
               try {
-                const parsed = JSON.parse(codeText);
-                if (parsed && parsed.data) {
-                  return <InteractiveChart spec={parsed as ChartSpec} />;
+                const trimmed = codeText.trim();
+                if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+                  const parsed = JSON.parse(trimmed);
+                  if (parsed && typeof parsed === 'object' && typeof parsed.type === 'string' && Array.isArray(parsed.data) && parsed.data.length > 0) {
+                    return <InteractiveChart spec={parsed as ChartSpec} />;
+                  }
                 }
               } catch (e) {
-                console.error('[ChatMarkdown] Failed to parse chart code block:', e);
+                if (lang === 'chart') {
+                  console.error('[ChatMarkdown] Failed to parse chart code block:', e);
+                }
               }
             }
 

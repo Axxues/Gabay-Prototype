@@ -32,7 +32,10 @@ sprRouter.get(
   '/courses/:id/spr',
   authenticateToken,
   asyncHandler(async (req, res) => {
-    const course = await prisma.course.findUnique({ where: { id: req.params.id } });
+    const course = await prisma.course.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, sprConfig: true },
+    });
     if (!course) throw new ApiError(404, 'not_found', 'Course not found.');
     res.json({ config: course.sprConfig ? JSON.parse(course.sprConfig) : null });
   })
@@ -43,7 +46,10 @@ sprRouter.put(
   authenticateToken,
   requireRole('faculty', 'admin'),
   asyncHandler(async (req, res) => {
-    const course = await prisma.course.findUnique({ where: { id: req.params.id } });
+    const course = await prisma.course.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, instructorId: true },
+    });
     if (!course) throw new ApiError(404, 'not_found', 'Course not found.');
     if (req.auth!.role !== 'admin' && course.instructorId !== req.auth!.sub) {
       throw new ApiError(403, 'forbidden', 'Only the course instructor can do this.');
@@ -65,12 +71,22 @@ sprRouter.put(
   authenticateToken,
   requireRole('faculty', 'admin'),
   asyncHandler(async (req, res) => {
-    const course = await prisma.course.findUnique({ where: { id: req.params.id } });
+    const course = await prisma.course.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, instructorId: true },
+    });
     if (!course) throw new ApiError(404, 'not_found', 'Course not found.');
     if (req.auth!.role !== 'admin' && course.instructorId !== req.auth!.sub) {
       throw new ApiError(403, 'forbidden', 'Only the course instructor can do this.');
     }
     const body = (req.body ?? {}) as Record<string, unknown>;
+    const studentId = req.params.studentId;
+    const membership = await prisma.enrollmentRequest.findFirst({
+      where: { courseId: course.id, studentId, status: 'approved' },
+    });
+    if (!membership) {
+      throw new ApiError(403, 'forbidden', 'Student is not enrolled in this course.');
+    }
     const cells = {
       midtermScores: parseScoreMap(body.midtermScores, 'midtermScores'),
       mtExam: parseExam(body.mtExam, 'mtExam'),

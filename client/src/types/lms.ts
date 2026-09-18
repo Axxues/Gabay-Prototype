@@ -67,6 +67,11 @@ export interface EnrollmentRequest {
   resolvedBy?: string;
   sectionId?: string;
   targetSectionId?: string;
+  // Server-attached snapshot: pending rows reference courses outside the
+  // student's cached (enrolled-only) course list, so payloads carry the
+  // display name. Null when the course no longer exists.
+  courseCode?: string | null;
+  courseTitle?: string | null;
 }
 
 export interface ModuleItem {
@@ -182,6 +187,9 @@ export interface SubmissionComment {
 export interface Submission {
   id: string;
   activityKey?: string;
+  quizId?: string;
+  activityId?: string;
+  examId?: string;
   courseId: string;
   studentId: string;
   studentName: string;

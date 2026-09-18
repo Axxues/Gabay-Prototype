@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useLMS } from '../../context/LMSContext';
 import { PageHeader } from '../common/PageHeader';
 import {
+  ChevronDown,
   Download,
   Search,
   Lock,
@@ -55,7 +56,7 @@ export const getTransmutedGrade = (
 const TERM_SHORT: Record<TermId, string> = { prelim: 'Prelim', midterm: 'MT', finals: 'FT' };
 
 export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, onGoToSyllabus }) => {
-  const { db, showAlert, effectiveTermsForCourse, setGradesReleased } = useLMS();
+  const { db, showAlert, effectiveTermsForCourse, isLoading = false, isSyncing = false, setGradesReleased } = useLMS() as ReturnType<typeof useLMS> & { isLoading?: boolean; isSyncing?: boolean; setGradesReleased: (courseId: string, term: TermId, released: boolean) => void };
 
   const course = db.courses.find(c => c.id === courseId);
   const releaseMap = course?.gradesReleased || {};
@@ -65,11 +66,49 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
       .map(r => r.studentId)
   );
   const students = db.users.filter(
-    u => u.role === 'student' && (!u.enrolledCourseIds || u.enrolledCourseIds.includes(courseId) || approvedIds.has(u.id))
+    u => u.role === 'student' && ((u.enrolledCourseIds || []).includes(courseId) || approvedIds.has(u.id))
   );
 
   const [postingPolicy, setPostingPolicy] = useState<'manual' | 'automatic'>('manual');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Syllabus-driven grading terms (Task 7): one period block per effective term.
+  // Guarded like Task 6 consumers so mocked contexts without the provider fn
+  // still render the classic pair. Defined before the collapse state so a
+  // first-time visit (no stored preference) can default to all-collapsed.
+  const terms = useMemo((): TermId[] => (
+    typeof effectiveTermsForCourse === 'function'
+      ? effectiveTermsForCourse(courseId)
+      : ['midterm', 'finals']
+  ), [courseId, course, effectiveTermsForCourse]);
+
+  // Collapsible term groups: a collapsed term renders only its grade column
+  // (1 col instead of N items + exam + grade), persisted per course so faculty
+  // keep their preferred density across reloads. First visit defaults to all
+  // collapsed for maximum scannability; expanding is one click per term.
+  const collapseKey = `gabay-gradebook-collapsed-${courseId}`;
+  const [collapsedTerms, setCollapsedTerms] = useState<Set<TermId>>(() => {
+    try {
+      const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(collapseKey) : null;
+      if (raw === null) return new Set(terms);
+      const parsed: unknown = JSON.parse(raw);
+      return new Set(Array.isArray(parsed) ? parsed.filter((t): t is TermId => t === 'prelim' || t === 'midterm' || t === 'finals') : []);
+    } catch {
+      return new Set();
+    }
+  });
+  const isCollapsed = (term: TermId): boolean => collapsedTerms.has(term);
+  const toggleTerm = (term: TermId) => {
+    setCollapsedTerms(prev => {
+      const next = new Set(prev);
+      if (next.has(term)) next.delete(term);
+      else next.add(term);
+      try {
+        if (typeof localStorage !== 'undefined') localStorage.setItem(collapseKey, JSON.stringify([...next]));
+      } catch { /* storage unavailable — collapse still works for the session */ }
+      return next;
+    });
+  };
 
   const filteredStudents = students.filter(
     s =>
@@ -77,15 +116,6 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
       (s.studentId && s.studentId.toLowerCase().includes(searchQuery.toLowerCase())) ||
       s.email.toLowerCase().includes(searchQuery.toLowerCase())
   );
-
-  // Syllabus-driven grading terms (Task 7): one period block per effective term.
-  // Guarded like Task 6 consumers so mocked contexts without the provider fn
-  // still render the classic pair.
-  const terms = useMemo((): TermId[] => (
-    typeof effectiveTermsForCourse === 'function'
-      ? effectiveTermsForCourse(courseId)
-      : ['midterm', 'finals']
-  ), [courseId, course, effectiveTermsForCourse]);
 
   const weights = useMemo(
     () => resolveSPRWeights(course?.syllabus?.gradingSystem ?? null),
@@ -225,7 +255,23 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
 
   // One (columns + exam + grade) group per term, plus roster + final + numerical.
   // Prelim blocks carry no exam column (class-standing-only term).
-  const totalColumns = 1 + terms.reduce((n, t) => n + (columnsByTerm[t]?.length ?? 0) + (t === 'prelim' ? 1 : 2), 0) + 2;
+  // Collapsed terms contribute only their grade column.
+  const groupWidth = (t: TermId): number =>
+    isCollapsed(t) ? 1 : (columnsByTerm[t]?.length ?? 0) + (t === 'prelim' ? 1 : 2);
+  const totalColumns = 1 + terms.reduce((n, t) => n + groupWidth(t), 0) + 2;
+  const collapsedCount = terms.filter(t => isCollapsed(t)).length;
+  const expandAll = () => {
+    setCollapsedTerms(new Set());
+    try {
+      if (typeof localStorage !== 'undefined') localStorage.setItem(collapseKey, JSON.stringify([]));
+    } catch { /* ignore */ }
+  };
+  const collapseAll = () => {
+    setCollapsedTerms(new Set(terms));
+    try {
+      if (typeof localStorage !== 'undefined') localStorage.setItem(collapseKey, JSON.stringify(terms));
+    } catch { /* ignore */ }
+  };
 
   const exportTitle = students.length === 0
     ? 'No students enrolled to export.'
@@ -295,10 +341,10 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
           />
         </div>
 
-        <div className="flex items-center space-x-3 text-[12px] text-muted-foreground">
+        <div className="flex items-center flex-wrap gap-x-3 gap-y-1 text-[12px] text-muted-foreground">
           {terms.map((t, i) => (
             <React.Fragment key={t}>
-              {i > 0 ? <span>·</span> : null}
+              {i > 0 ? <span aria-hidden="true">·</span> : null}
               <span className="flex items-center space-x-1">
                 <span className={`w-2 h-2 rounded-full ${t === 'prelim' ? 'bg-sky-500' : t === 'midterm' ? 'bg-primary' : 'bg-emerald-500'}`} />
                 <span>{TERM_LABELS[t]}: <strong className="text-foreground">{termWeights[t]}%</strong></span>
@@ -323,8 +369,28 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
               </span>
             );
           })}
-          <span>·</span>
+          <span aria-hidden="true">·</span>
           <span>Passing: <strong className="text-emerald-600 dark:text-emerald-400">75% (3.00)</strong></span>
+          <span aria-hidden="true">·</span>
+          <span className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={expandAll}
+              disabled={collapsedCount === 0}
+              className="font-semibold text-primary hover:underline disabled:opacity-40 disabled:no-underline disabled:cursor-default cursor-pointer"
+            >
+              Expand all
+            </button>
+            <span aria-hidden="true">/</span>
+            <button
+              type="button"
+              onClick={collapseAll}
+              disabled={collapsedCount === terms.length}
+              className="font-semibold text-primary hover:underline disabled:opacity-40 disabled:no-underline disabled:cursor-default cursor-pointer"
+            >
+              Collapse all
+            </button>
+          </span>
         </div>
       </div>
 
@@ -361,6 +427,51 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
             ) : null}
           </div>
         </div>
+      ) : (isLoading || isSyncing) && autoCols.length === 0 ? (
+        <div data-testid="spr-loading" className="bg-card border border-border rounded-2xl overflow-hidden" aria-hidden="true">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="border-b border-border bg-muted/60">
+                  <th className="px-5 py-3 min-w-[232px]">
+                    <div className="h-4 w-40 rounded bg-muted animate-pulse" />
+                  </th>
+                  {terms.map(term => (
+                    <th key={`skeleton-group-${term}`} className="px-4 py-2 text-center border-l border-border">
+                      <div className="h-4 w-24 rounded bg-muted animate-pulse mx-auto" />
+                    </th>
+                  ))}
+                  <th className="px-4 py-2 text-center border-l border-border">
+                    <div className="h-4 w-20 rounded bg-muted animate-pulse mx-auto" />
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <tr key={`spr-skeleton-${i}`}>
+                    <td className="px-5 py-3.5">
+                      <div className="flex items-center space-x-2.5">
+                        <div className="w-7 h-7 rounded-full bg-muted animate-pulse shrink-0" />
+                        <div className="flex-1 space-y-1.5">
+                          <div className="h-3.5 w-2/3 rounded bg-muted animate-pulse" />
+                          <div className="h-2.5 w-1/2 rounded bg-muted/70 animate-pulse" />
+                        </div>
+                      </div>
+                    </td>
+                    {terms.map(term => (
+                      <td key={`spr-skeleton-${i}-${term}`} className="px-3 py-3.5 text-center border-l border-border">
+                        <div className="h-5 w-14 rounded-full bg-muted animate-pulse mx-auto" />
+                      </td>
+                    ))}
+                    <td className="px-3 py-3.5 text-center border-l border-border">
+                      <div className="h-5 w-14 rounded-lg bg-muted animate-pulse mx-auto" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       ) : autoCols.length === 0 ? (
         <div data-testid="spr-empty-state" className="bg-card border border-border rounded-2xl p-8 text-center shadow-subtle">
           <div className="mx-auto max-w-md space-y-3">
@@ -375,39 +486,100 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="border-b border-border bg-muted/40 text-[11.5px] font-semibold text-muted-foreground">
-                  <th className="px-4 py-3 border-r border-border min-w-[220px] sticky left-0 bg-muted/40 z-10">
+                {/* Term-group band: one tinted block per grading period. Each
+                    group is a collapse toggle — collapsed terms keep only
+                    their grade column so wide courses stay scannable. */}
+                <tr className="border-b border-border bg-muted/60 text-[11.5px] font-semibold text-muted-foreground">
+                  <th
+                    rowSpan={2}
+                    className="px-5 py-3 min-w-[232px] sticky left-0 bg-muted/60 z-10 text-[12.5px] text-foreground align-bottom"
+                  >
                     Student roster name and ID
                   </th>
-                  {terms.map(term => (
-                    <React.Fragment key={term}>
-                      {(columnsByTerm[term] ?? []).map(col => (
-                        <th key={`${term}-${col.id}`} className="px-4 py-3 border-r border-border text-center min-w-[110px]">
-                          <div className="font-semibold text-muted-foreground truncate max-w-[140px] mx-auto" title={col.title}>
-                            {col.title}
-                          </div>
-                          <div className="text-[11px] text-muted-foreground font-normal mt-0.5 tabular-nums">
-                            / {col.perfectScore}
-                          </div>
-                        </th>
-                      ))}
-                      {term === 'prelim' ? null : (
-                        <th className="px-4 py-3 border-r border-border text-center min-w-[110px]">
-                          <div className="font-semibold text-muted-foreground">{TERM_SHORT[term]} exam</div>
-                          <div className="text-[11px] text-muted-foreground font-normal mt-0.5 tabular-nums">
-                            / {examPerfectByTerm[term]}
-                          </div>
-                        </th>
-                      )}
-                      <th className="px-4 py-3 border-r border-border text-center min-w-[100px] font-semibold text-muted-foreground">
-                        {TERM_SHORT[term]} grade
+                  {terms.map(term => {
+                    const collapsed = isCollapsed(term);
+                    const itemCount = columnsByTerm[term]?.length ?? 0;
+                    const hiddenCount = itemCount + (term === 'prelim' ? 0 : 1);
+                    const groupCount = groupWidth(term);
+                    return (
+                      <th
+                        key={`group-${term}`}
+                        colSpan={groupCount}
+                        className="px-2 py-1.5 text-center border-l border-border"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => toggleTerm(term)}
+                          aria-expanded={!collapsed}
+                          aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${TERM_LABELS[term]} columns`}
+                          title={`${collapsed ? 'Expand' : 'Collapse'} ${TERM_LABELS[term]} (${hiddenCount} column${hiddenCount === 1 ? '' : 's'} hidden)`}
+                          className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary cursor-pointer transition-colors"
+                        >
+                          <ChevronDown
+                            className={`w-3.5 h-3.5 shrink-0 transition-transform duration-200 ${collapsed ? '-rotate-90' : 'rotate-0'}`}
+                            aria-hidden="true"
+                          />
+                          <span
+                            className={`w-2 h-2 rounded-full ${term === 'prelim' ? 'bg-sky-500' : term === 'midterm' ? 'bg-primary' : 'bg-emerald-500'}`}
+                            aria-hidden="true"
+                          />
+                          <span className="text-foreground">{TERM_LABELS[term]}</span>
+                          <span className="font-normal tabular-nums">{termWeights[term]}%</span>
+                          {collapsed ? (
+                            <span className="font-normal text-[11px] tabular-nums">· {hiddenCount} hidden</span>
+                          ) : null}
+                        </button>
                       </th>
-                    </React.Fragment>
-                  ))}
-                  <th className="px-4 py-3 border-r border-border text-center min-w-[100px] font-semibold text-muted-foreground">
+                    );
+                  })}
+                  <th colSpan={2} className="px-4 py-2 text-center border-l border-border">
+                    <span className="text-foreground">Final result</span>
+                  </th>
+                </tr>
+                <tr className="border-b border-border bg-muted/40 text-[11.5px] font-semibold text-muted-foreground">
+                  {terms.map(term => {
+                    if (isCollapsed(term)) {
+                      return (
+                        <th key={`${term}-collapsed-grade`} className="px-2 py-2 text-center min-w-[80px] border-l border-border">
+                          <span className="text-foreground">{TERM_SHORT[term]} grade</span>
+                        </th>
+                      );
+                    }
+                    return (
+                      <React.Fragment key={term}>
+                        {(columnsByTerm[term] ?? []).map((col, colIdx) => (
+                          <th
+                            key={`${term}-${col.id}`}
+                            className={`px-2 py-2 text-center min-w-[76px] animate-gradebook-cell-in ${colIdx === 0 ? 'border-l border-border' : ''}`}
+                          >
+                            <div className="font-semibold text-foreground truncate max-w-[96px] mx-auto" title={col.title}>
+                              {col.title}
+                            </div>
+                            <div className="text-[11px] text-muted-foreground font-normal mt-0.5 tabular-nums">
+                              / {col.perfectScore}
+                            </div>
+                          </th>
+                        ))}
+                        {term === 'prelim' ? null : (
+                          <th
+                            className={`px-2 py-2 text-center min-w-[72px] animate-gradebook-cell-in ${(columnsByTerm[term]?.length ?? 0) === 0 ? 'border-l border-border' : ''}`}
+                          >
+                            <div className="font-semibold text-foreground">{TERM_SHORT[term]} exam</div>
+                            <div className="text-[11px] text-muted-foreground font-normal mt-0.5 tabular-nums">
+                              / {examPerfectByTerm[term]}
+                            </div>
+                          </th>
+                        )}
+                        <th className="px-2 py-2 text-center min-w-[80px]">
+                          <span className="text-foreground">{TERM_SHORT[term]} grade</span>
+                        </th>
+                      </React.Fragment>
+                    );
+                  })}
+                  <th className="px-3 py-2.5 text-center min-w-[84px] border-l border-border text-foreground">
                     Final %
                   </th>
-                  <th className="px-4 py-3 text-center min-w-[110px] font-semibold text-muted-foreground">
+                  <th className="px-3 py-2.5 text-center min-w-[100px] text-foreground">
                     Numerical
                     <div className="text-[11px] text-muted-foreground font-normal mt-0.5">
                       1.00 - 5.00 scale
@@ -419,7 +591,14 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
                 {filteredStudents.length === 0 ? (
                   <tr>
                     <td colSpan={totalColumns} className="p-8 text-center text-muted-foreground">
-                      No student records found matching &quot;{searchQuery}&quot;.
+                      {searchQuery ? (
+                        <>No student records found matching &quot;{searchQuery}&quot;.</>
+                      ) : (
+                        <span className="inline-flex flex-col gap-1">
+                          <span className="font-semibold text-foreground">No currently enrolled students.</span>
+                          <span className="text-xs">Students will appear here once they are enrolled in this course.</span>
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ) : (
@@ -428,7 +607,7 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
                     const transmuted = getTransmutedGrade(row?.final ?? null);
                     return (
                       <tr key={student.id} className="hover:bg-muted/40 transition-colors">
-                        <td className="px-4 py-3 border-r border-border font-semibold text-[14px] tracking-tight text-foreground sticky left-0 bg-card z-10">
+                        <td className="px-5 py-3.5 font-semibold text-[14px] tracking-tight text-foreground sticky left-0 bg-card z-10">
                           <div className="flex items-center space-x-2.5">
                             <img
                               src={student.avatar}
@@ -449,6 +628,21 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
                           const termCols = columnsByTerm[term] ?? [];
                           const examValue = termResult?.exam;
                           const gradeValue = termResult?.grade;
+                          if (isCollapsed(term)) {
+                            return (
+                              <React.Fragment key={term}>
+                                <td className="px-2 py-2.5 text-center border-l border-border">
+                                  {gradeValue !== null && gradeValue !== undefined ? (
+                                    <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold border tabular-nums ${term === 'prelim' ? 'text-sky-700 dark:text-sky-400 bg-sky-500/10 border-sky-500/20' : term === 'midterm' ? 'text-primary bg-primary/10 border-primary/20' : 'text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20'}`}>
+                                      {gradeValue}%
+                                    </span>
+                                  ) : (
+                                    <span className="text-muted-foreground font-normal">—</span>
+                                  )}
+                                </td>
+                              </React.Fragment>
+                            );
+                          }
                           return (
                             <React.Fragment key={term}>
                               {termCols.map((col, idx) => {
@@ -456,9 +650,11 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
                                 const score = cell?.score ?? null;
                                 const autoTitle = cell?.sourceTitle ?? null;
                                 return (
-                                  <td key={`${term}-${col.id}`} className="px-4 py-3 border-r border-border text-center">
-                                    <div className="flex items-center justify-center space-x-1">
-                                      <span className="inline-block min-w-20 px-2 py-1 text-center text-xs font-bold text-foreground" title={cell?.sourceTitle ?? undefined}>{score === null ? '—' : round2(score)}</span>
+                                  <td key={`${term}-${col.id}`} className={`px-2 py-2.5 text-center animate-gradebook-cell-in ${idx === 0 ? 'border-l border-border' : ''}`}>
+                                    <div className="flex items-center justify-center space-x-1.5">
+                                      <span className="inline-block px-1 py-1 text-center text-[13px] font-semibold tabular-nums text-foreground" title={cell?.sourceTitle ?? undefined}>
+                                        {score === null ? <span className="text-muted-foreground/40 font-normal">—</span> : round2(score)}
+                                      </span>
                                       {!autoTitle ? null : (
                                         <span data-testid="spr-auto-dot" title={`Auto from ${autoTitle}`} className="w-1.5 h-1.5 rounded-full bg-sky-500 shrink-0" />
                                       )}
@@ -468,14 +664,16 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
                               })}
 
                               {term === 'prelim' ? null : (
-                                <td className="px-4 py-3 border-r border-border text-center">
+                                <td className={`px-2 py-2.5 text-center animate-gradebook-cell-in ${termCols.length === 0 ? 'border-l border-border' : ''}`}>
                                   <div className="flex items-center justify-center space-x-1">
-                                    <span className="inline-block min-w-20 px-2 py-1 text-center text-xs font-semibold text-foreground">{examValue === null || examValue === undefined ? '—' : round2(examValue)}</span>
+                                    <span className="inline-block px-1 py-1 text-center text-[13px] font-semibold tabular-nums text-foreground">
+                                      {examValue === null || examValue === undefined ? <span className="text-muted-foreground/40 font-normal">—</span> : round2(examValue)}
+                                    </span>
                                   </div>
                                 </td>
                               )}
 
-                              <td className="px-4 py-3 border-r border-border text-center">
+                              <td className={`px-2 py-2.5 text-center ${term === 'prelim' && termCols.length === 0 ? 'border-l border-border' : ''}`}>
                                 {gradeValue !== null && gradeValue !== undefined ? (
                                   <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold border tabular-nums ${term === 'prelim' ? 'text-sky-700 dark:text-sky-400 bg-sky-500/10 border-sky-500/20' : term === 'midterm' ? 'text-primary bg-primary/10 border-primary/20' : 'text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20'}`}>
                                     {gradeValue}%
@@ -488,7 +686,7 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
                           );
                         })}
 
-                        <td className="px-4 py-3 border-r border-border text-center font-semibold text-sm">
+                        <td className="px-2 py-2.5 border-l border-border text-center font-semibold text-sm bg-muted/30">
                           {row?.final !== null && row?.final !== undefined ? (
                             <span
                               className={
@@ -500,11 +698,11 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
                               {row.final}%
                             </span>
                           ) : (
-                            <span className="text-muted-foreground font-normal">—</span>
+                            <span className="text-muted-foreground/40 font-normal">—</span>
                           )}
                         </td>
 
-                        <td className="p-3 text-center">
+                        <td className="p-2 text-center bg-muted/30">
                           <span
                             className={`inline-block px-2.5 py-0.5 rounded-lg text-xs font-black border ${transmuted.color}`}
                           >

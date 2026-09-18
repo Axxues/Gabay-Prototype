@@ -28,7 +28,6 @@ const SOURCE_TABS: { id: string; label: string }[] = [
   { id: 'modules', label: 'Modules' },
   { id: 'announcements', label: 'Announcements' },
   { id: 'activities', label: 'Activities' },
-  { id: 'quizzes', label: 'Quizzes' },
   { id: 'uploads', label: 'Direct Uploads' }
 ];
 

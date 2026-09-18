@@ -4,7 +4,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 vi.mock('../db.js', () => ({
   prisma: {
     user: { findUnique: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
-    course: { findUnique: vi.fn() },
+    course: { findUnique: vi.fn(), findMany: vi.fn() },
     enrollmentRequest: { findFirst: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
     courseSection: { findUnique: vi.fn(), update: vi.fn() },
     notification: { create: vi.fn() },
@@ -204,6 +204,7 @@ describe('requests router (mine + faculty section bypass)', () => {
       { id: 'r2', courseId: 'c2', studentId: 'u-stu', status: 'approved' },
     ];
     (prisma.enrollmentRequest.findMany as ReturnType<typeof vi.fn>).mockResolvedValue(mine);
+    (prisma.course.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]);
     const res = await (await request())(app())
       .get('/api/requests/mine')
       .set('Authorization', 'Bearer x');

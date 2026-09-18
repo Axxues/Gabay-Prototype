@@ -12,7 +12,12 @@ interface CourseRow {
 }
 
 async function loadCourseOr404(courseId: string) {
-  const course = await prisma.course.findUnique({ where: { id: courseId } });
+  // Narrow select: access checks only need id/instructorId. A full row drag
+  // would pull the multi-MB image/syllabus blobs on every course-scoped call.
+  const course = await prisma.course.findUnique({
+    where: { id: courseId },
+    select: { id: true, instructorId: true },
+  });
   if (!course) throw new ApiError(404, 'not_found', 'Course not found.');
   return course;
 }
@@ -82,6 +87,12 @@ gradesRouter.put(
     const midtermGrade = parseGrade(body.midtermGrade, 'midtermGrade');
     const finalGrade = parseGrade(body.finalGrade, 'finalGrade');
     const studentId = req.params.studentId;
+    const membership = await prisma.enrollmentRequest.findFirst({
+      where: { courseId: course.id, studentId, status: 'approved' },
+    });
+    if (!membership) {
+      throw new ApiError(403, 'forbidden', 'Student is not enrolled in this course.');
+    }
     const grade = await prisma.courseGrade.upsert({
       where: { courseId_studentId: { courseId: course.id, studentId } },
       update: {

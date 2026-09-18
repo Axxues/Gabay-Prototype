@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { BookOpen } from 'lucide-react';
 import { useLMS } from '../context/LMSContext';
 import { ModulesView } from './ModulesView';
 import { SyllabusView } from './SyllabusView';
@@ -10,10 +11,10 @@ import { AnnouncementsView } from './AnnouncementsView';
 import { FilesView } from './FilesView';
 import { FacultyGradebook } from '../components/grading/FacultyGradebook';
 import { StudentGradebook } from '../components/grading/StudentGradebook';
-import { SectionSelectionPage } from './SectionSelectionPage';
-import { PendingRequestsPage } from './PendingRequestsPage';
 
 import { JoinCourseModal } from '../components/common/JoinCourseModal';
+import { EmptyState } from '../components/common/EmptyState';
+import { PageTransition } from '../components/common/PageTransition';
 import { COURSE_CHILDREN, isVisible } from '../config/navigation';
 import {
   countNewFiles,
@@ -40,11 +41,32 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
   const [selectedExamId, setSelectedExamId] = useState<string | null>(null);
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
 
+  // Defense-in-depth: enrollment truth is approved request rows. Fall back
+  // to them when activeUser.enrolledCourseIds is stale (e.g. approved on
+  // another machine before this session re-hydrated).
+  const approvedCourseIds = new Set(
+    (db.enrollmentRequests || [])
+      .filter(r => r.studentId === activeUser.id && r.status === 'approved')
+      .map(r => r.courseId)
+  );
   const availableCourses = activeRole === 'student'
-    ? db.courses.filter(c => (activeUser.enrolledCourseIds || []).includes(c.id))
+    ? db.courses.filter(c => (activeUser.enrolledCourseIds || []).includes(c.id) || approvedCourseIds.has(c.id))
     : db.courses;
 
-  const activeCourse = availableCourses.find(c => c.id === activeCourseId) || availableCourses[0] || db.courses[0];
+  const activeCourse = activeRole === 'student'
+    ? availableCourses.find(c => c.id === activeCourseId) || availableCourses[0]
+    : availableCourses.find(c => c.id === activeCourseId) || availableCourses[0] || db.courses[0];
+
+  // Student explicitly navigated to a course they are not enrolled in
+  // (stale activeCourseId from history/search), or has no enrollments at
+  // all (db.courses is scoped to enrolled courses, so availableCourses is
+  // empty and activeCourse is undefined -> previously crashed on
+  // activeCourse.id with an Application Recovery error).
+  // Only show the unenrolled message when the student has zero enrolled
+  // courses; otherwise fall back to one of their enrolled courses so the
+  // default activeCourseId doesn't block navigation.
+  const hasNoEnrollments =
+    activeRole === 'student' && availableCourses.length === 0;
 
   useEffect(() => {
     setSubTab(initialSubTab);
@@ -58,26 +80,48 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
     if (activeRole === 'student' && subTab === 'pending-requests') {
       setSubTab('modules');
     }
+    // Legacy guard: 'pending-requests' was removed as a standalone
+    // course sub-tab (now handled inside People). Redirect any stale
+    // navigation (history, search) to People instead of a blank view.
+    if (subTab === 'pending-requests' && (activeRole === 'faculty' || activeRole === 'admin')) {
+      setSubTab('people');
+    }
   }, [activeRole, subTab]);
 
-  useEffect(() => {
-    if (activeRole !== 'student') return;
-    if (!activeCourse) return;
-    if (subTab === 'section-selection') return;
-    const sections = (db.courseSections || []).filter(s => s.courseId === activeCourse.id);
-    if (sections.length === 0) return;
-    const hasApproval = (db.enrollmentRequests || []).some(
-      r => r.studentId === activeUser.id && r.courseId === activeCourse.id && r.status === 'approved'
+  if (hasNoEnrollments || !activeCourse) {
+    const showJoinAction = activeRole === 'student';
+    return (
+      <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
+        <main className="min-h-0 flex-1 p-6 overflow-y-auto bg-background custom-scrollbar">
+          <EmptyState
+            icon={<BookOpen className="h-6 w-6" />}
+            title="You are not enrolled in this course yet."
+            body={
+              showJoinAction
+                ? 'You still haven\u2019t been enrolled in a course. Please ask your instructor for the course join code, then click below to join.'
+                : 'There is no course available to display right now.'
+            }
+            actionLabel={showJoinAction ? 'Enter Course Join Code' : undefined}
+            onAction={showJoinAction ? () => setIsJoinModalOpen(true) : undefined}
+          />
+        </main>
+
+        <JoinCourseModal
+          isOpen={isJoinModalOpen}
+          onClose={() => setIsJoinModalOpen(false)}
+          onNavigateCourse={(id) => {
+            setActiveCourseId(id);
+            setSubTab('modules');
+          }}
+        />
+      </div>
     );
-    if (!hasApproval) return;
-    if (activeUser.courseSections?.[activeCourse.id]) return;
-    setSubTab('section-selection');
-  }, [activeRole, subTab, activeCourse, db.courseSections, db.enrollmentRequests, activeUser]);
+  }
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
+    <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
       {/* Main Content Area */}
-      <main className="flex-1 h-full p-6 overflow-y-auto bg-background custom-scrollbar">
+      <main className="min-h-0 flex-1 p-6 overflow-y-auto bg-background custom-scrollbar">
         <div className="mb-4 flex gap-1.5 overflow-x-auto pb-1 md:hidden">
           {COURSE_CHILDREN.filter(i => isVisible(i, activeRole)).map(tab => {
     let badge = null;
@@ -92,7 +136,7 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
     } else if (tab.id === 'modules') {
       badgeCount = getUnreadNotificationCount(activeUser.id, 'module_comment_reply');
     } else if (tab.id === 'announcements') {
-      badgeCount = countUnreadAnnouncements(db.announcements || [], { id: activeUser.id, role: activeRole, sectionId: activeUser.courseSections?.[cid] ?? null }, cid);
+      badgeCount = countUnreadAnnouncements(db.announcements || [], { id: activeUser.id, role: activeRole, sectionId: null }, cid);
     } else if (tab.id === 'activities') {
       // Classic rows live in db.activities now (format === 'classic');
       // question sets link submissions via the synthetic asg-activity-<id>
@@ -119,7 +163,7 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
       badgeCount = countNewFiles(db.courseFiles || [], cid, visits);
     } else if (tab.id === 'grades') {
       badgeCount = activeRole === 'student' ? countNewGrades(db.courseGrades || [], cid, activeUser.id, visits) : 0;
-    } else if (tab.id === 'people' || tab.id === 'pending-requests') {
+    } else if (tab.id === 'people') {
       badgeCount = (activeRole === 'faculty' || activeRole === 'admin') ? countPendingPeople(db.enrollmentRequests || [], cid) : 0;
     } else if (tab.id === 'calendar') {
       badgeCount = countUpcomingCalendar(db.calendarEvents || [], cid, visits);
@@ -141,7 +185,7 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
         key={tab.id}
         type="button"
         onClick={() => { setSubTab(tab.id); setReturnToTab(null); markTabVisited(tab.id, activeCourse.id); }}
-        className={`shrink-0 rounded-full px-3 py-1.5 text-[11px] font-bold cursor-pointer relative ${subTab === tab.id ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground border border-border'}`}
+        className={`shrink-0 rounded-full px-3 py-1.5 text-[12px] font-semibold cursor-pointer relative ${subTab === tab.id ? 'bg-foreground text-background' : 'bg-card text-muted-foreground border border-border'}`}
       >
         {tab.label}
         {badge}
@@ -149,6 +193,7 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
     );
   })}
         </div>
+        <PageTransition pageKey={`${subTab}:${activeCourse.id}`} className="w-full min-w-0">
         {subTab === 'modules' && (
           <ModulesView
             courseId={activeCourse.id}
@@ -223,7 +268,7 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
         {subTab === 'files' && <FilesView courseId={activeCourse.id} />}
 
         {subTab === 'grades' && !activeCourse.syllabus && (
-          <div className="bg-card border border-border rounded-2xl p-8 text-center shadow-subtle" data-testid="grades-syllabus-gate">
+          <div className="bg-card border border-border rounded-2xl p-8 text-center" data-testid="grades-syllabus-gate">
             <h3 className="text-sm font-bold text-foreground">Syllabus required for grades</h3>
             <p className="text-xs text-muted-foreground mt-1">The grading formula lives in the syllabus under Course Requirements &amp; Official Grading Formula. {activeRole === 'faculty' ? 'Upload a syllabus to enable the gradebook.' : 'Waiting for your instructor to upload the syllabus.'}</p>
             {activeRole === 'faculty' && (
@@ -241,16 +286,8 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
 
         {subTab === 'people' && <PeopleView courseId={activeCourse.id} />}
 
-        {subTab === 'section-selection' && activeRole === 'student' && (
-          <SectionSelectionPage
-            courseId={activeCourse.id}
-            onSectionSelected={() => setSubTab('modules')}
-          />
-        )}
+        </PageTransition>
 
-        {subTab === 'pending-requests' && activeRole === 'faculty' && (
-          <PendingRequestsPage courseId={activeCourse.id} />
-        )}
       </main>
 
       <JoinCourseModal

@@ -14,6 +14,7 @@ model User {
   passwordHash  String   @db.NVarChar(256)
   role          String   @db.NVarChar(32) // UserRole: admin | faculty | staff | student (enforced at API layer)
   avatar        String   @db.NVarChar(Max)
+  banner        String?  @db.NVarChar(Max)
   department    String   @db.NVarChar(128)
   title         String   @db.NVarChar(128)
   lastVisitedAt String?  @db.NVarChar(Max)

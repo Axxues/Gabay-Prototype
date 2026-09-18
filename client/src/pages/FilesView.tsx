@@ -39,6 +39,8 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
     activeUser,
     activeRole,
     db,
+    isLoading,
+    isSyncing,
     createCourseFolder,
     uploadCourseFile,
     deleteCourseFile,
@@ -63,7 +65,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
     markTabVisited('files', courseId);
   }, [courseId, currentFolderId]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [sourceFilter, setSourceFilter] = useState<'all' | 'modules' | 'announcements' | 'activities' | 'quizzes' | 'uploads'>('all');
+  const [sourceFilter, setSourceFilter] = useState<'all' | 'modules' | 'announcements' | 'activities' | 'uploads'>('all');
 
   // Modals
   const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
@@ -80,10 +82,14 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
 
   const canManage = isPersonal || activeRole === 'faculty';
 
-  const { allFiles } = useCourseFiles(courseId);
+  const { allFiles, virtualFolders } = useCourseFiles(courseId);
 
-  // Folders in this scope
-  const allFolders = (db.courseFolders || []).filter(f => f.courseId === effectiveScopeId);
+  // Folders in this scope, plus synthetic Activities/{Term} folders for
+  // page-created activities (client-only: no server rows exist for them).
+  const allFolders = [
+    ...(db.courseFolders || []).filter(f => f.courseId === effectiveScopeId),
+    ...virtualFolders,
+  ];
 
   // Filter based on student permissions: students only see 'published' or 'restricted'.
   // Base set (visibility only) drives the tab counts so badges never promise
@@ -98,7 +104,6 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
     modules: baseVisibleFiles.filter(f => (f as any).source === 'modules').length,
     announcements: baseVisibleFiles.filter(f => (f as any).source === 'announcements').length,
     activities: baseVisibleFiles.filter(f => (f as any).source === 'activities').length,
-    quizzes: baseVisibleFiles.filter(f => (f as any).source === 'quizzes').length,
     uploads: baseVisibleFiles.filter(f => (f as any).source === 'uploads').length
   };
 
@@ -113,20 +118,24 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
       if (searchQuery) return f.name.toLowerCase().includes(searchQuery.toLowerCase());
       const atLevel = currentFolderId ? f.parentId === currentFolderId : !f.parentId;
       if (!atLevel) return false;
-      if (!canManage && f.autoKey && isFolderEmptyRecursive(allFolders, db.courseFiles || [], f.id)) return false;
+      if (!canManage && f.autoKey && isFolderEmptyRecursive(allFolders, allFiles, f.id)) return false;
       return true;
     })
     : [];
 
   const currentFiles = visibleFiles.filter(file => {
     if (searchQuery) return file.name.toLowerCase().includes(searchQuery.toLowerCase());
+    // Source tabs (Activities/Quizzes/...) span every folder so the tab
+    // counts always match the listed files; module-linked assessments live
+    // inside their module subfolder but must still surface under their tab.
+    if (sourceFilter !== 'all') return true;
     if (file.folderId) {
       return currentFolderId === file.folderId;
     }
-    // Folder-less files (direct uploads AND virtual module/announcement/
-    // activity/quiz aggregates) live only at root. Showing virtual files
-    // inside every subfolder made counts promise files that weren't really
-    // in the current folder.
+    // Folder-less files (direct uploads AND virtual announcement/upload
+    // aggregates) live only at root. Showing root files inside every
+    // subfolder made counts promise files that weren't really in the
+    // current folder.
     return !currentFolderId;
   });
 
@@ -424,7 +433,6 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
           { id: 'modules', label: 'Modules', count: sourceCounts.modules },
           { id: 'announcements', label: 'Announcements', count: sourceCounts.announcements },
           { id: 'activities', label: 'Activities', count: sourceCounts.activities },
-          { id: 'quizzes', label: 'Quizzes', count: sourceCounts.quizzes },
           { id: 'uploads', label: 'Uploads', count: sourceCounts.uploads }
         ].map(tab => {
           const isActive = sourceFilter === tab.id;
@@ -600,7 +608,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
                     <Download className="w-3.5 h-3.5" />
                     <span>Download</span>
                   </button>
-                  {canManage && (
+                  {canManage && !/^(asg-virtual-|act-virtual-)/.test(previewFile.id) && (
                     <button
                       type="button"
                       onClick={e => handleDeleteFile(previewFile, e)}
@@ -682,7 +690,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
               </div>
 
               <div className="flex items-center space-x-2" onClick={e => e.stopPropagation()}>
-                {canManage && (
+                {canManage && !folder.id.startsWith('vf-') && (
                   <button
                     type="button"
                     onClick={e => handleDeleteFolder(folder, e)}
@@ -702,6 +710,12 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
             const isRenaming = renamingFileId === file.id;
             const fileSource = (file as any).source || 'uploads';
             const sourceLabel = (file as any).sourceLabel || 'Direct Upload';
+            // File-less assessment virtuals (asg-virtual-*, act-virtual-*)
+            // reference the live assessment, not a stored file: deleting
+            // them here would be a no-op, so the delete action is hidden
+            // (remove via Activities instead). Rename stays available — it
+            // renames the assessment title.
+            const isAssessmentVirtual = /^(asg-virtual-|act-virtual-)/.test(file.id);
 
             const getSourceBadgeColor = (src: string) => {
               switch (src) {
@@ -711,8 +725,6 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
                   return 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20';
                 case 'activities':
                   return 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20';
-                case 'quizzes':
-                  return 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20';
                 default:
                   return 'bg-muted text-muted-foreground border-border';
               }
@@ -808,14 +820,16 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
 
-                      <button
-                        type="button"
-                        onClick={e => handleDeleteFile(file, e)}
-                        title="Delete File"
-                        className="p-1.5 text-muted-foreground hover:text-rose-600 rounded-lg hover:bg-rose-500/10 cursor-pointer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {!isAssessmentVirtual && (
+                        <button
+                          type="button"
+                          onClick={e => handleDeleteFile(file, e)}
+                          title="Delete File"
+                          className="p-1.5 text-muted-foreground hover:text-rose-600 rounded-lg hover:bg-rose-500/10 cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </>
                   )}
                 </div>
@@ -823,13 +837,25 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
             );
           })}
 
-          {currentFolders.length === 0 && currentFiles.length === 0 && (
+          {(isLoading || isSyncing) && allFolders.length === 0 && allFiles.length === 0 ? (
+            <div data-testid="files-loading" className="space-y-2" aria-hidden="true">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={`files-skeleton-${i}`} className="p-3 bg-card border border-border rounded-xl flex items-center gap-3 animate-pulse">
+                  <div className="w-9 h-9 rounded-lg bg-muted shrink-0" />
+                  <div className="flex-1 space-y-1.5">
+                    <div className="h-3.5 w-1/2 rounded bg-muted" />
+                    <div className="h-3 w-1/4 rounded bg-muted/70" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : currentFolders.length === 0 && currentFiles.length === 0 ? (
             <EmptyState
               title="This folder is currently empty."
               actionLabel={canManage ? 'Upload a file now' : undefined}
               onAction={canManage ? () => fileInputRef.current?.click() : undefined}
             />
-          )}
+          ) : null}
         </div>
       </div>
     </div>

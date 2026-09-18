@@ -10,6 +10,7 @@ import {
   countUpcomingCalendar,
   countUnreadAnnouncements,
 } from '../../utils/notifiers';
+import { getDisplaySectionName } from '../../utils/sections';
 const LMS_ICONS: Record<string, React.ReactNode> = {
   dashboard: <LayoutDashboard className="h-4 w-4" />, courses: <BookOpen className="h-4 w-4" />,
   calendar: <Calendar className="h-4 w-4" />, inbox: <Inbox className="h-4 w-4" />,
@@ -33,13 +34,25 @@ export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: strin
   // to the Learning Management section only — hide the whole context panel on
   // top-level pages outside it (Page 1/2/3, Manage College Accounts).
   if (!isLmsSectionTab(p.currentTab)) return null;
+  // Students with no enrollments must not see Course Navigation.
+  // Mirrors CoursesPage: enrollment truth is approved request rows, falling
+  // back to enrolledCourseIds when stale.
+  const approvedCourseIds = new Set(
+    (db.enrollmentRequests || [])
+      .filter(r => r.studentId === activeUser.id && r.status === 'approved')
+      .map(r => r.courseId)
+  );
+  const visibleCourses = activeRole === 'student'
+    ? db.courses.filter(c => (activeUser.enrolledCourseIds || []).includes(c.id) || approvedCourseIds.has(c.id))
+    : db.courses;
+  const studentHasNoCourses = activeRole === 'student' && visibleCourses.length === 0;
   const lmsNav = (
     <>
       <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Learning Management</div>
       <nav className="space-y-1">
         {LMS_CHILDREN.filter(i => isVisible(i, activeRole)).map(item => (
           <button key={item.id} type="button" onClick={() => p.onNavigateTab(item.id)}
-            className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-xs font-bold cursor-pointer ${p.currentTab === item.id ? 'bg-primary text-primary-foreground shadow-primary-sm' : 'text-muted-foreground hover:bg-accent hover:text-foreground font-medium'}`}>
+            className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-xs font-bold cursor-pointer transition-all duration-150 ${p.currentTab === item.id ? 'bg-primary text-primary-foreground shadow-primary-sm' : 'text-muted-foreground hover:bg-accent hover:text-foreground font-medium'}`}>
             <span className="flex items-center gap-2.5">{LMS_ICONS[item.id]}<span>{item.label}</span></span>
             {item.id === 'inbox' && unread > 0 && <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground">{unread}</span>}
           </button>
@@ -48,7 +61,23 @@ export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: strin
     </>
   );
   if (p.currentTab === 'courses') {
-    const course = db.courses.find(c => c.id === activeCourseId) ?? db.courses[0];
+    // Unenrolled students get LMS nav only — no course header, join code,
+    // or course sub-tabs to open.
+    if (studentHasNoCourses) {
+      return (
+        <aside className="flex w-[240px] flex-shrink-0 flex-col border-r border-border/60 bg-card/50 p-3">
+          <div className="custom-scrollbar flex-1 space-y-1 overflow-y-auto">
+            {lmsNav}
+          </div>
+          <div className="px-2 pt-3 text-[10px] text-muted-foreground">Trail: LMS &gt; courses</div>
+        </aside>
+      );
+    }
+    const course = visibleCourses.find(c => c.id === activeCourseId) ?? visibleCourses[0];
+    const sectionsForCourse = course ? (db.courseSections || []).filter(s => s.courseId === course.id) : [];
+    // Prefer the student's assigned section; otherwise fall back to the
+    // course's display section (first section row, then course.section label).
+    const displaySection = (studentSection?.name || (course ? getDisplaySectionName(course, sectionsForCourse) : '')).trim();
     const courseBadgeFor = (tabId: string): number => {
       if (!course) return 0;
       const cid = course.id;
@@ -112,9 +141,9 @@ export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: strin
           <div className="mb-2 flex items-center gap-2.5 rounded-xl border border-border bg-card p-3">
             <span className="h-8 w-1.5 rounded-full" style={{ backgroundColor: course?.color ?? '#64748b' }} />
             <div className="min-w-0"><div className="truncate text-xs font-extrabold">{course?.code}</div><div className="truncate text-[11px] text-muted-foreground">{course?.title}</div>
-              {activeRole === 'student' && studentSection && (
-                <div className="text-[10px] text-primary font-bold mt-0.5">
-                  {studentSection.name}
+              {displaySection && (
+                <div className="truncate text-[10px] text-primary font-bold mt-0.5">
+                  Section {displaySection}
                 </div>
               )}</div>
           </div>
@@ -122,7 +151,7 @@ export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: strin
           <nav className="space-y-1">
             {COURSE_CHILDREN.filter(i => isVisible(i, activeRole)).map(item => (
               <button key={item.id} type="button" onClick={() => p.onSelectCourseTab(item.id)}
-                className={`flex w-full items-center justify-between gap-2.5 rounded-xl px-3 py-2.5 text-xs font-bold cursor-pointer ${p.courseSubTab === item.id ? 'bg-primary text-primary-foreground shadow-primary-sm' : 'text-muted-foreground hover:bg-accent hover:text-foreground font-medium'}`}><span className="flex items-center gap-2.5">{COURSE_ICONS[item.id]}<span>{item.label}</span></span>{(() => {
+                className={`flex w-full items-center justify-between gap-2.5 rounded-xl px-3 py-2.5 text-xs font-bold cursor-pointer transition-all duration-150 ${p.courseSubTab === item.id ? 'bg-primary text-primary-foreground shadow-primary-sm' : 'text-muted-foreground hover:bg-accent hover:text-foreground font-medium'}`}><span className="flex items-center gap-2.5">{COURSE_ICONS[item.id]}<span>{item.label}</span></span>{(() => {
                   const n = courseBadgeFor(item.id);
                   return n > 0 ? (
                     <span className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground">

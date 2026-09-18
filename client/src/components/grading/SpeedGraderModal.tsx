@@ -3,53 +3,157 @@ import { useLMS } from '../../context/LMSContext';
 import { X, ChevronLeft, ChevronRight, Award, MessageSquare, FileText, CheckCircle2 } from 'lucide-react';
 import { ModalPortal, useModalAnimate } from '../common/ModalPortal';
 
-export const SpeedGraderModal: React.FC = () => {
-  const {
-    activeSpeedGraderSubmissionId,
-    closeSpeedGrader,
-    db,
-    gradeSubmission,
-    activeRole
-  } = useLMS();
+interface SpeedGraderContentProps {
+  currentSubmission: NonNullable<ReturnType<typeof useLMS>['db']['submissions'][number]>;
+  db: ReturnType<typeof useLMS>['db'];
+  isAdmin: boolean;
+  isClosing: boolean;
+  startClose: () => void;
+  openSpeedGrader: (subId: string) => void;
+  gradeSubmission: ReturnType<typeof useLMS>['gradeSubmission'];
+}
 
-  const isAdmin = activeRole === 'admin';
+interface ResolvedAssessment {
+  title?: string;
+  pointsPossible: number;
+  rubric: Array<{ id: string; title: string; description: string; points: number; ratings: Array<{ points: number; description: string }> }>;
+  questions: Array<{ id: string; text: string; type: string; points: number; correctAnswer?: string; options?: string[] }>;
+}
 
-  const { isClosing, startClose } = useModalAnimate(closeSpeedGrader, 200);
+/**
+ * Submissions from question-set quizzes/activities/exams carry synthetic
+ * activityKeys (`asg-quiz-<id>` / `asg-activity-<id>` / `asg-exam-<id>`)
+ * with no classic Activity row. Resolve the source row (activity, quiz, or
+ * exam) so title, points, rubric, and questions render correctly.
+ */
+const resolveAssessment = (
+  submission: SpeedGraderContentProps['currentSubmission'],
+  db: SpeedGraderContentProps['db'],
+): ResolvedAssessment => {
+  const key = submission.activityKey ?? '';
+  const raw = submission as unknown as { quizId?: string; activityId?: string; examId?: string };
+  const strip = (prefix: string) => (key.startsWith(prefix) ? key.slice(prefix.length) : null);
 
-  useEffect(() => {
-    if (!activeSpeedGraderSubmissionId) return;
+  const asgActivityId = strip('asg-activity-');
+  const asgQuizId = strip('asg-quiz-');
+  const asgExamId = strip('asg-exam-');
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        startClose();
-      }
+  const activity =
+    (db.activities ?? []).find(a => a.id === key) ??
+    (asgActivityId ? (db.activities ?? []).find(a => a.id === asgActivityId) : undefined) ??
+    (raw.activityId ? (db.activities ?? []).find(a => a.id === raw.activityId) : undefined);
+  if (activity) {
+    return {
+      title: activity.title,
+      pointsPossible: activity.pointsPossible,
+      rubric: activity.rubric ?? [],
+      questions: (activity.questions ?? []).map(q => ({
+        id: q.id,
+        text: q.text,
+        type: q.type,
+        points: q.points,
+        correctAnswer: q.correctAnswer,
+        options: q.options,
+      })),
     };
+  }
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeSpeedGraderSubmissionId, startClose]);
+  const quizId = asgQuizId ?? raw.quizId;
+  const quiz = quizId ? (db.quizzes ?? []).find(q => q.id === quizId) : undefined;
+  if (quiz) {
+    const points = quiz.questions?.reduce((sum, q) => sum + (q.points || 0), 0) || 100;
+    return {
+      title: quiz.title,
+      pointsPossible: points,
+      rubric: [],
+      questions: (quiz.questions ?? []).map(q => ({
+        id: q.id,
+        text: q.text,
+        type: q.type,
+        points: q.points,
+        correctAnswer: q.correctAnswer,
+        options: q.options,
+      })),
+    };
+  }
 
-  if (!activeSpeedGraderSubmissionId) return null;
+  const examId = asgExamId ?? raw.examId;
+  const exam = examId ? (db.exams ?? []).find(e => e.id === examId) : undefined;
+  if (exam) {
+    const points = exam.questions?.reduce((sum, q) => sum + (q.points || 0), 0) || 100;
+    return {
+      title: exam.title,
+      pointsPossible: points,
+      rubric: [],
+      questions: (exam.questions ?? []).map(q => ({
+        id: q.id,
+        text: q.text,
+        type: q.type,
+        points: q.points,
+        correctAnswer: q.correctAnswer,
+        options: q.options,
+      })),
+    };
+  }
 
-  const currentSubmission = db.submissions.find(s => s.id === activeSpeedGraderSubmissionId);
-  if (!currentSubmission) return null;
+  return { title: undefined, pointsPossible: 100, rubric: [], questions: [] };
+};
 
-  const activity = (db.activities ?? []).find(a => a.id === currentSubmission.activityKey);
+/** Question-set submissions store answers as a JSON object in `content`. */
+const parseAnswerMap = (content?: string): Record<string, string> | null => {
+  if (!content || content.trim().startsWith('<')) return null;
+  try {
+    const parsed: unknown = JSON.parse(content);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, string>;
+    }
+  } catch {
+    // Plain-text submission — rendered verbatim below.
+  }
+  return null;
+};
+
+const SpeedGraderContent: React.FC<SpeedGraderContentProps> = ({
+  currentSubmission,
+  db,
+  isAdmin,
+  isClosing,
+  startClose,
+  openSpeedGrader,
+  gradeSubmission,
+}) => {
+  const assessment = resolveAssessment(currentSubmission, db);
   const course = db.courses.find(c => c.id === currentSubmission.courseId);
 
-  const activitySubmissions = db.submissions.filter(s => s.activityKey === currentSubmission.activityKey);
+  const activitySubmissions = db.submissions
+    .filter(s => s.activityKey === currentSubmission.activityKey)
+    .sort((a, b) => {
+      const t = new Date(a.submittedAt).getTime() - new Date(b.submittedAt).getTime();
+      if (t !== 0) return t;
+      return a.studentName.localeCompare(b.studentName);
+    });
   const currentIndex = activitySubmissions.findIndex(s => s.id === currentSubmission.id);
 
-  const [gradeInput, setGradeInput] = useState<number>(currentSubmission.grade ?? 0);
+  const [gradeText, setGradeText] = useState<string>(String(currentSubmission.grade ?? 0));
   const [rubricScores, setRubricScores] = useState<Record<string, number>>(currentSubmission.rubricScores || {});
   const [newComment, setNewComment] = useState('');
   const [isSaved, setIsSaved] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
+  // Reset only when navigating to a different submission. Depending on
+  // grade/rubricScores here would wipe unsaved faculty input whenever any
+  // background db refresh lands mid-typing.
   useEffect(() => {
-    setGradeInput(currentSubmission.grade ?? 0);
+    setGradeText(String(currentSubmission.grade ?? 0));
     setRubricScores(currentSubmission.rubricScores || {});
     setIsSaved(false);
+    setIsSaving(false);
   }, [currentSubmission.id]);
+
+  const pointsPossible = assessment.pointsPossible;
+  const parsedGrade = Number(gradeText);
+  const isGradeValid = gradeText.trim() !== '' && Number.isFinite(parsedGrade);
+  const clampedGrade = isGradeValid ? Math.min(Math.max(parsedGrade, 0), pointsPossible) : 0;
 
   const handleRubricScoreChange = (rubricId: string, score: number) => {
     if (isAdmin) return;
@@ -57,26 +161,33 @@ export const SpeedGraderModal: React.FC = () => {
     setRubricScores(updated);
 
     const total = Object.values(updated).reduce((acc, curr) => acc + curr, 0);
-    setGradeInput(total);
+    setGradeText(String(Math.min(total, pointsPossible)));
   };
 
   const handleSaveGrade = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isAdmin) return;
+    if (isAdmin || isSaving || !isGradeValid) return;
+    setIsSaving(true);
     try {
       await gradeSubmission(
         currentSubmission.id,
-        Number(gradeInput),
+        clampedGrade,
         rubricScores,
         newComment.trim() ? newComment : undefined
       );
+      setGradeText(String(clampedGrade));
       setNewComment('');
       setIsSaved(true);
       setTimeout(() => setIsSaved(false), 2000);
     } catch {
       // gradeSubmission already surfaced the alert.
+    } finally {
+      setIsSaving(false);
     }
   };
+
+  const answerMap = parseAnswerMap(currentSubmission.content);
+  const showQuestionAnswers = answerMap !== null && assessment.questions.length > 0;
 
   return (
     <ModalPortal>
@@ -95,7 +206,7 @@ export const SpeedGraderModal: React.FC = () => {
             </span>
           )}
           <span className="text-muted-foreground/60">|</span>
-          <span className="font-bold text-sm text-foreground">{activity?.title}</span>
+          <span className="font-bold text-sm text-foreground">{assessment.title ?? 'Untitled assessment'}</span>
           <span className="text-xs font-sans text-muted-foreground">({course?.code})</span>
         </div>
 
@@ -106,7 +217,7 @@ export const SpeedGraderModal: React.FC = () => {
             onClick={() => {
               if (currentIndex > 0) {
                 const prevSub = activitySubmissions[currentIndex - 1];
-                useLMS().openSpeedGrader(prevSub.id);
+                openSpeedGrader(prevSub.id);
               }
             }}
             className="p-1.5 rounded-lg bg-card border border-border disabled:opacity-30 hover:bg-muted transition-colors shadow-soft"
@@ -124,7 +235,7 @@ export const SpeedGraderModal: React.FC = () => {
             onClick={() => {
               if (currentIndex < activitySubmissions.length - 1) {
                 const nextSub = activitySubmissions[currentIndex + 1];
-                useLMS().openSpeedGrader(nextSub.id);
+                openSpeedGrader(nextSub.id);
               }
             }}
             className="p-1.5 rounded-lg bg-card border border-border disabled:opacity-30 hover:bg-muted transition-colors shadow-soft"
@@ -155,27 +266,61 @@ export const SpeedGraderModal: React.FC = () => {
                 </div>
               </div>
             </div>
-            <a
-              href={currentSubmission.fileUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="px-3.5 py-1.5 bg-muted hover:bg-muted/80 text-foreground rounded-lg text-xs font-bold font-sans border border-border transition-colors"
-            >
-              Download PDF Preview
-            </a>
+            {currentSubmission.fileUrl ? (
+              <a
+                href={currentSubmission.fileUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="px-3.5 py-1.5 bg-muted hover:bg-muted/80 text-foreground rounded-lg text-xs font-bold font-sans border border-border transition-colors"
+              >
+                Download attached file
+              </a>
+            ) : (
+              <span className="px-3.5 py-1.5 text-muted-foreground rounded-lg text-xs font-sans border border-border">
+                {currentSubmission.submissionType === 'file' ? 'No file attached' : 'Text entry submission'}
+              </span>
+            )}
           </div>
 
           {/* Render Document Box */}
           <div className="flex-1 bg-card border border-border rounded-xl p-6 font-sans text-xs text-foreground leading-relaxed overflow-y-auto whitespace-pre-line shadow-inner">
             <div className="text-muted-foreground pb-2 mb-4 border-b border-border flex justify-between items-center text-[10px]">
               <span>GABAY DOCVIEWER ENGINE v2.4 • STUDENT PAYLOAD RENDERER</span>
-              <span>{currentSubmission.studentName} ({currentSubmission.studentId || '2021-SLUC-0492'})</span>
+              <span>{currentSubmission.studentName}{currentSubmission.studentId ? ` (${currentSubmission.studentId})` : ''}</span>
             </div>
-            {currentSubmission.content || (
+            {showQuestionAnswers ? (
+              <div className="space-y-3">
+                {(assessment.questions ?? []).map((q, idx) => {
+                  const answer = answerMap?.[q.id] ?? '';
+                  const isCorrect = q.correctAnswer !== undefined && q.correctAnswer !== ''
+                    ? answer.trim().toLowerCase() === q.correctAnswer.trim().toLowerCase()
+                    : null;
+                  return (
+                    <div key={q.id} className="p-3 bg-muted/30 border border-border rounded-xl space-y-1.5">
+                      <div className="flex justify-between gap-2 text-foreground">
+                        <span className="font-bold">Q{idx + 1}. {q.text || `Question ${idx + 1}`}</span>
+                        <span className="font-sans text-muted-foreground shrink-0">{q.points} pts</span>
+                      </div>
+                      <div className="text-foreground">
+                        <span className="text-muted-foreground">Answer: </span>
+                        <span className="font-semibold">{answer === '' ? '(no answer)' : answer}</span>
+                      </div>
+                      {isCorrect !== null && (
+                        <div className={`font-sans ${isCorrect ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                          {isCorrect ? '✓ Matches key' : `Key: ${q.correctAnswer}`}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : currentSubmission.content ? (
+              <div className="whitespace-pre-line">{currentSubmission.content}</div>
+            ) : (
               <div className="text-center py-12 text-muted-foreground">
                 [PDF Simulated Canvas DocViewer Markup Rendering]
                 <br />
-                File attached: {currentSubmission.fileName}
+                File attached: {currentSubmission.fileName ?? 'none'}
               </div>
             )}
           </div>
@@ -191,22 +336,26 @@ export const SpeedGraderModal: React.FC = () => {
                   Assessment Score:
                 </span>
                 <span className="font-sans text-muted-foreground">
-                  out of {activity?.pointsPossible || 100} pts
+                  out of {pointsPossible} pts
                 </span>
               </div>
               <input
                 type="number"
                 min={0}
-                max={activity?.pointsPossible || 100}
-                value={gradeInput}
-                disabled={isAdmin}
-                onChange={e => setGradeInput(Number(e.target.value))}
+                max={pointsPossible}
+                value={gradeText}
+                disabled={isAdmin || isSaving}
+                onChange={e => setGradeText(e.target.value)}
+                aria-invalid={!isGradeValid}
                 className="w-full p-2.5 bg-card border border-border rounded-xl font-sans text-xl font-extrabold text-primary focus:outline-hidden focus:ring-2 focus:ring-primary/30 text-center shadow-subtle disabled:opacity-75 disabled:cursor-not-allowed"
               />
+              {!isGradeValid && !isAdmin && (
+                <p className="font-sans text-[11px] text-rose-600 dark:text-rose-400">Enter a number between 0 and {pointsPossible}.</p>
+              )}
             </div>
 
             {/* Rubric Criteria */}
-            {activity?.rubric && activity.rubric.length > 0 && (
+            {assessment.rubric && assessment.rubric.length > 0 && (
               <div className="space-y-3">
                 <div className="flex items-center space-x-1.5 font-bold text-foreground uppercase tracking-wider text-[11px]">
                   <Award className="w-4 h-4 text-emerald-500" />
@@ -214,7 +363,7 @@ export const SpeedGraderModal: React.FC = () => {
                 </div>
 
                 <div className="space-y-3">
-                  {activity.rubric.map(r => (
+                  {assessment.rubric.map(r => (
                     <div key={r.id} className="p-3.5 bg-muted/30 border border-border rounded-xl space-y-2">
                       <div className="flex justify-between font-bold text-foreground">
                         <span>{r.title}</span>
@@ -225,9 +374,9 @@ export const SpeedGraderModal: React.FC = () => {
                       <p className="text-[11px] text-muted-foreground leading-relaxed">{r.description}</p>
 
                       <div className="grid grid-cols-1 gap-1.5 pt-1">
-                        {r.ratings.map(rating => (
+                        {r.ratings.map((rating, ratingIdx) => (
                           <button
-                            key={rating.points}
+                            key={`${r.id}-${ratingIdx}-${rating.points}`}
                             type="button"
                             disabled={isAdmin}
                             onClick={() => handleRubricScoreChange(r.id, rating.points)}
@@ -257,7 +406,7 @@ export const SpeedGraderModal: React.FC = () => {
                 <span>Activity Feedback Comments</span>
               </div>
 
-              {[...currentSubmission.comments]
+              {[...(currentSubmission.comments ?? [])]
                 .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
                 .map(c => (
                 <div key={c.id} className="p-3 bg-muted/40 border border-border rounded-xl space-y-1">
@@ -285,10 +434,11 @@ export const SpeedGraderModal: React.FC = () => {
               <div className="space-y-2">
                 <button
                   type="submit"
-                  className="w-full py-3 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all shadow-primary-sm flex items-center justify-center space-x-2 active:scale-[0.98] cursor-pointer"
+                  disabled={isSaving || !isGradeValid}
+                  className="w-full py-3 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all shadow-primary-sm flex items-center justify-center space-x-2 active:scale-[0.98] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <CheckCircle2 className="w-4 h-4" />
-                  <span>Submit Final Grade & Feedback</span>
+                  <span>{isSaving ? 'Saving…' : 'Submit Final Grade & Feedback'}</span>
                 </button>
                 {isSaved && (
                   <div className="text-center font-sans text-[11px] text-emerald-600 dark:text-emerald-400 font-bold animate-pulse">
@@ -308,3 +458,51 @@ export const SpeedGraderModal: React.FC = () => {
     </ModalPortal>
   );
 };
+
+export const SpeedGraderModal: React.FC = () => {
+  const {
+    activeSpeedGraderSubmissionId,
+    closeSpeedGrader,
+    openSpeedGrader,
+    db,
+    gradeSubmission,
+    activeRole,
+  } = useLMS();
+
+  const isAdmin = activeRole === 'admin';
+  const { isClosing, startClose } = useModalAnimate(closeSpeedGrader, 200);
+
+  useEffect(() => {
+    if (!activeSpeedGraderSubmissionId) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        startClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeSpeedGraderSubmissionId, startClose]);
+
+  if (!activeSpeedGraderSubmissionId) return null;
+
+  const currentSubmission = db.submissions.find(s => s.id === activeSpeedGraderSubmissionId);
+  if (!currentSubmission) return null;
+
+  // Remount per submission so grade/rubric/comment state never flashes
+  // the previous student's values while navigating.
+  return (
+    <SpeedGraderContent
+      key={currentSubmission.id}
+      currentSubmission={currentSubmission}
+      db={db}
+      isAdmin={isAdmin}
+      isClosing={isClosing}
+      startClose={startClose}
+      openSpeedGrader={openSpeedGrader}
+      gradeSubmission={gradeSubmission}
+    />
+  );
+};
+

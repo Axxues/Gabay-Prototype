@@ -11,6 +11,7 @@ import {
   Layers
 } from 'lucide-react';
 import { ModalPortal, useModalAnimate } from './ModalPortal';
+import { UserAvatar } from './UserAvatar';
 
 export const UserProfileModal: React.FC = () => {
   const {
@@ -110,9 +111,9 @@ export const UserProfileModal: React.FC = () => {
           <div className="p-6 pt-0 relative space-y-5">
             {/* Avatar and Info Header */}
             <div className="flex items-end justify-between -mt-10">
-              <img
+              <UserAvatar
+                name={currentUser.name}
                 src={currentUser.avatar}
-                alt={currentUser.name}
                 className="w-20 h-20 rounded-2xl object-cover border-4 border-card shadow-elevated"
               />
               <div className={`px-3 py-1 text-xs font-sans font-bold rounded-lg border flex items-center space-x-1.5 ${badge.style}`}>
@@ -145,10 +146,10 @@ export const UserProfileModal: React.FC = () => {
               <div className="p-3 bg-muted/40 rounded-xl border border-border space-y-1">
                 <div className="flex items-center space-x-1.5 text-muted-foreground font-medium">
                   <GraduationCap className="w-3.5 h-3.5 text-primary" />
-                  <span>Student / Staff ID</span>
+                  <span>ID Number</span>
                 </div>
                 <div className="font-sans text-foreground font-semibold text-[11px]">
-                  {currentUser.studentId || 'FAC-SLUC-0012'}
+                  {currentUser.studentId || 'Not assigned'}
                 </div>
               </div>
             </div>

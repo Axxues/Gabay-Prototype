@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLMS } from '../../context/LMSContext';
 import { NotificationBell } from '../common/NotificationBell';
+import { UserAvatar } from '../common/UserAvatar';
 import {
   Menu,
   Search,
@@ -11,7 +12,6 @@ import {
   HelpCircle,
   ChevronDown,
   User,
-  Shield,
   LogOut,
    Users,
 } from 'lucide-react';
@@ -36,7 +36,6 @@ export const Topbar: React.FC<TopbarProps> = ({
     activeRole,
     theme,
     toggleTheme,
-    setIsRoleModalOpen,
     logout,
     showConfirm
   } = useLMS();
@@ -57,7 +56,7 @@ export const Topbar: React.FC<TopbarProps> = ({
   }, []);
 
   return (
-    <nav className="fixed w-full z-30 top-0 transition-all glass border-b border-border/40 shadow-subtle dark:bg-background/80 dark:border-border/30">
+    <nav className="fixed w-full z-30 top-0 transition-all glass border-b border-border/70 dark:bg-background/80">
       <div className="px-4 sm:px-6 h-16 flex justify-between items-center max-w-[100vw]">
         {/* Left Section: Mobile Menu + Brand Logo & Badge + Theme Toggle */}
         <div className="flex items-center min-w-0 shrink-0 gap-3">
@@ -75,11 +74,13 @@ export const Topbar: React.FC<TopbarProps> = ({
             onClick={() => onNavigateTab && onNavigateTab('dashboard')}
             className="flex items-center gap-2.5 cursor-pointer group"
           >
-            <div className="w-8 h-8 rounded-xl bg-primary flex items-center justify-center font-black text-white text-base tracking-tighter shadow-primary-sm group-hover:scale-105 transition-transform">
-              G
-            </div>
+            <img
+              src="/gabay-logo.png"
+              alt="GABAY logo"
+              className="w-11 h-11 rounded-xl object-contain bg-transparent group-hover:scale-105 transition-transform"
+            />
             <div className="flex items-center gap-1.5">
-              <span className="font-extrabold text-sm sm:text-base tracking-tight text-foreground font-sans">
+              <span className="font-extrabold text-xl sm:text-2xl tracking-tight text-foreground font-sans">
                 GABAY
               </span>
             </div>
@@ -87,7 +88,7 @@ export const Topbar: React.FC<TopbarProps> = ({
 
           <button
             onClick={toggleTheme}
-            className="hidden md:flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground transition-all shadow-subtle cursor-pointer ml-1"
+            className="hidden md:flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground transition-all cursor-pointer ml-1"
             aria-label="Toggle theme mode"
             title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
           >
@@ -104,16 +105,16 @@ export const Topbar: React.FC<TopbarProps> = ({
           <button
             type="button"
             onClick={onOpenSearch}
-            className="w-full h-10 flex items-center justify-between px-4 rounded-full border border-border bg-muted/50 hover:bg-muted hover:shadow-inner-soft transition-all text-left cursor-pointer"
+            className="w-full h-10 flex items-center justify-between px-4 rounded-xl border border-border bg-muted/50 hover:bg-muted transition-all text-left cursor-pointer"
           >
             <div className="flex items-center min-w-0">
               <Search className="h-4 w-4 text-muted-foreground mr-3 flex-shrink-0" />
-              <span className="text-sm font-semibold text-muted-foreground truncate font-sans">
+              <span className="text-[13px] font-normal text-muted-foreground truncate font-sans">
                 Search courses, modules, activities, calendar...
               </span>
             </div>
 
-            <div className="hidden lg:flex items-center gap-1 text-[10px] font-sans font-bold text-muted-foreground bg-background border border-border rounded-lg px-2 py-0.5 shadow-subtle">
+            <div className="hidden lg:flex items-center gap-1 text-[11px] font-sans font-medium text-muted-foreground bg-background border border-border rounded-full px-2 py-0.5">
               <Command className="h-3 w-3" /> K
             </div>
           </button>
@@ -133,7 +134,7 @@ export const Topbar: React.FC<TopbarProps> = ({
           <button
             onClick={() => onNavigateTab && onNavigateTab('history')}
             title="Session Trail History"
-            className={`hidden sm:flex h-9 w-9 items-center justify-center rounded-xl border transition-all cursor-pointer shadow-subtle ${currentTab === 'history'
+            className={`hidden sm:flex h-9 w-9 items-center justify-center rounded-xl border transition-all cursor-pointer ${currentTab === 'history'
                 ? 'bg-primary text-primary-foreground border-primary'
                 : 'text-muted-foreground hover:text-foreground hover:bg-accent border-border bg-background'
               }`}
@@ -145,7 +146,7 @@ export const Topbar: React.FC<TopbarProps> = ({
           <button
             onClick={() => onNavigateTab && onNavigateTab('help')}
             title="User Manual & Help"
-            className={`hidden sm:flex h-9 w-9 items-center justify-center rounded-xl border transition-all cursor-pointer shadow-subtle ${currentTab === 'help'
+            className={`hidden sm:flex h-9 w-9 items-center justify-center rounded-xl border transition-all cursor-pointer ${currentTab === 'help'
                 ? 'bg-primary text-primary-foreground border-primary'
                 : 'text-muted-foreground hover:text-foreground hover:bg-accent border-border bg-background'
               }`}
@@ -161,20 +162,12 @@ export const Topbar: React.FC<TopbarProps> = ({
             <button
               onClick={() => setProfileOpen(!profileOpen)}
               className={`flex items-center px-2.5 py-1.5 rounded-2xl border transition-all cursor-pointer group ${profileOpen
-                  ? 'bg-accent/80 border-primary ring-2 ring-primary/20 shadow-primary-sm'
-                  : 'hover:bg-accent/60 border-border/80 shadow-subtle'
+                  ? 'bg-accent/80 border-border ring-1 ring-primary/15'
+                  : 'hover:bg-accent/60 border-border/80'
                 }`}
             >
               <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center flex-shrink-0 text-white font-bold text-sm shadow-card overflow-hidden ring-2 ring-primary/25 ring-offset-1 ring-offset-background group-hover:scale-105 transition-transform">
-                {activeUser.avatar ? (
-                  <img
-                    src={activeUser.avatar}
-                    alt={activeUser.name}
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <span>{activeUser.name.charAt(0)}</span>
-                )}
+                <UserAvatar name={activeUser.name} src={activeUser.avatar} className="h-full w-full" />
               </div>
 
               <span className="text-sm font-bold text-foreground ml-2.5 hidden sm:block truncate max-w-[120px]">
@@ -187,17 +180,17 @@ export const Topbar: React.FC<TopbarProps> = ({
             {profileOpen && (
               <div className="absolute right-0 mt-2 w-72 dropdown-panel p-2.5 z-50 animate-dropdown">
                 <div className="px-3.5 py-3 bg-muted/40 border border-border/60 rounded-xl mb-2">
-                  <p className="text-[10px] font-sans font-bold text-muted-foreground uppercase tracking-widest">
+                  <p className="text-[12px] font-sans font-semibold text-muted-foreground">
                     Signed in as
                   </p>
-                  <p className="text-sm font-black text-foreground truncate mt-0.5">
+                  <p className="text-[14px] font-bold text-foreground truncate mt-0.5">
                     {activeUser.name}
                   </p>
                   <div className="flex items-center space-x-1.5 mt-1.5">
-                    <span className="px-2 py-0.5 text-[10px] font-sans font-bold rounded-full bg-primary/15 text-primary uppercase tracking-wide border border-primary/25 shadow-xs">
+                    <span className="px-2 py-0.5 text-[11px] font-sans font-medium rounded-full bg-muted text-muted-foreground border border-border">
                       {activeRole}
                     </span>
-                    <span className="text-[11px] font-sans text-muted-foreground truncate font-medium">
+                    <span className="text-[12px] font-sans text-muted-foreground truncate font-normal">
                       {activeUser.email}
                     </span>
                   </div>
@@ -231,19 +224,6 @@ export const Topbar: React.FC<TopbarProps> = ({
                       Manage College Accounts
                     </button>
                   )}
-
-                  <button
-                    onClick={() => {
-                      setProfileOpen(false);
-                      setIsRoleModalOpen(true);
-                    }}
-                    className="flex items-center w-full px-3 py-2 text-xs font-bold text-primary hover:bg-primary/10 hover:translate-x-0.5 rounded-xl transition-all cursor-pointer group"
-                  >
-                    <div className="w-6 h-6 rounded-lg bg-primary/15 flex items-center justify-center text-primary mr-2.5 transition-colors">
-                      <Shield className="h-3.5 w-3.5" />
-                    </div>
-                    Switch Role Matrix
-                  </button>
 
                   {/* Dark Mode toggle for mobile */}
                   <div className="md:hidden flex items-center justify-between w-full px-3 py-2 rounded-xl bg-muted/30">

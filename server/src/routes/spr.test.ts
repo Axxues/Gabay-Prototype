@@ -106,7 +106,33 @@ describe('SPR routes', () => {
     expect(res.status).toBe(403);
   });
 
+  it('PUT cells for unenrolled student → 403', async () => {
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'c1',
+      instructorId: 'u-fac',
+    });
+    (prisma.enrollmentRequest.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .put('/api/courses/c1/spr/u-stranger')
+      .set('Authorization', 'Bearer x')
+      .send({ midtermScores: {}, mtExam: null, finalScores: {}, ftExam: null });
+
+    expect(res.status).toBe(403);
+    expect(prisma.courseGrade.upsert).not.toHaveBeenCalled();
+  });
+
   it('PUT cells validates scores; upserts and echoes cells', async () => {
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'c1',
+      instructorId: 'u-fac',
+    });
+    (prisma.enrollmentRequest.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      courseId: 'c1',
+      studentId: 's1',
+      status: 'approved',
+    });
     (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: 'c1',
       instructorId: 'u-fac',

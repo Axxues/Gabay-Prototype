@@ -54,18 +54,18 @@ interface EventTypeOption {
 const EVENT_TYPE_OPTIONS: EventTypeOption[] = [
   {
     value: 'event',
-    label: 'General Event',
+    label: 'General event',
     description: 'General activities, campus events, or departmental meetings',
     icon: Calendar,
-    iconColor: 'text-blue-500',
+    iconColor: 'text-muted-foreground',
     defaultColor: '#2563eb'
   },
   {
     value: 'holiday',
-    label: 'Holiday / Observance',
+    label: 'Holiday / observance',
     description: 'National, local, or institutional non-working holiday',
     icon: Sun,
-    iconColor: 'text-amber-500',
+    iconColor: 'text-muted-foreground',
     defaultColor: '#d97706'
   },
   {
@@ -73,47 +73,47 @@ const EVENT_TYPE_OPTIONS: EventTypeOption[] = [
     label: 'Activity deadline',
     description: 'Homework submission cutoff or project due date',
     icon: FileCheck2,
-    iconColor: 'text-emerald-500',
+    iconColor: 'text-muted-foreground',
     defaultColor: '#059669'
   },
   {
     value: 'milestone',
-    label: 'Curriculum Milestone',
+    label: 'Curriculum milestone',
     description: 'Semester milestone, grading period, or academic directive',
     icon: Flag,
-    iconColor: 'text-purple-500',
+    iconColor: 'text-muted-foreground',
     defaultColor: '#7c3aed'
   },
   {
     value: 'advising',
-    label: 'Academic Advising',
+    label: 'Academic advising',
     description: 'Office hours, student consultation, or advising session',
     icon: UserCheck,
-    iconColor: 'text-teal-500',
+    iconColor: 'text-muted-foreground',
     defaultColor: '#0d9488'
   },
   {
     value: 'lecture',
-    label: 'Lecture / Class Session',
+    label: 'Lecture / class session',
     description: 'Regular synchronous lecture or scheduled laboratory',
     icon: BookOpen,
-    iconColor: 'text-indigo-500',
+    iconColor: 'text-muted-foreground',
     defaultColor: '#4f46e5'
   },
   {
     value: 'virtual_meeting',
-    label: 'Virtual Meeting',
+    label: 'Virtual meeting',
     description: 'Online video conference via Zoom, Meet, or Teams',
     icon: Video,
-    iconColor: 'text-teal-500',
+    iconColor: 'text-muted-foreground',
     defaultColor: '#0d9488'
   },
   {
     value: 'exam',
-    label: 'Quiz / Major Examination',
+    label: 'Quiz / major examination',
     description: 'Scheduled quiz, prelim, midterm, or final exam',
     icon: HelpCircle,
-    iconColor: 'text-rose-500',
+    iconColor: 'text-muted-foreground',
     defaultColor: '#e11d48'
   }
 ];
@@ -357,7 +357,7 @@ export const CreateEventPage: React.FC<CreateEventPageProps> = ({
   return (
     <div className="space-y-6 animate-fade-in max-w-5xl mx-auto pt-2 pb-24 px-2 sm:px-4 font-sans select-none">
       {/* Top Header & Breadcrumb */}
-      <div className="pb-4 border-b border-border/80">
+      <div className="pb-4 border-b border-border/70">
         <div className="space-y-3">
           <div className="flex items-center space-x-2 text-xs text-muted-foreground font-sans">
             <button
@@ -376,13 +376,13 @@ export const CreateEventPage: React.FC<CreateEventPageProps> = ({
 
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-1">
             <div className="space-y-1">
-              <h1 className="text-xl sm:text-2xl font-black tracking-tight text-foreground flex items-center space-x-3">
-                <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 shadow-xs border border-primary/20">
-                  <CalendarDays className="w-5 h-5" />
+              <h1 className="text-[22px] font-extrabold tracking-tight text-foreground flex items-center space-x-3">
+                <div className="w-9 h-9 rounded-xl bg-muted text-muted-foreground flex items-center justify-center shrink-0">
+                  <CalendarDays className="w-4 h-4" />
                 </div>
-                <span>{isEditing ? 'Edit Scheduled Event' : 'Schedule New Event'}</span>
+                <span>{isEditing ? 'Edit scheduled event' : 'Schedule new event'}</span>
               </h1>
-              <p className="text-xs sm:text-sm text-muted-foreground font-medium pl-0.5">
+              <p className="text-[13px] text-muted-foreground pl-0.5">
                 {isEditing
                   ? 'Update timing, virtual links, course attachments, and calendar badge options.'
                   : 'Add academic milestones, activity deadlines, virtual meetings, or course lectures to the institutional schedule.'}
@@ -395,7 +395,7 @@ export const CreateEventPage: React.FC<CreateEventPageProps> = ({
                 <button
                   type="button"
                   onClick={handleDelete}
-                  className="px-3.5 py-2 text-xs font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-500/10 border border-rose-500/20 rounded-xl transition-all shadow-subtle cursor-pointer active:scale-98 flex items-center space-x-1.5"
+                  className="px-3.5 py-2 text-xs font-semibold text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10 rounded-xl transition-all cursor-pointer active:scale-98 flex items-center space-x-1.5"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   <span className="hidden sm:inline">Delete</span>
@@ -404,17 +404,17 @@ export const CreateEventPage: React.FC<CreateEventPageProps> = ({
               <button
                 type="button"
                 onClick={onBack}
-                className="px-4 py-2 text-xs font-bold text-muted-foreground hover:text-foreground bg-card hover:bg-muted/60 border border-border rounded-xl transition-all shadow-subtle cursor-pointer active:scale-98"
+                className="px-4 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-all cursor-pointer active:scale-98"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleSubmit}
-                className="px-5 py-2 text-xs font-bold text-primary-foreground bg-primary hover:bg-primary/90 active:scale-[0.98] rounded-xl transition-all shadow-primary-sm cursor-pointer flex items-center space-x-1.5"
+                className="px-5 py-2 text-xs font-semibold text-primary-foreground bg-primary hover:bg-primary/90 active:scale-[0.98] rounded-xl transition-all shadow-primary-sm cursor-pointer flex items-center space-x-1.5"
               >
                 <Check className="w-3.5 h-3.5" />
-                <span>{isEditing ? 'Save Changes' : 'Schedule Event'}</span>
+                <span>{isEditing ? 'Save changes' : 'Schedule event'}</span>
               </button>
             </div>
           </div>
@@ -426,16 +426,16 @@ export const CreateEventPage: React.FC<CreateEventPageProps> = ({
         {/* Left 2 Columns: Form Fields */}
         <div className="lg:col-span-2 space-y-5">
           {/* Card 1: Event Details & Prompt */}
-          <div className="bg-card border border-border rounded-2xl p-5 sm:p-6 shadow-subtle space-y-4">
-            <div className="flex items-center space-x-2 border-b border-border/60 pb-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                1. General Information
+          <div className="bg-card border border-border rounded-2xl p-5 sm:p-6 space-y-4">
+            <div className="flex items-center space-x-2 border-b border-border/70 pb-3">
+              <span className="text-[12px] font-semibold text-muted-foreground">
+                1. General information
               </span>
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-foreground mb-1.5">
-                Event Title *
+              <label className="block text-[12px] font-semibold text-muted-foreground mb-1.5">
+                Event title
               </label>
               <input
                 type="text"
@@ -443,37 +443,37 @@ export const CreateEventPage: React.FC<CreateEventPageProps> = ({
                 value={title}
                 onChange={e => setTitle(e.target.value)}
                 placeholder="e.g. CMSC 131 Lab Submission, Midterm Review, Consultation Hours"
-                className="w-full px-4 py-3 bg-background border border-border hover:border-primary/40 focus:border-primary rounded-xl text-foreground text-sm font-sans font-semibold focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all shadow-subtle"
+                className="w-full px-4 py-3 bg-background border border-border hover:border-primary/40 focus:border-primary/40 rounded-xl text-foreground text-[13px] font-semibold focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-foreground mb-1.5">
-                Description & Agenda (Optional)
+              <label className="block text-[12px] font-semibold text-muted-foreground mb-1.5">
+                Description & agenda (optional)
               </label>
               <textarea
                 rows={3}
                 value={description}
                 onChange={e => setDescription(e.target.value)}
                 placeholder="Provide instructions, meeting topics, agenda, or syllabus references..."
-                className="w-full p-3.5 bg-background border border-border hover:border-primary/40 focus:border-primary rounded-xl text-foreground text-xs font-sans focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all resize-y shadow-subtle leading-relaxed"
+                className="w-full p-3.5 bg-background border border-border hover:border-primary/40 focus:border-primary/40 rounded-xl text-foreground text-[13px] focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all resize-y leading-relaxed"
               />
             </div>
           </div>
 
           {/* Card 2: Scope & Categorization */}
-          <div className="bg-card border border-border rounded-2xl p-5 sm:p-6 shadow-subtle space-y-4">
-            <div className="flex items-center space-x-2 border-b border-border/60 pb-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                2. Scope & Event Classification
+          <div className="bg-card border border-border rounded-2xl p-5 sm:p-6 space-y-4">
+            <div className="flex items-center space-x-2 border-b border-border/70 pb-3">
+              <span className="text-[12px] font-semibold text-muted-foreground">
+                2. Scope & event classification
               </span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Course Attachment Dropdown */}
               <div className="relative" ref={courseDropdownRef}>
-                <label className="block text-xs font-bold text-foreground mb-1.5">
-                  Course Shell Attachment
+                <label className="block text-[12px] font-semibold text-muted-foreground mb-1.5">
+                  Course shell attachment
                 </label>
                 <button
                   type="button"
@@ -481,7 +481,7 @@ export const CreateEventPage: React.FC<CreateEventPageProps> = ({
                     setIsCourseDropdownOpen(prev => !prev);
                     setIsTypeDropdownOpen(false);
                   }}
-                  className={`w-full p-3 bg-background border rounded-xl text-foreground text-xs font-sans font-medium flex items-center justify-between shadow-subtle cursor-pointer transition-all ${
+                  className={`w-full p-3 bg-background border rounded-xl text-foreground text-xs font-sans font-medium flex items-center justify-between  cursor-pointer transition-all ${
                     isCourseDropdownOpen
                       ? 'border-primary ring-2 ring-primary/20 text-primary'
                       : 'border-border hover:border-primary/40'
@@ -518,7 +518,7 @@ export const CreateEventPage: React.FC<CreateEventPageProps> = ({
 
                 {isCourseDropdownOpen && (
                   <div className="absolute left-0 right-0 top-full mt-1.5 dropdown-panel p-1.5 z-50 animate-dropdown max-h-60 overflow-y-auto custom-scrollbar shadow-elevated bg-card border border-border rounded-xl">
-                    <div className="px-2.5 py-1 text-[10px] font-sans font-bold uppercase tracking-wider text-muted-foreground border-b border-border/60 mb-1 flex items-center justify-between">
+                    <div className="px-2.5 py-1 text-[12px] font-semibold text-muted-foreground border-b border-border/70 mb-1 flex items-center justify-between">
                       <span>Select Course Scope</span>
                       {adminOnlyMilestones && (
                         <span className="text-primary text-[9px]">Admin Scope</span>
@@ -582,8 +582,8 @@ export const CreateEventPage: React.FC<CreateEventPageProps> = ({
 
               {/* Event Type Dropdown */}
               <div className="relative" ref={typeDropdownRef}>
-                <label className="block text-xs font-bold text-foreground mb-1.5">
-                  Event Classification
+                <label className="block text-[12px] font-semibold text-muted-foreground mb-1.5">
+                  Event classification
                 </label>
                 <button
                   type="button"
@@ -591,7 +591,7 @@ export const CreateEventPage: React.FC<CreateEventPageProps> = ({
                     setIsTypeDropdownOpen(prev => !prev);
                     setIsCourseDropdownOpen(false);
                   }}
-                  className={`w-full p-3 bg-background border rounded-xl text-foreground text-xs font-sans font-medium flex items-center justify-between shadow-subtle cursor-pointer transition-all ${
+                  className={`w-full p-3 bg-background border rounded-xl text-foreground text-xs font-sans font-medium flex items-center justify-between  cursor-pointer transition-all ${
                     isTypeDropdownOpen
                       ? 'border-primary ring-2 ring-primary/20 text-primary'
                       : 'border-border hover:border-primary/40'
@@ -612,7 +612,7 @@ export const CreateEventPage: React.FC<CreateEventPageProps> = ({
 
                 {isTypeDropdownOpen && (
                   <div className="absolute left-0 right-0 top-full mt-1.5 dropdown-panel p-1.5 z-50 animate-dropdown max-h-64 overflow-y-auto custom-scrollbar shadow-elevated bg-card border border-border rounded-xl">
-                    <div className="px-2.5 py-1 text-[10px] font-sans font-bold uppercase tracking-wider text-muted-foreground border-b border-border/60 mb-1">
+                    <div className="px-2.5 py-1 text-[12px] font-semibold text-muted-foreground border-b border-border/70 mb-1">
                       Select Event Type
                     </div>
                     {EVENT_TYPE_OPTIONS.map(opt => {
@@ -661,10 +661,10 @@ export const CreateEventPage: React.FC<CreateEventPageProps> = ({
           </div>
 
           {/* Card 3: Date & Timing Schedule */}
-          <div className="bg-card border border-border rounded-2xl p-5 sm:p-6 shadow-subtle space-y-4">
-            <div className="flex items-center justify-between border-b border-border/60 pb-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                3. Date & Schedule Duration
+          <div className="bg-card border border-border rounded-2xl p-5 sm:p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-border/70 pb-3">
+              <span className="text-[12px] font-semibold text-muted-foreground">
+                3. Date & schedule duration
               </span>
 
               {/* All Day Toggle Switch */}
@@ -694,8 +694,8 @@ export const CreateEventPage: React.FC<CreateEventPageProps> = ({
 
             {isAllDay ? (
               <div>
-                <label className="block text-xs font-bold text-foreground mb-1.5">
-                  Event Date *
+                <label className="block text-[12px] font-semibold text-muted-foreground mb-1.5">
+                  Event date
                 </label>
                 <div className="relative">
                   <Calendar className="w-4 h-4 text-muted-foreground absolute left-3.5 top-3.5" />
@@ -704,15 +704,15 @@ export const CreateEventPage: React.FC<CreateEventPageProps> = ({
                     required
                     value={startDateStr}
                     onChange={e => setStartDateStr(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 bg-background border border-border hover:border-primary/40 focus:border-primary rounded-xl text-foreground text-xs font-sans focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all shadow-subtle"
+                    className="w-full pl-10 pr-4 py-2.5 bg-background border border-border hover:border-primary/40 focus:border-primary rounded-xl text-foreground text-xs font-sans focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all "
                   />
                 </div>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-foreground mb-1.5">
-                    Start Date & Time *
+                  <label className="block text-[12px] font-semibold text-muted-foreground mb-1.5">
+                    Start date & time
                   </label>
                   <div className="relative">
                     <Clock className="w-4 h-4 text-muted-foreground absolute left-3.5 top-3.5" />
@@ -721,14 +721,14 @@ export const CreateEventPage: React.FC<CreateEventPageProps> = ({
                       required
                       value={startDateStr}
                       onChange={e => setStartDateStr(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 bg-background border border-border hover:border-primary/40 focus:border-primary rounded-xl text-foreground text-xs font-sans focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all shadow-subtle"
+                      className="w-full pl-10 pr-4 py-2.5 bg-background border border-border hover:border-primary/40 focus:border-primary rounded-xl text-foreground text-xs font-sans focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all "
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-foreground mb-1.5">
-                    End Date & Time *
+                  <label className="block text-[12px] font-semibold text-muted-foreground mb-1.5">
+                    End date & time
                   </label>
                   <div className="relative">
                     <Clock className="w-4 h-4 text-muted-foreground absolute left-3.5 top-3.5" />
@@ -737,7 +737,7 @@ export const CreateEventPage: React.FC<CreateEventPageProps> = ({
                       required
                       value={endDateStr}
                       onChange={e => setEndDateStr(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 bg-background border border-border hover:border-primary/40 focus:border-primary rounded-xl text-foreground text-xs font-sans focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all shadow-subtle"
+                      className="w-full pl-10 pr-4 py-2.5 bg-background border border-border hover:border-primary/40 focus:border-primary rounded-xl text-foreground text-xs font-sans focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all "
                     />
                   </div>
                 </div>
@@ -746,16 +746,16 @@ export const CreateEventPage: React.FC<CreateEventPageProps> = ({
           </div>
 
           {/* Card 4: Location & Virtual Conference */}
-          <div className="bg-card border border-border rounded-2xl p-5 sm:p-6 shadow-subtle space-y-4">
-            <div className="flex items-center space-x-2 border-b border-border/60 pb-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                4. Location & Online Meeting Settings
+          <div className="bg-card border border-border rounded-2xl p-5 sm:p-6 space-y-4">
+            <div className="flex items-center space-x-2 border-b border-border/70 pb-3">
+              <span className="text-[12px] font-semibold text-muted-foreground">
+                4. Location & online meeting settings
               </span>
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-foreground mb-1.5">
-                {eventType === 'virtual_meeting' ? 'Physical Room (Optional)' : 'Location / Meeting Link (Optional)'}
+              <label className="block text-[12px] font-semibold text-muted-foreground mb-1.5">
+                {eventType === 'virtual_meeting' ? 'Physical room (optional)' : 'Location / meeting link (optional)'}
               </label>
               <div className="relative">
                 <MapPin className="w-4 h-4 text-muted-foreground absolute left-3.5 top-3.5" />
@@ -766,19 +766,19 @@ export const CreateEventPage: React.FC<CreateEventPageProps> = ({
                   placeholder={eventType === 'virtual_meeting'
                     ? 'e.g. SLUC Computer Lab 304 (optional physical backup room)'
                     : 'e.g. SLUC CS Department Room 102, Building A'}
-                  className="w-full pl-10 pr-4 py-2.5 bg-background border border-border hover:border-primary/40 focus:border-primary rounded-xl text-foreground text-xs font-sans focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all shadow-subtle"
+                  className="w-full pl-10 pr-4 py-2.5 bg-background border border-border hover:border-primary/40 focus:border-primary rounded-xl text-foreground text-xs font-sans focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all "
                 />
               </div>
             </div>
 
             {/* Virtual Meeting Details Block */}
             {eventType === 'virtual_meeting' && (
-              <div className="p-4 bg-teal-500/5 border border-teal-500/20 rounded-2xl space-y-3.5 animate-fade-in">
+              <div className="p-4 bg-muted/30 border border-border rounded-2xl space-y-3.5 animate-fade-in">
                 <div className="flex items-center space-x-2">
-                  <div className="p-1.5 rounded-lg bg-teal-500/15 text-teal-600 dark:text-teal-400">
+                  <div className="p-1.5 rounded-lg bg-muted text-muted-foreground">
                     <Video className="w-4 h-4" />
                   </div>
-                  <span className="text-xs font-bold text-foreground">Virtual Conference Platform</span>
+                  <span className="text-[12px] font-semibold text-muted-foreground">Virtual conference platform</span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -789,7 +789,7 @@ export const CreateEventPage: React.FC<CreateEventPageProps> = ({
                     <select
                       value={meetingPlatform}
                       onChange={e => setMeetingPlatform(e.target.value as CalendarEvent['meetingPlatform'])}
-                      className="w-full p-2.5 bg-background border border-border focus:ring-2 focus:ring-primary/30 rounded-xl text-foreground text-xs font-sans"
+                      className="w-full p-2.5 bg-background border border-border focus:ring-2 focus:ring-primary/20 focus:border-primary/40 rounded-xl text-foreground text-xs font-sans"
                     >
                       <option value="zoom">Zoom Video</option>
                       <option value="google_meet">Google Meet</option>
@@ -807,7 +807,7 @@ export const CreateEventPage: React.FC<CreateEventPageProps> = ({
                       value={meetingJoinUrl}
                       onChange={e => setMeetingJoinUrl(e.target.value)}
                       placeholder="https://zoom.us/j/123456789"
-                      className="w-full px-3 py-2.5 bg-background border border-border focus:ring-2 focus:ring-primary/30 rounded-xl text-foreground text-xs font-sans"
+                      className="w-full px-3 py-2.5 bg-background border border-border focus:ring-2 focus:ring-primary/20 focus:border-primary/40 rounded-xl text-foreground text-xs font-sans"
                     />
                   </div>
 
@@ -822,7 +822,7 @@ export const CreateEventPage: React.FC<CreateEventPageProps> = ({
                         value={meetingId}
                         onChange={e => setMeetingId(e.target.value)}
                         placeholder="845 2217 9034"
-                        className="w-full pl-9 pr-3 py-2 bg-background border border-border focus:ring-2 focus:ring-primary/30 rounded-xl text-foreground text-xs font-sans"
+                        className="w-full pl-9 pr-3 py-2 bg-background border border-border focus:ring-2 focus:ring-primary/20 focus:border-primary/40 rounded-xl text-foreground text-xs font-sans"
                       />
                     </div>
                   </div>
@@ -838,7 +838,7 @@ export const CreateEventPage: React.FC<CreateEventPageProps> = ({
                         value={meetingPasscode}
                         onChange={e => setMeetingPasscode(e.target.value)}
                         placeholder="Passcode123"
-                        className="w-full pl-9 pr-3 py-2 bg-background border border-border focus:ring-2 focus:ring-primary/30 rounded-xl text-foreground text-xs font-sans"
+                        className="w-full pl-9 pr-3 py-2 bg-background border border-border focus:ring-2 focus:ring-primary/20 focus:border-primary/40 rounded-xl text-foreground text-xs font-sans"
                       />
                     </div>
                   </div>
@@ -851,9 +851,9 @@ export const CreateEventPage: React.FC<CreateEventPageProps> = ({
         {/* Right Column: Appearance, Color Swatches & Live Calendar Preview */}
         <div className="space-y-5">
           {/* Card 5: Color Swatches */}
-          <div className="bg-card border border-border rounded-2xl p-5 shadow-subtle space-y-3.5">
-            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground block">
-              Event Badge Color
+          <div className="bg-card border border-border rounded-2xl p-5 space-y-3.5">
+            <span className="text-[12px] font-semibold text-muted-foreground block">
+              Event badge color
             </span>
 
             <div className="flex flex-wrap items-center gap-2.5 pt-1">
@@ -884,11 +884,11 @@ export const CreateEventPage: React.FC<CreateEventPageProps> = ({
           </div>
 
           {/* Live Preview Card */}
-          <div className="bg-card border border-border rounded-2xl p-5 shadow-subtle space-y-3">
-            <div className="flex items-center justify-between border-b border-border/60 pb-2.5">
-              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center space-x-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-primary" />
-                <span>Calendar Card Preview</span>
+          <div className="bg-card border border-border rounded-2xl p-5 space-y-3">
+            <div className="flex items-center justify-between border-b border-border/70 pb-2.5">
+              <span className="text-[12px] font-semibold text-muted-foreground flex items-center space-x-1.5">
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Calendar card preview</span>
               </span>
               <span className="text-[10px] font-sans font-medium text-muted-foreground">
                 Agenda View
@@ -896,7 +896,7 @@ export const CreateEventPage: React.FC<CreateEventPageProps> = ({
             </div>
 
             <div
-              className="p-4 rounded-xl border transition-all space-y-2.5 shadow-subtle"
+              className="p-4 rounded-xl border transition-all space-y-2.5 "
               style={{
                 borderColor: `${colorHex}40`,
                 backgroundColor: `${colorHex}08`

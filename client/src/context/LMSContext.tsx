@@ -66,6 +66,10 @@ interface LMSContextType {
   switchRole: (role: UserRole) => void; // Keep for testing convenience if needed
   isLoading: boolean;
   lastError: string | null;
+  authReady: boolean;
+  // Session-restore gate: false until the token -> GET /api/auth/me restore
+  // attempt settles (or is skipped when no token exists). Route guards
+  // render the loading skeleton while this is false.
 
   activeCourseId: string | null;
   setActiveCourseId: (id: string | null) => void;
@@ -222,6 +226,7 @@ interface LMSContextType {
   createEnrollmentRequest: (courseId: string, type: 'self_join' | 'faculty_enroll') => Promise<EnrollmentRequest>;
   approveEnrollmentRequests: (requestIds: string[]) => Promise<boolean>;
   rejectEnrollmentRequests: (requestIds: string[]) => Promise<boolean>;
+  removeStudentFromCourse: (courseId: string, studentId: string) => Promise<boolean>;
   studentApproveInvitation: (requestId: string) => Promise<boolean>;
   studentDeclineInvitation: (requestId: string) => Promise<boolean>;
   selectSection: (courseId: string, sectionId: string) => Promise<boolean>;
@@ -248,7 +253,7 @@ const safeSetLocalStorage = (key: string, value: string): boolean => {
   }
 };
 
-const LMSContext = createContext<LMSContextType | undefined>(undefined);
+export const LMSContext = createContext<LMSContextType | undefined>(undefined);
 
 /** Selectable system accent. Presets ship hand-tuned light/dark HSL triples. */
 export type AccentId = 'pink' | 'emerald' | 'navy' | 'gold' | 'custom';
@@ -420,6 +425,9 @@ const normalizeSubmissionComment = (raw: any): SubmissionComment => ({
 const normalizeSubmission = (raw: any): Submission => ({
   id: raw.id,
   activityKey: raw.activityKey ?? undefined,
+  quizId: raw.quizId ?? undefined,
+  activityId: raw.activityId ?? undefined,
+  examId: raw.examId ?? undefined,
   courseId: raw.courseId,
   studentId: raw.studentId,
   studentName: raw.studentName ?? '',
@@ -433,10 +441,21 @@ const normalizeSubmission = (raw: any): Submission => ({
   gradedAt: toOptionalIso(raw.gradedAt),
   gradedBy: raw.gradedBy ?? undefined,
   status: raw.status === 'graded' ? 'graded' : raw.status === 'missing' ? 'missing' : 'submitted',
-  rubricScores:
-    raw.rubricScores && typeof raw.rubricScores === 'object' && !Array.isArray(raw.rubricScores)
-      ? raw.rubricScores
-      : {},
+  rubricScores: (() => {
+    const v = raw.rubricScores;
+    if (v && typeof v === 'object' && !Array.isArray(v)) return v as Record<string, number>;
+    if (typeof v === 'string') {
+      try {
+        const parsed: unknown = JSON.parse(v);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          return parsed as Record<string, number>;
+        }
+      } catch {
+        // fall through to empty
+      }
+    }
+    return {};
+  })(),
   comments: Array.isArray(raw.comments) ? raw.comments.map(normalizeSubmissionComment) : [],
 });
 
@@ -659,6 +678,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Authentication State (token-backed; session restores via GET /api/auth/me)
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
   // SPR lazy-hydration guard: config/cells are fetched once per course per
   // session so getSPRConfig-triggered fills never refetch in a loop.
@@ -735,11 +755,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const scopeResults = await Promise.all(
         coursesRes.courses.map(course =>
           (async () => {
-            const [sectionsSettled, requestsSettled] = await Promise.allSettled([
+            const [sectionsSettled, requestsSettled, approvedSettled] = await Promise.allSettled([
               apiFetch<{ sections: CourseSection[] }>(`/api/courses/${encodeURIComponent(course.id)}/sections`),
               apiFetch<{ requests: EnrollmentRequest[] }>(`/api/courses/${encodeURIComponent(course.id)}/requests?status=pending`),
+              apiFetch<{ requests: EnrollmentRequest[] }>(`/api/courses/${encodeURIComponent(course.id)}/requests?status=approved`),
             ]);
-            return { sectionsSettled, requestsSettled };
+            return { sectionsSettled, requestsSettled, approvedSettled };
           })()
         )
       );
@@ -751,6 +772,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         if (r.requestsSettled.status === 'fulfilled') {
           for (const req of r.requestsSettled.value.requests) requestMap.set(req.id, req);
+        }
+        // Approved rows seed the enrollment cache so rosters (People,
+        // gradebooks) and enrolled-course lists survive refresh. Students
+        // get 403 here — tolerated — and are covered by /requests/mine below.
+        if (r.approvedSettled.status === 'fulfilled') {
+          for (const req of r.approvedSettled.value.requests) requestMap.set(req.id, req);
         }
       }
       // Seed the request cache with the viewer's own requests so
@@ -942,7 +969,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Session restore: token -> GET /api/auth/me -> user + bootstrap
   useEffect(() => {
     const token = getToken();
-    if (!token) return;
+    if (!token) {
+      setAuthReady(true);
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
@@ -959,6 +989,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setLastError(message);
           showAlert(message, 'Load Failed');
         }
+      } finally {
+        if (!cancelled) setAuthReady(true);
       }
     })();
     return () => {
@@ -1813,15 +1845,20 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           `/api/users/${encodeURIComponent(id)}`,
           { method: 'PATCH', body: patchBody }
         );
+        const merged = { ...user, ...localUpdates };
         setDb(prev => ({
           ...prev,
-          users: prev.users.map(u => (u.id === id ? { ...u, ...user, ...localUpdates } : u))
+          users: prev.users.map(u => (u.id === id ? { ...u, ...merged } : u))
         }));
+        // Active session reads from currentUser (not db.users) — sync it so
+        // avatar/banner/name changes render instantly without a reload.
+        setCurrentUser(prev => (prev && prev.id === id ? { ...prev, ...merged } : prev));
       } else {
         setDb(prev => ({
           ...prev,
           users: prev.users.map(u => (u.id === id ? { ...u, ...localUpdates } : u))
         }));
+        setCurrentUser(prev => (prev && prev.id === id ? { ...prev, ...localUpdates } : prev));
       }
       return true;
     } catch (err) {
@@ -2083,13 +2120,15 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     rubricScores: Record<string, number>,
     commentText?: string
   ): Promise<void> => {
-    // Grade posts to the grade endpoint; feedback text rides the comments
-    // endpoint (the grade endpoint would duplicate it). The server stores
-    // grade/status only — rubricScores stay a client-side cache overlay.
+    // Grade + rubricScores persist via the grade endpoint; feedback text
+    // rides the comments endpoint (the grade endpoint would duplicate it).
     try {
+      if (!Number.isFinite(grade)) {
+        throw new Error('Grade must be a number.');
+      }
       const { submission } = await apiFetch<{ submission: any }>(
         `/api/submissions/${encodeURIComponent(submissionId)}/grade`,
-        { method: 'POST', body: { grade } }
+        { method: 'POST', body: { grade, rubricScores } }
       );
       let appended: SubmissionComment | null = null;
       if (commentText && commentText.trim()) {
@@ -2104,7 +2143,16 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...prev,
         submissions: prev.submissions.map(sub =>
           sub.id === submissionId
-            ? { ...graded, rubricScores, comments: [...sub.comments, ...(appended ? [appended] : [])] }
+            ? {
+                ...graded,
+                // Server now echoes persisted rubricScores; fall back to the
+                // just-submitted values if the row predates the column.
+                rubricScores:
+                  graded.rubricScores && Object.keys(graded.rubricScores).length > 0
+                    ? graded.rubricScores
+                    : rubricScores,
+                comments: [...(sub.comments ?? []), ...(appended ? [appended] : [])],
+              }
             : sub
         )
       }));
@@ -2831,6 +2879,13 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           : u
       )
     }));
+    // Badges read activeUser.lastVisitedAt (from currentUser, not db.users) —
+    // sync it so the badge clears instantly without a page reload.
+    setCurrentUser(prev =>
+      prev && prev.id === activeUser.id
+        ? { ...prev, lastVisitedAt: { ...(prev.lastVisitedAt || {}), [key]: stamp } }
+        : prev
+    );
   };
 
   const markModuleCommentsRead = async (moduleId: string): Promise<void> => {
@@ -3955,6 +4010,59 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return true;
   };
 
+  const removeStudentFromCourse = async (courseId: string, studentId: string): Promise<boolean> => {
+    if (activeRole !== 'faculty' && activeRole !== 'admin') return false;
+    try {
+      await apiFetch<{ removed: number }>(
+        `/api/courses/${encodeURIComponent(courseId)}/remove-student`,
+        { method: 'POST', body: { studentId } }
+      );
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to remove student.';
+      setLastError(message);
+      showAlert(message, 'Remove Failed');
+      return false;
+    }
+    // Coursework (submissions, grades) stays intact — only membership is
+    // revoked, so the student can rejoin later via code or invite.
+    setDb(prev => {
+      const freedSectionIds = new Set(
+        (prev.enrollmentRequests || [])
+          .filter(
+            (r: EnrollmentRequest) =>
+              r.courseId === courseId && r.studentId === studentId && r.status === 'approved' && r.targetSectionId
+          )
+          .map((r: EnrollmentRequest) => r.targetSectionId as string)
+      );
+      return {
+        ...prev,
+        users: (prev.users || []).map(u => {
+          if (u.id !== studentId) return u;
+          const next: User = {
+            ...u,
+            enrolledCourseIds: (u.enrolledCourseIds || []).filter(id => id !== courseId)
+          };
+          if (next.courseSections && next.courseSections[courseId]) {
+            const { [courseId]: _dropped, ...rest } = next.courseSections;
+            next.courseSections = rest;
+          }
+          return next;
+        }),
+        courses: (prev.courses || []).map(c =>
+          c.id === courseId ? { ...c, enrolledCount: Math.max(0, (c.enrolledCount || 0) - 1) } : c
+        ),
+        courseSections: (prev.courseSections || []).map((s: CourseSection) =>
+          freedSectionIds.has(s.id) ? { ...s, enrolledCount: Math.max(0, s.enrolledCount - 1) } : s
+        ),
+        enrollmentRequests: (prev.enrollmentRequests || []).filter(
+          (r: EnrollmentRequest) =>
+            !(r.courseId === courseId && r.studentId === studentId && r.status === 'approved')
+        )
+      };
+    });
+    return true;
+  };
+
   const studentApproveInvitation = async (requestId: string): Promise<boolean> => {
     try {
       const { request } = await apiFetch<{ request: EnrollmentRequest }>(
@@ -4188,6 +4296,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         logout,
         switchRole,
         isLoading,
+        authReady,
         lastError,
         activeCourseId,
         setActiveCourseId,
@@ -4290,6 +4399,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         createEnrollmentRequest,
         approveEnrollmentRequests,
         rejectEnrollmentRequests,
+        removeStudentFromCourse,
         studentApproveInvitation,
         studentDeclineInvitation,
         selectSection,

@@ -41,7 +41,12 @@ interface AssessmentRow {
 }
 
 async function loadCourseOr404(courseId: string) {
-  const course = await prisma.course.findUnique({ where: { id: courseId } });
+  // Narrow select: access checks only need id/instructorId. A full row drag
+  // would pull the multi-MB image/syllabus blobs on every course-scoped call.
+  const course = await prisma.course.findUnique({
+    where: { id: courseId },
+    select: { id: true, instructorId: true },
+  });
   if (!course) throw new ApiError(404, 'not_found', 'Course not found.');
   return course;
 }
@@ -174,7 +179,7 @@ function parseQuestionInput(raw: unknown, index: number): ParsedQuestion {
     type: typeof q.type === 'string' && q.type ? q.type : 'multiple_choice',
     options,
     correctAnswer: typeof q.correctAnswer === 'string' ? q.correctAnswer : null,
-    points: typeof q.points === 'number' ? q.points : 5,
+    points: typeof q.points === 'number' ? q.points : 1,
     extras,
   };
 }
@@ -800,12 +805,28 @@ submissionsRouter.post(
       relatedId = activity.id;
       relatedTitle = activity.title;
     }
-    const { grade, feedback } = (req.body ?? {}) as { grade?: unknown; feedback?: unknown };
-    if (typeof grade !== 'number') {
+    const { grade, feedback, rubricScores } = (req.body ?? {}) as {
+      grade?: unknown;
+      feedback?: unknown;
+      rubricScores?: unknown;
+    };
+    if (typeof grade !== 'number' || Number.isNaN(grade)) {
       throw new ApiError(400, 'bad_request', 'Field grade must be a number.');
     }
     if (feedback !== undefined && typeof feedback !== 'string') {
       throw new ApiError(400, 'bad_request', 'Field feedback must be a string.');
+    }
+    let rubricScoresJson: string | undefined;
+    if (rubricScores !== undefined) {
+      if (typeof rubricScores !== 'object' || rubricScores === null || Array.isArray(rubricScores)) {
+        throw new ApiError(400, 'bad_request', 'Field rubricScores must be an object.');
+      }
+      for (const [k, v] of Object.entries(rubricScores as Record<string, unknown>)) {
+        if (typeof v !== 'number' || Number.isNaN(v) || v < 0) {
+          throw new ApiError(400, 'bad_request', `Field rubricScores["${k}"] must be a non-negative number.`);
+        }
+      }
+      rubricScoresJson = stringifyJsonField(rubricScores as Record<string, number>);
     }
     const me = await prisma.user.findUnique({ where: { id: auth.sub } });
     const graded = await prisma.submission.update({
@@ -815,6 +836,7 @@ submissionsRouter.post(
         status: 'graded',
         gradedAt: new Date(),
         gradedBy: me?.name ?? auth.sub,
+        ...(rubricScoresJson !== undefined ? { rubricScores: rubricScoresJson } : {}),
       },
     });
     if (feedback && feedback.trim()) {

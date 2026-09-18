@@ -55,6 +55,42 @@ describe('FacultyGradebook columns', () => {
   });
 });
 
+describe('FacultyGradebook roster', () => {
+  beforeEach(() => {
+    const db = baseDb();
+    db.users = [
+      { id: 'u-enrolled', role: 'student', name: 'Enrolled Student', email: 'enrolled@gmail.com', studentId: '2021-SLUC-0001', avatar: '', enrolledCourseIds: ['c1'] },
+      { id: 'u-stranger', role: 'student', name: 'Stranger Student', email: 'stranger@gmail.com', studentId: '2021-SLUC-0002', avatar: '' },
+      { id: 'u-approved', role: 'student', name: 'Approved Student', email: 'approved@gmail.com', studentId: '2021-SLUC-0003', avatar: '', enrolledCourseIds: [] },
+      { id: 'u-other', role: 'student', name: 'Other Course Student', email: 'other@gmail.com', studentId: '2021-SLUC-0004', avatar: '', enrolledCourseIds: ['c2'] },
+    ];
+    db.enrollmentRequests = [
+      { id: 'r1', courseId: 'c1', studentId: 'u-approved', status: 'approved' },
+    ];
+    mocks.db = db;
+    mocks.isLoading = false;
+    mocks.isSyncing = false;
+    localStorage.setItem('gabay-gradebook-collapsed-c1', JSON.stringify([]));
+  });
+
+  test('shows only students enrolled in the course', () => {
+    render(<FacultyGradebook courseId="c1" />);
+    expect(screen.getByText('Enrolled Student')).toBeInTheDocument();
+    expect(screen.getByText('Approved Student')).toBeInTheDocument();
+    expect(screen.queryByText('Stranger Student')).not.toBeInTheDocument();
+    expect(screen.queryByText('Other Course Student')).not.toBeInTheDocument();
+  });
+
+  test('says no currently enrolled students when the roster is empty', () => {
+    const db = baseDb();
+    db.users = [];
+    mocks.db = db;
+    render(<FacultyGradebook courseId="c1" />);
+    expect(screen.getByText('No currently enrolled students.')).toBeInTheDocument();
+    expect(screen.queryByText(/no student records found matching/i)).not.toBeInTheDocument();
+  });
+});
+
 describe('FacultyGradebook collapse', () => {
   beforeEach(() => {
     mocks.db = baseDb();

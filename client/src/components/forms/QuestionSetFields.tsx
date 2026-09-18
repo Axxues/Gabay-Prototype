@@ -82,7 +82,7 @@ export function emptyQuestionSetValue(): QuestionSetValue {
         type: 'multiple_choice',
         options: ['', '', '', ''],
         correctAnswer: 'A',
-        points: 5
+        points: 1
       }
     ]
   };
@@ -155,7 +155,7 @@ export function compileActivityQuestions(v: QuestionSetValue): QuizQuestion[] {
         type: 'true_false',
         options: ['True', 'False'],
         correctAnswer: item.correctAnswer === 'False' ? 'False' : 'True',
-        points: Number(item.points) || 5
+        points: Number(item.points) || 1
       };
     }
 
@@ -165,7 +165,7 @@ export function compileActivityQuestions(v: QuestionSetValue): QuizQuestion[] {
         text: item.text.trim(),
         type: 'identification',
         correctAnswer: item.correctAnswer.trim(),
-        points: Number(item.points) || 5
+        points: Number(item.points) || 1
       };
     }
 
@@ -174,7 +174,7 @@ export function compileActivityQuestions(v: QuestionSetValue): QuizQuestion[] {
         id: `q-${timestamp}-${idx + 1}`,
         text: item.text.trim(),
         type: 'essay',
-        points: Number(item.points) || 10
+        points: Number(item.points) || 1
       };
     }
 
@@ -190,7 +190,7 @@ export function compileActivityQuestions(v: QuestionSetValue): QuizQuestion[] {
       type: 'multiple_choice',
       options: validOptions,
       correctAnswer: correctAns,
-      points: Number(item.points) || 5
+      points: Number(item.points) || 1
     };
   });
 }
@@ -234,13 +234,13 @@ export const QuestionSetFields: React.FC<{ value: QuestionSetValue; onChange: (v
     let newItem: ActivityQuestionDraft;
 
     if (type === 'true_false') {
-      newItem = { id: newId, text: '', type, options: ['True', 'False'], correctAnswer: 'True', points: 5 };
+      newItem = { id: newId, text: '', type, options: ['True', 'False'], correctAnswer: 'True', points: 1 };
     } else if (type === 'identification') {
-      newItem = { id: newId, text: '', type, options: [], correctAnswer: '', points: 5 };
+      newItem = { id: newId, text: '', type, options: [], correctAnswer: '', points: 1 };
     } else if (type === 'essay') {
-      newItem = { id: newId, text: '', type, options: [], correctAnswer: '', points: 10 };
+      newItem = { id: newId, text: '', type, options: [], correctAnswer: '', points: 1 };
     } else {
-      newItem = { id: newId, text: '', type: 'multiple_choice', options: ['', '', '', ''], correctAnswer: 'A', points: 5 };
+      newItem = { id: newId, text: '', type: 'multiple_choice', options: ['', '', '', ''], correctAnswer: 'A', points: 1 };
     }
 
     const targetIndex = insertAfterIndex !== undefined ? insertAfterIndex + 1 : items.length;
@@ -291,7 +291,7 @@ export const QuestionSetFields: React.FC<{ value: QuestionSetValue; onChange: (v
         if (idx !== index) return item;
         let points = item.points;
         if (points === 0) {
-          points = newType === 'essay' ? 10 : 5;
+          points = 1;
         }
 
         let options = item.options;

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useLMS } from '../context/LMSContext';
 import { ModalPortal } from '../components/common/ModalPortal';
-import type { Announcement, CourseSection } from '../types/lms';
+import type { Announcement } from '../types/lms';
 import {
   Plus,
   Pin,
@@ -19,9 +19,9 @@ import {
   X
 } from 'lucide-react';
 import { isImageFile } from '../utils/fileUploader';
-import { isAnnouncementVisibleToViewer } from '../utils/sections';
 import { groupRepliesByRoot } from '../utils/threadReplies';
 import { PageHeader } from '../components/common/PageHeader';
+import { UserAvatar } from '../components/common/UserAvatar';
 import { EmptyState } from '../components/common/EmptyState';
 import { CreateAnnouncementPage } from './CreateAnnouncementPage';
 
@@ -34,6 +34,8 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
     activeUser,
     activeRole,
     db,
+    isLoading,
+    isSyncing,
     deleteAnnouncement,
     togglePinAnnouncement,
     toggleLikeAnnouncement,
@@ -45,7 +47,6 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
   const [searchQuery, setSearchQuery] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [selectedAnnouncementId, setSelectedAnnouncementId] = useState<string | null>(null);
-  const [facultySectionFilter, setFacultySectionFilter] = useState('all');
   const [previewingAttachment, setPreviewingAttachment] = useState<{ name: string; size: string; url?: string } | null>(null);
 
   // Reply state for currently expanded thread
@@ -54,6 +55,10 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
   // Second-layer reply composer state per announcement (reply target id + draft text)
   const [replyToReplyIds, setReplyToReplyIds] = useState<Record<string, string | null>>({});
   const [childTexts, setChildTexts] = useState<Record<string, string>>({});
+
+  // Pending flags for slow reply posts — show loading + block double-submit
+  const [isPostingReply, setIsPostingReply] = useState(false);
+  const [postingChildIds, setPostingChildIds] = useState<Record<string, boolean>>({});
 
   const isImageFileName = (name: string, url?: string): boolean => {
     return isImageFile(name, undefined, url);
@@ -66,31 +71,15 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
   };
 
   const course = db.courses.find(c => c.id === courseId);
-  const viewerSectionId = activeUser.courseSections?.[courseId] ?? null;
-  const courseSections: CourseSection[] = (db.courseSections || []).filter((s: CourseSection) => s.courseId === courseId);
 
+  // One section per course: every enrolled viewer sees every announcement.
   const announcements = (db.announcements || []).filter(a => {
     if (a.courseId !== courseId && a.courseId !== 'all') return false;
-
-    // Faculty sees all announcements
-    if (activeRole === 'faculty') return true;
-
-    // Student filtering via the shared section-visibility rule
-    return isAnnouncementVisibleToViewer(
-      { sectionId: a.sectionId ?? (a.sectionRestriction && a.sectionRestriction !== 'All Sections' ? a.sectionRestriction : 'all') },
-      viewerSectionId,
-      activeRole
-    );
+    return true;
   });
 
   // Filtered announcements
   const filteredAnnouncements = announcements
-    .filter(a => {
-      // Faculty-only section chip: narrow to announcements visible to that section
-      if (activeRole !== 'faculty' || facultySectionFilter === 'all') return true;
-      const scope = a.sectionId ?? (a.sectionRestriction && a.sectionRestriction !== 'All Sections' ? a.sectionRestriction : 'all');
-      return scope === 'all' || scope === facultySectionFilter;
-    })
     .filter(a => {
       const q = searchQuery.toLowerCase();
       return a.title.toLowerCase().includes(q) || a.content.toLowerCase().includes(q);
@@ -107,13 +96,35 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
     setSelectedAnnouncementId(prev => (prev === ann.id ? null : ann.id));
   };
 
-  const handleSendReply = (announcementId: string) => {
-    if (!replyText.trim()) return;
+  const handleSendReply = async (announcementId: string) => {
+    if (!replyText.trim() || isPostingReply) return;
     const text = replyText.trim();
     // Server notifies the announcement author inline.
-    void addAnnouncementReply(announcementId, text)
-      .then(() => setReplyText(''))
-      .catch(() => {});
+    setIsPostingReply(true);
+    try {
+      await addAnnouncementReply(announcementId, text);
+      setReplyText('');
+    } catch {
+      // Context already surfaced the failure alert.
+    } finally {
+      setIsPostingReply(false);
+    }
+  };
+
+  const handlePostChildReply = async (announcementId: string) => {
+    const text = (childTexts[announcementId] || '').trim();
+    const targetId = replyToReplyIds[announcementId] ?? null;
+    if (!text || !targetId || postingChildIds[announcementId]) return;
+    setPostingChildIds(prev => ({ ...prev, [announcementId]: true }));
+    try {
+      await addAnnouncementReply(announcementId, text, targetId);
+      setReplyToReplyIds(prev => ({ ...prev, [announcementId]: null }));
+      setChildTexts(prev => ({ ...prev, [announcementId]: '' }));
+    } catch {
+      // Context already surfaced the failure alert.
+    } finally {
+      setPostingChildIds(prev => ({ ...prev, [announcementId]: false }));
+    }
   };
 
   const canCreate = activeRole === 'faculty';
@@ -133,10 +144,10 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
       {/* Header Banner */}
       <PageHeader
         title="Announcements"
-        description={`Broadcasts, academic directives, and time-sensitive reminders for ${course?.code || 'Course'}.`}
+        description={`Broadcasts, academic directives, and time-sensitive reminders for ${course?.code || 'course'}.`}
         actions={
           <>
-            <span className="px-2.5 py-0.5 text-xs font-sans font-bold rounded-md bg-muted text-foreground border border-border">
+            <span className="px-2.5 py-0.5 text-[12px] font-sans font-medium tabular-nums rounded-full bg-muted text-muted-foreground border border-border">
               {filteredAnnouncements.length}
             </span>
             {canCreate && (
@@ -176,37 +187,24 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
         </div>
       </div>
 
-      {/* Faculty-only section filter chip row */}
-      {activeRole === 'faculty' && courseSections.length > 0 && (
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={() => setFacultySectionFilter('all')}
-            className={`px-3 py-1.5 text-[11px] font-bold rounded-full border transition-colors cursor-pointer ${facultySectionFilter === 'all'
-                ? 'bg-primary text-primary-foreground border-primary'
-                : 'bg-card text-muted-foreground border-border hover:text-foreground'
-              }`}
-          >
-            All sections
-          </button>
-          {courseSections.map(s => (
-            <button
-              key={s.id}
-              type="button"
-              onClick={() => setFacultySectionFilter(s.id)}
-              className={`px-3 py-1.5 text-[11px] font-bold rounded-full border transition-colors cursor-pointer ${facultySectionFilter === s.id
-                  ? 'bg-primary text-primary-foreground border-primary'
-                  : 'bg-card text-muted-foreground border-border hover:text-foreground'
-                }`}
-            >
-              {s.name}
-            </button>
+      {/* Feed List */}
+      {(isLoading || isSyncing) && announcements.length === 0 ? (
+        <div data-testid="announcements-loading" className="space-y-4" aria-hidden="true">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={`announcements-skeleton-${i}`} className="bg-card border border-border rounded-2xl p-5 space-y-3 animate-pulse">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-muted shrink-0" />
+                <div className="flex-1 space-y-1.5">
+                  <div className="h-4 w-1/2 rounded bg-muted" />
+                  <div className="h-3 w-1/4 rounded bg-muted/70" />
+                </div>
+              </div>
+              <div className="h-3 w-full rounded bg-muted/70" />
+              <div className="h-3 w-5/6 rounded bg-muted/70" />
+            </div>
           ))}
         </div>
-      )}
-
-      {/* Feed List */}
-      {filteredAnnouncements.length === 0 ? (
+      ) : filteredAnnouncements.length === 0 ? (
         <EmptyState
           title="No Announcements Found"
           body={
@@ -219,7 +217,7 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
         />
       ) : (
         <div className="space-y-4">
-          {filteredAnnouncements.map(ann => {
+          {filteredAnnouncements.map((ann, idx) => {
             const isExpanded = selectedAnnouncementId === ann.id;
             const isRead = (ann.readBy || []).includes(activeUser.id);
             const userHasReplied = (ann.replies || []).some(r => r.authorId === activeUser.id);
@@ -232,11 +230,12 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
             return (
               <div
                 key={ann.id}
-                className={`bg-card border rounded-2xl transition-all shadow-subtle overflow-hidden ${ann.pinned
-                    ? 'border-primary/40 bg-gradient-to-r from-primary/[0.03] to-transparent'
+                style={{ '--i': Math.min(idx, 5) } as React.CSSProperties}
+                className={`anim-stagger-item bg-card border border-border rounded-2xl transition-all hover:border-muted-foreground/25 hover:shadow-card overflow-hidden ${ann.pinned
+                    ? 'border-muted-foreground/25'
                     : isRead
                       ? 'border-border'
-                      : 'border-primary/30 ring-1 ring-primary/20'
+                      : 'border-border'
                   }`}
               >
                 {/* Announcement Summary Header */}
@@ -245,37 +244,32 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
                   className="p-5 flex items-start justify-between gap-4 cursor-pointer hover:bg-muted/30 transition-colors"
                 >
                   <div className="flex items-start space-x-3.5">
-                    <img
+                    <UserAvatar
+                      name={ann.authorName}
                       src={ann.authorAvatar}
-                      alt={ann.authorName}
                       className="w-10 h-10 rounded-full object-cover border border-border shadow-soft shrink-0 mt-0.5"
                     />
                     <div className="space-y-1">
                       <div className="flex items-center space-x-2 flex-wrap gap-y-1">
-                        <h3 className="font-bold text-sm text-foreground hover:text-primary transition-colors">
+                        <h3 className="font-bold text-[14px] tracking-tight truncate text-foreground hover:text-primary transition-colors">
                           {ann.title}
                         </h3>
                         {ann.pinned && (
-                          <span className="px-2 py-0.5 text-[10px] font-sans font-bold rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center space-x-1">
+                          <span className="px-2 py-0.5 text-[11px] font-sans font-medium rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 flex items-center space-x-1">
                             <Pin className="w-3 h-3" />
-                            <span>PINNED</span>
+                            <span>Pinned</span>
                           </span>
                         )}
                         {!isRead && (
-                          <span className="px-2 py-0.5 text-[10px] font-sans font-bold rounded bg-primary/10 text-primary border border-primary/20">
-                            NEW
-                          </span>
-                        )}
-                        {ann.sectionRestriction && ann.sectionRestriction !== 'All Sections' && (
-                          <span className="text-[10px] font-bold bg-purple-500/10 text-purple-600 px-1.5 py-0.5 rounded-full">
-                            {ann.sectionRestriction}
+                          <span className="px-2 py-0.5 text-[11px] font-sans font-medium rounded-full bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-500/20">
+                            New
                           </span>
                         )}
                       </div>
 
-                      <div className="flex items-center space-x-3 text-xs text-muted-foreground font-sans">
+                      <div className="flex items-center space-x-2 text-[12px] text-muted-foreground font-sans">
                         <span className="font-semibold text-foreground">{ann.authorName}</span>
-                        <span>•</span>
+                        <span>·</span>
                         <span>
                           {new Date(ann.createdAt).toLocaleDateString('en-US', {
                             month: 'short',
@@ -284,14 +278,14 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
                           })}
                         </span>
                         {ann.delayedUntil && (
-                          <span className="text-blue-600 dark:text-blue-400">
-                            (Scheduled: {new Date(ann.delayedUntil).toLocaleDateString()})
+                          <span className="text-muted-foreground">
+                            · Scheduled {new Date(ann.delayedUntil).toLocaleDateString()}
                           </span>
                         )}
                       </div>
 
                       {!isExpanded && (
-                        <p className="text-xs text-muted-foreground line-clamp-2 pt-1 font-sans">
+                        <p className="text-[12px] text-muted-foreground line-clamp-2 pt-1 font-sans">
                           {ann.content}
                         </p>
                       )}
@@ -319,7 +313,7 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
                       </button>
                     )}
 
-                    <div className="flex items-center space-x-1 font-sans text-[11px] bg-muted px-2 py-1 rounded-md border border-border">
+                    <div className="flex items-center space-x-1 font-sans text-[11px] bg-muted px-2 py-1 rounded-full border border-border text-muted-foreground">
                       <MessageSquare className="w-3 h-3 text-muted-foreground" />
                       <span>{ann.replies?.length || 0}</span>
                     </div>
@@ -486,7 +480,7 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
                           {!mustPostFirst && ann.replies && ann.replies.length > 0 && (() => {
                             // Hoisted per-announcement: computed once outside the per-row map.
                             const topReplies = (ann.replies || []).filter(r => !r.parentId);
-                            const childGroups = groupRepliesByRoot((ann.replies || []).filter(r => r.parentId));
+                            const childGroups = groupRepliesByRoot(ann.replies || []);
                             const annReplyToId = replyToReplyIds[ann.id] ?? null;
                             const annChildText = childTexts[ann.id] ?? '';
                             const replyTarget = annReplyToId
@@ -506,15 +500,15 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
                                   >
                                     <div className="flex items-center justify-between">
                                       <div className="flex items-center space-x-2">
-                                        <img
+                                        <UserAvatar
+                                          name={rep.authorName}
                                           src={rep.authorAvatar}
-                                          alt={rep.authorName}
                                           className="w-6 h-6 rounded-full object-cover border border-border"
                                         />
                                         <span className="text-xs font-bold text-foreground">
                                           {rep.authorName}
                                         </span>
-                                        <span className="px-1.5 py-0.2 text-[9px] font-sans rounded bg-muted text-muted-foreground border border-border uppercase">
+                                        <span className="px-2 py-0.5 text-[11px] font-sans font-medium rounded-full bg-muted text-muted-foreground border border-border">
                                           {rep.authorRole}
                                         </span>
                                       </div>
@@ -547,9 +541,9 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
                                         <div key={child.id} className="ml-8 border-l border-border pl-3 space-y-1">
                                           <div className="flex items-center justify-between">
                                             <div className="flex items-center space-x-2">
-                                              <img
+                                              <UserAvatar
+                                                name={child.authorName}
                                                 src={child.authorAvatar}
-                                                alt={child.authorName}
                                                 className="w-5 h-5 rounded-full object-cover border border-border shrink-0"
                                               />
                                               <span className="text-xs font-bold text-foreground">
@@ -606,19 +600,15 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
                                             <button
                                               type="button"
                                               onClick={() => {
-                                                const text = annChildText.trim();
-                                                if (!text || !annReplyToId) return;
-                                                void addAnnouncementReply(ann.id, text, annReplyToId)
-                                                  .then(() => {
-                                                    setReplyToReplyIds(prev => ({ ...prev, [ann.id]: null }));
-                                                    setChildTexts(prev => ({ ...prev, [ann.id]: '' }));
-                                                  })
-                                                  .catch(() => {});
+                                                void handlePostChildReply(ann.id);
                                               }}
-                                              disabled={!annChildText.trim()}
-                                              className="px-3 py-1.5 text-xs font-bold bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-lg transition-all cursor-pointer"
+                                              disabled={!annChildText.trim() || postingChildIds[ann.id]}
+                                              className="px-3 py-1.5 text-xs font-bold bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-lg transition-all cursor-pointer flex items-center space-x-1.5"
                                             >
-                                              Reply
+                                              {postingChildIds[ann.id] ? (
+                                                <span className="block w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                                              ) : null}
+                                              <span>{postingChildIds[ann.id] ? 'Posting...' : 'Reply'}</span>
                                             </button>
                                             <button
                                               type="button"
@@ -643,9 +633,9 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
 
                           {/* Reply Composer Box */}
                           <div className="flex items-start space-x-2 pt-2">
-                            <img
+                            <UserAvatar
+                              name={activeUser.name}
                               src={activeUser.avatar}
-                              alt={activeUser.name}
                               className="w-8 h-8 rounded-full object-cover border border-border shrink-0 mt-1"
                             />
                             <div className="flex-1 space-y-2">
@@ -657,7 +647,7 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
                                   if (e.key === 'Enter' && !e.shiftKey) {
                                     e.preventDefault();
                                     if (replyText.trim()) {
-                                      handleSendReply(ann.id);
+                                      void handleSendReply(ann.id);
                                     }
                                   }
                                 }}
@@ -667,12 +657,17 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
                               <div className="flex justify-end">
                                 <button
                                   type="button"
-                                  onClick={() => handleSendReply(ann.id)}
-                                  disabled={!replyText.trim()}
+                                  onClick={() => void handleSendReply(ann.id)}
+                                  disabled={!replyText.trim() || isPostingReply}
+                                  title={isPostingReply ? 'Posting...' : 'Post reply'}
                                   className="px-3.5 py-1.5 text-xs font-bold bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-lg transition-all shadow-primary-sm flex items-center space-x-1.5 cursor-pointer"
                                 >
-                                  <Send className="w-3.5 h-3.5" />
-                                  <span>Reply</span>
+                                  {isPostingReply ? (
+                                    <span className="block w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                                  ) : (
+                                    <Send className="w-3.5 h-3.5" />
+                                  )}
+                                  <span>{isPostingReply ? 'Posting...' : 'Reply'}</span>
                                 </button>
                               </div>
                             </div>

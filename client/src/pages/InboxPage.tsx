@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import type { Message, User, ChatGroup } from '../types/lms';
 import { AnimatedModal } from '../components/common/ModalPortal';
+import { UserAvatar } from '../components/common/UserAvatar';
 
 // Messenger Theme Colors
 const MESSENGER_THEMES = [
@@ -51,7 +52,7 @@ interface ConversationThread {
 }
 
 export const InboxPage: React.FC = () => {
-  const { activeUser, db, sendMessage, createChatGroup, markThreadAsRead, toggleMessageReaction, showAlert } = useLMS();
+  const { activeUser, db, isLoading, isSyncing, sendMessage, createChatGroup, markThreadAsRead, toggleMessageReaction, showAlert } = useLMS();
 
   // Selected thread ID (either user ID for DM or group ID for Group Chat)
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
@@ -82,6 +83,8 @@ export const InboxPage: React.FC = () => {
 
   // Mobile View state
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const [isCreatingGroup, setIsCreatingGroup] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -190,11 +193,39 @@ export const InboxPage: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [selectedThreadId, db.messages?.length]);
 
-  // Active selected thread details
+  // Active selected thread details (falls back to a virtual empty DM thread
+  // so "Start New Chat" opens the chatbox even with zero messages yet)
   const activeThread = useMemo(() => {
     if (!selectedThreadId) return null;
-    return conversationThreads.find(t => t.id === selectedThreadId) || null;
-  }, [conversationThreads, selectedThreadId]);
+    const existing = conversationThreads.find(t => t.id === selectedThreadId);
+    if (existing) return existing;
+    const partner = db.users.find(u => u.id === selectedThreadId);
+    if (!partner) return null;
+    return {
+      id: partner.id,
+      isGroup: false,
+      partner,
+      title: partner.name,
+      avatar: partner.avatar,
+      subtitle: `${partner.role.toUpperCase()}${partner.department ? ` • ${partner.department}` : ''}`,
+      lastMessage: {
+        id: `pending-${partner.id}`,
+        senderId: activeUser.id,
+        senderName: activeUser.name,
+        senderRole: activeUser.role,
+        recipientId: partner.id,
+        recipientName: partner.name,
+        recipientRole: partner.role,
+        subject: 'Direct Message',
+        body: '',
+        timestamp: new Date().toISOString(),
+        read: true,
+        isGroup: false,
+      } as Message,
+      messages: [] as Message[],
+      unreadCount: 0,
+    } as ConversationThread;
+  }, [conversationThreads, selectedThreadId, db.users, activeUser.id, activeUser.name, activeUser.role]);
 
   const activePartner = activeThread?.partner || null;
   const activeGroup = activeThread?.group || null;
@@ -249,8 +280,9 @@ export const InboxPage: React.FC = () => {
 
   const handleSendMessage = async (textToSend?: string) => {
     const text = textToSend !== undefined ? textToSend : inputText;
-    if ((!text.trim() && !pendingAttachment) || !activeThread) return;
+    if ((!text.trim() && !pendingAttachment) || !activeThread || isSending) return;
 
+    setIsSending(true);
     try {
       await sendMessage(
         activeThread.id,
@@ -269,6 +301,8 @@ export const InboxPage: React.FC = () => {
       inputRef.current?.focus();
     } catch {
       // Context already surfaced the alert; keep the draft intact.
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -296,6 +330,7 @@ export const InboxPage: React.FC = () => {
 
   const handleCreateGroupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isCreatingGroup) return;
     if (!groupName.trim()) {
       showAlert('Please enter a group name.');
       return;
@@ -305,6 +340,7 @@ export const InboxPage: React.FC = () => {
       return;
     }
 
+    setIsCreatingGroup(true);
     try {
       const newGroup = await createChatGroup(
         groupName.trim(),
@@ -320,6 +356,8 @@ export const InboxPage: React.FC = () => {
       showAlert(`Group "${newGroup.name}" created successfully!`);
     } catch {
       // Context already surfaced the alert; keep the form intact.
+    } finally {
+      setIsCreatingGroup(false);
     }
   };
 
@@ -344,13 +382,13 @@ export const InboxPage: React.FC = () => {
   };
 
   return (
-    <div className="h-full w-full flex flex-col bg-background overflow-hidden font-sans">
-      <div className="flex-1 flex overflow-hidden">
+    <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-background font-sans">
+      <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
         {/* ======================================================== */}
         {/* LEFT COLUMN: CHATS SIDEBAR (Messenger Style)             */}
         {/* ======================================================== */}
         <div
-          className={`w-full md:w-80 lg:w-96 flex flex-col border-r border-border bg-card/60 backdrop-blur-md shrink-0 transition-all ${
+          className={`w-full md:w-80 lg:w-96 min-h-0 flex flex-col border-r border-border bg-card/60 backdrop-blur-md shrink-0 transition-all ${
             mobileChatOpen ? 'hidden md:flex' : 'flex'
           }`}
         >
@@ -358,10 +396,10 @@ export const InboxPage: React.FC = () => {
           <div className="p-4 pb-3 space-y-3 border-b border-border/70">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2.5">
-                <h1 className="text-2xl font-black text-foreground tracking-tight">
+                <h1 className="text-[22px] font-extrabold text-foreground tracking-tight">
                   Inbox
                 </h1>
-                <span className="px-2 py-0.5 text-[11px] font-bold rounded-full bg-primary/10 text-primary">
+                <span className="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-muted text-muted-foreground border border-border tabular-nums">
                   {conversationThreads.length}
                 </span>
               </div>
@@ -370,8 +408,8 @@ export const InboxPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowComposeModal(true)}
-                  className="w-9 h-9 rounded-full bg-muted hover:bg-primary/15 text-foreground hover:text-primary transition-all flex items-center justify-center cursor-pointer shadow-subtle active:scale-95"
-                  title="New Message or Group"
+                  className="w-9 h-9 rounded-full bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-all flex items-center justify-center cursor-pointer active:scale-95"
+                  title="New message or group"
                 >
                   <Plus className="w-5 h-5" />
                 </button>
@@ -385,8 +423,8 @@ export const InboxPage: React.FC = () => {
                 type="text"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                placeholder="Search Inbox..."
-                className="w-full pl-9 pr-8 py-2 bg-muted/70 hover:bg-muted focus:bg-background border border-border/70 focus:border-primary focus:ring-2 focus:ring-primary/20 rounded-full text-xs text-foreground placeholder:text-muted-foreground transition-all outline-none font-medium"
+                placeholder="Search inbox..."
+                className="w-full pl-9 pr-8 py-2 bg-muted/70 hover:bg-muted focus:bg-background border border-border/70 focus:border-primary focus:ring-2 focus:ring-primary/20 rounded-xl text-xs text-foreground placeholder:text-muted-foreground transition-all outline-none font-medium"
               />
               {searchQuery && (
                 <button
@@ -414,9 +452,9 @@ export const InboxPage: React.FC = () => {
                   key={tab.id}
                   type="button"
                   onClick={() => setActiveFilter(tab.id)}
-                  className={`px-3 py-1 rounded-full text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  className={`px-3 py-1 rounded-full text-[11px] font-semibold transition-all cursor-pointer whitespace-nowrap ${
                     activeFilter === tab.id
-                      ? 'bg-primary text-primary-foreground shadow-xs'
+                      ? 'bg-primary text-primary-foreground'
                       : 'bg-muted/80 text-muted-foreground hover:text-foreground hover:bg-muted'
                   }`}
                 >
@@ -427,8 +465,20 @@ export const InboxPage: React.FC = () => {
           </div>
 
           {/* Conversation List */}
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
-            {filteredThreads.length === 0 ? (
+          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-2 space-y-1">
+            {((isLoading || isSyncing) && conversationThreads.length === 0) ? (
+              <div data-testid="inbox-loading" className="space-y-1 p-1" aria-hidden="true">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={`inbox-skeleton-${i}`} className="flex items-center space-x-3 p-2.5 rounded-2xl animate-pulse">
+                    <div className="w-12 h-12 rounded-full bg-muted shrink-0" />
+                    <div className="flex-1 space-y-1.5">
+                      <div className="h-3.5 w-1/2 rounded bg-muted" />
+                      <div className="h-3 w-3/4 rounded bg-muted/70" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : filteredThreads.length === 0 ? (
               <div className="p-8 text-center space-y-2">
                 <div className="w-12 h-12 rounded-full bg-muted/80 flex items-center justify-center mx-auto text-muted-foreground">
                   <Search className="w-6 h-6" />
@@ -452,24 +502,24 @@ export const InboxPage: React.FC = () => {
                     }}
                     className={`flex items-center space-x-3 p-2.5 rounded-2xl cursor-pointer transition-all ${
                       isSelected
-                        ? 'bg-primary/15 text-primary border border-primary/20 shadow-xs'
-                        : 'hover:bg-muted/70 text-foreground'
+                        ? 'bg-muted text-foreground border border-border ring-1 ring-primary/15'
+                        : 'hover:bg-muted/70 text-foreground border border-transparent'
                     }`}
                   >
                     {/* Avatar Icon */}
                     <div className="relative shrink-0">
                       {thread.isGroup ? (
-                        <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-primary to-indigo-600 flex items-center justify-center text-white shadow-soft ring-1 ring-border">
+                        <div className="w-12 h-12 rounded-full bg-muted text-muted-foreground flex items-center justify-center ring-1 ring-border">
                           <Users className="w-6 h-6" />
                         </div>
                       ) : (
                         <>
-                          <img
+                          <UserAvatar
+                            name={thread.title}
                             src={thread.avatar}
-                            alt={thread.title}
                             className="w-12 h-12 rounded-full object-cover ring-1 ring-border"
                           />
-                          <span className="w-3.5 h-3.5 rounded-full bg-emerald-500 ring-2 ring-card absolute bottom-0 right-0 shadow-xs" />
+                          <span className="w-3.5 h-3.5 rounded-full bg-emerald-500 ring-2 ring-card absolute bottom-0 right-0" />
                         </>
                       )}
                     </div>
@@ -480,11 +530,11 @@ export const InboxPage: React.FC = () => {
                         <span className="font-bold text-xs truncate text-foreground flex items-center space-x-1">
                           <span className="truncate">{thread.title}</span>
                           {thread.isGroup ? (
-                            <span className="text-[9px] font-sans px-1.5 py-0.2 rounded-md bg-primary/10 text-primary shrink-0 uppercase font-semibold">
+                            <span className="text-[11px] font-sans px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0 font-medium">
                               Group
                             </span>
                           ) : (
-                            <span className="text-[9px] font-sans px-1.5 py-0.2 rounded-md bg-muted text-muted-foreground shrink-0 uppercase font-semibold">
+                            <span className="text-[11px] font-sans px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0 font-medium">
                               {thread.partner?.role}
                             </span>
                           )}
@@ -510,7 +560,7 @@ export const InboxPage: React.FC = () => {
                         </p>
 
                         {thread.unreadCount > 0 && (
-                          <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center shrink-0 shadow-xs">
+                          <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold flex items-center justify-center shrink-0 tabular-nums">
                             {thread.unreadCount}
                           </span>
                         )}
@@ -527,14 +577,14 @@ export const InboxPage: React.FC = () => {
         {/* CENTER COLUMN: ACTIVE CONVERSATION (Messenger Feed)      */}
         {/* ======================================================== */}
         <div
-          className={`flex-1 flex flex-col bg-background/50 overflow-hidden ${
+          className={`flex-1 min-h-0 min-w-0 flex flex-col bg-background/50 overflow-hidden ${
             !mobileChatOpen ? 'hidden md:flex' : 'flex'
           }`}
         >
           {activeThread ? (
             <>
               {/* Messenger Active Chat Header */}
-              <div className="px-4 py-3 border-b border-border bg-card/80 backdrop-blur-md flex items-center justify-between shadow-subtle shrink-0">
+              <div className="px-4 py-3 border-b border-border bg-card/80 backdrop-blur-md flex items-center justify-between shadow-none shrink-0">
                 <div className="flex items-center space-x-3 min-w-0">
                   {/* Mobile Back Button */}
                   <button
@@ -552,9 +602,9 @@ export const InboxPage: React.FC = () => {
                       </div>
                     ) : (
                       <>
-                        <img
+                        <UserAvatar
+                          name={activePartner?.name || activeThread.title}
                           src={activePartner?.avatar}
-                          alt={activePartner?.name}
                           className="w-10 h-10 rounded-full object-cover ring-2 ring-primary/30"
                         />
                         <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-card absolute bottom-0 right-0" />
@@ -608,7 +658,7 @@ export const InboxPage: React.FC = () => {
               </div>
 
               {/* Message Feed Stream */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+              <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 custom-scrollbar">
                 {/* Chat Intro Header */}
                 <div className="text-center py-6 space-y-2 border-b border-border/50 max-w-sm mx-auto">
                   {activeThread.isGroup ? (
@@ -616,9 +666,9 @@ export const InboxPage: React.FC = () => {
                       <Users className="w-10 h-10" />
                     </div>
                   ) : (
-                    <img
+                    <UserAvatar
+                      name={activePartner?.name || activeThread.title}
                       src={activePartner?.avatar}
-                      alt={activePartner?.name}
                       className="w-20 h-20 rounded-full object-cover mx-auto ring-4 ring-primary/20 shadow-md"
                     />
                   )}
@@ -665,11 +715,10 @@ export const InboxPage: React.FC = () => {
                       {!isSender && (
                         <div className="w-7 h-7 shrink-0">
                           {showAvatar ? (
-                            <img
+                            <UserAvatar
+                              name={msg.senderName}
                               src={senderAvatar}
-                              alt={msg.senderName}
                               className="w-7 h-7 rounded-full object-cover ring-1 ring-border shadow-xs"
-                              title={msg.senderName}
                             />
                           ) : (
                             <div className="w-7 h-7" />
@@ -885,10 +934,11 @@ export const InboxPage: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => handleSendMessage()}
-                      className={`p-2.5 rounded-full ${activeTheme.primaryClass} hover:opacity-90 active:scale-95 shadow-subtle transition-all cursor-pointer`}
-                      title="Send Message"
+                      disabled={isSending}
+                      className={`p-2.5 rounded-full ${activeTheme.primaryClass} hover:opacity-90 active:scale-95 shadow-none transition-all cursor-pointer disabled:opacity-60 disabled:cursor-wait`}
+                      title={isSending ? 'Sending...' : 'Send Message'}
                     >
-                      <Send className="w-4 h-4" />
+                      {isSending ? <span className="block w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : <Send className="w-4 h-4" />}
                     </button>
                   ) : (
                     <button
@@ -919,7 +969,7 @@ export const InboxPage: React.FC = () => {
                     setComposeTab('direct');
                     setShowComposeModal(true);
                   }}
-                  className="px-4 py-2 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl shadow-subtle transition-all cursor-pointer"
+                  className="px-4 py-2 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl shadow-none transition-all cursor-pointer"
                 >
                   Start New Chat
                 </button>
@@ -929,7 +979,7 @@ export const InboxPage: React.FC = () => {
                     setComposeTab('group');
                     setShowComposeModal(true);
                   }}
-                  className="px-4 py-2 text-xs font-bold bg-muted hover:bg-muted/80 text-foreground border border-border rounded-xl shadow-subtle transition-all cursor-pointer flex items-center space-x-1.5"
+                  className="px-4 py-2 text-xs font-bold bg-muted hover:bg-muted/80 text-foreground border border-border rounded-xl shadow-none transition-all cursor-pointer flex items-center space-x-1.5"
                 >
                   <Users className="w-3.5 h-3.5 text-primary" />
                   <span>Create Group</span>
@@ -943,7 +993,7 @@ export const InboxPage: React.FC = () => {
         {/* RIGHT COLUMN: CONVERSATION DETAILS (Messenger Panel)     */}
         {/* ======================================================== */}
         {showDetailsPanel && activeThread && (
-          <div className="hidden xl:flex w-72 2xl:w-80 flex-col border-l border-border bg-card/60 backdrop-blur-md overflow-y-auto custom-scrollbar p-4 space-y-5 shrink-0">
+          <div className="hidden xl:flex w-72 2xl:w-80 min-h-0 flex-col border-l border-border bg-card/60 backdrop-blur-md overflow-y-auto custom-scrollbar p-4 space-y-5 shrink-0">
             {/* Header Profile / Group Summary */}
             <div className="text-center space-y-2 pt-2">
               <div className="relative inline-block">
@@ -953,9 +1003,9 @@ export const InboxPage: React.FC = () => {
                   </div>
                 ) : (
                   <>
-                    <img
+                    <UserAvatar
+                      name={activePartner?.name || activeThread.title}
                       src={activePartner?.avatar}
-                      alt={activePartner?.name}
                       className="w-20 h-20 rounded-full object-cover ring-4 ring-primary/20 mx-auto shadow-md"
                     />
                     <span className="w-4 h-4 rounded-full bg-emerald-500 ring-2 ring-card absolute bottom-0 right-1 shadow-xs" />
@@ -1024,9 +1074,9 @@ export const InboxPage: React.FC = () => {
                         className="flex items-center justify-between p-1.5 rounded-xl hover:bg-muted/50 transition-colors text-xs"
                       >
                         <div className="flex items-center space-x-2 truncate">
-                          <img
+                          <UserAvatar
+                            name={member.name}
                             src={member.avatar}
-                            alt={member.name}
                             className="w-7 h-7 rounded-full object-cover ring-1 ring-border shrink-0"
                           />
                           <div className="truncate">
@@ -1210,9 +1260,9 @@ export const InboxPage: React.FC = () => {
                         className="w-full flex items-center space-x-3 p-2 rounded-xl hover:bg-muted transition-colors text-left cursor-pointer group"
                       >
                         <div className="relative shrink-0">
-                          <img
+                          <UserAvatar
+                            name={u.name}
                             src={u.avatar}
-                            alt={u.name}
                             className="w-10 h-10 rounded-full object-cover ring-1 ring-border"
                           />
                           <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-card absolute bottom-0 right-0" />
@@ -1268,9 +1318,9 @@ export const InboxPage: React.FC = () => {
                             key={memId}
                             className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-primary/15 text-primary text-[11px] font-bold border border-primary/20"
                           >
-                            <img
+                            <UserAvatar
+                              name={user.name}
                               src={user.avatar}
-                              alt={user.name}
                               className="w-4 h-4 rounded-full object-cover"
                             />
                             <span>{user.name.split(' ')[0]}</span>
@@ -1320,9 +1370,9 @@ export const InboxPage: React.FC = () => {
                           }`}
                         >
                           <div className="flex items-center space-x-2.5 truncate">
-                            <img
+                            <UserAvatar
+                              name={u.name}
                               src={u.avatar}
-                              alt={u.name}
                               className="w-8 h-8 rounded-full object-cover ring-1 ring-border"
                             />
                             <div className="truncate">
@@ -1356,11 +1406,11 @@ export const InboxPage: React.FC = () => {
                   </button>
                   <button
                     type="submit"
-                    disabled={!groupName.trim() || selectedGroupMemberIds.length === 0}
-                    className="px-5 py-2 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl shadow-subtle transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1.5"
+                    disabled={!groupName.trim() || selectedGroupMemberIds.length === 0 || isCreatingGroup}
+                    className="px-5 py-2 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl shadow-none transition-all cursor-pointer disabled:opacity-50 disabled:cursor-wait flex items-center space-x-1.5"
                   >
-                    <UserPlus className="w-4 h-4" />
-                    <span>Create Group Chat</span>
+                    {isCreatingGroup ? <span className="block w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : <UserPlus className="w-4 h-4" />}
+                    <span>{isCreatingGroup ? 'Creating...' : 'Create Group Chat'}</span>
                   </button>
                 </div>
               </form>

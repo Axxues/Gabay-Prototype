@@ -21,6 +21,16 @@ function generateJoinCode(): string {
   return code;
 }
 
+function isOversizedDataUrl(value: unknown): boolean {
+  // Covers must be URLs (/uploads/…, https://…). An inlined data URL photo
+  // balloons the Course row to tens of MB and makes every course query
+  // (list + all per-course access checks) take ~1s. Small inline SVGs stay
+  // allowed; anything bigger must be uploaded as a file first.
+  return (
+    typeof value === 'string' && value.startsWith('data:') && value.length > 200_000
+  );
+}
+
 function isJoinCodeConflict(err: unknown): boolean {
   if ((err as { code?: unknown })?.code !== 'P2002') return false;
   const target = (err as { meta?: { target?: unknown } })?.meta?.target;
@@ -36,7 +46,13 @@ interface CourseRow {
 }
 
 async function loadCourseOr404(courseId: string) {
-  const course = await prisma.course.findUnique({ where: { id: courseId } });
+  // Narrow select: access checks only need id/instructorId/published. A full
+  // row drag would pull the multi-MB image/syllabus blobs on every
+  // course-scoped call. (GET /:id detail uses its own full-row query below.)
+  const course = await prisma.course.findUnique({
+    where: { id: courseId },
+    select: { id: true, instructorId: true, published: true },
+  });
   if (!course) throw new ApiError(404, 'not_found', 'Course not found.');
   return course;
 }
@@ -63,6 +79,12 @@ coursesRouter.get(
     const enrolled = req.query.enrolled;
     if (enrolled !== undefined && typeof enrolled !== 'string') {
       throw new ApiError(400, 'bad_request', 'Query param enrolled must be a user id.');
+    }
+    // The unfiltered catalog is for staff managing courses; students may
+    // only list their own approved enrollments (never the full catalog with
+    // join codes and syllabi).
+    if (!enrolled && req.auth!.role === 'student') {
+      throw new ApiError(403, 'forbidden', 'Students may only list their enrolled courses.');
     }
     const courses = enrolled
       ? await prisma.course.findMany({
@@ -101,6 +123,9 @@ coursesRouter.post(
     }
     const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
     const suppliedJoinCode = str(body.joinCode);
+    if (isOversizedDataUrl(body.image)) {
+      throw new ApiError(413, 'image_too_large', 'Cover image must be uploaded as a file (/uploads/…) or an external URL, not an inlined data URL.');
+    }
     const baseData = {
       id: newId('c'),
       code,
@@ -165,7 +190,7 @@ coursesRouter.post(
       where: { courseId: course.id, studentId: auth.sub, status: 'pending' },
     });
     if (existing) {
-      res.json({ request: existing });
+      res.json({ request: { ...existing, courseCode: course.code, courseTitle: course.title } });
       return;
     }
     const me = await prisma.user.findUnique({ where: { id: auth.sub } });
@@ -179,7 +204,7 @@ coursesRouter.post(
         status: 'pending',
       },
     });
-    res.json({ request });
+    res.json({ request: { ...request, courseCode: course.code, courseTitle: course.title } });
   })
 );
 
@@ -187,7 +212,10 @@ coursesRouter.get(
   '/:id',
   authenticateToken,
   asyncHandler(async (req, res) => {
-    const course = await loadCourseOr404(req.params.id);
+    // Detail view needs the full row (image/syllabus included); the shared
+    // loader above intentionally stays narrow for the hot access-check path.
+    const course = await prisma.course.findUnique({ where: { id: req.params.id } });
+    if (!course) throw new ApiError(404, 'not_found', 'Course not found.');
     await assertCourseAccess(course, req.auth!);
     res.json({ course });
   })
@@ -217,6 +245,9 @@ coursesRouter.patch(
     const course = await loadCourseOr404(req.params.id);
     assertCourseOwner(course, auth);
     const body = (req.body ?? {}) as Record<string, unknown>;
+    if (isOversizedDataUrl(body.image)) {
+      throw new ApiError(413, 'image_too_large', 'Cover image must be uploaded as a file (/uploads/…) or an external URL, not an inlined data URL.');
+    }
     const data: Record<string, string | boolean | number | null> = {};
     if (body.gradingTerms !== undefined) {
       if (body.gradingTerms !== null) {
@@ -290,6 +321,35 @@ coursesRouter.patch(
   })
 );
 
+coursesRouter.delete(
+  '/:id',
+  authenticateToken,
+  requireRole('faculty', 'admin'),
+  asyncHandler(async (req, res) => {
+    const auth = req.auth!;
+    const course = await loadCourseOr404(req.params.id);
+    assertCourseOwner(course, auth);
+    // Sections + enrollment requests cascade off the Course FK. Everything
+    // else keys off a plain-string courseId, so clean it explicitly first.
+    await prisma.$transaction([
+      prisma.submission.deleteMany({ where: { courseId: course.id } }),
+      prisma.quiz.deleteMany({ where: { courseId: course.id } }),
+      prisma.activity.deleteMany({ where: { courseId: course.id } }),
+      prisma.module.deleteMany({ where: { courseId: course.id } }),
+      prisma.announcement.deleteMany({ where: { courseId: course.id } }),
+      prisma.discussion.deleteMany({ where: { courseId: course.id } }),
+      prisma.message.deleteMany({ where: { courseId: course.id } }),
+      prisma.chatGroup.deleteMany({ where: { courseId: course.id } }),
+      prisma.calendarEvent.deleteMany({ where: { courseId: course.id } }),
+      prisma.courseFile.deleteMany({ where: { courseId: course.id } }),
+      prisma.courseFolder.deleteMany({ where: { courseId: course.id } }),
+      prisma.courseGrade.deleteMany({ where: { courseId: course.id } }),
+      prisma.course.delete({ where: { id: course.id } }),
+    ]);
+    res.json({ ok: true });
+  })
+);
+
 coursesRouter.get(
   '/:id/sections',
   authenticateToken,
@@ -332,7 +392,10 @@ coursesRouter.post(
 async function loadSectionWithCourse(sectionId: string, auth: AuthPayload) {
   const section = await prisma.courseSection.findUnique({ where: { id: sectionId } });
   if (!section) throw new ApiError(404, 'not_found', 'Section not found.');
-  const course = await prisma.course.findUnique({ where: { id: section.courseId } });
+  const course = await prisma.course.findUnique({
+    where: { id: section.courseId },
+    select: { id: true, instructorId: true, published: true },
+  });
   if (!course) throw new ApiError(404, 'not_found', 'Course not found.');
   assertCourseOwner(course, auth);
   return { section, course };

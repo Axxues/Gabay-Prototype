@@ -139,6 +139,16 @@
   *:focus-visible {
     outline: none;
   }
+
+  input[type="checkbox"],
+  input[type="radio"] {
+    color-scheme: light;
+  }
+
+  .dark input[type="checkbox"],
+  .dark input[type="radio"] {
+    color-scheme: dark;
+  }
 }
 
 /* =============================================
@@ -430,6 +440,84 @@ select option {
   transform-origin: top;
 }
 
+/* Gradebook term expand: columns unmount on collapse, so width-slide is not
+   possible — reveal motion is a short fade + 2px rise on newly shown cells.
+   One memorable motion only; grade pills and layout stay static. */
+@keyframes gradebookCellIn {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-gradebook-cell-in {
+  animation: gradebookCellIn 0.18s ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-gradebook-cell-in {
+    animation: none;
+  }
+}
+
+@keyframes fadeUpOut {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@keyframes dropdownClose {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+}
+
+.anim-page-enter {
+  animation: fadeInUp 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.anim-page-exit {
+  animation: fadeUpOut 0.15s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.animate-fade-up-out {
+  animation: fadeUpOut 0.15s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.animate-dropdown-out {
+  animation: dropdownClose 0.15s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  transform-origin: top;
+}
+
+.anim-stagger-item {
+  animation: fadeInUp 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(min(var(--i, 0), 5) * 30ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 .dropdown-panel {
   background-color: hsl(var(--card) / 0.96);
   backdrop-filter: blur(16px);
@@ -464,4 +552,37 @@ select option {
 
 *::-webkit-scrollbar-thumb:hover {
   background-color: hsl(var(--primary) / 0.4);
+}
+
+/* Recharts tooltip cursor styling - eliminate white cursor background in dark mode */
+.dark .recharts-tooltip-cursor,
+.dark .recharts-bar-cursor,
+.dark rect.recharts-tooltip-cursor {
+  fill: rgba(255, 255, 255, 0.04) !important;
+}
+
+.dark .recharts-line-cursor {
+  stroke: rgba(255, 255, 255, 0.2) !important;
+}
+
+.recharts-tooltip-cursor,
+.recharts-bar-cursor,
+rect.recharts-tooltip-cursor {
+  fill: rgba(0, 0, 0, 0.04);
+}
+
+/* Initial-letter avatar: scales with its container. Containment is declared
+   in plain CSS (.avatar-box) because Tailwind v3 has no @container utility,
+   so without this cqw units resolve against the viewport and the initial
+   renders gigantic. Falls back to 14px where cqw is unsupported. */
+.avatar-box {
+  container-type: inline-size;
+}
+.avatar-initial {
+  font-size: 14px;
+}
+@supports (font-size: 38cqw) {
+  .avatar-initial {
+    font-size: 38cqw;
+  }
 }

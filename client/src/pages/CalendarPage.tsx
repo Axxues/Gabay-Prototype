@@ -56,6 +56,8 @@ export const CalendarPage: React.FC = () => {
     db,
     activeRole,
     activeCourseId,
+    isLoading,
+    isSyncing,
     markTabVisited
   } = useLMS();
 
@@ -203,21 +205,21 @@ export const CalendarPage: React.FC = () => {
   }
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto animate-fade-in pb-12">
+    <div className="flex min-h-full w-full flex-1 flex-col space-y-6 p-6 max-w-7xl mx-auto animate-fade-in pb-12">
       {/* Cell We Go Style Header & Toolbar Controls */}
-      <div className="pb-3 border-b border-border space-y-4">
+      <div className="pb-3 border-b border-border/70 space-y-4">
         <PageHeader
-          title="Academic Calendar & Scheduler"
+          title="Academic calendar & scheduler"
           description="Course milestones, activity deadlines, lectures, and faculty advising office hours."
           actions={
             !isReadOnlyCalendar && (
               <button
                 type="button"
                 onClick={() => openAddEvent(selectedDay)}
-                className="px-3.5 py-2 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all shadow-primary-sm flex items-center space-x-1.5 cursor-pointer"
+                className="px-3.5 py-2 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all flex items-center space-x-1.5 cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>Schedule Event</span>
+                <span>Schedule event</span>
               </button>
             )
           }
@@ -230,7 +232,7 @@ export const CalendarPage: React.FC = () => {
             <button
               type="button"
               onClick={() => setIsFilterOpen(!isFilterOpen)}
-              className={`px-3.5 py-2 bg-card/90 hover:bg-card border rounded-xl text-xs font-sans font-semibold text-foreground flex items-center space-x-2 shadow-subtle transition-all cursor-pointer group ${
+              className={`px-3.5 py-2 bg-card/90 hover:bg-card border rounded-xl text-xs font-sans font-semibold text-foreground flex items-center space-x-2 transition-all cursor-pointer group ${
                 isFilterOpen
                   ? 'border-primary ring-2 ring-primary/20 shadow-primary-sm text-primary'
                   : 'border-border/80 hover:border-primary/40'
@@ -256,10 +258,10 @@ export const CalendarPage: React.FC = () => {
             {isFilterOpen && (
               <div className="absolute left-0 sm:right-0 sm:left-auto mt-2 w-64 dropdown-panel p-2 z-50 animate-dropdown">
                 <div className="px-2.5 py-1.5 flex items-center justify-between border-b border-border/60 mb-1.5">
-                  <span className="text-[10px] font-sans font-bold uppercase tracking-wider text-muted-foreground">
-                    Filter Events
+                  <span className="text-[12px] font-sans font-semibold text-muted-foreground">
+                    Filter events
                   </span>
-                  <span className="text-[9px] font-sans px-2 py-0.5 rounded-full bg-primary/10 text-primary font-bold">
+                  <span className="text-[11px] font-sans px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-semibold tabular-nums">
                     {db.courses.length + 1} options
                   </span>
                 </div>
@@ -328,7 +330,7 @@ export const CalendarPage: React.FC = () => {
           </div>
 
           {/* Cell We Go Month Navigator Pill */}
-          <div className="flex items-center bg-card rounded-xl border border-border shadow-subtle p-1">
+          <div className="flex items-center bg-card rounded-xl border border-border p-1">
             <button
               type="button"
               onClick={() => setCursor(c => addMonths(c, -1))}
@@ -366,13 +368,13 @@ export const CalendarPage: React.FC = () => {
       {/* Main Dual-Column Workspace (Calendar Grid + Cell We Go Side Panel) */}
       <div className="lg:grid lg:grid-cols-[1fr_340px] xl:grid-cols-[1fr_380px] lg:gap-6 lg:items-start space-y-6 lg:space-y-0">
         {/* Calendar Monthly Grid */}
-        <div className="bg-card rounded-2xl shadow-subtle border border-border overflow-hidden">
+        <div className="bg-card rounded-2xl border border-border overflow-hidden">
           {/* Weekday Header */}
-          <div className="grid grid-cols-7 border-b border-border bg-muted/60">
+          <div className="grid grid-cols-7 border-b border-border/70 bg-muted/60">
             {WEEKDAYS.map(day => (
               <div
                 key={day}
-                className="px-2 py-2.5 text-center text-[11px] font-sans font-bold text-muted-foreground uppercase tracking-wider"
+                className="px-2 py-2.5 text-center text-[12px] font-sans font-semibold text-muted-foreground"
               >
                 {day}
               </div>
@@ -412,9 +414,9 @@ export const CalendarPage: React.FC = () => {
                       {/* Day Header with Inline Quick + Button */}
                       <div className="flex items-center justify-between mb-1">
                         <span
-                          className={`text-xs font-black tabular-nums ${
+                          className={`text-xs font-bold tabular-nums ${
                             isToday
-                              ? 'inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-primary-sm'
+                              ? 'inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground'
                               : isWeekend
                               ? 'text-muted-foreground/80'
                               : 'text-foreground'
@@ -450,7 +452,7 @@ export const CalendarPage: React.FC = () => {
                                 setSelectedDay(cell);
                                 openEditEvent(ev);
                               }}
-                              className="w-full text-left rounded-md px-1.5 py-0.5 text-[10px] font-bold text-white shadow-subtle hover:opacity-90 transition-opacity truncate flex items-center space-x-1"
+                              className="w-full text-left rounded-full px-1.5 py-0.5 text-[10px] font-semibold text-white hover:opacity-90 transition-opacity truncate flex items-center space-x-1"
                               style={{ backgroundColor: eventColor }}
                               title={`${ev.title} (${ev.time || 'All Day'})${ev.type === 'virtual_meeting' ? ` - ${platformLabel(ev.meetingPlatform)}` : ''}`}
                             >
@@ -479,14 +481,14 @@ export const CalendarPage: React.FC = () => {
 
         {/* Cell We Go Desktop Side Inspector Panel */}
         <aside className="space-y-4 sticky top-4">
-          <div className="bg-card rounded-2xl border border-border shadow-subtle p-5 space-y-4">
+          <div className="bg-card rounded-2xl border border-border p-5 space-y-4">
             {/* Header with Selected Date */}
-            <div className="flex items-center justify-between pb-3 border-b border-border">
+            <div className="flex items-center justify-between pb-3 border-b border-border/70">
               <div>
-                <span className="text-[10px] font-sans font-bold uppercase tracking-wider text-muted-foreground block">
+                <span className="text-[12px] font-sans font-semibold text-muted-foreground block">
                   Inspector
                 </span>
-                <h2 className="text-sm font-extrabold text-foreground">
+                <h2 className="text-[14px] font-bold text-foreground">
                   {selectedDay.toLocaleDateString(undefined, {
                     weekday: 'long',
                     month: 'short',
@@ -508,11 +510,20 @@ export const CalendarPage: React.FC = () => {
 
             {/* Event List for Selected Day */}
             <div className="space-y-2.5 max-h-[40vh] overflow-y-auto pr-1">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground block">
-                Scheduled Events ({selectedDayEvents.length})
+              <span className="text-[12px] font-semibold text-muted-foreground block">
+                Scheduled events ({selectedDayEvents.length})
               </span>
 
-              {selectedDayEvents.length === 0 ? (
+              {((isLoading || isSyncing) && (db.calendarEvents || []).length === 0) ? (
+                <div data-testid="calendar-loading" className="space-y-2.5" aria-hidden="true">
+                  {Array.from({ length: 2 }).map((_, i) => (
+                    <div key={`calendar-skeleton-${i}`} className="p-3 bg-card rounded-xl border border-border space-y-1.5 animate-pulse">
+                      <div className="h-3.5 w-2/3 rounded bg-muted" />
+                      <div className="h-3 w-1/3 rounded bg-muted/70" />
+                    </div>
+                  ))}
+                </div>
+              ) : selectedDayEvents.length === 0 ? (
                 <EmptyState
                   title="No events scheduled for this day."
                   actionLabel={!isReadOnlyCalendar ? '+ Click here to add an event' : undefined}
@@ -523,7 +534,7 @@ export const CalendarPage: React.FC = () => {
                   <div
                     key={ev.id}
                     onClick={() => openEditEvent(ev)}
-                    className="p-3 bg-card rounded-xl border border-border hover:border-primary/40 transition-all cursor-pointer shadow-subtle space-y-1.5 card-hover"
+                    className="p-3 bg-card rounded-xl border border-border hover:ring-1 hover:ring-primary/15 transition-all cursor-pointer space-y-1.5"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center space-x-2 min-w-0">
@@ -535,8 +546,8 @@ export const CalendarPage: React.FC = () => {
                           {ev.title}
                         </h4>
                       </div>
-                      <span className="text-[9px] font-sans uppercase px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border shrink-0">
-                        {ev.type === 'virtual_meeting' ? 'Virtual Meeting' : ev.type}
+                      <span className="text-[11px] font-sans px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground border border-border shrink-0">
+                        {ev.type === 'virtual_meeting' ? 'Virtual meeting' : ev.type}
                       </span>
                     </div>
 

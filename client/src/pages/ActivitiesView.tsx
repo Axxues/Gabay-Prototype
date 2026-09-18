@@ -490,7 +490,14 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={() => {
-                const sub = db.submissions.find(s => s.activityKey === selectedActivity.id);
+                // Classic rows link via the raw activity id; question-set rows
+                // link via the synthetic `asg-activity-<id>` key.
+                const sub = db.submissions.find(
+                  s =>
+                    s.activityKey === selectedActivity.id ||
+                    s.activityKey === questionSetKeyOf(selectedActivity.id) ||
+                    (s as unknown as { activityId?: string }).activityId === selectedActivity.id
+                );
                 if (sub) openSpeedGrader(sub.id);
                 else showAlert("No student submissions yet for this activity.");
               }}

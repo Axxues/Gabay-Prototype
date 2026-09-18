@@ -2,6 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useLMS } from '../context/LMSContext';
 import type { User, UserRole } from '../types/lms';
 import { PageHeader } from '../components/common/PageHeader';
+import { UserAvatar } from '../components/common/UserAvatar';
 import { DialogFrame } from '../components/common/DialogFrame';
 import {
   Users,
@@ -16,20 +17,9 @@ import {
   X,
   AlertTriangle,
   Mail,
-  Eye,
-  EyeOff,
   ChevronDown,
   Check
 } from 'lucide-react';
-
-const PRESET_AVATARS = [
-  { label: 'Avatar 1 (Dean)', url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80' },
-  { label: 'Avatar 2 (Faculty Male)', url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80' },
-  { label: 'Avatar 3 (Faculty Female)', url: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80' },
-  { label: 'Avatar 4 (Student Male)', url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80' },
-  { label: 'Avatar 5 (Student Female)', url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80' },
-  { label: 'Avatar 6 (Academic)', url: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80' }
-];
 
 const DEPARTMENTS = [
   'Department of Computer Science',
@@ -104,7 +94,7 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({
           disabled ? 'opacity-50 cursor-not-allowed border-border' : ''
         } ${
           isOpen
-            ? 'border-primary ring-2 ring-primary/20 shadow-subtle'
+            ? 'border-primary ring-2 ring-primary/20 shadow-none'
             : 'border-border hover:border-primary/50 text-foreground'
         } ${buttonClassName}`}
       >
@@ -189,27 +179,20 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({
 
 interface ManageAccountsPageProps {
   onNavigateTab?: (tab: string) => void;
+  onEditAccount?: (user: User) => void;
 }
 
-export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = () => {
-  const { db, activeUser, activeRole, createUser, updateUser, deleteUser, showAlert, setIsRoleModalOpen, logout } = useLMS();
+export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNavigateTab, onEditAccount }) => {
+  const { db, activeUser, activeRole, deleteUser, showAlert, setIsRoleModalOpen, logout } = useLMS();
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState<'all' | UserRole>('all');
   const [departmentFilter, setDepartmentFilter] = useState<string>('all');
 
-  // Modal states
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<User | null>(null);
+  // Modal state (delete only — editing now lives on the dedicated Edit Account page)
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
-
-  // Form states (Create & Edit - restricted to Email, Role, Department, Password)
-  const [formEmail, setFormEmail] = useState('');
-  const [formRole, setFormRole] = useState<UserRole>('faculty');
-  const [formDepartment, setFormDepartment] = useState('Department of Computer Science');
-  const [formPassword, setFormPassword] = useState('gabay2026');
-  const [showPassword, setShowPassword] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Dynamically aggregated departments from base list and all active users
   const allDepartments = useMemo(() => {
@@ -276,143 +259,45 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = () => {
     }))
   ], [allDepartments]);
 
-  const departmentSelectOptions: DropdownOption[] = useMemo(() => DEPARTMENTS.map(d => ({
-    value: d,
-    label: d,
-    icon: <Building className="w-3.5 h-3.5 text-muted-foreground" />
-  })), []);
-
-  const roleOptions: DropdownOption[] = [
-    {
-      value: 'faculty',
-      label: 'Faculty Instructor',
-      icon: <UserCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-    },
-    {
-      value: 'student',
-      label: 'Enrolled Student',
-      icon: <GraduationCap className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-    },
-    {
-      value: 'staff',
-      label: 'Non-Teaching Staff',
-      icon: <ShieldCheck className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-    },
-    {
-      value: 'admin',
-      label: 'Dean / Administrator',
-      icon: <Building className="w-3.5 h-3.5 text-primary" />
-    }
-  ];
-
-  // Open Create Modal
+  // Go to dedicated Create Account page
   const handleOpenCreateModal = () => {
-    setFormEmail('');
-    setFormRole('faculty');
-    setFormDepartment('Department of Computer Science');
-    setFormPassword('gabay2026');
-    setShowPassword(false);
-    setIsCreateModalOpen(true);
-  };
-
-  // Open Edit Modal
-  const handleOpenEditModal = (user: User) => {
-    setEditingUser(user);
-    setFormEmail(user.email || '');
-    setFormRole(user.role);
-    setFormDepartment(user.department || 'Department of Computer Science');
-    setFormPassword(user.password || 'gabay2026');
-    setShowPassword(false);
-  };
-
-  // Submit Create Account
-  const handleCreateSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleanEmail = formEmail.trim();
-    if (!cleanEmail) {
-      showAlert({
-        title: 'Required Information',
-        message: 'Please provide an Institutional Email.',
-        type: 'warning'
-      });
-      return;
+    if (onNavigateTab) {
+      onNavigateTab('create-account');
     }
-
-    const defaultTitle = formRole === 'student' ? 'Student' : formRole === 'faculty' ? 'Faculty Instructor' : formRole === 'admin' ? 'Dean / Administrator' : 'Staff / Registrar Aide';
-    const defaultAvatar = formRole === 'student' ? PRESET_AVATARS[3].url : formRole === 'faculty' ? PRESET_AVATARS[1].url : formRole === 'admin' ? PRESET_AVATARS[0].url : PRESET_AVATARS[2].url;
-
-    const created = await createUser({
-      name: cleanEmail,
-      email: cleanEmail,
-      role: formRole,
-      department: formDepartment,
-      title: defaultTitle,
-      studentId: formRole === 'student' ? `2026-SLUC-${Math.floor(1000 + Math.random() * 9000)}` : undefined,
-      password: formPassword.trim() || 'gabay2026',
-      avatar: defaultAvatar
-    }).catch(() => null);
-    if (!created) return;
-
-    setIsCreateModalOpen(false);
-    showAlert({
-      title: 'Account Provisioned',
-      message: `User account for "${created.email}" (${created.role.toUpperCase()}) has been created successfully.`,
-      type: 'success'
-    });
   };
 
-  // Submit Edit Account
-  const handleEditSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingUser) return;
-
-    const cleanEmail = formEmail.trim();
-    if (!cleanEmail) {
-      showAlert({
-        title: 'Required Information',
-        message: 'Please provide an Institutional Email.',
-        type: 'warning'
-      });
-      return;
+  // Go to dedicated Edit Account page
+  const handleOpenEditPage = (user: User) => {
+    if (onEditAccount) {
+      onEditAccount(user);
+    } else if (onNavigateTab) {
+      onNavigateTab('edit-account');
     }
-
-    const finalName = editingUser.name?.trim() || cleanEmail;
-
-    const ok = await updateUser(editingUser.id, {
-      name: finalName,
-      email: cleanEmail,
-      role: formRole,
-      department: formDepartment,
-      password: formPassword.trim() || editingUser.password || 'gabay2026'
-    });
-    if (!ok) return;
-
-    setEditingUser(null);
-    showAlert({
-      title: 'Account Updated',
-      message: `Account settings for "${cleanEmail}" (email, password, role, department) have been saved successfully.`,
-      type: 'success'
-    });
   };
 
   // Submit Delete Account
   const handleDeleteConfirm = async () => {
-    if (!deletingUser) return;
-    const res = await deleteUser(deletingUser.id);
-    setDeletingUser(null);
+    if (!deletingUser || isDeleting) return;
+    setIsDeleting(true);
+    try {
+      const res = await deleteUser(deletingUser.id);
+      setDeletingUser(null);
 
-    if (res.success) {
-      showAlert({
-        title: 'Account Deleted',
-        message: res.message || 'User account was successfully removed.',
-        type: 'success'
-      });
-    } else {
-      showAlert({
-        title: 'Action Denied',
-        message: res.message || 'Cannot delete this account.',
-        type: 'error'
-      });
+      if (res.success) {
+        showAlert({
+          title: 'Account Deleted',
+          message: res.message || 'User account was successfully removed.',
+          type: 'success'
+        });
+      } else {
+        showAlert({
+          title: 'Action Denied',
+          message: res.message || 'Cannot delete this account.',
+          type: 'error'
+        });
+      }
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -421,32 +306,32 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = () => {
     switch (normalized) {
       case 'admin':
         return {
-          label: 'DEAN / ADMIN',
-          badgeClass: 'bg-primary/10 text-primary border-primary/20',
+          label: 'Dean / admin',
+          badgeClass: 'bg-muted text-muted-foreground border-border',
           icon: <Building className="w-3 h-3" />
         };
       case 'faculty':
       case 'instructor':
         return {
-          label: 'FACULTY',
-          badgeClass: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20',
+          label: 'Faculty',
+          badgeClass: 'bg-muted text-muted-foreground border-border',
           icon: <UserCheck className="w-3 h-3" />
         };
       case 'staff':
         return {
-          label: 'REGISTRAR / STAFF',
-          badgeClass: 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20',
+          label: 'Registrar / staff',
+          badgeClass: 'bg-muted text-muted-foreground border-border',
           icon: <ShieldCheck className="w-3 h-3" />
         };
       case 'student':
         return {
-          label: 'STUDENT',
-          badgeClass: 'bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20',
+          label: 'Student',
+          badgeClass: 'bg-muted text-muted-foreground border-border',
           icon: <GraduationCap className="w-3 h-3" />
         };
       default:
         return {
-          label: (role || 'USER').toUpperCase(),
+          label: role || 'User',
           badgeClass: 'bg-muted text-muted-foreground border-border',
           icon: <Building className="w-3 h-3" />
         };
@@ -454,7 +339,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = () => {
   };
 
   return (
-    <div className="space-y-6 animate-fade-in pb-16">
+    <div className="flex min-h-full w-full flex-1 flex-col space-y-6 animate-fade-in pb-16">
       {/* Role Notice if viewing as non-admin */}
       {activeRole !== 'admin' && (
         <div className="p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-700 dark:text-amber-300">
@@ -463,7 +348,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = () => {
               <AlertTriangle className="w-4 h-4" />
             </div>
             <div>
-              <span className="font-bold">Administrative Console Preview:</span> You are currently browsing as <strong>{activeRole.toUpperCase()}</strong>. Full college account creation and editing are enabled for demonstration.
+              <span className="font-bold">Administrative console preview:</span> You are currently browsing as <strong>{activeRole}</strong>. Full college account creation and editing are enabled for demonstration.
             </div>
           </div>
           <button
@@ -478,16 +363,16 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = () => {
 
       {/* Top Header & Actions */}
       <PageHeader
-        title="Manage College Accounts"
+        title="Manage college accounts"
         description="Centrally provision, edit, configure, and manage user accounts across all College of Computer Science departments."
         actions={
           <button
             type="button"
             onClick={handleOpenCreateModal}
-            className="px-4 py-2.5 bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground font-bold text-xs rounded-xl transition-all shadow-primary-sm flex items-center justify-center space-x-2 cursor-pointer shrink-0"
+            className="px-4 py-2.5 bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground font-bold text-xs rounded-xl transition-all flex items-center justify-center space-x-2 cursor-pointer shrink-0"
           >
             <UserPlus className="w-4 h-4" />
-            <span>Create New Account</span>
+            <span>Create new account</span>
           </button>
         }
       />
@@ -495,7 +380,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = () => {
       {/* 5-Card Metric Overview */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 sm:gap-4">
         {/* Card 1: Total Accounts */}
-        <div className="p-4 sm:p-4.5 bg-card border border-border hover:border-primary/40 rounded-2xl shadow-subtle flex flex-col justify-between transition-all duration-200 group col-span-2 sm:col-span-1">
+        <div className="p-4 sm:p-4.5 bg-card border border-border hover:border-primary/40 rounded-2xl shadow-none flex flex-col justify-between transition-all duration-200 group col-span-2 sm:col-span-1">
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs font-bold text-muted-foreground truncate">
               Total Accounts
@@ -512,7 +397,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = () => {
         </div>
 
         {/* Card 2: Faculty Instructors */}
-        <div className="p-4 sm:p-4.5 bg-card border border-border hover:border-emerald-500/40 rounded-2xl shadow-subtle flex flex-col justify-between transition-all duration-200 group">
+        <div className="p-4 sm:p-4.5 bg-card border border-border hover:border-emerald-500/40 rounded-2xl shadow-none flex flex-col justify-between transition-all duration-200 group">
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs font-bold text-muted-foreground truncate">
               Faculty Instructors
@@ -529,7 +414,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = () => {
         </div>
 
         {/* Card 3: Enrolled Students */}
-        <div className="p-4 sm:p-4.5 bg-card border border-border hover:border-blue-500/40 rounded-2xl shadow-subtle flex flex-col justify-between transition-all duration-200 group">
+        <div className="p-4 sm:p-4.5 bg-card border border-border hover:border-blue-500/40 rounded-2xl shadow-none flex flex-col justify-between transition-all duration-200 group">
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs font-bold text-muted-foreground truncate">
               Enrolled Students
@@ -546,7 +431,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = () => {
         </div>
 
         {/* Card 4: College Administrators */}
-        <div className="p-4 sm:p-4.5 bg-card border border-border hover:border-primary/40 rounded-2xl shadow-subtle flex flex-col justify-between transition-all duration-200 group">
+        <div className="p-4 sm:p-4.5 bg-card border border-border hover:border-primary/40 rounded-2xl shadow-none flex flex-col justify-between transition-all duration-200 group">
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs font-bold text-muted-foreground truncate">
               College Administrators
@@ -563,7 +448,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = () => {
         </div>
 
         {/* Card 5: Non-Teaching Staff */}
-        <div className="p-4 sm:p-4.5 bg-card border border-border hover:border-amber-500/40 rounded-2xl shadow-subtle flex flex-col justify-between transition-all duration-200 group">
+        <div className="p-4 sm:p-4.5 bg-card border border-border hover:border-amber-500/40 rounded-2xl shadow-none flex flex-col justify-between transition-all duration-200 group">
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs font-bold text-muted-foreground truncate">
               Non-Teaching Staff
@@ -581,7 +466,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = () => {
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="p-4 bg-card border border-border rounded-2xl shadow-subtle flex flex-col md:flex-row md:items-center justify-between gap-3">
+      <div className="p-4 bg-card border border-border rounded-2xl shadow-none flex flex-col md:flex-row md:items-center justify-between gap-3">
         {/* Search Input */}
         <div className="relative flex-1 max-w-md">
           <Search className="w-4 h-4 text-muted-foreground absolute left-3.5 top-3" />
@@ -612,7 +497,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = () => {
               onClick={() => setRoleFilter('all')}
               className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                 roleFilter === 'all'
-                  ? 'bg-card text-foreground shadow-subtle font-bold'
+                  ? 'bg-card text-foreground shadow-none font-bold'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
@@ -623,7 +508,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = () => {
               onClick={() => setRoleFilter('faculty')}
               className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                 roleFilter === 'faculty'
-                  ? 'bg-card text-foreground shadow-subtle font-bold'
+                  ? 'bg-card text-foreground shadow-none font-bold'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
@@ -634,7 +519,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = () => {
               onClick={() => setRoleFilter('student')}
               className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                 roleFilter === 'student'
-                  ? 'bg-card text-foreground shadow-subtle font-bold'
+                  ? 'bg-card text-foreground shadow-none font-bold'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
@@ -645,7 +530,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = () => {
               onClick={() => setRoleFilter('staff')}
               className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                 roleFilter === 'staff'
-                  ? 'bg-card text-foreground shadow-subtle font-bold'
+                  ? 'bg-card text-foreground shadow-none font-bold'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
@@ -656,7 +541,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = () => {
               onClick={() => setRoleFilter('admin')}
               className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                 roleFilter === 'admin'
-                  ? 'bg-card text-foreground shadow-subtle font-bold'
+                  ? 'bg-card text-foreground shadow-none font-bold'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
@@ -678,11 +563,11 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = () => {
       </div>
 
       {/* Accounts List Table / Cards */}
-      <div className="bg-card border border-border rounded-2xl shadow-subtle overflow-hidden">
+      <div className="bg-card border border-border rounded-2xl shadow-none overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs font-sans border-collapse">
             <thead>
-              <tr className="bg-muted/50 border-b border-border text-muted-foreground font-bold uppercase text-[10px] tracking-wider">
+              <tr className="bg-muted/50 border-b border-border/70 text-muted-foreground font-semibold text-[12px]">
                 <th className="py-3.5 px-4">User Account</th>
                 <th className="py-3.5 px-4">Role</th>
                 <th className="py-3.5 px-4">Department & Position</th>
@@ -724,7 +609,6 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = () => {
 
                   const userName = user.name || 'Unnamed Account';
                   const userEmail = user.email || 'no-email@dmmmsu.edu.ph';
-                  const userAvatar = user.avatar || PRESET_AVATARS[0].url;
                   const userDept = user.department || 'Department of Computer Science';
                   const userTitle = user.title || (user.role === 'student' ? 'Student' : 'Faculty Instructor');
 
@@ -736,9 +620,9 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = () => {
                       {/* User Info */}
                       <td className="py-3.5 px-4">
                         <div className="flex items-center space-x-3">
-                          <img
-                            src={userAvatar}
-                            alt={userName}
+                          <UserAvatar
+                            name={userName}
+                            src={user.avatar}
                             className="w-9 h-9 rounded-full object-cover border border-border shadow-xs shrink-0"
                           />
                           <div className="min-w-0">
@@ -747,7 +631,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = () => {
                                 {userName}
                               </span>
                               {isCurrent && (
-                                <span className="px-1.5 py-0.2 text-[9px] font-bold bg-primary/20 text-primary rounded-md border border-primary/30">
+                                <span className="px-1.5 py-0.5 text-[11px] font-semibold bg-muted text-muted-foreground rounded-full border border-border">
                                   You
                                 </span>
                               )}
@@ -807,7 +691,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = () => {
                         <div className="flex items-center justify-end space-x-1">
                           <button
                             type="button"
-                            onClick={() => handleOpenEditModal(user)}
+                            onClick={() => handleOpenEditPage(user)}
                             className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg transition-colors cursor-pointer"
                             title="Edit Account Details"
                           >
@@ -838,206 +722,6 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = () => {
         </div>
       </div>
 
-      {/* CREATE ACCOUNT MODAL */}
-      {isCreateModalOpen && (
-          <DialogFrame
-            title="Provision College Account"
-            subtitle="Create an official institutional account with access credentials."
-            onClose={() => setIsCreateModalOpen(false)}
-          >
-              <form onSubmit={handleCreateSubmit} className="space-y-4">
-                {/* Institutional Email */}
-                <div>
-                  <label className="block text-xs font-bold text-foreground mb-1">
-                    Institutional Email *
-                  </label>
-                  <input
-                    type="email"
-                    required
-                    value={formEmail}
-                    onChange={e => setFormEmail(e.target.value)}
-                    placeholder="e.g. jdoe@dmmmsu.edu.ph"
-                    className="w-full p-2.5 bg-background border border-border rounded-xl text-foreground text-xs font-sans outline-none focus:ring-2 focus:ring-primary/30"
-                  />
-                  <span className="text-[10px] text-muted-foreground block mt-1">
-                    The email address will also be used as the account display name.
-                  </span>
-                </div>
-
-                {/* Role & Department */}
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-xs font-bold text-foreground mb-1">
-                      Account Role *
-                    </label>
-                    <CustomDropdown
-                      value={formRole}
-                      onChange={val => setFormRole(val as UserRole)}
-                      options={roleOptions}
-                      placeholder="Select Account Role"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-foreground mb-1">
-                      Department *
-                    </label>
-                    <CustomDropdown
-                      value={formDepartment}
-                      onChange={setFormDepartment}
-                      options={departmentSelectOptions}
-                      searchable={true}
-                      placeholder="Select Department"
-                    />
-                  </div>
-                </div>
-
-                {/* Password Field */}
-                <div>
-                  <label className="block text-xs font-bold text-foreground mb-1">
-                    Initial Account Password
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      value={formPassword}
-                      onChange={e => setFormPassword(e.target.value)}
-                      placeholder="gabay2026"
-                      className="w-full pr-10 p-2.5 bg-background border border-border rounded-xl text-foreground text-xs font-sans outline-none focus:ring-2 focus:ring-primary/30"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground cursor-pointer"
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                  <span className="text-[10px] text-muted-foreground block mt-1">
-                    Default demo password is "gabay2026". Users can use this to sign into Gabay LMS.
-                  </span>
-                </div>
-
-                {/* Modal Footer */}
-                <div className="flex items-center justify-end space-x-2 pt-3 border-t border-border">
-                  <button
-                    type="button"
-                    onClick={() => setIsCreateModalOpen(false)}
-                    className="px-4 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-colors cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-xs rounded-xl shadow-primary-sm transition-all cursor-pointer"
-                  >
-                    Create Account
-                  </button>
-                </div>
-              </form>
-          </DialogFrame>
-      )}
-
-      {/* EDIT ACCOUNT MODAL */}
-      {editingUser && (
-          <DialogFrame
-            title="Edit Account Details"
-            subtitle={`Modifying record for ${editingUser.name}`}
-            onClose={() => setEditingUser(null)}
-          >
-              <form onSubmit={handleEditSubmit} className="space-y-4">
-                {/* Institutional Email */}
-                <div>
-                  <label className="block text-xs font-bold text-foreground mb-1">
-                    Institutional Email *
-                  </label>
-                  <input
-                    type="email"
-                    required
-                    value={formEmail}
-                    onChange={e => setFormEmail(e.target.value)}
-                    placeholder="e.g. jdoe@dmmmsu.edu.ph"
-                    className="w-full p-2.5 bg-background border border-border rounded-xl text-foreground text-xs font-sans outline-none focus:ring-2 focus:ring-primary/30"
-                  />
-                  <span className="text-[10px] text-muted-foreground block mt-1">
-                    If no full name is set on the account, this email will be used as their name.
-                  </span>
-                </div>
-
-                {/* Role & Department */}
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-xs font-bold text-foreground mb-1">
-                      Account Role *
-                    </label>
-                    <CustomDropdown
-                      value={formRole}
-                      onChange={val => setFormRole(val as UserRole)}
-                      options={roleOptions}
-                      placeholder="Select Account Role"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-foreground mb-1">
-                      Department *
-                    </label>
-                    <CustomDropdown
-                      value={formDepartment}
-                      onChange={setFormDepartment}
-                      options={departmentSelectOptions}
-                      searchable={true}
-                      placeholder="Select Department"
-                    />
-                  </div>
-                </div>
-
-                {/* Password Field */}
-                <div>
-                  <label className="block text-xs font-bold text-foreground mb-1">
-                    Account Password
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      value={formPassword}
-                      onChange={e => setFormPassword(e.target.value)}
-                      placeholder="Leave unchanged or enter new password"
-                      className="w-full pr-10 p-2.5 bg-background border border-border rounded-xl text-foreground text-xs font-sans outline-none focus:ring-2 focus:ring-primary/30"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground cursor-pointer"
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                  <span className="text-[10px] text-muted-foreground block mt-1">
-                    Enter a new password to update account credentials.
-                  </span>
-                </div>
-
-                {/* Modal Footer */}
-                <div className="flex items-center justify-end space-x-2 pt-3 border-t border-border">
-                  <button
-                    type="button"
-                    onClick={() => setEditingUser(null)}
-                    className="px-4 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-colors cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-xs rounded-xl shadow-primary-sm transition-all cursor-pointer"
-                  >
-                    Save Changes
-                  </button>
-                </div>
-              </form>
-          </DialogFrame>
-      )}
-
       {/* DELETE CONFIRMATION MODAL */}
       {deletingUser && (
           <DialogFrame
@@ -1056,9 +740,10 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = () => {
                 <button
                   type="button"
                   onClick={handleDeleteConfirm}
-                  className="px-4 py-2 bg-red-600 hover:bg-red-700 active:scale-[0.98] text-white font-bold text-xs rounded-xl shadow-sm transition-all cursor-pointer"
+                  disabled={isDeleting}
+                  className="px-4 py-2 bg-red-600 hover:bg-red-700 active:scale-[0.98] text-white font-bold text-xs rounded-xl shadow-sm transition-all cursor-pointer disabled:opacity-60 disabled:cursor-wait"
                 >
-                  Delete Account
+                  {isDeleting ? 'Deleting...' : 'Delete Account'}
                 </button>
               </>
             }

@@ -1,18 +1,22 @@
 import React, { useEffect, useState } from 'react';
 import { useLMS } from '../context/LMSContext';
-import type { EnrollmentRequest } from '../types/lms';
+import type { EnrollmentRequest, User } from '../types/lms';
 import {
   Shield,
   Search,
   UserPlus,
+  UserX,
   X,
   KeyRound,
   Copy,
   Check,
-  RefreshCw
+  RefreshCw,
+  Loader2
 } from 'lucide-react';
+import { useProcessing, useBusyFlag } from '../hooks/useProcessing';
 import { AnimatedModal } from '../components/common/ModalPortal';
 import { PageHeader } from '../components/common/PageHeader';
+import { UserAvatar } from '../components/common/UserAvatar';
 import { canPickSection } from '../utils/sections';
 
 interface PeopleViewProps {
@@ -20,28 +24,38 @@ interface PeopleViewProps {
 }
 
 export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
-  const { db, activeRole, enrollStudentsInCourse, regenerateCourseJoinCode, getPendingRequestsForCourse, getCourseSections, approveEnrollmentRequests, rejectEnrollmentRequests, showAlert, showConfirm } = useLMS();
+  const { db, activeRole, activeUser, isLoading, enrollStudentsInCourse, regenerateCourseJoinCode, getPendingRequestsForCourse, approveEnrollmentRequests, rejectEnrollmentRequests, removeStudentFromCourse, showAlert, showConfirm } = useLMS();
   const course = db.courses.find(c => c.id === courseId);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [copiedCode, setCopiedCode] = useState(false);
   const [activeTab, setActiveTab] = useState<'roster' | 'pending'>('roster');
-  const [selectedSectionFilter, setSelectedSectionFilter] = useState<string>('all');
-
-  const courseSections = getCourseSections(courseId);
   const [pendingRequests, setPendingRequests] = useState<EnrollmentRequest[]>([]);
+  const [pendingLoading, setPendingLoading] = useState(true);
   const pendingCount = pendingRequests.length;
+  const { isProcessing, run } = useProcessing();
+  const { busy: enrollBusy, run: runEnroll } = useBusyFlag();
 
   const reloadPending = async () => {
-    setPendingRequests(await getPendingRequestsForCourse(courseId));
+    setPendingLoading(true);
+    try {
+      setPendingRequests(await getPendingRequestsForCourse(courseId));
+    } finally {
+      setPendingLoading(false);
+    }
   };
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const reqs = await getPendingRequestsForCourse(courseId);
-      if (!cancelled) setPendingRequests(reqs);
+      setPendingLoading(true);
+      try {
+        const reqs = await getPendingRequestsForCourse(courseId);
+        if (!cancelled) setPendingRequests(reqs);
+      } finally {
+        if (!cancelled) setPendingLoading(false);
+      }
     })();
     return () => {
       cancelled = true;
@@ -53,14 +67,18 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
   const [modalSearchQuery, setModalSearchQuery] = useState('');
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
 
+  const approvedStudentIds = new Set(
+    (db.enrollmentRequests || [])
+      .filter(r => r.courseId === courseId && r.status === 'approved')
+      .map(r => r.studentId)
+  );
   const students = db.users.filter(u => {
     if (u.role !== 'student') return false;
-    if (!u.enrolledCourseIds || !u.enrolledCourseIds.includes(courseId)) return false;
-    if (selectedSectionFilter !== 'all') {
-      const studentSection = u.courseSections?.[courseId];
-      if (studentSection !== selectedSectionFilter) return false;
+    if (u.enrolledCourseIds?.includes(courseId) || approvedStudentIds.has(u.id)) {
+      return true;
+    } else {
+      return false;
     }
-    return true;
   });
   const instructors = db.users.filter(u => u.role === 'faculty' || u.id === course?.instructorId);
 
@@ -96,29 +114,47 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
     );
   };
 
-  const handleEnrollSelectedStudents = async () => {
+  const handleRemoveStudent = (student: User) => {
+    if (isProcessing(`remove:${student.id}`)) return;
+    showConfirm(
+      `Remove ${student.name} from ${course?.code || 'this course'}? They will lose access, but their coursework stays on record.`,
+      () => {
+        void run(`remove:${student.id}`, async () => {
+          const ok = await removeStudentFromCourse(courseId, student.id);
+          if (!ok) return;
+          showAlert({ title: 'Student Removed', message: `${student.name} has been removed from ${course?.code || 'the course'}.`, type: 'success' });
+        });
+      },
+      'Remove Student'
+    );
+  };
+
+  const handleEnrollSelectedStudents = () => {
     if (selectedStudentIds.length === 0) return;
 
-    const ok = await enrollStudentsInCourse(selectedStudentIds, courseId);
-    if (!ok) return;
+    void runEnroll(async () => {
+      const ok = await enrollStudentsInCourse(selectedStudentIds, courseId);
+      if (!ok) return;
 
-    showAlert({
-      title: 'Enrolled in Course',
-      message: `Successfully enrolled ${selectedStudentIds.length} student${selectedStudentIds.length > 1 ? 's' : ''} into ${course?.code || 'the course'}.`,
-      type: 'success'
+      showAlert({
+        title: 'Invitations Sent',
+        message: `Invited ${selectedStudentIds.length} student${selectedStudentIds.length > 1 ? 's' : ''} to ${course?.code || 'the course'}. They will appear on the roster once they accept.`,
+        type: 'success'
+      });
+
+      await reloadPending();
+      setIsEnrollModalOpen(false);
+      setSelectedStudentIds([]);
+      setModalSearchQuery('');
     });
-
-    await reloadPending();
-    setIsEnrollModalOpen(false);
-    setSelectedStudentIds([]);
-    setModalSearchQuery('');
   };
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-5 animate-fade-in">
       <PageHeader
-        title="People Management"
-        description={`Section ${course?.section}`}
+        eyebrow={course?.code}
+        title="People"
+        description={course?.section ? `Section ${course.section}` : 'Course roster and enrollment requests'}
         actions={
           activeRole === 'faculty' && (
             <button
@@ -127,10 +163,10 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
                 setModalSearchQuery('');
                 setIsEnrollModalOpen(true);
               }}
-              className="px-3.5 py-2 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all shadow-subtle flex items-center space-x-1.5 cursor-pointer"
+              className="px-3.5 py-2 text-[12px] font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all shadow-primary-sm flex items-center gap-1.5 cursor-pointer"
             >
               <UserPlus className="w-4 h-4" />
-              <span>+ Enroll Person</span>
+              <span>Enroll person</span>
             </button>
           )
         }
@@ -138,20 +174,20 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
 
       {/* Course Join Code Banner */}
       {course?.joinCode && (
-        <div className="p-4 bg-primary/5 border border-primary/20 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-subtle">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-              <KeyRound className="w-5 h-5" />
+        <div className="px-4 py-3.5 bg-card border border-border rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-muted border border-border text-foreground flex items-center justify-center shrink-0">
+              <KeyRound className="w-4 h-4" />
             </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <span className="text-xs font-bold text-foreground">Course Join Code:</span>
-                <span className="font-mono font-black text-sm text-primary tracking-wider bg-card px-2.5 py-0.5 rounded-lg border border-border shadow-xs">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[12.5px] font-semibold text-muted-foreground">Join code</span>
+                <span className="font-mono font-bold text-[13px] tracking-widest text-foreground bg-muted px-2.5 py-1 rounded-lg border border-border">
                   {course.joinCode}
                 </span>
               </div>
-              <p className="text-[11px] text-muted-foreground font-sans mt-0.5">
-                Share this unique code with students to allow them to self-enroll into this course shell.
+              <p className="text-[12px] text-muted-foreground mt-0.5">
+                Share this code for students to self-enroll.
               </p>
             </div>
           </div>
@@ -186,52 +222,52 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
       )}
 
       {/* Search & Role Filter Toolbar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+      <div className="flex flex-col lg:flex-row lg:items-center gap-3">
         {/* Tab Toggle */}
-        <div className="flex gap-2">
+        <div className="flex p-1 bg-muted rounded-full w-fit">
           <button
             onClick={() => setActiveTab('roster')}
-            className={`px-3 py-1.5 text-xs font-bold rounded-xl cursor-pointer ${
-              activeTab === 'roster' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+            className={`px-3.5 py-1.5 text-[12px] font-semibold rounded-full cursor-pointer transition-all ${
+              activeTab === 'roster' ? 'bg-card text-foreground shadow-soft' : 'text-muted-foreground hover:text-foreground'
             }`}
           >
             Roster
           </button>
           <button
             onClick={() => setActiveTab('pending')}
-            className={`px-3 py-1.5 text-xs font-bold rounded-xl cursor-pointer relative ${
-              activeTab === 'pending' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+            className={`px-3.5 py-1.5 text-[12px] font-semibold rounded-full cursor-pointer transition-all flex items-center gap-1.5 ${
+              activeTab === 'pending' ? 'bg-card text-foreground shadow-soft' : 'text-muted-foreground hover:text-foreground'
             }`}
           >
-            Pending Requests
+            Pending
             {pendingCount > 0 && (
-              <span className="ml-1.5 bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">{pendingCount}</span>
+              <span className="bg-foreground text-background text-[10px] font-bold tabular-nums px-1.5 py-px rounded-full">{pendingCount}</span>
             )}
           </button>
         </div>
 
-        <div className="relative w-full sm:w-80">
-          <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-3" />
+        <div className="relative w-full lg:w-72 lg:ml-auto">
+          <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Search by name, student ID, or email..."
-            className="w-full pl-9 pr-4 py-2 bg-card border border-border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/40 outline-none"
+            placeholder="Search name, ID, or email…"
+            className="w-full pl-9 pr-4 py-2 bg-card border border-border rounded-xl text-[12.5px] text-foreground placeholder:text-muted-foreground/70 focus:ring-2 focus:ring-primary/20 focus:border-primary/40 outline-none transition-all"
           />
         </div>
 
-        <div className="flex items-center space-x-2 text-xs w-full sm:w-auto">
+        <div className="flex items-center gap-1 text-[12px] font-semibold">
           {['all', 'faculty', 'student'].map(r => (
             <button
               key={r}
               onClick={() => setRoleFilter(r)}
-              className={`px-3 py-1.5 rounded-xl font-bold capitalize transition-colors cursor-pointer ${roleFilter === r
-                ? 'bg-primary text-primary-foreground shadow-subtle'
-                : 'bg-card border border-border text-muted-foreground hover:text-foreground'
+              className={`px-3 py-1.5 rounded-full capitalize transition-colors cursor-pointer ${roleFilter === r
+                ? 'bg-foreground text-background'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted'
                 }`}
             >
-              {r === 'all' ? 'All Roles' : `${r}s`}
+              {r === 'all' ? 'All' : `${r}s`}
             </button>
           ))}
         </div>
@@ -240,87 +276,96 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
       {/* Roster Tab */}
       {activeTab === 'roster' && (
         <>
-          {/* Section Filter */}
-          {courseSections.length > 0 && (
-            <div className="flex gap-2 mb-4">
-              <button
-                onClick={() => setSelectedSectionFilter('all')}
-                className={`px-2.5 py-1 text-[11px] font-bold rounded-lg cursor-pointer ${
-                  selectedSectionFilter === 'all' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
-                }`}
-              >
-                All Sections
-              </button>
-              {courseSections.map(s => (
-                <button
-                  key={s.id}
-                  onClick={() => setSelectedSectionFilter(s.id)}
-                  className={`px-2.5 py-1 text-[11px] font-bold rounded-lg cursor-pointer ${
-                    selectedSectionFilter === s.id ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
-                  }`}
-                >
-                  {s.name} ({s.enrolledCount}/{s.capacity})
-                </button>
-              ))}
-            </div>
-          )}
-
           {/* Roster Table */}
-          <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-subtle">
+          <div className="bg-card border border-border rounded-2xl overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
+              <table className="w-full text-left text-[13px] border-collapse">
                 <thead>
-                  <tr className="border-b border-border bg-muted/40 font-sans text-muted-foreground">
-                    <th className="p-3.5">User Name</th>
-                    <th className="p-3.5">Student / Staff ID</th>
-                    <th className="p-3.5">Email</th>
-                    <th className="p-3.5">Section</th>
-                    <th className="p-3.5">Role Scope</th>
+                  <tr className="border-b border-border/70 text-[11.5px] font-semibold text-muted-foreground">
+                    <th className="px-4 py-3 font-semibold">Name</th>
+                    <th className="px-4 py-3 font-semibold">ID</th>
+                    <th className="px-4 py-3 font-semibold">Email</th>
+                    <th className="px-4 py-3 font-semibold text-right">Role</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border">
-                  {allPeople.map(u => {
-                    const isInst = u.role === 'faculty' || u.role === 'admin';
+                <tbody className="divide-y divide-border/60">
+                  {isLoading ? (
+                    Array.from({ length: 6 }).map((_, i) => (
+                      <tr key={`roster-skeleton-${i}`} className="animate-pulse" aria-hidden="true">
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-muted shrink-0" />
+                            <div className="min-w-0 space-y-1.5">
+                              <div className="h-3 w-32 rounded bg-muted" />
+                              <div className="h-2.5 w-20 rounded bg-muted/70" />
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="h-3 w-16 rounded bg-muted" />
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="h-3 w-40 max-w-full rounded bg-muted" />
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="h-6 w-20 rounded-full bg-muted ml-auto" />
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                  allPeople.map(u => {
                     return (
                       <tr
                         key={u.id}
-                        className={`hover:bg-muted/30 transition-colors ${isInst ? 'bg-primary/5' : ''
-                          }`}
+                        className="hover:bg-muted/40 transition-colors"
                       >
-                        <td className="p-3.5 flex items-center space-x-3 font-semibold text-foreground">
-                          <img
+                        <td className="px-4 py-3 flex items-center gap-3 font-semibold text-foreground">
+                          <UserAvatar
+                            name={u.name}
                             src={u.avatar}
-                            alt={u.name}
-                            className="w-8 h-8 rounded-full object-cover border border-border shadow-soft shrink-0"
+                            className="w-8 h-8 rounded-full object-cover border border-border shrink-0"
                           />
-                          <div>
-                            <div className="font-bold">{u.name}</div>
-                            <div className="text-[10px] text-muted-foreground font-sans">{u.department}</div>
+                          <div className="min-w-0">
+                            <div className="font-bold text-[13px] tracking-tight truncate">{u.name}</div>
+                            <div className="text-[11px] text-muted-foreground font-normal">{u.department}</div>
                           </div>
                         </td>
-                        <td className="p-3.5 font-sans text-muted-foreground">
-                          {u.studentId || '2026-FAC-0012'}
+                        <td className="px-4 py-3 text-muted-foreground tabular-nums">
+                          {u.studentId || '—'}
                         </td>
-                        <td className="p-3.5 font-sans text-foreground">{u.email}</td>
-                        <td className="p-3.5">
-                          <span className="text-[10px] font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded">
-                            {(db.courseSections || []).find((s: any) => s.id === u.courseSections?.[courseId])?.name || 'No Section'}
-                          </span>
-                        </td>
-                        <td className="p-3.5">
-                          <span
-                            className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-md text-[10px] font-sans font-bold border ${u.role === 'faculty' || u.role === 'admin'
-                              ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20'
-                              : 'bg-primary/10 text-primary border-primary/20'
-                              }`}
-                          >
-                            <Shield className="w-3 h-3" />
-                            <span>{u.role.toUpperCase()}</span>
+                        <td className="px-4 py-3 text-foreground/90 max-w-[220px] truncate">{u.email}</td>
+                        <td className="px-4 py-3 text-right">
+                          <span className="inline-flex items-center gap-1.5">
+                            <span
+                              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold border ${u.role === 'faculty' || u.role === 'admin'
+                                ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20'
+                                : 'bg-muted text-muted-foreground border-border'
+                                }`}
+                            >
+                              <Shield className="w-3 h-3" />
+                              <span>{u.role === 'faculty' ? 'Faculty' : u.role === 'admin' ? 'Admin' : 'Student'}</span>
+                            </span>
+                            {activeRole === 'faculty' && u.role === 'student' && u.id !== activeUser.id && (
+                              <button
+                                type="button"
+                                title={`Remove ${u.name} from course`}
+                                aria-label={`Remove ${u.name} from course`}
+                                onClick={() => handleRemoveStudent(u)}
+                                disabled={isProcessing(`remove:${u.id}`)}
+                                className="p-1.5 text-muted-foreground hover:text-red-600 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-wait"
+                              >
+                                {isProcessing(`remove:${u.id}`) ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                  <UserX className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                            )}
                           </span>
                         </td>
                       </tr>
                     );
-                  })}
+                  }))}
                 </tbody>
               </table>
             </div>
@@ -331,7 +376,26 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
       {/* Pending Requests Tab */}
       {activeTab === 'pending' && (
         <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-subtle">
-          {pendingRequests.length === 0 ? (
+          {pendingLoading ? (
+            <div className="divide-y divide-border" aria-hidden="true">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={`pending-skeleton-${i}`} className="p-4 flex items-center justify-between gap-4 animate-pulse">
+                  <div className="flex items-center space-x-3 min-w-0">
+                    <div className="w-10 h-10 rounded-full bg-muted shrink-0" />
+                    <div className="space-y-1.5 min-w-0">
+                      <div className="h-3 w-36 rounded bg-muted" />
+                      <div className="h-2.5 w-48 max-w-full rounded bg-muted/70" />
+                      <div className="h-2.5 w-20 rounded bg-muted/70" />
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-2 shrink-0">
+                    <div className="h-7 w-20 rounded-lg bg-muted" />
+                    <div className="h-7 w-20 rounded-lg bg-muted" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : pendingRequests.length === 0 ? (
             <div className="p-8 text-center text-sm text-muted-foreground font-sans">
               <p className="font-semibold text-foreground mb-1">No Pending Requests</p>
               <p className="text-xs">All enrollment requests have been processed.</p>
@@ -347,9 +411,9 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
                 return (
                   <div key={req.id} className="p-4 flex items-center justify-between gap-4 hover:bg-muted/30 transition-colors">
                     <div className="flex items-center space-x-3">
-                      <img
-                        src={student?.avatar || 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80'}
-                        alt={student?.name || 'Student'}
+                      <UserAvatar
+                        name={student?.name || 'Student'}
+                        src={student?.avatar}
                         className="w-10 h-10 rounded-full object-cover border border-border shrink-0"
                       />
                       <div>
@@ -362,8 +426,17 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
                       </div>
                     </div>
                     <div className="flex items-center space-x-2">
+                      {req.type === 'faculty_enroll' ? (
+                        <span
+                          title="Invitation sent — waiting for the student to accept."
+                          className="px-3 py-1.5 text-[11px] font-bold bg-amber-500/10 text-amber-700 dark:text-amber-400 rounded-lg border border-amber-500/20"
+                        >
+                          Awaiting student
+                        </span>
+                      ) : (
                       <button
                         onClick={() => {
+                          if (isProcessing(`approve:${req.id}`) || isProcessing(`reject:${req.id}`)) return;
                           if (req.type === 'section_switch' && req.targetSectionId) {
                             const target = (db.courseSections || []).find((s: any) => s.id === req.targetSectionId);
                             if (target && !canPickSection(target)) {
@@ -377,35 +450,45 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
                           }
                           showConfirm(
                             `Approve enrollment for ${student?.name || 'this student'}?`,
-                            async () => {
-                              const ok = await approveEnrollmentRequests([req.id]);
-                              if (!ok) return;
-                              await reloadPending();
-                              showAlert({ title: 'Request Approved', message: `${student?.name || 'Student'} has been enrolled.`, type: 'success' });
+                            () => {
+                              void run(`approve:${req.id}`, async () => {
+                                const ok = await approveEnrollmentRequests([req.id]);
+                                if (!ok) return;
+                                await reloadPending();
+                                showAlert({ title: 'Request Approved', message: `${student?.name || 'Student'} has been enrolled.`, type: 'success' });
+                              });
                             },
                             'Approve Enrollment'
                           );
                         }}
-                        className="px-3 py-1.5 text-[11px] font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20 rounded-lg transition-colors cursor-pointer"
+                        disabled={isProcessing(`approve:${req.id}`) || isProcessing(`reject:${req.id}`)}
+                        className="px-3 py-1.5 text-[11px] font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20 rounded-lg transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-wait flex items-center gap-1"
                       >
-                        Approve
+                        {isProcessing(`approve:${req.id}`) && <Loader2 className="w-3 h-3 animate-spin" />}
+                        {isProcessing(`approve:${req.id}`) ? 'Approving...' : 'Approve'}
                       </button>
+                      )}
                       <button
                         onClick={() => {
+                          if (isProcessing(`approve:${req.id}`) || isProcessing(`reject:${req.id}`)) return;
                           showConfirm(
                             `Reject enrollment for ${student?.name || 'this student'}?`,
-                            async () => {
-                              const ok = await rejectEnrollmentRequests([req.id]);
-                              if (!ok) return;
-                              await reloadPending();
-                              showAlert({ title: 'Request Rejected', message: `Enrollment request from ${student?.name || 'student'} has been rejected.`, type: 'warning' });
+                            () => {
+                              void run(`reject:${req.id}`, async () => {
+                                const ok = await rejectEnrollmentRequests([req.id]);
+                                if (!ok) return;
+                                await reloadPending();
+                                showAlert({ title: 'Request Rejected', message: `Enrollment request from ${student?.name || 'student'} has been rejected.`, type: 'warning' });
+                              });
                             },
                             'Reject Enrollment'
                           );
                         }}
-                        className="px-3 py-1.5 text-[11px] font-bold bg-red-500/10 text-red-700 dark:text-red-400 hover:bg-red-500/20 rounded-lg transition-colors cursor-pointer"
+                        disabled={isProcessing(`approve:${req.id}`) || isProcessing(`reject:${req.id}`)}
+                        className="px-3 py-1.5 text-[11px] font-bold bg-red-500/10 text-red-700 dark:text-red-400 hover:bg-red-500/20 rounded-lg transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-wait flex items-center gap-1"
                       >
-                        Reject
+                        {isProcessing(`reject:${req.id}`) && <Loader2 className="w-3 h-3 animate-spin" />}
+                        {isProcessing(`reject:${req.id}`) ? 'Rejecting...' : 'Reject'}
                       </button>
                     </div>
                   </div>
@@ -436,7 +519,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
                   <span>Enroll Students in Course</span>
                 </h3>
                 <p className="text-[11px] font-sans text-muted-foreground mt-0.5">
-                  Select student accounts to add to {course?.code || 'this course'}
+                  Invite student accounts to {course?.code || 'this course'} — they join once they accept
                 </p>
               </div>
               <button
@@ -476,9 +559,9 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
                 {selectedStudents.map(student => (
                   <div key={student.id} className="flex flex-col items-center space-y-1.5 shrink-0 group">
                     <div className="relative">
-                      <img
-                        src={student.avatar || 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80'}
-                        alt={student.name}
+                      <UserAvatar
+                        name={student.name}
+                        src={student.avatar}
                         className="w-13 h-13 sm:w-14 sm:h-14 rounded-full object-cover border-2 border-border shadow-subtle group-hover:border-primary transition-colors"
                       />
                       <button
@@ -531,9 +614,9 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
                       }`}
                     >
                       <div className="flex items-center space-x-3.5 truncate flex-1 min-w-0">
-                        <img
-                          src={student.avatar || 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80'}
-                          alt={student.name}
+                        <UserAvatar
+                          name={student.name}
+                          src={student.avatar}
                           className="w-10 h-10 rounded-full object-cover border border-border shrink-0 shadow-xs"
                         />
                         <div className="truncate">
@@ -589,12 +672,12 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
                 </button>
                 <button
                   type="button"
-                  disabled={selectedStudentIds.length === 0}
+                  disabled={selectedStudentIds.length === 0 || enrollBusy}
                   onClick={handleEnrollSelectedStudents}
-                  className="px-5 py-2.5 text-xs font-bold font-sans bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-xl transition-all shadow-primary-sm cursor-pointer active:scale-[0.98] flex items-center space-x-2"
+                  className="px-5 py-2.5 text-xs font-bold font-sans bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-xl transition-all shadow-primary-sm cursor-pointer active:scale-[0.98] flex items-center space-x-2 disabled:cursor-wait"
                 >
-                  <Check className="w-4 h-4" />
-                  <span>Enroll in Course</span>
+                  {enrollBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  <span>{enrollBusy ? 'Sending...' : 'Send Invitations'}</span>
                 </button>
               </div>
             </div>

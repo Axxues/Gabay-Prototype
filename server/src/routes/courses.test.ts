@@ -4,10 +4,23 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 vi.mock('../db.js', () => ({
   prisma: {
     user: { findUnique: vi.fn() },
-    course: { findUnique: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn() },
+    course: { findUnique: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
     enrollmentRequest: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn() },
     courseSection: { findUnique: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
     notification: { create: vi.fn(), findMany: vi.fn(), deleteMany: vi.fn() },
+    module: { deleteMany: vi.fn() },
+    submission: { deleteMany: vi.fn() },
+    quiz: { deleteMany: vi.fn() },
+    activity: { deleteMany: vi.fn() },
+    announcement: { deleteMany: vi.fn() },
+    discussion: { deleteMany: vi.fn() },
+    message: { deleteMany: vi.fn() },
+    chatGroup: { deleteMany: vi.fn() },
+    calendarEvent: { deleteMany: vi.fn() },
+    courseFile: { deleteMany: vi.fn() },
+    courseFolder: { deleteMany: vi.fn() },
+    courseGrade: { deleteMany: vi.fn() },
+    $transaction: vi.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
   },
 }));
 vi.mock('jsonwebtoken', () => {
@@ -26,7 +39,9 @@ import { errorMiddleware } from '../utils/errors.js';
 
 function app() {
   const a = express();
-  a.use(express.json());
+  // Mirror production (server/src/index.ts): 35mb so oversized-cover tests
+  // reach the handler instead of dying in the body parser.
+  a.use(express.json({ limit: '35mb' }));
   a.use('/api/courses', coursesRouter);
   a.use(errorMiddleware);
   return a;
@@ -129,6 +144,56 @@ describe('courses router', () => {
     expect(prisma.course.update).not.toHaveBeenCalled();
   });
 
+  it('POST /api/courses with oversized data-URL image → 413 image_too_large', async () => {
+    const bigImage = 'data:image/jpeg;base64,' + 'A'.repeat(200_001);
+    const res = await (await import('supertest'))
+      .default(app())
+      .post('/api/courses')
+      .set('Authorization', 'Bearer x')
+      .send({ code: 'CS101', title: 'Intro', section: 'A', term: '2026-1', image: bigImage });
+
+    expect(res.status).toBe(413);
+    expect(res.body.error.code).toBe('image_too_large');
+    expect(prisma.course.create).not.toHaveBeenCalled();
+  });
+
+  it('PATCH /api/courses/:id with oversized data-URL image → 413 image_too_large', async () => {
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'c1',
+      instructorId: 'u-fac',
+      published: true,
+    });
+    const bigImage = 'data:image/jpeg;base64,' + 'A'.repeat(200_001);
+    const res = await (await import('supertest'))
+      .default(app())
+      .patch('/api/courses/c1')
+      .set('Authorization', 'Bearer x')
+      .send({ image: bigImage });
+
+    expect(res.status).toBe(413);
+    expect(res.body.error.code).toBe('image_too_large');
+    expect(prisma.course.update).not.toHaveBeenCalled();
+  });
+
+  it('GET /api/courses/:id/sections loads the course without the image blob', async () => {
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'c1',
+      instructorId: 'u-fac',
+      published: true,
+    });
+    (prisma.courseSection.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    const res = await (await import('supertest'))
+      .default(app())
+      .get('/api/courses/c1/sections')
+      .set('Authorization', 'Bearer x');
+
+    expect(res.status).toBe(200);
+    const select = (prisma.course.findUnique as ReturnType<typeof vi.fn>).mock.calls[0][0].select;
+    expect(select).toBeDefined();
+    expect(select.image).toBeUndefined();
+    expect(select.syllabus).toBeUndefined();
+  });
+
   it('GET /api/courses/:id as non-member student → 403 forbidden', async () => {
     (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
       sub: 'u-stu',
@@ -201,6 +266,63 @@ describe('courses router', () => {
     expect(prisma.course.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ joinCode: 'MYCODE1' }) })
     );
+  });
+
+  it('DELETE /api/courses/:id as owner → 200 and cleans up course-scoped rows', async () => {
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'c1',
+      instructorId: 'u-fac',
+      published: true,
+    });
+    (prisma.course.delete as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'c1' });
+    const res = await (await import('supertest'))
+      .default(app())
+      .delete('/api/courses/c1')
+      .set('Authorization', 'Bearer x');
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(prisma.course.delete).toHaveBeenCalledWith({ where: { id: 'c1' } });
+    for (const model of [
+      'module',
+      'submission',
+      'quiz',
+      'activity',
+      'announcement',
+      'discussion',
+      'message',
+      'chatGroup',
+      'calendarEvent',
+      'courseFile',
+      'courseFolder',
+      'courseGrade',
+    ] as const) {
+      expect(prisma[model].deleteMany).toHaveBeenCalledWith({ where: { courseId: 'c1' } });
+    }
+  });
+
+  it('DELETE /api/courses/:id as non-owner faculty → 403 and nothing deleted', async () => {
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'c1',
+      instructorId: 'u-other',
+      published: true,
+    });
+    const res = await (await import('supertest'))
+      .default(app())
+      .delete('/api/courses/c1')
+      .set('Authorization', 'Bearer x');
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('forbidden');
+    expect(prisma.course.delete).not.toHaveBeenCalled();
+  });
+
+  it('DELETE /api/courses/:id with unknown id → 404', async () => {
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    const res = await (await import('supertest'))
+      .default(app())
+      .delete('/api/courses/nope')
+      .set('Authorization', 'Bearer x');
+    expect(res.status).toBe(404);
+    expect(prisma.course.delete).not.toHaveBeenCalled();
   });
 
   it('PATCH gradingTerms persists a valid array, rejects garbage, clears on null', async () => {
