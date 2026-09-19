@@ -1,0 +1,50 @@
+@startuml
+title Gabay LMS - Staff Activity
+skinparam activity {
+  BackgroundColor #8AC9F5
+  BorderColor black
+}
+skinparam diamond {
+  BackgroundColor #8AC9F5
+  BorderColor black
+}
+skinparam activityBarColor black
+skinparam arrowColor black
+
+start
+repeat
+  :Login;
+  :Validate credentials;
+repeat while (Is Valid Account?) is (no) not (yes)
+
+fork
+  :Access Calendar;
+  fork
+    :Add Schedule Event;
+  fork again
+    :Remove Schedule Event;
+  end fork
+fork again
+  :Access Inbox;
+  fork
+    :Direct message users;
+  fork again
+    :Create group;
+    :Message group;
+  end fork
+fork again
+  :Access Gabay RAG;
+  fork
+    :Generate Graph;
+  fork again
+    :Generate Tables;
+  fork again
+    :Generate Report;
+  end fork
+fork again
+  :Access History;
+end fork
+
+:Logout;
+stop
+@enduml

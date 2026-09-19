@@ -75,7 +75,8 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
         out[term] = cols.length === 0 ? null : round2(cs);
       } else {
         const exam = resolveExamScore(courseId, term, activeUser.id, { exams: db.exams, submissions: db.submissions });
-        out[term] = termGrade(cs, exam.score, exam.perfect, weights);
+        const hasCSData = scores.some(s => s !== null);
+        out[term] = termGrade(cs, exam.score, exam.perfect, weights, hasCSData || exam.score !== null);
       }
     }
     return out;

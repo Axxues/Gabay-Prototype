@@ -1,0 +1,85 @@
+@startuml
+title Gabay LMS - Student Use Case
+left to right direction
+skinparam packageStyle rectangle
+skinparam usecase {
+  BackgroundColor #8AC9F5
+  BorderColor black
+}
+skinparam actor {
+  BackgroundColor #8AC9F5
+  BorderColor black
+}
+skinparam package {
+  BackgroundColor white
+  BorderColor black
+}
+skinparam arrowColor black
+skinparam linetype polyline
+
+actor "Student" as Student
+
+rectangle "Gabay LMS" {
+  package "Enrollment" as P1 {
+    usecase "Join Course via Code" as UC1
+    usecase "Wait for Faculty Approval" as UC1w
+    usecase "Accept Course Invitation" as UC1b
+  }
+  package "Learning Content" as P2 {
+    usecase "View Modules + Items" as UC4a
+    usecase "View Syllabus" as UC4b
+    usecase "Download Files" as UC4c
+  }
+  package "Assessments" as P3 {
+    usecase "Take Activities" as UC5
+    usecase "Submit Files + Auto-grade" as UC5s
+    usecase "Take Quizzes" as UC6
+    usecase "Take Exams" as UC6b
+    usecase "View Grades and SPR" as UC7
+  }
+  package "Communication" as P4 {
+    usecase "View Announcements" as UC8
+    usecase "Add / Reply Comment" as UC8b
+  }
+  package "Calendar" as P5 {
+    usecase "Access Calendar" as UC9
+  }
+  package "Inbox" as P6 {
+    usecase "Access Inbox" as UC10
+    usecase "Direct message users" as UC10a
+    usecase "Create group" as UC10b
+    usecase "Message group" as UC10c
+  }
+  package "Gabay RAG" as P7 {
+    usecase "Access Gabay RAG" as UCRAG
+    usecase "Generate Graph" as UCRAG_G
+    usecase "Generate Tables" as UCRAG_T
+    usecase "Generate Report" as UCRAG_R
+  }
+  package "History" as P8 {
+    usecase "Access History" as UC11
+  }
+}
+
+Student --> P1
+Student --> P2
+Student --> P3
+Student --> P4
+Student --> P5
+Student --> P6
+Student --> P7
+Student --> P8
+
+UC1w ..> UC1 : <<include>>
+UC4c ..> UC4a : <<extend>>
+UC4c ..> UC4b : <<extend>>
+UC5s ..> UC5 : <<include>>
+UC8b ..> UC8 : <<include>>
+UC10a ..> UC10 : <<include>>
+UC10b ..> UC10 : <<include>>
+UC10c ..> UC10b : <<include>>
+UCRAG ..> UCRAG_G : <<include>>
+UCRAG ..> UCRAG_T : <<include>>
+UCRAG ..> UCRAG_R : <<include>>
+note right of UC5 : MC/T-F/ID auto-graded\nEssay pending review
+@enduml

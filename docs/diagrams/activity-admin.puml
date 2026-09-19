@@ -1,0 +1,86 @@
+@startuml
+title Gabay LMS - Admin Activity
+skinparam activity {
+  BackgroundColor #8AC9F5
+  BorderColor black
+}
+skinparam diamond {
+  BackgroundColor #8AC9F5
+  BorderColor black
+}
+skinparam activityBarColor black
+skinparam arrowColor black
+
+start
+repeat
+  :Login;
+  :Validate credentials;
+repeat while (Is Valid Account?) is (no) not (yes)
+
+fork
+  :Manage College Accounts;
+  :Create / Edit / Deactivate;
+  :Validate and persist;
+fork again
+  :Manage Courses and Sections;
+  :Create shell + capacity / schedule;
+  :Generate Join Code;
+  :Approve Enrollment Requests;
+  :Review People queue + Bell;
+  if (Approve?) then (yes)
+    :Enroll;
+  else (no)
+    :Mark rejected + notify;
+  endif
+fork again
+  :Manage Courses;
+  :Publish Modules;
+  :Manage Module Items;
+  :Add / Reply Comments on Module;
+fork again
+  :Upload Syllabus Files;
+  :Publish Syllabus;
+fork again
+  :Manage Assessments and Grades;
+  fork
+    :Manage Activities;
+  fork again
+    :Manage Quizzes;
+  fork again
+    :Manage Exams;
+  end fork
+  :Release Grades and SPR;
+fork again
+  :Post Institutional Announcements;
+  :Add / Reply Comments;
+fork again
+  :Access Calendar;
+  fork
+    :Add Schedule Event;
+  fork again
+    :Remove Schedule Event;
+  end fork
+fork again
+  :Access Inbox;
+  fork
+    :Direct message users;
+  fork again
+    :Create group;
+    :Message group;
+  end fork
+fork again
+  :Access Gabay RAG;
+  fork
+    :Generate Graph;
+  fork again
+    :Generate Tables;
+  fork again
+    :Generate Report;
+  end fork
+fork again
+  :Access History;
+end fork
+
+:Logout;
+stop
+@enduml

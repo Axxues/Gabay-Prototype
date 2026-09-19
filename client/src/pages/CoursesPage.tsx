@@ -74,9 +74,6 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
   }, [initialSubTab]);
 
   useEffect(() => {
-    if (activeRole === 'student' && subTab === 'people') {
-      setSubTab('modules');
-    }
     if (activeRole === 'student' && subTab === 'pending-requests') {
       setSubTab('modules');
     }

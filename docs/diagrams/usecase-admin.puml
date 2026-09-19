@@ -1,0 +1,95 @@
+@startuml
+title Gabay LMS - Admin Use Case
+left to right direction
+skinparam packageStyle rectangle
+skinparam usecase {
+  BackgroundColor #8AC9F5
+  BorderColor black
+}
+skinparam actor {
+  BackgroundColor #8AC9F5
+  BorderColor black
+}
+skinparam package {
+  BackgroundColor white
+  BorderColor black
+}
+skinparam arrowColor black
+skinparam linetype polyline
+
+actor "Admin" as Admin
+
+rectangle "Gabay LMS" {
+  package "Accounts" as P1 {
+    usecase "Manage College Accounts\n(Create / Edit / Deactivate)" as UC1
+  }
+  package "Courses" as P2 {
+    usecase "Manage Courses and Sections\n(Create shell + capacity)" as UC2
+    usecase "Approve Enrollment Requests\n(People queue + Bell)" as UC3
+  }
+  package "Content" as P3 {
+    usecase "Manage Courses\n(Publish Modules)" as UC4
+    usecase "Manage Module Items" as UC4a
+    usecase "Add / Reply on Module" as UC4b
+    usecase "Upload Syllabus Files" as UC5a
+    usecase "Publish Syllabus" as UC5b
+  }
+  package "Assessments" as P4 {
+    usecase "Manage Activities" as UC6a
+    usecase "Manage Quizzes" as UC6b
+    usecase "Manage Exams" as UC6c
+    usecase "Release Grades and SPR" as UC6d
+  }
+  package "Communication" as P5 {
+    usecase "Post Institutional\nAnnouncements" as UC7
+    usecase "Add / Reply Comments" as UC7b
+  }
+  package "Calendar" as P6 {
+    usecase "Access Calendar" as UC8
+    usecase "Add Schedule Event" as UC8a
+    usecase "Remove Schedule Event" as UC8b
+  }
+  package "Inbox" as P7 {
+    usecase "Access Inbox" as UC9
+    usecase "Direct message users" as UC9a
+    usecase "Create group" as UC9b
+    usecase "Message group" as UC9c
+  }
+  package "Gabay RAG" as P8 {
+    usecase "Access Gabay RAG" as UCRAG
+    usecase "Generate Graph" as UCRAG_G
+    usecase "Generate Tables" as UCRAG_T
+    usecase "Generate Report" as UCRAG_R
+  }
+  package "History" as P9 {
+    usecase "Access History" as UC10
+  }
+}
+
+Admin --> P1
+Admin --> P2
+Admin --> P3
+Admin --> P4
+Admin --> P5
+Admin --> P6
+Admin --> P7
+Admin --> P8
+Admin --> P9
+
+UC4a ..> UC4 : <<include>>
+UC4b ..> UC4a : <<extend>>
+UC5b ..> UC5a : <<include>>
+UC6a ..> UC6d : <<include>>
+UC6b ..> UC6d : <<include>>
+UC6c ..> UC6d : <<include>>
+UC7b ..> UC7 : <<include>>
+UC8a ..> UC8 : <<include>>
+UC8b ..> UC8 : <<include>>
+UC9a ..> UC9 : <<include>>
+UC9b ..> UC9 : <<include>>
+UC9c ..> UC9b : <<include>>
+UCRAG ..> UCRAG_G : <<include>>
+UCRAG ..> UCRAG_T : <<include>>
+UCRAG ..> UCRAG_R : <<include>>
+note right of UC3 : self_join,\nfaculty_enroll
+@enduml

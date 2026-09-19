@@ -593,7 +593,15 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
                                             onChange={e =>
                                               setChildTexts(prev => ({ ...prev, [ann.id]: e.target.value }))
                                             }
-                                            placeholder="Write a reply..."
+                                            onKeyDown={e => {
+                                              if (e.key === 'Enter' && !e.shiftKey) {
+                                                e.preventDefault();
+                                                if (annChildText.trim() && replyToReplyIds[ann.id] && !postingChildIds[ann.id]) {
+                                                  void handlePostChildReply(ann.id);
+                                                }
+                                              }
+                                            }}
+                                            placeholder="Write a reply... (Press Enter to send, Shift+Enter for new line)"
                                             className="flex-1 px-3 py-2 bg-background border border-border rounded-xl text-xs font-sans text-foreground outline-none focus:ring-2 focus:ring-primary/20 resize-none"
                                           />
                                           <div className="flex flex-col space-y-1.5 shrink-0">

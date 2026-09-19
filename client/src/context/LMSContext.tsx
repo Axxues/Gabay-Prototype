@@ -131,6 +131,7 @@ interface LMSContextType {
     rubricScores: Record<string, number>,
     commentText?: string
   ) => Promise<void>;
+  upsertManualExamGrade: (examId: string, studentId: string, grade: number) => Promise<void>;
   submitActivity: (
     activityId: string,
     submissionType: 'file' | 'online_text',
@@ -2164,6 +2165,35 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const upsertManualExamGrade = async (examId: string, studentId: string, grade: number): Promise<void> => {
+    try {
+      if (!Number.isFinite(grade) || grade < 0) {
+        throw new Error('Grade must be a non-negative number.');
+      }
+      const { submission } = await apiFetch<{ submission: unknown }>(
+        `/api/exams/${encodeURIComponent(examId)}/manual-grade`,
+        { method: 'POST', body: { studentId, grade } }
+      );
+      const merged = normalizeSubmission(submission);
+      setDb(prev => {
+        const idx = (prev.submissions || []).findIndex(
+          s => s.activityKey === merged.activityKey && s.studentId === merged.studentId
+        );
+        if (idx >= 0) {
+          const updated = [...prev.submissions];
+          updated[idx] = merged;
+          return { ...prev, submissions: updated };
+        }
+        return { ...prev, submissions: [merged, ...prev.submissions] };
+      });
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to save manual exam grade.';
+      setLastError(message);
+      showAlert(message, 'Manual Grade Failed');
+      throw err;
+    }
+  };
+
   // Contract for the 5th param: `answers` is for question-set activities
   // only. When `answers` is provided the question-set submit path is used;
   // otherwise the cached `format` decides — a cache MISS (unknown format)
@@ -3595,7 +3625,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       const cs = classStandingPercent(scores, perfects);
       const exam = term === 'midterm' ? cells?.mtExam ?? null : cells?.ftExam ?? null;
-      return termGrade(cs, exam, examPerfect, weights);
+      const hasCSData = scores.some(s => s !== null);
+      return termGrade(cs, exam, examPerfect, weights, hasCSData || exam !== null);
     };
     const mtGrade = resolveTerm('midterm');
     const ftGrade = resolveTerm('final');
@@ -4073,19 +4104,50 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       const updatedUser = {
         ...activeUser,
-        enrolledCourseIds: [...(activeUser.enrolledCourseIds || []), request.courseId]
+        enrolledCourseIds: [...new Set([...(activeUser.enrolledCourseIds || []), request.courseId])]
       };
       setCurrentUser(updatedUser);
+
+      // Fetch the newly-approved course so it appears without a page refresh.
+      // Student course lists are scoped to db.courses (enrolled only), so a
+      // map-only update would be a no-op when the course isn't cached yet.
+      let freshCourse: Course | null = null;
+      try {
+        const res = await apiFetch<{ course: Course }>(
+          `/api/courses/${encodeURIComponent(request.courseId)}`
+        );
+        freshCourse = res.course ? normalizeCourseSyllabus(res.course) : null;
+      } catch {
+        freshCourse = null;
+      }
 
       setDb(prev => ({
         ...mergeEnrollmentRequest(prev, request),
         users: prev.users.map(u => u.id === activeUser.id ? updatedUser : u),
-        courses: prev.courses.map(c =>
-          c.id === request.courseId
-            ? { ...c, enrolledCount: (c.enrolledCount || 0) + 1 }
-            : c
-        )
+        courses: (() => {
+          const exists = prev.courses.some(c => c.id === request.courseId);
+          if (exists) {
+            return prev.courses.map(c =>
+              c.id === request.courseId
+                ? { ...c, enrolledCount: (c.enrolledCount || 0) + 1 }
+                : c
+            );
+          }
+          if (freshCourse) {
+            return [...prev.courses, { ...freshCourse, enrolledCount: (freshCourse.enrolledCount || 0) + 1 } as Course];
+          }
+          // Fallback: minimal row from request payload so lists still update.
+          const fallback = {
+            id: request.courseId,
+            code: (request as unknown as { courseCode?: string }).courseCode || request.courseId,
+            title: (request as unknown as { courseTitle?: string }).courseTitle || request.courseId,
+            section: '',
+            enrolledCount: 1,
+          } as unknown as Course;
+          return [...prev.courses, fallback];
+        })()
       }));
+      setActiveCourseId(request.courseId);
       return true;
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to accept invitation.';
@@ -4344,6 +4406,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         effectiveTermsForCourse,
         importCommonsTemplate,
         gradeSubmission,
+        upsertManualExamGrade,
         submitActivity,
         toggleModulePublish,
         toggleItemCompletion,

@@ -56,7 +56,7 @@ export const getTransmutedGrade = (
 const TERM_SHORT: Record<TermId, string> = { prelim: 'Prelim', midterm: 'MT', finals: 'FT' };
 
 export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, onGoToSyllabus }) => {
-  const { db, showAlert, effectiveTermsForCourse, isLoading = false, isSyncing = false, setGradesReleased } = useLMS() as ReturnType<typeof useLMS> & { isLoading?: boolean; isSyncing?: boolean; setGradesReleased: (courseId: string, term: TermId, released: boolean) => void };
+  const { db, showAlert, effectiveTermsForCourse, isLoading = false, isSyncing = false, setGradesReleased, upsertManualExamGrade } = useLMS() as ReturnType<typeof useLMS> & { isLoading?: boolean; isSyncing?: boolean; setGradesReleased: (courseId: string, term: TermId, released: boolean) => void; upsertManualExamGrade?: (examId: string, studentId: string, grade: number) => Promise<void> };
 
   const course = db.courses.find(c => c.id === courseId);
   const releaseMap = course?.gradesReleased || {};
@@ -144,15 +144,63 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
     () => bucketColumnsByTerm(autoCols, { activities: db.activities, quizzes: db.quizzes }, terms),
     [autoCols, db.activities, db.quizzes, terms]
   );
-  const examPerfectByTerm = useMemo((): Record<TermId, number> => {
-    const findPerfect = (term: TermId): number => {
+  const examPerfectByTerm = useMemo((): Record<TermId, number | null> => {
+    const findPerfect = (term: TermId): number | null => {
       const want = normalizeTermId(term);
-      const e = (db.exams ?? []).find(x => x.courseId === courseId && x.published && normalizeTermId(x.term) === want);
+      // Faculty view shows the full score even when the exam is still a
+      // draft (unpublished) so the column header never falls back to /1.
+      // Prefer published, fall back to any matching exam in the course.
+      const list = (db.exams ?? []).filter(x => x.courseId === courseId && normalizeTermId(x.term) === want);
+      if (list.length === 0) return null;
+      const e = list.find(x => x.published) ?? list[0];
       const pts = (e?.questions ?? []).reduce((s, q) => s + (q.points ?? 0), 0);
-      return Math.max(1, pts);
+      return pts;
     };
-    return { prelim: 1, midterm: findPerfect('midterm'), finals: findPerfect('finals') };
+    return { prelim: null, midterm: findPerfect('midterm'), finals: findPerfect('finals') };
   }, [courseId, db.exams]);
+
+  const examIdByTerm = useMemo((): Record<TermId, string | null> => {
+    const findId = (term: TermId): string | null => {
+      const want = normalizeTermId(term);
+      const list = (db.exams ?? []).filter(x => x.courseId === courseId && normalizeTermId(x.term) === want);
+      if (list.length === 0) return null;
+      return (list.find(x => x.published) ?? list[0])?.id ?? null;
+    };
+    return { prelim: null, midterm: findId('midterm'), finals: findId('finals') };
+  }, [courseId, db.exams]);
+
+  const [manualDrafts, setManualDrafts] = useState<Record<string, string>>({});
+  const [savingManual, setSavingManual] = useState<Record<string, boolean>>({});
+
+  const handleSaveManualExam = async (term: TermId, studentId: string) => {
+    const examId = examIdByTerm[term];
+    if (!examId || !upsertManualExamGrade) return;
+    const key = `${term}:${studentId}`;
+    const raw = (manualDrafts[key] ?? '').trim();
+    if (raw === '') return;
+    const grade = Number(raw);
+    const perfect = examPerfectByTerm[term];
+    if (!Number.isFinite(grade) || grade < 0 || (perfect !== null && grade > perfect)) {
+      showAlert({
+        title: 'Invalid exam score',
+        message: perfect !== null ? `Enter a number from 0 to ${perfect}.` : 'Enter a non-negative number.',
+        type: 'warning',
+      });
+      return;
+    }
+    setSavingManual(prev => ({ ...prev, [key]: true }));
+    try {
+      await upsertManualExamGrade(examId, studentId, grade);
+      setManualDrafts(prev => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+    } catch { /* context already surfaced alert */ }
+    finally {
+      setSavingManual(prev => ({ ...prev, [key]: false }));
+    }
+  };
 
   const getSourceTitle = (column: SPRColumn): string | null => {
     const link = column.linkedSource;
@@ -200,7 +248,8 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
           perTerm[term] = { cells, exam: null, grade: cols.length === 0 ? null : round2(cs) };
         } else {
           const exam = resolveExamScore(courseId, term, student.id, { exams: db.exams, submissions: db.submissions });
-          perTerm[term] = { cells, exam: exam.score, grade: termGrade(cs, exam.score, exam.perfect, weights) };
+          const hasCSData = cells.some(c => c.score !== null);
+          perTerm[term] = { cells, exam: exam.score, grade: termGrade(cs, exam.score, exam.perfect, weights, hasCSData || exam.score !== null) };
         }
       }
       const termGrades = {} as Record<TermId, number | null>;
@@ -220,7 +269,7 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
 
   const handleExportExcel = () => {
     if (!course || hasParseError) return;
-    const autoConfig = { courseId, prelimColumns: columnsByTerm.prelim, midtermColumns: columnsByTerm.midterm, finalColumns: columnsByTerm.finals, mtExamPerfect: examPerfectByTerm.midterm, ftExamPerfect: examPerfectByTerm.finals };
+    const autoConfig = { courseId, prelimColumns: columnsByTerm.prelim, midtermColumns: columnsByTerm.midterm, finalColumns: columnsByTerm.finals, mtExamPerfect: examPerfectByTerm.midterm ?? 100, ftExamPerfect: examPerfectByTerm.finals ?? 100 };
     exportSPRToExcel({
       course,
       roster: students,
@@ -566,7 +615,7 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
                           >
                             <div className="font-semibold text-foreground">{TERM_SHORT[term]} exam</div>
                             <div className="text-[11px] text-muted-foreground font-normal mt-0.5 tabular-nums">
-                              / {examPerfectByTerm[term]}
+                              / {examPerfectByTerm[term] ?? '—'}
                             </div>
                           </th>
                         )}
@@ -663,15 +712,48 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
                                 );
                               })}
 
-                              {term === 'prelim' ? null : (
-                                <td className={`px-2 py-2.5 text-center animate-gradebook-cell-in ${termCols.length === 0 ? 'border-l border-border' : ''}`}>
-                                  <div className="flex items-center justify-center space-x-1">
-                                    <span className="inline-block px-1 py-1 text-center text-[13px] font-semibold tabular-nums text-foreground">
-                                      {examValue === null || examValue === undefined ? <span className="text-muted-foreground/40 font-normal">—</span> : round2(examValue)}
-                                    </span>
-                                  </div>
-                                </td>
-                              )}
+                              {term === 'prelim' ? null : (() => {
+                                const examId = examIdByTerm[term];
+                                const draftKey = `${term}:${student.id}`;
+                                const draft = manualDrafts[draftKey];
+                                const display = draft !== undefined ? draft : (examValue === null || examValue === undefined ? '' : String(round2(examValue)));
+                                const canEdit = Boolean(examId && upsertManualExamGrade);
+                                return (
+                                  <td className={`px-2 py-2.5 text-center animate-gradebook-cell-in ${termCols.length === 0 ? 'border-l border-border' : ''}`}>
+                                    {canEdit ? (
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        max={examPerfectByTerm[term] ?? undefined}
+                                        step="0.01"
+                                        value={display}
+                                        placeholder="—"
+                                        disabled={savingManual[draftKey]}
+                                        onChange={e => setManualDrafts(prev => ({ ...prev, [draftKey]: e.target.value }))}
+                                        onBlur={() => {
+                                          if (draft !== undefined && draft.trim() !== '') {
+                                            void handleSaveManualExam(term, student.id);
+                                          }
+                                        }}
+                                        onKeyDown={e => {
+                                          if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            void handleSaveManualExam(term, student.id);
+                                          }
+                                        }}
+                                        title={examId ? `Manual ${TERM_SHORT[term]} exam score (Enter to save)` : 'No exam for this term'}
+                                        className="w-16 px-1.5 py-1 text-center text-[13px] font-semibold tabular-nums text-foreground bg-background border border-border rounded-lg outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                                      />
+                                    ) : (
+                                      <div className="flex items-center justify-center space-x-1">
+                                        <span className="inline-block px-1 py-1 text-center text-[13px] font-semibold tabular-nums text-foreground">
+                                          {examValue === null || examValue === undefined ? <span className="text-muted-foreground/40 font-normal">—</span> : round2(examValue)}
+                                        </span>
+                                      </div>
+                                    )}
+                                  </td>
+                                );
+                              })()}
 
                               <td className={`px-2 py-2.5 text-center ${term === 'prelim' && termCols.length === 0 ? 'border-l border-border' : ''}`}>
                                 {gradeValue !== null && gradeValue !== undefined ? (

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useLMS } from '../context/LMSContext';
 import type { QuizQuestion, QuizItemType, TermId } from '../types/lms';
 import type { QuizImportDraft } from '../utils/quizImport';
@@ -31,7 +31,9 @@ import {
   ChevronDown,
   RefreshCcw,
   Upload,
-  Loader2
+  Loader2,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 
 interface CreateExamPageProps {
@@ -251,6 +253,20 @@ export const CreateExamPage: React.FC<CreateExamPageProps> = ({
     }
     setItems(prev => prev.filter((_, idx) => idx !== index));
     setActiveCardIndex(prev => Math.max(0, prev - 1));
+  };
+
+  const dragFromIndex = useRef<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
+  const handleMoveItem = (from: number, to: number) => {
+    if (from === to || from < 0 || to < 0 || from >= items.length || to >= items.length) return;
+    setItems(prev => {
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+    setActiveCardIndex(to);
   };
 
   const handleDuplicateItem = (index: number) => {
@@ -1088,17 +1104,66 @@ export const CreateExamPage: React.FC<CreateExamPageProps> = ({
                 <div
                   key={item.id}
                   onClick={() => setActiveCardIndex(itemIdx)}
+                  onDragOver={e => {
+                    e.preventDefault();
+                    if (dragFromIndex.current !== null && dragFromIndex.current !== itemIdx) {
+                      setDragOverIndex(itemIdx);
+                    }
+                  }}
+                  onDrop={e => {
+                    e.preventDefault();
+                    const from = dragFromIndex.current;
+                    dragFromIndex.current = null;
+                    setDragOverIndex(null);
+                    if (from !== null) handleMoveItem(from, itemIdx);
+                  }}
+                  onDragEnd={() => {
+                    dragFromIndex.current = null;
+                    setDragOverIndex(null);
+                  }}
                   className={`bg-card rounded-2xl border transition-all p-5 sm:p-6 space-y-4 cursor-pointer ${
                     isActive
                       ? 'border-primary/30 ring-1 ring-primary/15'
                       : 'border-border hover:border-primary/40'
-                  }`}
+                  } ${dragOverIndex === itemIdx ? 'ring-2 ring-primary/40 border-primary/60' : ''}`}
                 >
                   {/* Top Row: Question Prompt & Question Type Dropdown */}
                   <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                    {/* Drag Grip Indicator */}
-                    <div className="hidden sm:flex items-center text-muted-foreground/40 cursor-grab -ml-2">
-                      <GripVertical className="w-4 h-4" />
+                    {/* Drag Grip + move controls */}
+                    <div className="hidden sm:flex items-center gap-1 text-muted-foreground/40 -ml-2">
+                      <div
+                        draggable
+                        onDragStart={e => {
+                          dragFromIndex.current = itemIdx;
+                          e.dataTransfer.effectAllowed = 'move';
+                          try { e.dataTransfer.setData('text/plain', String(itemIdx)); } catch { /* ignore */ }
+                        }}
+                        onClick={e => e.stopPropagation()}
+                        title="Drag to reorder"
+                        className="cursor-grab active:cursor-grabbing p-1 rounded hover:bg-muted hover:text-foreground touch-none select-none"
+                      >
+                        <GripVertical className="w-4 h-4" />
+                      </div>
+                      <div className="flex flex-col">
+                        <button
+                          type="button"
+                          onClick={e => { e.stopPropagation(); handleMoveItem(itemIdx, itemIdx - 1); }}
+                          disabled={itemIdx === 0}
+                          title="Move up"
+                          className="p-0.5 rounded hover:bg-muted hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                        >
+                          <ArrowUp className="w-3 h-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={e => { e.stopPropagation(); handleMoveItem(itemIdx, itemIdx + 1); }}
+                          disabled={itemIdx === items.length - 1}
+                          title="Move down"
+                          className="p-0.5 rounded hover:bg-muted hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                        >
+                          <ArrowDown className="w-3 h-3" />
+                        </button>
+                      </div>
                     </div>
 
                     {/* Question Prompt Input Field */}

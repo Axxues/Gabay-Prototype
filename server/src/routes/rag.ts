@@ -247,7 +247,7 @@ export function normalizeReply(data: unknown, userMessage?: string): {
     if (/```json\s*\{[\s\S]*?"type"[\s\S]*?"data"[\s\S]*?\}\s*```/.test(text)) {
       return text.replace(/```json/g, '```chart');
     }
-    return (text.trim() + '\n\n' + formatChartBlock(cSpec)).trim();
+    return text;
   };
 
   const rawCandidates: unknown[] = [];

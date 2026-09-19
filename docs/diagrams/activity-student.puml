@@ -1,0 +1,76 @@
+@startuml
+title Gabay LMS - Student Activity
+skinparam activity {
+  BackgroundColor #8AC9F5
+  BorderColor black
+}
+skinparam diamond {
+  BackgroundColor #8AC9F5
+  BorderColor black
+}
+skinparam activityBarColor black
+skinparam arrowColor black
+
+start
+repeat
+  :Login;
+  :Validate credentials;
+repeat while (Is Valid Account?) is (no) not (yes)
+
+fork
+  :Access Courses;
+  fork
+    :Join Course via Code;
+    :Wait for Faculty Approval;
+  fork again
+    :Accept Course Invitation;
+  end fork
+fork again
+  :Access Learning Content;
+  fork
+    :View Modules + Module Items;
+  fork again
+    :View Syllabus;
+  end fork
+  :Download Files;
+fork again
+  :Take Assessments;
+  fork
+    :Take Activities;
+    :Submit Files + Auto-grade;
+  fork again
+    :Take Quizzes;
+  fork again
+    :Take Exams;
+  end fork
+fork again
+  :View Grades and SPR;
+fork again
+  :View Announcements;
+  :Add / Reply Comment;
+fork again
+  :Access Calendar;
+fork again
+  :Access Inbox;
+  fork
+    :Direct message users;
+  fork again
+    :Create group;
+    :Message group;
+  end fork
+fork again
+  :Access Gabay RAG;
+  fork
+    :Generate Graph;
+  fork again
+    :Generate Tables;
+  fork again
+    :Generate Report;
+  end fork
+fork again
+  :Access History;
+end fork
+
+:Logout;
+stop
+@enduml

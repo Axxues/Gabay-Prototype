@@ -58,6 +58,18 @@ app.use('/uploads', express.static(uploadsDir));
 app.use(errorMiddleware);
 
 const port = Number(process.env.PORT || 4000);
-app.listen(port, () => {
+const server = app.listen(port, () => {
   console.log(`gabay-server listening on http://localhost:${port}`);
+});
+server.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(
+      `Port ${port} is already in use (another dev server is still running).\n` +
+      `Fix: kill it or reuse another port.\n` +
+      `  - PowerShell: Stop-Process -Id (Get-NetTCPConnection -LocalPort ${port} -State Listen | Select-Object -ExpandProperty OwningProcess) -Force\n` +
+      `  - Or run on another port: $env:PORT=4001; npm run dev`
+    );
+    process.exit(1);
+  }
+  throw err;
 });

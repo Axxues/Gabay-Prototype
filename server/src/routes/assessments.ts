@@ -756,6 +756,73 @@ function buildAssessmentRouter(kind: AssessmentKind) {
     })
   );
 
+  router.post(
+    '/:id/manual-grade',
+    authenticateToken,
+    requireRole('faculty', 'admin'),
+    asyncHandler(async (req, res) => {
+      const auth = req.auth!;
+      const row = await loadOr404(req.params.id);
+      const course = await loadCourseOr404(row.courseId);
+      assertCourseOwner(course, auth);
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const studentId = body.studentId;
+      const grade = body.grade;
+      if (typeof studentId !== 'string' || !studentId) {
+        throw new ApiError(400, 'bad_request', 'Field studentId is required.');
+      }
+      if (typeof grade !== 'number' || Number.isNaN(grade) || grade < 0) {
+        throw new ApiError(400, 'bad_request', 'Field grade must be a non-negative number.');
+      }
+      const activityKey = syntheticActivityKey(row.id);
+      const student = await prisma.user.findUnique({ where: { id: studentId } });
+      const existing = await prisma.submission.findFirst({
+        where: { activityKey, studentId },
+      });
+      const me = await prisma.user.findUnique({ where: { id: auth.sub } });
+      const submission = existing
+        ? await prisma.submission.update({
+            where: { id: existing.id },
+            data: {
+              grade,
+              status: 'graded',
+              gradedAt: new Date(),
+              gradedBy: me?.name ?? auth.sub,
+              ...(isQuiz ? { quizId: row.id } : isExam ? { examId: row.id } : { activityId: row.id }),
+            },
+          })
+        : await prisma.submission.create({
+            data: {
+              id: newId('sub'),
+              activityKey,
+              ...(isQuiz ? { quizId: row.id } : isExam ? { examId: row.id } : { activityId: row.id }),
+              courseId: course.id,
+              studentId,
+              studentName: student?.name ?? '',
+              studentAvatar: student?.avatar ?? '',
+              submissionType: 'online_text',
+              content: stringifyJsonField({ manual: true }),
+              status: 'graded',
+              grade,
+              gradedAt: new Date(),
+              gradedBy: me?.name ?? auth.sub,
+              rubricScores: stringifyJsonField({}),
+            },
+          });
+      await createNotification({
+        type: 'grade_posted',
+        recipientId: studentId,
+        actorId: auth.sub,
+        actorName: me?.name ?? '',
+        actorAvatar: me?.avatar ?? '',
+        relatedId: row.id,
+        relatedTitle: row.title,
+        content: `Your submission for ${row.title} was graded.`,
+      });
+      res.json({ submission: mapSubmission(submission) });
+    })
+  );
+
   return router;
 }
 
@@ -785,6 +852,13 @@ submissionsRouter.post(
       assertCourseOwner(course, auth);
       relatedId = quiz.id;
       relatedTitle = quiz.title;
+    } else if (submission.examId) {
+      const exam = await prisma.exam.findUnique({ where: { id: submission.examId } });
+      if (!exam) throw new ApiError(404, 'not_found', 'Exam not found.');
+      course = await loadCourseOr404(exam.courseId);
+      assertCourseOwner(course, auth);
+      relatedId = exam.id;
+      relatedTitle = exam.title;
     } else if (submission.activityId) {
       const activity = await prisma.activity.findUnique({
         where: { id: submission.activityId },
@@ -882,6 +956,10 @@ submissionsRouter.post(
       const quiz = await prisma.quiz.findUnique({ where: { id: submission.quizId } });
       if (!quiz) throw new ApiError(404, 'not_found', 'Quiz not found.');
       course = await loadCourseOr404(quiz.courseId);
+    } else if ((submission as unknown as { examId?: string }).examId) {
+      const exam = await prisma.exam.findUnique({ where: { id: (submission as unknown as { examId: string }).examId } });
+      if (!exam) throw new ApiError(404, 'not_found', 'Exam not found.');
+      course = await loadCourseOr404(exam.courseId);
     } else if (submission.activityId) {
       const activity = await prisma.activity.findUnique({
         where: { id: submission.activityId },

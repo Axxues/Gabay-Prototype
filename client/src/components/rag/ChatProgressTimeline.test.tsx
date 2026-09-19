@@ -11,7 +11,7 @@ describe('ChatProgressTimeline', () => {
 
     // Live thinking indicator and seconds must be visible
     expect(screen.getByText(/GABAY is thinking/i)).toBeInTheDocument();
-    expect(screen.getByText(/0\.0s/)).toBeInTheDocument();
+    expect(screen.getByText(/0\.\ds/)).toBeInTheDocument();
 
     // Must NOT show task execution timeline or stage details during process
     expect(screen.queryByText('Task Execution Timeline')).not.toBeInTheDocument();

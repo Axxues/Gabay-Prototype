@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { ChartSpec } from '../../types/chart';
@@ -8,6 +8,90 @@ import { TableActionToolbar } from './TableActionToolbar';
 interface ChatMarkdownProps {
   content: string;
   attachedChart?: ChartSpec | null;
+}
+
+export function getChartSignature(spec: unknown): string {
+  if (!spec || typeof spec !== 'object') return '';
+  const c = spec as Partial<ChartSpec>;
+  const title = (c.title || '').trim().toLowerCase();
+  const type = (c.type || '').trim().toLowerCase();
+  const dataKey = Array.isArray(c.data)
+    ? c.data
+        .map((d) => `${(d.label || '').trim().toLowerCase()}:${d.value}`)
+        .sort()
+        .join('|')
+    : '';
+  return `${type}::${title}::${dataKey}`;
+}
+
+export function hasMatchingEmbeddedChart(markdown: string, attachedSpec?: ChartSpec | null): boolean {
+  if (!markdown || typeof markdown !== 'string') return false;
+
+  const codeBlockRegex = /```(?:chart|json)?\s*([\s\S]*?)\s*```/gi;
+  let match: RegExpExecArray | null;
+  let anyChartFound = false;
+  const targetSig = attachedSpec ? getChartSignature(attachedSpec) : null;
+
+  while ((match = codeBlockRegex.exec(markdown)) !== null) {
+    const raw = match[1].trim();
+    if (raw.startsWith('{') && raw.endsWith('}')) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (
+          parsed &&
+          typeof parsed === 'object' &&
+          typeof parsed.type === 'string' &&
+          Array.isArray(parsed.data) &&
+          parsed.data.length > 0
+        ) {
+          anyChartFound = true;
+          if (targetSig) {
+            if (getChartSignature(parsed) === targetSig) {
+              return true;
+            }
+          } else {
+            return true;
+          }
+        }
+      } catch {
+        // ignore non-json
+      }
+    }
+  }
+
+  return anyChartFound;
+}
+
+export function deduplicateChartBlocks(markdown: string): string {
+  if (!markdown || typeof markdown !== 'string') return markdown;
+
+  const seenSignatures = new Set<string>();
+  const codeBlockRegex = /```(?:chart|json)?\s*([\s\S]*?)\s*```/gi;
+
+  return markdown.replace(codeBlockRegex, (match, codeText) => {
+    const trimmed = codeText.trim();
+    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (
+          parsed &&
+          typeof parsed === 'object' &&
+          typeof parsed.type === 'string' &&
+          Array.isArray(parsed.data) &&
+          parsed.data.length > 0
+        ) {
+          const sig = getChartSignature(parsed);
+          if (seenSignatures.has(sig)) {
+            return '';
+          }
+          seenSignatures.add(sig);
+        }
+      } catch {
+        // keep match
+      }
+    }
+    return match;
+  });
 }
 
 const TableWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -26,6 +110,15 @@ const TableWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 };
 
 export const ChatMarkdown: React.FC<ChatMarkdownProps> = ({ content, attachedChart }) => {
+  // Deduplicate identical chart blocks purely before parsing
+  const sanitizedContent = useMemo(() => deduplicateChartBlocks(content), [content]);
+
+  // Determine if chart was already embedded in the markdown stream
+  const hasEmbedded = useMemo(
+    () => hasMatchingEmbeddedChart(sanitizedContent, attachedChart),
+    [sanitizedContent, attachedChart]
+  );
+
   return (
     <div className="prose prose-sm max-w-none space-y-2 leading-relaxed text-foreground dark:prose-invert prose-headings:text-foreground prose-strong:text-foreground prose-a:text-primary [&_strong]:text-foreground">
       <ReactMarkdown
@@ -96,7 +189,13 @@ export const ChatMarkdown: React.FC<ChatMarkdownProps> = ({ content, attachedCha
                 const trimmed = codeText.trim();
                 if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
                   const parsed = JSON.parse(trimmed);
-                  if (parsed && typeof parsed === 'object' && typeof parsed.type === 'string' && Array.isArray(parsed.data) && parsed.data.length > 0) {
+                  if (
+                    parsed &&
+                    typeof parsed === 'object' &&
+                    typeof parsed.type === 'string' &&
+                    Array.isArray(parsed.data) &&
+                    parsed.data.length > 0
+                  ) {
                     return <InteractiveChart spec={parsed as ChartSpec} />;
                   }
                 }
@@ -129,11 +228,11 @@ export const ChatMarkdown: React.FC<ChatMarkdownProps> = ({ content, attachedCha
           },
         }}
       >
-        {content}
+        {sanitizedContent}
       </ReactMarkdown>
 
-      {/* Render top-level chart payload if provided separately from markdown */}
-      {attachedChart && <InteractiveChart spec={attachedChart} />}
+      {/* Render top-level chart payload ONLY if not already rendered inside the markdown */}
+      {!hasEmbedded && attachedChart && <InteractiveChart spec={attachedChart} />}
     </div>
   );
 };

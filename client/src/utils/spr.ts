@@ -44,8 +44,17 @@ export function termGrade(
   examScore: number | null,
   examPerfect: number,
   w: SPRWeights,
+  hasClassStandingData?: boolean,
 ): number | null {
-  if (examScore === null || examPerfect <= 0) return null;
+  // Auto-compute when at least one component has a score:
+  // - both present -> weighted 60/40 (default)
+  // - exam missing but CS has ≥1 graded cell -> CS-only interim grade
+  //   (same as prelim) so the term doesn't stay blank.
+  // - neither -> null (dash).
+  if (examScore === null || examPerfect <= 0) {
+    if (hasClassStandingData) return round2(csPercent);
+    return null;
+  }
   return round2((csPercent * w.csWeight + ((examScore / examPerfect) * 100 * w.examWeight)) / 100);
 }
 

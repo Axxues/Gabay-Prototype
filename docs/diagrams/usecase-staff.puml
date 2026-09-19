@@ -1,0 +1,58 @@
+@startuml
+title Gabay LMS - Staff Use Case
+left to right direction
+skinparam packageStyle rectangle
+skinparam usecase {
+  BackgroundColor #8AC9F5
+  BorderColor black
+}
+skinparam actor {
+  BackgroundColor #8AC9F5
+  BorderColor black
+}
+skinparam package {
+  BackgroundColor white
+  BorderColor black
+}
+skinparam arrowColor black
+skinparam linetype polyline
+
+actor "Staff" as Staff
+
+rectangle "Gabay LMS" {
+  package "Calendar" as P5 {
+    usecase "Access Calendar" as UC8
+    usecase "Add Schedule Event" as UC8a
+    usecase "Remove Schedule Event" as UC8b
+  }
+  package "Inbox" as P6 {
+    usecase "Access Inbox" as UC9
+    usecase "Direct message users" as UC9a
+    usecase "Create group" as UC9b
+    usecase "Message group" as UC9c
+  }
+  package "Gabay RAG" as P7 {
+    usecase "Access Gabay RAG" as UCRAG
+    usecase "Generate Graph" as UCRAG_G
+    usecase "Generate Tables" as UCRAG_T
+    usecase "Generate Report" as UCRAG_R
+  }
+  package "History" as P8 {
+    usecase "Access History" as UC10
+  }
+}
+
+Staff --> P5
+Staff --> P6
+Staff --> P7
+Staff --> P8
+
+UC8a ..> UC8 : <<include>>
+UC8b ..> UC8 : <<include>>
+UC9a ..> UC9 : <<include>>
+UC9b ..> UC9 : <<include>>
+UC9c ..> UC9b : <<include>>
+UCRAG ..> UCRAG_G : <<include>>
+UCRAG ..> UCRAG_T : <<include>>
+UCRAG ..> UCRAG_R : <<include>>
+@enduml
