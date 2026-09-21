@@ -17,6 +17,7 @@ import { filesRouter } from './routes/files.js';
 import { gradesRouter } from './routes/grades.js';
 import { sprRouter } from './routes/spr.js';
 import { ragRouter } from './routes/rag.js';
+import { ragAggregateRouter } from './routes/ragAggregate.js';
 import { ragExportRouter } from './routes/ragExport.js';
 
 const app = express();
@@ -51,6 +52,7 @@ app.use('/api', filesRouter);
 app.use('/api', gradesRouter);
 app.use('/api', sprRouter);
 app.use('/api/rag', ragRouter);
+app.use('/api/rag-aggregate', ragAggregateRouter);
 app.use('/api/rag-export', ragExportRouter);
 
 const uploadsDir =
