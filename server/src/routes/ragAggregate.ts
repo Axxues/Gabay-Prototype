@@ -44,7 +44,11 @@ ragAggregateRouter.post('/', async (req, res, next) => {
     const metric = typeof body.metric === 'string' ? body.metric : '';
     const def = TABLES[table];
     if (!def || !METRICS.includes(metric as Metric)) {
-      throw new ApiError(400, 'bad_request', 'Unknown table or metric.');
+      throw new ApiError(
+        400,
+        'bad_request',
+        `Unknown table '${table}' or metric '${metric}'. Allowed tables: ${Object.keys(TABLES).join(', ')}. Allowed metrics: ${METRICS.join(', ')}.`,
+      );
     }
     const field = typeof body.field === 'string' ? body.field : undefined;
     if ((metric === 'sum' || metric === 'avg' || metric === 'min' || metric === 'max') &&
