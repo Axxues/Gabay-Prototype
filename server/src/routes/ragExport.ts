@@ -4,7 +4,8 @@ import { ApiError } from '../utils/errors.js';
 
 export const ragExportRouter = Router();
 ragExportRouter.use((req, _res, next) => {
-  if (req.header('x-rag-export-key') !== process.env.RAG_EXPORT_KEY) {
+  const expected = process.env.RAG_EXPORT_KEY;
+  if (!expected || req.header('x-rag-export-key') !== expected) {
     throw new ApiError(401, 'unauthorized', 'Missing or invalid export key.');
   }
   next();
@@ -28,7 +29,7 @@ ragExportRouter.get('/learning', async (_req, res, next) => {
   try {
     res.json({ area: 'learning', tables: [
       pack('module', 'learning', await prisma.module.findMany({ select: { id: true, courseId: true, title: true, order: true, published: true } })),
-      pack('module_item', 'learning', await prisma.moduleItem.findMany({ select: { id: true, title: true, type: true, published: true, required: true } })),
+      pack('module_item', 'learning', await prisma.moduleItem.findMany({ select: { id: true, moduleId: true, title: true, type: true, published: true, required: true } })),
       pack('activity', 'learning', await prisma.activity.findMany({ select: { id: true, courseId: true, title: true, instructions: true, term: true, pointsPossible: true, published: true, dueDate: true } })),
       pack('quiz', 'learning', await prisma.quiz.findMany({ select: { id: true, courseId: true, title: true, instructions: true, term: true, timeLimitMinutes: true, published: true, dueDate: true } })),
       pack('exam', 'learning', await prisma.exam.findMany({ select: { id: true, courseId: true, title: true, instructions: true, term: true, timeLimitMinutes: true, published: true } })),
@@ -51,7 +52,7 @@ ragExportRouter.get('/progress', async (_req, res, next) => {
   try {
     res.json({ area: 'progress', tables: [
       pack('submission', 'progress', await prisma.submission.findMany({ select: { id: true, courseId: true, studentId: true, studentName: true, grade: true, status: true, submittedAt: true } })),
-      pack('course_grade', 'progress', await prisma.courseGrade.findMany()),
+      pack('course_grade', 'progress', await prisma.courseGrade.findMany({ select: { courseId: true, studentId: true, midtermGrade: true, finalGrade: true, sprCells: true, updatedAt: true } })),
     ] });
   } catch (e) { next(e); }
 });

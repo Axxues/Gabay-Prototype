@@ -17,6 +17,23 @@ describe('ragExport', () => {
     const res = await request(app()).get('/api/rag-export/courses');
     expect(res.status).toBe(401);
   });
+  it('401s fail-closed when RAG_EXPORT_KEY is unset or empty', async () => {
+    const prev = process.env.RAG_EXPORT_KEY;
+    try {
+      delete process.env.RAG_EXPORT_KEY;
+      const resNoHeader = await request(app()).get('/api/rag-export/courses');
+      expect(resNoHeader.status).toBe(401);
+      const resAnyHeader = await request(app()).get('/api/rag-export/courses')
+        .set('x-rag-export-key', 'anything');
+      expect(resAnyHeader.status).toBe(401);
+      process.env.RAG_EXPORT_KEY = '';
+      const resEmptyEnv = await request(app()).get('/api/rag-export/courses');
+      expect(resEmptyEnv.status).toBe(401);
+    } finally {
+      if (prev === undefined) delete process.env.RAG_EXPORT_KEY;
+      else process.env.RAG_EXPORT_KEY = prev;
+    }
+  });
   it('returns courses-area tables with the key', async () => {
     process.env.RAG_EXPORT_KEY = 'test-key';
     const res = await request(app()).get('/api/rag-export/courses')
