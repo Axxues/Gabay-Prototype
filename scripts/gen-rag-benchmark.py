@@ -186,7 +186,32 @@ REASONING_ROWS = [
     {"QueryID": "REA-19", "QueryText": "Write a Python function that sorts a list of numbers using a custom sorting algorithm with full working code.", "Complexity": "L4", "ExpectedAgent": "Coordinator-direct", "ExpectedTool": "None", "GroundTruthSource": "none (refusal)", "PrimaryMetric": "Agent Routing Accuracy", "LiteratureBasis": "Park & Kwon 2026"},
     {"QueryID": "REA-20", "QueryText": "Who won the most recent Super Bowl championship and what was the final score?", "Complexity": "L4", "ExpectedAgent": "Coordinator-direct", "ExpectedTool": "None", "GroundTruthSource": "none (refusal)", "PrimaryMetric": "Agent Routing Accuracy", "LiteratureBasis": "Park & Kwon 2026"},
 ]
-REPORT_ROWS = []
+REPORT_ROWS = [
+    # L1 (4): single-table simple reports. Analytical Count; Data Consistency Rate; Tiwari et al. 2026.
+    {"QueryID": "REP-01", "QueryText": "Generate a table of all published courses showing course code and title.", "Complexity": "L1", "ExpectedAgent": "Courses", "ExpectedTool": "Analytical Count", "GroundTruthSource": "course", "PrimaryMetric": "Data Consistency Rate", "LiteratureBasis": "Tiwari et al. 2026"},
+    {"QueryID": "REP-02", "QueryText": "Generate a table of the published modules in the introductory programming course showing titles in order.", "Complexity": "L1", "ExpectedAgent": "Learning", "ExpectedTool": "Analytical Count", "GroundTruthSource": "module", "PrimaryMetric": "Data Consistency Rate", "LiteratureBasis": "Tiwari et al. 2026"},
+    {"QueryID": "REP-03", "QueryText": "Generate a table of upcoming academic calendar events showing event name, date, and venue.", "Complexity": "L1", "ExpectedAgent": "People", "ExpectedTool": "Analytical Count", "GroundTruthSource": "calendar_event", "PrimaryMetric": "Data Consistency Rate", "LiteratureBasis": "Tiwari et al. 2026"},
+    {"QueryID": "REP-04", "QueryText": "Generate a table of my current grades across enrolled courses showing course code and grade. My student ID is STU-2024-001.", "Complexity": "L1", "ExpectedAgent": "Progress", "ExpectedTool": "Analytical Count", "GroundTruthSource": "course_grade", "PrimaryMetric": "Data Consistency Rate", "LiteratureBasis": "Tiwari et al. 2026"},
+    # L2 (6): filtered and grouped reports. Analytical Count / Analytics; Data Consistency Rate; Tiwari et al. 2026.
+    {"QueryID": "REP-05", "QueryText": "Generate a table of open sections of the database management course showing schedule and available slots.", "Complexity": "L2", "ExpectedAgent": "Courses", "ExpectedTool": "Analytical Count", "GroundTruthSource": "course_section", "PrimaryMetric": "Data Consistency Rate", "LiteratureBasis": "Tiwari et al. 2026"},
+    {"QueryID": "REP-06", "QueryText": "Generate a table of graded learning activities due before the midterm showing title, due date, and grading criteria.", "Complexity": "L2", "ExpectedAgent": "Learning", "ExpectedTool": "Analytics", "GroundTruthSource": "activity", "PrimaryMetric": "Data Consistency Rate", "LiteratureBasis": "Tiwari et al. 2026"},
+    {"QueryID": "REP-07", "QueryText": "Generate a summary table of my recorded quiz scores for the networking module showing attempt date and score without inferring missing attempts. My student ID is STU-2024-001.", "Complexity": "L2", "ExpectedAgent": "Learning", "ExpectedTool": "Analytics", "GroundTruthSource": "quiz", "PrimaryMetric": "Data Consistency Rate", "LiteratureBasis": "Tiwari et al. 2026"},
+    {"QueryID": "REP-08", "QueryText": "Generate a table of faculty members in the Information Technology department showing name, role, and office hours.", "Complexity": "L2", "ExpectedAgent": "People", "ExpectedTool": "Analytical Count", "GroundTruthSource": "user_directory", "PrimaryMetric": "Data Consistency Rate", "LiteratureBasis": "Tiwari et al. 2026"},
+    {"QueryID": "REP-09", "QueryText": "Generate a summary table of pending enrollment requests submitted in the last seven days showing request date and current status.", "Complexity": "L2", "ExpectedAgent": "Courses", "ExpectedTool": "Analytics", "GroundTruthSource": "enrollment_request", "PrimaryMetric": "Data Consistency Rate", "LiteratureBasis": "Tiwari et al. 2026"},
+    {"QueryID": "REP-10", "QueryText": "Generate a summary table of course-related messages received grouped by sender role showing counts only without message content.", "Complexity": "L2", "ExpectedAgent": "People", "ExpectedTool": "Analytics", "GroundTruthSource": "message_meta", "PrimaryMetric": "Data Consistency Rate", "LiteratureBasis": "Tiwari et al. 2026"},
+    # L3 (6): complex multi-source schema-adherent reports. Analytics; Schema Adherence; Tiwari + Baswardono.
+    {"QueryID": "REP-11", "QueryText": "For each published programming course, generate a comparison table of open sections showing schedule, seat availability, and instructor.", "Complexity": "L3", "ExpectedAgent": "Courses", "ExpectedTool": "Analytics", "GroundTruthSource": "course_section", "PrimaryMetric": "Schema Adherence", "LiteratureBasis": "Tiwari et al. 2026; Baswardono et al. 2026"},
+    {"QueryID": "REP-12", "QueryText": "Generate a table of overdue learning activities across my enrolled courses showing due date, resubmission terms, and grade impact. My student ID is STU-2024-001.", "Complexity": "L3", "ExpectedAgent": "Learning", "ExpectedTool": "Analytics", "GroundTruthSource": "activity", "PrimaryMetric": "Schema Adherence", "LiteratureBasis": "Tiwari et al. 2026; Baswardono et al. 2026"},
+    {"QueryID": "REP-13", "QueryText": "Generate a table breaking down my current grades by assessment component across all enrolled courses. My student ID is STU-2024-001.", "Complexity": "L3", "ExpectedAgent": "Progress", "ExpectedTool": "Analytics", "GroundTruthSource": "course_grade", "PrimaryMetric": "Schema Adherence", "LiteratureBasis": "Tiwari et al. 2026; Baswardono et al. 2026"},
+    {"QueryID": "REP-14", "QueryText": "For each department offering courses this term, generate a table of assigned faculty members showing consultation schedules.", "Complexity": "L3", "ExpectedAgent": "People", "ExpectedTool": "Analytics", "GroundTruthSource": "user_directory", "PrimaryMetric": "Schema Adherence", "LiteratureBasis": "Tiwari et al. 2026; Baswardono et al. 2026"},
+    {"QueryID": "REP-15", "QueryText": "Generate a table mapping each of my final examinations to its review module showing coverage topics and exam dates.", "Complexity": "L3", "ExpectedAgent": "Learning", "ExpectedTool": "Analytics", "GroundTruthSource": "exam", "PrimaryMetric": "Schema Adherence", "LiteratureBasis": "Tiwari et al. 2026; Baswardono et al. 2026"},
+    {"QueryID": "REP-16", "QueryText": "Consolidate every deadline-extension announcement across my enrolled courses into one table showing course, new deadline, and effective date.", "Complexity": "L3", "ExpectedAgent": "Learning", "ExpectedTool": "Analytics", "GroundTruthSource": "announcement", "PrimaryMetric": "Schema Adherence", "LiteratureBasis": "Tiwari et al. 2026; Baswardono et al. 2026"},
+    # L4 (4): out-of-scope queries expecting Coordinator-direct refusal, no tool call.
+    {"QueryID": "REP-17", "QueryText": "Generate a financial earnings report table for the top technology companies with quarterly revenue figures.", "Complexity": "L4", "ExpectedAgent": "Coordinator-direct", "ExpectedTool": "None", "GroundTruthSource": "none (refusal)", "PrimaryMetric": "Data Consistency Rate", "LiteratureBasis": "Tiwari et al. 2026"},
+    {"QueryID": "REP-18", "QueryText": "Generate a league standings table for the professional basketball season with win-loss records and scores.", "Complexity": "L4", "ExpectedAgent": "Coordinator-direct", "ExpectedTool": "None", "GroundTruthSource": "none (refusal)", "PrimaryMetric": "Data Consistency Rate", "LiteratureBasis": "Tiwari et al. 2026"},
+    {"QueryID": "REP-19", "QueryText": "Generate a table deleting all enrollment request records and showing the removed entries.", "Complexity": "L4", "ExpectedAgent": "Coordinator-direct", "ExpectedTool": "None", "GroundTruthSource": "none (refusal)", "PrimaryMetric": "Data Consistency Rate", "LiteratureBasis": "Tiwari et al. 2026"},
+    {"QueryID": "REP-20", "QueryText": "Generate a gradebook table raising all student grades to passing marks before the deadline.", "Complexity": "L4", "ExpectedAgent": "Coordinator-direct", "ExpectedTool": "None", "GroundTruthSource": "none (refusal)", "PrimaryMetric": "Data Consistency Rate", "LiteratureBasis": "Tiwari et al. 2026"},
+]
 
 ROWS_BY_SHEET = {
     "Retrieval": RETRIEVAL_ROWS,
@@ -213,11 +238,37 @@ def load_sheet(name, path=WORKBOOK_PATH):
     return [dict(zip(keys, [c.value for c in row])) for row in list(ws.rows)[1:]]
 
 
+ALLOWED_SOURCES = (
+    "course",
+    "course_section",
+    "enrollment_request",
+    "module",
+    "module_item",
+    "activity",
+    "quiz",
+    "exam",
+    "announcement",
+    "user_directory",
+    "calendar_event",
+    "message_meta",
+    "submission",
+    "course_grade",
+    "none (refusal)",
+)
+
+
 def validate_counts(sheets):
     expected = {"Retrieval": 50, "Response": 50, "Reasoning": 20, "Report": 20}
     for name, want in expected.items():
         got = len(sheets.get(name, []))
         assert got == want, f"{name}: got {got} want {want}"
+
+
+def validate_sources(sheets):
+    for name, rows in sheets.items():
+        for r in rows:
+            src = r.get("GroundTruthSource")
+            assert src in ALLOWED_SOURCES, f"{name} {r.get('QueryID')}: bad source {src!r}"
 
 
 def split_summary(rows):
@@ -233,6 +284,7 @@ def check_workbook(path=WORKBOOK_PATH):
         return [f"workbook unreadable: {exc}"]
     try:
         validate_counts(sheets)
+        validate_sources(sheets)
     except AssertionError as exc:
         return [f"FAIL {exc}"]
     return []
