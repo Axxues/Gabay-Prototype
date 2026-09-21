@@ -17,6 +17,7 @@ import { filesRouter } from './routes/files.js';
 import { gradesRouter } from './routes/grades.js';
 import { sprRouter } from './routes/spr.js';
 import { ragRouter } from './routes/rag.js';
+import { ragExportRouter } from './routes/ragExport.js';
 
 const app = express();
 // 35mb accommodates the 25MB file-upload cap: base64 inflates files by ~4/3
@@ -50,6 +51,7 @@ app.use('/api', filesRouter);
 app.use('/api', gradesRouter);
 app.use('/api', sprRouter);
 app.use('/api/rag', ragRouter);
+app.use('/api/rag-export', ragExportRouter);
 
 const uploadsDir =
   process.cwd().endsWith('server') ? path.resolve('uploads') : path.resolve('server/uploads');
