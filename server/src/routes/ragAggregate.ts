@@ -37,11 +37,75 @@ const NUMERIC_FIELDS = new Set([
 ]);
 const METRICS: Metric[] = ['count', 'sum', 'avg', 'min', 'max', 'rows'];
 
+// Deterministic keyword routing: maps a raw user question to an aggregation
+// when the caller supplies no usable table. Never throws for unknown text:
+// falls back to user_directory + role=student for people-count phrasing,
+// otherwise course count.
+function inferFromQuestion(question: string): {
+  table: string; metric: Metric; field?: string; filters: Record<string, unknown>;
+} {
+  const q = question.toLowerCase();
+  const courseCode = question.match(/[A-Z]{2,}\s*\d+/);
+  if (q.includes('student') && !q.includes('enroll')) {
+    return { table: 'user_directory', metric: 'count', filters: { role: 'student' } };
+  }
+  if (q.includes('enroll')) {
+    return { table: 'enrollment_request', metric: 'count', filters: {} };
+  }
+  if (q.includes('average') || q.includes('avg') || q.includes('mean')) {
+    return { table: 'submission', metric: 'avg', field: 'grade', filters: {} };
+  }
+  if (q.includes('grade')) {
+    return { table: 'submission', metric: 'rows', filters: {} };
+  }
+  if (q.includes('activit')) {
+    return { table: 'activity', metric: 'count', filters: {} };
+  }
+  if (q.includes('quiz')) {
+    return { table: 'quiz', metric: 'count', filters: {} };
+  }
+  if (q.includes('exam')) {
+    return { table: 'exam', metric: 'count', filters: {} };
+  }
+  if (q.includes('module')) {
+    return { table: 'module', metric: 'count', filters: {} };
+  }
+  if (q.includes('announcement')) {
+    return { table: 'announcement', metric: 'count', filters: {} };
+  }
+  if (q.includes('calendar') || q.includes('event') || q.includes('schedule')) {
+    return { table: 'calendar_event', metric: 'count', filters: {} };
+  }
+  if (q.includes('course') || q.includes('subject') || q.includes('class')) {
+    return {
+      table: 'course', metric: 'count',
+      filters: courseCode ? { code: courseCode[0].replace(/\s+/, ' ') } : {},
+    };
+  }
+  return { table: 'course', metric: 'count', filters: {} };
+}
+
 ragAggregateRouter.post('/', async (req, res, next) => {
   try {
     const body = (req.body ?? {}) as Record<string, unknown>;
-    const table = typeof body.table === 'string' ? body.table : '';
-    const metric = typeof body.metric === 'string' ? body.metric : '';
+    let table = typeof body.table === 'string' ? body.table : '';
+    let metric = typeof body.metric === 'string' ? body.metric : '';
+    let field = typeof body.field === 'string' ? body.field : undefined;
+    const rawFilters = (body.filters ?? {}) as Record<string, unknown>;
+    const question = typeof body.question === 'string' ? body.question : '';
+    if ((!TABLES[table] || !METRICS.includes(metric as Metric)) && question) {
+      const inferred = inferFromQuestion(question);
+      if (!TABLES[table]) {
+        table = inferred.table;
+        Object.assign(rawFilters, inferred.filters);
+      }
+      if (!METRICS.includes(metric as Metric)) {
+        metric = inferred.metric;
+      }
+      if (!field && inferred.field) {
+        field = inferred.field;
+      }
+    }
     const def = TABLES[table];
     if (!def || !METRICS.includes(metric as Metric)) {
       throw new ApiError(
@@ -50,12 +114,10 @@ ragAggregateRouter.post('/', async (req, res, next) => {
         `Unknown table '${table}' or metric '${metric}'. Allowed tables: ${Object.keys(TABLES).join(', ')}. Allowed metrics: ${METRICS.join(', ')}.`,
       );
     }
-    const field = typeof body.field === 'string' ? body.field : undefined;
     if ((metric === 'sum' || metric === 'avg' || metric === 'min' || metric === 'max') &&
         (!field || !NUMERIC_FIELDS.has(`${table}.${field}`))) {
       throw new ApiError(400, 'bad_request', 'Metric requires an allowed numeric field.');
     }
-    const rawFilters = (body.filters ?? {}) as Record<string, unknown>;
     const where: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(rawFilters)) {
       if (!def.fields.includes(k) || v === undefined || v === null) {

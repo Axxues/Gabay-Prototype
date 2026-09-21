@@ -51,6 +51,24 @@ describe('ragAggregate', () => {
     }
   });
 
+  it('infers table and metric from a raw question', async () => {
+    const res = await request(app()).post('/api/rag-aggregate')
+      .set('x-rag-export-key', KEY)
+      .send({ question: 'how many students are there?' });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ table: 'user_directory', metric: 'count', value: 2 });
+  });
+
+  it('infers average-grade questions to submission avg', async () => {
+    const res = await request(app()).post('/api/rag-aggregate')
+      .set('x-rag-export-key', KEY)
+      .send({ question: 'what is the average grade?', requesterId: 'usr-stud-1' });
+    expect(res.status).toBe(200);
+    expect(res.body.table).toBe('submission');
+    expect(res.body.metric).toBe('avg');
+    expect(res.body.value).toBeCloseTo(30.33, 1);
+  });
+
   it('scopes per-student tables to the requester', async () => {
     const noId = await request(app()).post('/api/rag-aggregate')
       .set('x-rag-export-key', KEY)
