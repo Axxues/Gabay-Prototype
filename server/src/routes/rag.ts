@@ -415,7 +415,7 @@ ragRouter.post(
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          chatInput: message,
+          chatInput: `${message} (My student ID is ${req.auth!.sub}.)`,
           message,
           sessionId,
           requestId,

@@ -79,6 +79,9 @@ describe('rag router', () => {
     expect(url).toBe('http://localhost:5678/webhook/gabay-rag');
     const body = JSON.parse(String((init as { body?: string }).body)) as Record<string, unknown>;
     expect(body.chatInput ?? body.message).toBeTruthy();
+    expect(body.chatInput).toBe(
+      'What is enrollment? (My student ID is student-1.)',
+    );
     expect(body.sessionId).toBe('convo-123');
     expect(res.body.reply).toBe('Hello from LIKHA RAG');
     expect(res.body.sessionId).toBe('convo-123');
