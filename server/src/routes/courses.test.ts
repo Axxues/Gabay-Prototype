@@ -127,6 +127,57 @@ describe('courses router', () => {
     });
   });
 
+  it('PATCH syllabus stores canonical JSON', async () => {
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'c1',
+      instructorId: 'u-fac',
+      published: true,
+    });
+    (prisma.course.update as ReturnType<typeof vi.fn>).mockImplementation(
+      (args: { where: unknown; data: Record<string, unknown> }) =>
+        Promise.resolve({ id: 'c1', ...args.data })
+    );
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .patch('/api/courses/c1')
+      .set('Authorization', 'Bearer x')
+      .send({ syllabus: JSON.stringify({ courseInfo: { code: 'CS 101' } }) });
+
+    expect(res.status).toBe(200);
+    const update = prisma.course.update as ReturnType<typeof vi.fn>;
+    const stored = update.mock.calls[0][0].data.syllabus as string;
+    expect(JSON.parse(stored).courseInfo).toEqual({
+      code: 'CS 101',
+      title: '',
+      semester: '',
+      academicYear: '',
+      type: '',
+      credit: '',
+      lectureHours: '',
+      labHours: '',
+      prerequisite: '',
+      description: '',
+    });
+  });
+
+  it('PATCH rejects malformed syllabus JSON', async () => {
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'c1',
+      instructorId: 'u-fac',
+      published: true,
+    });
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .patch('/api/courses/c1')
+      .set('Authorization', 'Bearer x')
+      .send({ syllabus: '{bad' });
+
+    expect(res.status).toBe(400);
+    expect(prisma.course.update).not.toHaveBeenCalled();
+  });
+
   it('PATCH syllabus with non-string non-null still 400', async () => {
     (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: 'c1',
@@ -229,6 +280,31 @@ describe('courses router', () => {
     const joinCode = create.mock.calls[0][0].data.joinCode as unknown;
     expect(typeof joinCode).toBe('string');
     expect(joinCode as string).toMatch(/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/);
+  });
+
+  it('POST /api/courses canonicalizes supplied syllabus JSON', async () => {
+    (prisma.course.create as ReturnType<typeof vi.fn>).mockImplementation(
+      (args: { data: Record<string, unknown> }) =>
+        Promise.resolve({ id: 'c1', ...args.data })
+    );
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .post('/api/courses')
+      .set('Authorization', 'Bearer x')
+      .send({
+        code: 'CS101',
+        title: 'Intro',
+        section: 'A',
+        term: '2026-1',
+        syllabus: JSON.stringify({ courseInfo: { code: 'CS101' } }),
+      });
+
+    expect(res.status).toBe(201);
+    const create = prisma.course.create as ReturnType<typeof vi.fn>;
+    const stored = create.mock.calls[0][0].data.syllabus as string;
+    expect(JSON.parse(stored).courseInfo.code).toBe('CS101');
+    expect(JSON.parse(stored).courseInfo.title).toBe('');
   });
 
   it('POST /api/courses retries once on P2002 joinCode collision then succeeds', async () => {

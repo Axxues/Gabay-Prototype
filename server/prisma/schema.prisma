@@ -8,52 +8,58 @@ datasource db {
 }
 
 model User {
-  id            String   @id @db.NVarChar(64)
-  name          String   @db.NVarChar(128)
-  email         String   @unique @db.NVarChar(256)
-  passwordHash  String   @db.NVarChar(256)
-  role          String   @db.NVarChar(32) // UserRole: admin | faculty | staff | student (enforced at API layer)
-  avatar        String   @db.NVarChar(Max)
-  banner        String?  @db.NVarChar(Max)
-  department    String   @db.NVarChar(128)
-  title         String   @db.NVarChar(128)
-  lastVisitedAt String?  @db.NVarChar(Max)
-  coursesTaught Course[] @relation("InstructorCourses")
+  id                     String            @id @db.NVarChar(64)
+  name                   String            @db.NVarChar(128)
+  email                  String            @unique @db.NVarChar(256)
+  passwordHash           String            @db.NVarChar(256)
+  role                   String            @db.NVarChar(32) // UserRole: admin | faculty | staff | student (enforced at API layer)
+  avatar                 String            @db.NVarChar(Max)
+  banner                 String?           @db.NVarChar(Max)
+  department             String            @db.NVarChar(128)
+  title                  String            @db.NVarChar(128)
+  lastVisitedAt          String?           @db.NVarChar(Max)
+  coursesTaught          Course[]          @relation("InstructorCourses")
+  syllabusFacultyMembers SyllabusFaculty[] @relation("SyllabusFacultyUser")
 }
 
 model Course {
-  id                 String              @id @db.NVarChar(64)
-  code               String              @db.NVarChar(32)
-  title              String              @db.NVarChar(256)
-  section            String              @db.NVarChar(64)
-  term               String              @db.NVarChar(64)
-  instructorId       String              @db.NVarChar(64)
-  instructor         User                @relation("InstructorCourses", fields: [instructorId], references: [id])
-  instructorName     String              @db.NVarChar(128)
-  published          Boolean             @default(false)
-  color              String?             @db.NVarChar(32)
-  image              String?             @db.NVarChar(Max)
-  enrolledCount      Int                 @default(0)
-  credits            Int?
-  chedComplianceCode String?             @db.NVarChar(64)
-  joinCode           String?             @unique @db.NVarChar(32)
-  syllabus           String?             @db.NVarChar(Max)
-  sprConfig          String?             @db.NVarChar(Max)
-  gradingTerms       String?             @db.NVarChar(Max) // JSON array of TermIds, null = auto-detect
-  gradesReleased     String?             @db.NVarChar(Max) // JSON map TermId -> boolean, absent = not released
-  sections           CourseSection[]
-  requests           EnrollmentRequest[]
+  id                                String                             @id @db.NVarChar(64)
+  code                              String                             @db.NVarChar(32)
+  title                             String                             @db.NVarChar(256)
+  section                           String                             @db.NVarChar(64)
+  term                              String                             @db.NVarChar(64)
+  instructorId                      String                             @db.NVarChar(64)
+  instructor                        User                               @relation("InstructorCourses", fields: [instructorId], references: [id])
+  instructorName                    String                             @db.NVarChar(128)
+  published                         Boolean                            @default(false)
+  color                             String?                            @db.NVarChar(32)
+  image                             String?                            @db.NVarChar(Max)
+  enrolledCount                     Int                                @default(0)
+  credits                           Int?
+  chedComplianceCode                String?                            @db.NVarChar(64)
+  joinCode                          String?                            @unique @db.NVarChar(32)
+  syllabus                          String?                            @db.NVarChar(Max)
+  sprConfig                         String?                            @db.NVarChar(Max)
+  gradingTerms                      String?                            @db.NVarChar(Max) // JSON array of TermIds, null = auto-detect
+  gradesReleased                    String?                            @db.NVarChar(Max) // JSON map TermId -> boolean, absent = not released
+  currentSyllabusId                 String?                            @unique @db.NVarChar(64)
+  currentSyllabus                   Syllabus?                          @relation("CurrentCourseSyllabus", fields: [currentSyllabusId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sections                          CourseSection[]
+  requests                          EnrollmentRequest[]
+  syllabusRevisions                 Syllabus[]                         @relation("CourseSyllabusRevisions")
+  syllabusMigrationAuditCourseLinks SyllabusMigrationAuditCourseLink[]
 }
 
 model CourseSection {
-  id            String  @id @db.NVarChar(64)
-  courseId      String  @db.NVarChar(64)
-  course        Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  name          String  @db.NVarChar(128)
-  capacity      Int?
-  enrolledCount Int     @default(0)
-  schedule      String? @db.NVarChar(256)
-  location      String? @db.NVarChar(256)
+  id                      String                   @id @db.NVarChar(64)
+  courseId                String                   @db.NVarChar(64)
+  course                  Course                   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  name                    String                   @db.NVarChar(128)
+  capacity                Int?
+  enrolledCount           Int                      @default(0)
+  schedule                String?                  @db.NVarChar(256)
+  location                String?                  @db.NVarChar(256)
+  syllabusFacultySections SyllabusFacultySection[] @relation("SyllabusFacultyCourseSection")
 }
 
 model EnrollmentRequest {
@@ -459,23 +465,483 @@ model CourseFolder {
 }
 
 model CourseFile {
-  id             String        @id @db.NVarChar(64)
-  courseId       String        @db.NVarChar(64)
-  folderId       String?       @db.NVarChar(64)
-  folder         CourseFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
-  name           String        @db.NVarChar(256)
-  size           Int           @default(0)
-  formattedSize  String        @db.NVarChar(32)
-  type           String        @db.NVarChar(32)
-  visibility     String        @db.NVarChar(32)
-  updatedAt      DateTime      @updatedAt
-  uploadedBy     String        @db.NVarChar(64)
-  uploadedByName String        @db.NVarChar(128)
-  content        String?       @db.NVarChar(Max)
-  url            String?       @db.NVarChar(1024)
-  fileUrl        String?       @db.NVarChar(1024)
-  sourceArea     String?       @db.NVarChar(32)
-  sourceId       String?       @db.NVarChar(64)
+  id                      String                   @id @db.NVarChar(64)
+  courseId                String                   @db.NVarChar(64)
+  folderId                String?                  @db.NVarChar(64)
+  folder                  CourseFolder?            @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  name                    String                   @db.NVarChar(256)
+  size                    Int                      @default(0)
+  formattedSize           String                   @db.NVarChar(32)
+  type                    String                   @db.NVarChar(32)
+  visibility              String                   @db.NVarChar(32)
+  updatedAt               DateTime                 @updatedAt
+  uploadedBy              String                   @db.NVarChar(64)
+  uploadedByName          String                   @db.NVarChar(128)
+  content                 String?                  @db.NVarChar(Max)
+  url                     String?                  @db.NVarChar(1024)
+  fileUrl                 String?                  @db.NVarChar(1024)
+  sourceArea              String?                  @db.NVarChar(32)
+  sourceId                String?                  @db.NVarChar(64)
+  syllabusSourceDocuments SyllabusSourceDocument[] @relation("SyllabusSourceFile")
+}
+
+model Syllabus {
+  id                          String                               @id @db.NVarChar(64)
+  courseId                    String                               @db.NVarChar(64)
+  course                      Course                               @relation("CourseSyllabusRevisions", fields: [courseId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  currentForCourse            Course?                              @relation("CurrentCourseSyllabus")
+  parentSyllabusId            String?                              @db.NVarChar(64)
+  parent                      Syllabus?                            @relation("SyllabusParent", fields: [parentSyllabusId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  children                    Syllabus[]                           @relation("SyllabusParent")
+  revisionNo                  Int
+  status                      String                               @default("draft") @db.NVarChar(32)
+  schemaVersion               String                               @default("1") @db.NVarChar(32)
+  rowVersion                  Int                                  @default(1)
+  createdById                 String                               @db.NVarChar(64)
+  publishedById               String?                              @db.NVarChar(64)
+  createdAt                   DateTime                             @default(now())
+  updatedAt                   DateTime                             @updatedAt
+  publishedAt                 DateTime?
+  institution                 SyllabusInstitution?
+  courseInfo                  SyllabusCourseInfo?
+  institutionalStatement      SyllabusInstitutionalStatement?
+  gradingSystem               SyllabusGradingSystem?
+  sourceDocument              SyllabusSourceDocument?
+  faculty                     SyllabusFaculty[]
+  requirements                SyllabusRequirement[]
+  policies                    SyllabusPolicy[]
+  rubrics                     SyllabusRubric[]
+  outlineBlocks               SyllabusOutlineBlock[]
+  learningPlans               SyllabusLearningPlan[]
+  courseOutcomes              SyllabusCourseOutcome[]
+  courseMaps                  SyllabusCourseMap[]
+  references                  SyllabusReference[]
+  signatories                 SyllabusSignatory[]
+  extensionFields             SyllabusExtensionField[]
+  programOutcomes             SyllabusProgramOutcome[]
+  coreValues                  SyllabusCoreValue[]
+  graduateAttributes          SyllabusGraduateAttribute[]
+  migrationAuditRevisionLinks SyllabusMigrationAuditRevisionLink[]
+
+  @@unique([courseId, revisionNo])
+}
+
+model ProgramOutcome {
+  id             String                            @id @db.NVarChar(64)
+  number         Int
+  description    String                            @db.NVarChar(Max)
+  catalogVersion String                            @db.NVarChar(64)
+  createdAt      DateTime                          @default(now())
+  updatedAt      DateTime                          @updatedAt
+  syllabi        SyllabusProgramOutcome[]
+  courseMaps     SyllabusCourseMapProgramOutcome[]
+
+  @@unique([catalogVersion, number])
+}
+
+model CoreValue {
+  id             String              @id @db.NVarChar(64)
+  acronym        String              @db.NVarChar(64)
+  keyword        String              @db.NVarChar(256)
+  description    String              @db.NVarChar(Max)
+  catalogVersion String              @db.NVarChar(64)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  syllabi        SyllabusCoreValue[]
+
+  @@unique([catalogVersion, acronym])
+}
+
+model GraduateAttribute {
+  id             String                      @id @db.NVarChar(64)
+  number         Int
+  title          String                      @db.NVarChar(256)
+  description    String                      @db.NVarChar(Max)
+  catalogVersion String                      @db.NVarChar(64)
+  createdAt      DateTime                    @default(now())
+  updatedAt      DateTime                    @updatedAt
+  syllabi        SyllabusGraduateAttribute[]
+
+  @@unique([catalogVersion, number])
+}
+
+model SyllabusProgramOutcome {
+  syllabusId       String         @db.NVarChar(64)
+  syllabus         Syllabus       @relation(fields: [syllabusId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  programOutcomeId String         @db.NVarChar(64)
+  programOutcome   ProgramOutcome @relation(fields: [programOutcomeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  position         Int
+
+  @@id([syllabusId, programOutcomeId, position])
+  @@unique([syllabusId, position])
+}
+
+model SyllabusCoreValue {
+  syllabusId  String    @db.NVarChar(64)
+  syllabus    Syllabus  @relation(fields: [syllabusId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  coreValueId String    @db.NVarChar(64)
+  coreValue   CoreValue @relation(fields: [coreValueId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  position    Int
+
+  @@id([syllabusId, coreValueId, position])
+  @@unique([syllabusId, position])
+}
+
+model SyllabusGraduateAttribute {
+  syllabusId          String            @db.NVarChar(64)
+  syllabus            Syllabus          @relation(fields: [syllabusId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  graduateAttributeId String            @db.NVarChar(64)
+  graduateAttribute   GraduateAttribute @relation(fields: [graduateAttributeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  position            Int
+
+  @@id([syllabusId, graduateAttributeId, position])
+  @@unique([syllabusId, position])
+}
+
+model SyllabusInstitution {
+  syllabusId String   @id @db.NVarChar(64)
+  syllabus   Syllabus @relation(fields: [syllabusId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  university String   @db.NVarChar(256)
+  college    String   @db.NVarChar(256)
+  formCode   String   @db.NVarChar(64)
+  revision   String   @db.NVarChar(64)
+}
+
+model SyllabusCourseInfo {
+  syllabusId   String   @id @db.NVarChar(64)
+  syllabus     Syllabus @relation(fields: [syllabusId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  code         String   @db.NVarChar(64)
+  title        String   @db.NVarChar(256)
+  semester     String   @db.NVarChar(128)
+  academicYear String   @db.NVarChar(64)
+  type         String   @db.NVarChar(128)
+  credit       String   @db.NVarChar(32)
+  lectureHours Int
+  labHours     Int
+  prerequisite String   @db.NVarChar(Max)
+  description  String   @db.NVarChar(Max)
+}
+
+model SyllabusInstitutionalStatement {
+  syllabusId String   @id @db.NVarChar(64)
+  syllabus   Syllabus @relation(fields: [syllabusId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  philosophy String   @db.NVarChar(Max)
+  vision     String   @db.NVarChar(Max)
+  mission    String   @db.NVarChar(Max)
+  goal       String   @db.NVarChar(Max)
+}
+
+model SyllabusGradingSystem {
+  syllabusId   String                     @id @db.NVarChar(64)
+  syllabus     Syllabus                   @relation(fields: [syllabusId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  termFormula  String                     @db.NVarChar(256)
+  finalFormula String                     @db.NVarChar(256)
+  passingGrade String                     @db.NVarChar(64)
+  components   SyllabusGradingComponent[]
+}
+
+model SyllabusSourceDocument {
+  syllabusId    String      @id @db.NVarChar(64)
+  syllabus      Syllabus    @relation(fields: [syllabusId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  fileName      String      @db.NVarChar(256)
+  fileSize      String      @db.NVarChar(32)
+  fileType      String      @db.NVarChar(32)
+  uploadedAt    DateTime
+  fileDataUrl   String?     @db.NVarChar(Max)
+  legacyPayload String?     @db.NVarChar(Max)
+  courseFileId  String?     @db.NVarChar(64)
+  courseFile    CourseFile? @relation("SyllabusSourceFile", fields: [courseFileId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+}
+
+model SyllabusFaculty {
+  id           String                   @id @db.NVarChar(64)
+  syllabusId   String                   @db.NVarChar(64)
+  syllabus     Syllabus                 @relation(fields: [syllabusId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  name         String                   @db.NVarChar(256)
+  consultation String                   @db.NVarChar(Max)
+  position     Int
+  userId       String?                  @db.NVarChar(64)
+  user         User?                    @relation("SyllabusFacultyUser", fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sections     SyllabusFacultySection[]
+
+  @@unique([syllabusId, position])
+}
+
+model SyllabusFacultySection {
+  id              String          @id @db.NVarChar(64)
+  facultyId       String          @db.NVarChar(64)
+  faculty         SyllabusFaculty @relation(fields: [facultyId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  section         String          @db.NVarChar(128)
+  schedule        String          @db.NVarChar(256)
+  room            String          @db.NVarChar(256)
+  position        Int
+  courseSectionId String?         @db.NVarChar(64)
+  courseSection   CourseSection?  @relation("SyllabusFacultyCourseSection", fields: [courseSectionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([facultyId, position])
+}
+
+model SyllabusRequirement {
+  id         String   @id @db.NVarChar(64)
+  syllabusId String   @db.NVarChar(64)
+  syllabus   Syllabus @relation(fields: [syllabusId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  category   String   @db.NVarChar(32)
+  text       String   @db.NVarChar(Max)
+  position   Int
+
+  @@unique([syllabusId, position])
+}
+
+model SyllabusPolicy {
+  id         String   @id @db.NVarChar(64)
+  syllabusId String   @db.NVarChar(64)
+  syllabus   Syllabus @relation(fields: [syllabusId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  text       String   @db.NVarChar(Max)
+  position   Int
+
+  @@unique([syllabusId, position])
+}
+
+model SyllabusGradingComponent {
+  id              String                @id @db.NVarChar(64)
+  gradingSystemId String                @db.NVarChar(64)
+  gradingSystem   SyllabusGradingSystem @relation(fields: [gradingSystemId], references: [syllabusId], onDelete: Cascade, onUpdate: NoAction)
+  text            String                @db.NVarChar(Max)
+  position        Int
+
+  @@unique([gradingSystemId, position])
+}
+
+model SyllabusRubric {
+  id         String                @id @db.NVarChar(64)
+  syllabusId String                @db.NVarChar(64)
+  syllabus   Syllabus              @relation(fields: [syllabusId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  category   String                @db.NVarChar(256)
+  position   Int
+  levels     SyllabusRubricLevel[]
+
+  @@unique([syllabusId, position])
+}
+
+model SyllabusRubricLevel {
+  rubricId    String         @db.NVarChar(64)
+  rubric      SyllabusRubric @relation(fields: [rubricId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  level       Int
+  description String         @db.NVarChar(Max)
+
+  @@id([rubricId, level])
+}
+
+model SyllabusOutlineBlock {
+  id         String                 @id @db.NVarChar(64)
+  syllabusId String                 @db.NVarChar(64)
+  syllabus   Syllabus               @relation(fields: [syllabusId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  timeFrame  String                 @db.NVarChar(256)
+  title      String                 @db.NVarChar(256)
+  position   Int
+  topics     SyllabusOutlineTopic[]
+
+  @@unique([syllabusId, position])
+}
+
+model SyllabusOutlineTopic {
+  id             String               @id @db.NVarChar(64)
+  outlineBlockId String               @db.NVarChar(64)
+  outlineBlock   SyllabusOutlineBlock @relation(fields: [outlineBlockId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  text           String               @db.NVarChar(Max)
+  position       Int
+
+  @@unique([outlineBlockId, position])
+}
+
+model SyllabusLearningPlan {
+  id          String                           @id @db.NVarChar(64)
+  syllabusId  String                           @db.NVarChar(64)
+  syllabus    Syllabus                         @relation(fields: [syllabusId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  week        String                           @db.NVarChar(128)
+  hoursLab    Int
+  hoursLec    Int
+  position    Int
+  outcomes    SyllabusLearningPlanOutcome[]
+  topics      SyllabusLearningPlanTopic[]
+  methods     SyllabusLearningPlanMethod[]
+  resources   SyllabusLearningPlanResource[]
+  assessments SyllabusLearningPlanAssessment[]
+  sdg         SyllabusLearningPlanSdg?
+
+  @@unique([syllabusId, position])
+}
+
+model SyllabusLearningPlanOutcome {
+  id             String               @id @db.NVarChar(64)
+  learningPlanId String               @db.NVarChar(64)
+  learningPlan   SyllabusLearningPlan @relation(fields: [learningPlanId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  text           String               @db.NVarChar(Max)
+  position       Int
+
+  @@unique([learningPlanId, position])
+}
+
+model SyllabusLearningPlanTopic {
+  id             String               @id @db.NVarChar(64)
+  learningPlanId String               @db.NVarChar(64)
+  learningPlan   SyllabusLearningPlan @relation(fields: [learningPlanId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  text           String               @db.NVarChar(Max)
+  position       Int
+
+  @@unique([learningPlanId, position])
+}
+
+model SyllabusLearningPlanMethod {
+  id             String               @id @db.NVarChar(64)
+  learningPlanId String               @db.NVarChar(64)
+  learningPlan   SyllabusLearningPlan @relation(fields: [learningPlanId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  text           String               @db.NVarChar(Max)
+  position       Int
+
+  @@unique([learningPlanId, position])
+}
+
+model SyllabusLearningPlanResource {
+  id             String               @id @db.NVarChar(64)
+  learningPlanId String               @db.NVarChar(64)
+  learningPlan   SyllabusLearningPlan @relation(fields: [learningPlanId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  text           String               @db.NVarChar(Max)
+  position       Int
+
+  @@unique([learningPlanId, position])
+}
+
+model SyllabusLearningPlanAssessment {
+  id             String               @id @db.NVarChar(64)
+  learningPlanId String               @db.NVarChar(64)
+  learningPlan   SyllabusLearningPlan @relation(fields: [learningPlanId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  text           String               @db.NVarChar(Max)
+  position       Int
+
+  @@unique([learningPlanId, position])
+}
+
+model SyllabusLearningPlanSdg {
+  learningPlanId String               @id @db.NVarChar(64)
+  learningPlan   SyllabusLearningPlan @relation(fields: [learningPlanId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  goal           String               @db.NVarChar(64)
+  title          String               @db.NVarChar(256)
+  description    String               @db.NVarChar(Max)
+  target         String?              @db.NVarChar(Max)
+}
+
+model SyllabusCourseOutcome {
+  id         String             @id @db.NVarChar(64)
+  syllabusId String             @db.NVarChar(64)
+  syllabus   Syllabus           @relation(fields: [syllabusId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  number     Int
+  statement  String             @db.NVarChar(Max)
+  position   Int
+  courseMap  SyllabusCourseMap?
+
+  @@unique([syllabusId, number])
+  @@unique([syllabusId, position])
+}
+
+model SyllabusCourseMap {
+  id              String                            @id @db.NVarChar(64)
+  syllabusId      String                            @db.NVarChar(64)
+  syllabus        Syllabus                          @relation(fields: [syllabusId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  courseOutcomeId String                            @unique @db.NVarChar(64)
+  courseOutcome   SyllabusCourseOutcome             @relation(fields: [courseOutcomeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  coNumber        Int
+  coStatement     String                            @db.NVarChar(Max)
+  position        Int
+  programOutcomes SyllabusCourseMapProgramOutcome[]
+
+  @@unique([syllabusId, position])
+}
+
+model SyllabusCourseMapProgramOutcome {
+  courseMapId      String            @db.NVarChar(64)
+  courseMap        SyllabusCourseMap @relation(fields: [courseMapId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  programOutcomeId String            @db.NVarChar(64)
+  programOutcome   ProgramOutcome    @relation(fields: [programOutcomeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  level            String            @db.NVarChar(1)
+  position         Int
+
+  @@id([courseMapId, programOutcomeId])
+  @@unique([courseMapId, position])
+}
+
+model SyllabusReference {
+  id             String   @id @db.NVarChar(64)
+  syllabusId     String   @db.NVarChar(64)
+  syllabus       Syllabus @relation(fields: [syllabusId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  citation       String   @db.NVarChar(Max)
+  year           String   @db.NVarChar(32)
+  doiOrPublisher String?  @db.NVarChar(Max)
+  position       Int
+
+  @@unique([syllabusId, position])
+}
+
+model SyllabusSignatory {
+  id         String   @id @db.NVarChar(64)
+  syllabusId String   @db.NVarChar(64)
+  syllabus   Syllabus @relation(fields: [syllabusId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  role       String   @db.NVarChar(32)
+  name       String   @db.NVarChar(256)
+  title      String   @db.NVarChar(256)
+  position   Int
+
+  @@unique([syllabusId, position])
+}
+
+model SyllabusExtensionField {
+  id         String   @id @db.NVarChar(64)
+  syllabusId String   @db.NVarChar(64)
+  syllabus   Syllabus @relation(fields: [syllabusId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  path       String   @db.NVarChar(512)
+  value      String   @db.NVarChar(Max)
+  valueType  String   @db.NVarChar(64)
+
+  @@unique([syllabusId, path])
+}
+
+model SyllabusMigrationAudit {
+  id                 String                              @id @db.NVarChar(64)
+  originalCourseId   String                              @db.NVarChar(64)
+  originalRevisionId String?                             @db.NVarChar(64)
+  sourceChecksum     String                              @db.NVarChar(128)
+  status             String                              @db.NVarChar(32)
+  scannedCount       Int                                 @default(0)
+  createdCount       Int                                 @default(0)
+  updatedCount       Int                                 @default(0)
+  skippedCount       Int                                 @default(0)
+  conflictedCount    Int                                 @default(0)
+  errorText          String?                             @db.NVarChar(Max)
+  createdAt          DateTime                            @default(now())
+  updatedAt          DateTime                            @updatedAt
+  completedAt        DateTime?
+  courseLink         SyllabusMigrationAuditCourseLink?
+  revisionLink       SyllabusMigrationAuditRevisionLink?
+
+  @@unique([originalCourseId, sourceChecksum])
+}
+
+model SyllabusMigrationAuditCourseLink {
+  auditId  String                 @id @db.NVarChar(64)
+  audit    SyllabusMigrationAudit @relation(fields: [auditId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  courseId String?                @db.NVarChar(64)
+  course   Course?                @relation(fields: [courseId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([courseId])
+}
+
+model SyllabusMigrationAuditRevisionLink {
+  auditId    String                 @id @db.NVarChar(64)
+  audit      SyllabusMigrationAudit @relation(fields: [auditId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  revisionId String?                @db.NVarChar(64)
+  revision   Syllabus?              @relation(fields: [revisionId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([revisionId])
 }
 
 model HistoryLog {

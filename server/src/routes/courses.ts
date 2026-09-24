@@ -3,6 +3,11 @@ import { prisma } from '../db.js';
 import { asyncHandler, ApiError } from '../utils/errors.js';
 import { authenticateToken, requireRole } from '../middleware/auth.js';
 import type { AuthPayload } from '../middleware/auth.js';
+import { normalizeSyllabusField, SyllabusNormalizationError } from '../utils/syllabusNormalization.js';
+import { assertCourseAccess, assertCourseOwner, loadCourseOr404 } from '../utils/courseAccess.js';
+import { getSyllabusRepository } from './syllabi.js';
+import { SyllabusRepositoryError, SyllabusSourceFileError } from '../syllabi/repository.js';
+import { SyllabusValidationError } from '../syllabi/validation.js';
 
 export const coursesRouter = Router();
 export const sectionsRouter = Router();
@@ -37,39 +42,6 @@ function isJoinCodeConflict(err: unknown): boolean {
   if (target === undefined) return true;
   const targets = Array.isArray(target) ? target : [target];
   return targets.some((t) => typeof t === 'string' && t.includes('joinCode'));
-}
-
-interface CourseRow {
-  id: string;
-  instructorId: string;
-  published: boolean;
-}
-
-async function loadCourseOr404(courseId: string) {
-  // Narrow select: access checks only need id/instructorId/published. A full
-  // row drag would pull the multi-MB image/syllabus blobs on every
-  // course-scoped call. (GET /:id detail uses its own full-row query below.)
-  const course = await prisma.course.findUnique({
-    where: { id: courseId },
-    select: { id: true, instructorId: true, published: true },
-  });
-  if (!course) throw new ApiError(404, 'not_found', 'Course not found.');
-  return course;
-}
-
-async function assertCourseAccess(course: CourseRow, auth: AuthPayload): Promise<void> {
-  if (auth.role === 'faculty' || auth.role === 'admin') return;
-  if (course.instructorId === auth.sub) return;
-  const membership = await prisma.enrollmentRequest.findFirst({
-    where: { courseId: course.id, studentId: auth.sub, status: 'approved' },
-  });
-  if (!membership) throw new ApiError(403, 'forbidden', 'You are not a member of this course.');
-}
-
-function assertCourseOwner(course: { instructorId: string }, auth: AuthPayload): void {
-  if (auth.role !== 'admin' && course.instructorId !== auth.sub) {
-    throw new ApiError(403, 'forbidden', 'Only the course instructor can do this.');
-  }
 }
 
 coursesRouter.get(
@@ -139,7 +111,7 @@ coursesRouter.post(
       image: str(body.image) ?? null,
       credits: typeof body.credits === 'number' ? body.credits : null,
       chedComplianceCode: str(body.chedComplianceCode) ?? null,
-      syllabus: str(body.syllabus) ?? null,
+      syllabus: normalizeSyllabusInput(body.syllabus),
     };
     if (typeof suppliedJoinCode === 'string' && suppliedJoinCode !== '') {
       const course = await prisma.course.create({
@@ -223,8 +195,25 @@ coursesRouter.get(
 
 const KNOWN_TERMS = ['prelim', 'midterm', 'finals'] as const;
 
-const COURSE_PATCH_STRINGS = [
-  'code',
+function normalizeSyllabusInput(value: unknown): string | null {
+  if (value !== null && value !== undefined && typeof value !== 'string') {
+    throw new ApiError(400, 'bad_request', "Field 'syllabus' must be a JSON object string.");
+  }
+  try {
+    return normalizeSyllabusField(value);
+  } catch (error) {
+    if (error instanceof SyllabusNormalizationError) {
+      throw new ApiError(400, 'bad_request', error.message);
+    }
+    throw error;
+  }
+}
+
+function hasRelationalSyllabusModels(): boolean {
+  return (prisma as unknown as { syllabus?: unknown }).syllabus !== undefined;
+}
+
+const COURSE_PATCH_STRINGS = [  'code',
   'title',
   'section',
   'term',
@@ -262,10 +251,8 @@ coursesRouter.patch(
     for (const key of COURSE_PATCH_STRINGS) {
       const value = body[key];
       if (value === undefined) continue;
-      // `syllabus: null` is the CLEAR sentinel (sets the column NULL);
-      // other non-string types still 400.
-      if (key === 'syllabus' && value === null) {
-        data[key] = null;
+      if (key === 'syllabus') {
+        data[key] = normalizeSyllabusInput(value);
         continue;
       }
       if (typeof value !== 'string') {
@@ -275,6 +262,45 @@ coursesRouter.patch(
     }
     if (typeof body.published === 'boolean') data.published = body.published;
     if (typeof body.credits === 'number') data.credits = body.credits;
+    if (typeof data.syllabus === 'string' && hasRelationalSyllabusModels()) {
+      const { syllabus: legacyColumn, ...rest } = data;
+      // Legacy compatibility: a legacy PATCH creates/updates a draft via the
+      // relational service and preserves the legacy column. It never publishes;
+      // students keep seeing the last published revision until Publish.
+      let draftRevisionId: string | null = null;
+      let draftRevisionNo: number | null = null;
+      try {
+        const header = await getSyllabusRepository().replaceFromLegacy(course.id, auth.sub, legacyColumn);
+        draftRevisionId = header.id;
+        draftRevisionNo = header.revisionNo;
+      } catch (err) {
+        if (
+          err instanceof SyllabusValidationError ||
+          err instanceof SyllabusRepositoryError ||
+          err instanceof SyllabusSourceFileError ||
+          err instanceof SyllabusNormalizationError
+        ) {
+          throw new ApiError(422, 'invalid_syllabus_section', (err as Error).message);
+        }
+        throw err;
+      }
+      if (Object.keys(rest).length > 0) {
+        await prisma.course.update({ where: { id: course.id }, data: rest });
+      }
+      const refreshed = await prisma.course.findUnique({ where: { id: course.id } });
+      res.json({
+        course: refreshed,
+        syllabusCompat: {
+          mode: 'draft',
+          revisionId: draftRevisionId,
+          revisionNo: draftRevisionNo,
+          published: false,
+          message:
+            'Legacy syllabus saved as a draft and the legacy column was preserved; students continue to see the last published revision until Publish.',
+        },
+      });
+      return;
+    }
     const updated = await prisma.course.update({ where: { id: course.id }, data });
     res.json({ course: updated });
   })

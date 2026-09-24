@@ -41,10 +41,13 @@ import {
 } from '../utils/spr';
 import { commonsTemplates } from '../data/commonsTemplates';
 import { effectiveTerms, normalizeGradesReleased, normalizeTermId } from '../utils/gradingTerms';
+import { isSyllabusGradeReady } from '../utils/syllabusGradeGate';
 import { AlertModal, type AlertModalOptions } from '../components/common/AlertModal';
 import { canPickSection } from '../utils/sections';
 import type { OfficialSyllabusData } from '../data/syllabusData';
 import { apiFetch, ApiError, getToken, setToken, clearToken } from '../api/client';
+import { syllabusApi, deleteDraft } from '../api/syllabus';
+import type { SyllabusRevisionHeader, SyllabusRevisionResponse, SyllabusSectionKey } from '../types/syllabusApi';
 import { settledValue } from '../utils/promise';
 
 interface LMSContextType {
@@ -120,9 +123,14 @@ interface LMSContextType {
   regenerateCourseJoinCode: (courseId: string) => Promise<string>;
   updateCourseSyllabus: (courseId: string, syllabus: OfficialSyllabusData) => Promise<void>;
   removeCourseSyllabus: (courseId: string) => Promise<void>;
+  syllabusRevisions: Record<string, SyllabusRevisionHeader>;
+  refreshPublishedSyllabus: (courseId: string) => Promise<void>;
+  updateSyllabusSection: (courseId: string, section: SyllabusSectionKey, value: unknown) => Promise<void>;
+  publishSyllabusDraft: (courseId: string) => Promise<void>;
   updateCourseGradingTerms: (courseId: string, gradingTerms: TermId[] | null) => Promise<void>;
   setGradesReleased: (courseId: string, term: TermId, released: boolean) => Promise<void>;
   effectiveTermsForCourse: (courseId: string) => TermId[];
+  isCourseGradeReady: (courseId: string) => boolean;
   importCommonsTemplate: (templateId: string, targetCourseId: string) => Promise<{ success: boolean; message: string }>;
 
   gradeSubmission: (
@@ -690,6 +698,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     dbRef.current = db;
   }, [db]);
+  const [syllabusRevisions, setSyllabusRevisions] = useState<Record<string, SyllabusRevisionHeader>>({});
+  const syllabusRevisionsRef = useRef(syllabusRevisions);
+  useEffect(() => {
+    syllabusRevisionsRef.current = syllabusRevisions;
+  }, [syllabusRevisions]);
 
   const refreshAll = async (user: User): Promise<void> => {
     setIsLoading(true);
@@ -1022,6 +1035,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const logout = () => {
     clearToken();
     sprHydratedRef.current.clear();
+    setSyllabusRevisions({});
     setCurrentUser(null);
     setDb(emptyDb());
     setIsUserProfileModalOpen(false);
@@ -1131,6 +1145,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const effectiveTermsForCourse = (courseId: string): TermId[] => {
     const course = db.courses.find(c => c.id === courseId);
     return effectiveTerms(course ?? null, course?.syllabus ?? null);
+  };
+
+  const isCourseGradeReady = (courseId: string): boolean => {
+    const course = db.courses.find(c => c.id === courseId);
+    return isSyllabusGradeReady(syllabusRevisions[courseId] ?? null, course?.syllabus ?? null);
   };
 
   const defaultTermForCourse = (courseId: string): TermId =>
@@ -1980,25 +1999,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const updateCourseSyllabus = async (courseId: string, syllabus: OfficialSyllabusData): Promise<void> => {
-    const boundSyllabus: OfficialSyllabusData = {
-      ...syllabus,
-      courseId
-    };
+  const applySyllabusEnvelope = (courseId: string, envelope: SyllabusRevisionResponse): void => {
+    const boundSyllabus: OfficialSyllabusData = { ...envelope.syllabus, courseId };
     const instructorFromSyllabus = boundSyllabus.facultyMembers?.[0]?.name;
-    // Server stores syllabus as a JSON string (String? column) — stringify
-    // client-side; the cache keeps the parsed object.
-    try {
-      await apiFetch<{ course: Course }>(
-        `/api/courses/${encodeURIComponent(courseId)}`,
-        { method: 'PATCH', body: { syllabus: JSON.stringify(boundSyllabus) } }
-      );
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Failed to update syllabus.';
-      setLastError(message);
-      showAlert(message, 'Update Syllabus Failed');
-      throw err;
-    }
     setDb(prev => ({
       ...prev,
       courses: prev.courses.map(c => (c.id === courseId ? {
@@ -2007,25 +2010,152 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...(instructorFromSyllabus ? { instructorName: instructorFromSyllabus } : {})
       } : c))
     }));
+    setSyllabusRevisions(prev => ({ ...prev, [courseId]: envelope.revision }));
+  };
+
+  const clearSyllabusRevision = (courseId: string): void => {
+    setSyllabusRevisions(prev => {
+      if (!(courseId in prev)) return prev;
+      const next = { ...prev };
+      delete next[courseId];
+      return next;
+    });
+  };
+
+  const isRevisionConflict = (err: unknown): boolean =>
+    err instanceof ApiError && (err.status === 409 || err.code === 'revision_conflict');
+
+  const recoverSyllabusFromPublished = async (courseId: string): Promise<void> => {
+    try {
+      const envelope = await syllabusApi.getPublished(courseId);
+      if (envelope) applySyllabusEnvelope(courseId, envelope);
+      else clearSyllabusRevision(courseId);
+    } catch {
+      return;
+    }
+  };
+
+  const failSyllabus = (err: unknown, fallback: string, title: string): never => {
+    const message = err instanceof ApiError ? err.message : fallback;
+    setLastError(message);
+    showAlert(message, title);
+    throw err;
+  };
+
+  const syllabusSectionEntries = (syllabus: OfficialSyllabusData): Array<[SyllabusSectionKey, unknown]> => {
+    const entries: Array<[SyllabusSectionKey, unknown]> = [
+      ['institution', syllabus.institution],
+      ['courseInfo', syllabus.courseInfo],
+      ['faculty', syllabus.facultyMembers],
+      ['institutionalStatements', syllabus.institutionalStatements],
+      ['programOutcomes', syllabus.programOutcomes],
+      ['courseOutcomes', syllabus.courseOutcomes],
+      ['requirements', syllabus.courseRequirements],
+      ['gradingSystem', syllabus.gradingSystem],
+      ['rubrics', syllabus.projectRubrics],
+      ['policies', syllabus.classroomPolicies],
+      ['outline', syllabus.courseOutline],
+      ['learningPlan', syllabus.learningPlan],
+      ['courseMap', syllabus.courseMap],
+      ['references', syllabus.references],
+      ['signatories', syllabus.signatories],
+    ];
+    if (syllabus.sourceDocument !== undefined) entries.push(['sourceDocument', syllabus.sourceDocument]);
+    return entries.filter(([, value]) => value !== undefined);
+  };
+
+  const updateCourseSyllabus = async (courseId: string, syllabus: OfficialSyllabusData): Promise<void> => {
+    const boundSyllabus: OfficialSyllabusData = {
+      ...syllabus,
+      courseId
+    };
+    let draftId: string | null = null;
+    try {
+      const active = syllabusRevisionsRef.current[courseId] ?? null;
+      let sourceId: string | undefined = active?.id;
+      if (!sourceId) {
+        const current = await syllabusApi.getPublished(courseId);
+        sourceId = current?.revision.id;
+      }
+      let envelope = await syllabusApi.createDraft(courseId, sourceId);
+      draftId = envelope.revision.id;
+      for (const [section, value] of syllabusSectionEntries(boundSyllabus)) {
+        envelope = await syllabusApi.updateSection(
+          courseId, envelope.revision.id, envelope.revision.rowVersion, section, value
+        );
+      }
+      draftId = null;
+      applySyllabusEnvelope(courseId, envelope);
+    } catch (err) {
+      if (isRevisionConflict(err)) {
+        if (draftId) await deleteDraft(courseId, draftId).catch(() => undefined);
+        await recoverSyllabusFromPublished(courseId);
+      }
+      failSyllabus(err, 'Failed to update syllabus.', 'Update Syllabus Failed');
+    }
   };
 
   const removeCourseSyllabus = async (courseId: string): Promise<void> => {
-    // Server accepts `syllabus: null` as CLEAR (sets the column NULL).
+    const active = syllabusRevisionsRef.current[courseId];
+    if (!active || active.status !== 'draft') return;
     try {
-      await apiFetch<{ course: Course }>(
-        `/api/courses/${encodeURIComponent(courseId)}`,
-        { method: 'PATCH', body: { syllabus: null } }
-      );
+      const published = await syllabusApi.getPublished(courseId);
+      await deleteDraft(courseId, active.id);
+      clearSyllabusRevision(courseId);
+      if (published) {
+        applySyllabusEnvelope(courseId, published);
+      } else {
+        setDb(prev => ({
+          ...prev,
+          courses: prev.courses.map(c => (c.id === courseId ? { ...c, syllabus: null } : c))
+        }));
+      }
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Failed to remove syllabus.';
-      setLastError(message);
-      showAlert(message, 'Remove Syllabus Failed');
-      throw err;
+      failSyllabus(err, 'Failed to remove syllabus.', 'Remove Syllabus Failed');
     }
-    setDb(prev => ({
-      ...prev,
-      courses: prev.courses.map(c => (c.id === courseId ? { ...c, syllabus: null } : c))
-    }));
+  };
+
+  const refreshPublishedSyllabus = async (courseId: string): Promise<void> => {
+    try {
+      const envelope = await syllabusApi.getPublished(courseId);
+      if (envelope) applySyllabusEnvelope(courseId, envelope);
+      else clearSyllabusRevision(courseId);
+    } catch (err) {
+      failSyllabus(err, 'Failed to load syllabus.', 'Load Syllabus Failed');
+    }
+  };
+
+  const updateSyllabusSection = async (courseId: string, section: SyllabusSectionKey, value: unknown): Promise<void> => {
+    try {
+      let active = syllabusRevisionsRef.current[courseId] ?? null;
+      if (!active || active.status !== 'draft') {
+        const draft = await syllabusApi.createDraft(courseId, active?.id);
+        active = draft.revision;
+        setSyllabusRevisions(prev => ({ ...prev, [courseId]: active as SyllabusRevisionHeader }));
+      }
+      const envelope = await syllabusApi.updateSection(courseId, active.id, active.rowVersion, section, value);
+      applySyllabusEnvelope(courseId, envelope);
+    } catch (err) {
+      if (isRevisionConflict(err)) await recoverSyllabusFromPublished(courseId);
+      failSyllabus(err, 'Failed to update syllabus.', 'Update Syllabus Failed');
+    }
+  };
+
+  const publishSyllabusDraft = async (courseId: string): Promise<void> => {
+    const active = syllabusRevisionsRef.current[courseId];
+    if (!active || active.status !== 'draft') {
+      const message = 'No active syllabus draft for this course.';
+      setLastError(message);
+      showAlert(message, 'Publish Syllabus Failed');
+      throw new Error(message);
+    }
+    try {
+      const envelope = await syllabusApi.publish(courseId, active.id, active.rowVersion);
+      applySyllabusEnvelope(courseId, envelope);
+    } catch (err) {
+      if (isRevisionConflict(err)) await recoverSyllabusFromPublished(courseId);
+      failSyllabus(err, 'Failed to publish syllabus.', 'Publish Syllabus Failed');
+    }
   };
 
   const updateCourseGradingTerms = async (courseId: string, gradingTerms: TermId[] | null): Promise<void> => {
@@ -4401,9 +4531,14 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         regenerateCourseJoinCode,
         updateCourseSyllabus,
         removeCourseSyllabus,
+        syllabusRevisions,
+        refreshPublishedSyllabus,
+        updateSyllabusSection,
+        publishSyllabusDraft,
         updateCourseGradingTerms,
         setGradesReleased,
         effectiveTermsForCourse,
+        isCourseGradeReady,
         importCommonsTemplate,
         gradeSubmission,
         upsertManualExamGrade,

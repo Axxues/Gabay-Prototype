@@ -8,5 +8,5 @@
     "esModuleInterop": true,
     "skipLibCheck": true
   },
-  "include": ["src/**/*", "prisma/seed.ts", "prisma/seed.test.ts"]
+  "include": ["src/**/*", "prisma/seed.ts", "prisma/seed.test.ts", "prisma/normalizeSyllabi.ts", "prisma/normalizeSyllabi.test.ts", "prisma/backfillSyllabi.ts", "prisma/verifySyllabiParity.ts"]
 }

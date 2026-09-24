@@ -28,11 +28,12 @@ export function clearToken(): void {
 
 interface ApiOptions {
   method?: string;
+  headers?: Record<string, string>;
   body?: unknown;
 }
 
 export async function apiFetch<T>(path: string, options: ApiOptions = {}): Promise<T> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(options.headers || {}) };
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
   const res = await fetch(path, {

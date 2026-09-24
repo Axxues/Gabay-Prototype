@@ -17,7 +17,7 @@ async function loadCourseOr404(courseId: string) {
   // multi-MB image/syllabus blobs on every course-scoped call.
   const course = await prisma.course.findUnique({
     where: { id: courseId },
-    select: { id: true, instructorId: true, title: true },
+    select: { id: true, instructorId: true, title: true, code: true },
   });
   if (!course) throw new ApiError(404, 'not_found', 'Course not found.');
   return course;

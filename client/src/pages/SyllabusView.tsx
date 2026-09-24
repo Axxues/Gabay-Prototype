@@ -40,6 +40,8 @@ import {
 } from 'lucide-react';
 import { FilePickerModal } from '../components/common/FilePickerModal';
 import { UploadProgress } from '../components/common/UploadProgress';
+import { SyllabusRevisionBar } from '../components/syllabus/SyllabusRevisionBar';
+import type { SyllabusSectionKey } from '../types/syllabusApi';
 import { useSimulatedUpload } from '../hooks/useSimulatedUpload';
 import type { AggregatedCourseFile } from '../hooks/useCourseFiles';
 
@@ -47,10 +49,67 @@ interface SyllabusViewProps {
   courseId: string;
 }
 
+export interface SyllabusSourceScanSummary {
+  fileName: string;
+  fileSize: string;
+  fileType: 'pdf' | 'docx';
+  fileDataUrl?: string;
+}
+
+export const buildSourceDocumentValue = (
+  scan: SyllabusSourceScanSummary,
+  uploaded: { id: string; fileDataUrl?: string },
+): Record<string, unknown> => ({
+  fileName: scan.fileName,
+  fileSize: scan.fileSize,
+  fileType: scan.fileType,
+  ...(scan.fileDataUrl ? { fileDataUrl: scan.fileDataUrl } : {}),
+  ...(uploaded.fileDataUrl ? { fileDataUrl: uploaded.fileDataUrl } : {}),
+  uploadedAt: new Date().toISOString(),
+  courseFileId: uploaded.id,
+});
+
+const syllabusEditorSectionPayloads = (
+  sectionId: string,
+  syllabus: OfficialSyllabusData,
+): Array<[SyllabusSectionKey, unknown]> => {
+  switch (sectionId) {
+    case 'facultySchedule':
+      return [['faculty', syllabus.facultyMembers]];
+    case 'vgmo':
+      return [['institutionalStatements', syllabus.institutionalStatements]];
+    case 'programOutcomes':
+      return [['programOutcomes', syllabus.programOutcomes]];
+    case 'courseOutcomes':
+      return [['courseOutcomes', syllabus.courseOutcomes]];
+    case 'gradingSystem':
+      return [['gradingSystem', syllabus.gradingSystem]];
+    case 'projectRubrics':
+      return [['rubrics', syllabus.projectRubrics]];
+    case 'classroomPolicies':
+      return [['policies', syllabus.classroomPolicies]];
+    case 'courseOutline':
+      return [['outline', syllabus.courseOutline]];
+    case 'learningPlan':
+      return [['learningPlan', syllabus.learningPlan]];
+    case 'curriculumMap':
+      return [['courseMap', syllabus.courseMap]];
+    case 'referencesSignatures':
+      return [
+        ['references', syllabus.references],
+        ['signatories', syllabus.signatories],
+      ];
+    default:
+      return [];
+  }
+};
+
 export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
-  const { db, activeRole, activeUser, updateCourseSyllabus, removeCourseSyllabus, showAlert, uploadCourseFile, updateCourseGradingTerms } = useLMS();
+  const { db, activeRole, activeUser, updateCourseSyllabus, removeCourseSyllabus, showAlert, showConfirm, uploadCourseFile, updateCourseGradingTerms, syllabusRevisions, updateSyllabusSection, publishSyllabusDraft } = useLMS();
   const currentCourse = db.courses.find(c => c.id === courseId);
   const data = currentCourse?.syllabus || null;
+  const revision = syllabusRevisions[courseId] ?? null;
+  const isPublishedRevision = revision?.status === 'published';
   const isCustomSyllabus = Boolean(currentCourse?.syllabus);
   const canManageSyllabus = activeRole === 'faculty';
 
@@ -134,6 +193,13 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
 
   const startEditing = (sectionId: string) => {
     if (!data) return;
+    if (isPublishedRevision) {
+      showAlert(
+        'This revision is published and read-only. Create a draft to make changes.',
+        'Read-only Revision'
+      );
+      return;
+    }
     setDraft(cloneSyllabus(data));
     if (sectionId === 'gradingSystem') {
       setGradingTermsOverride(currentCourse?.gradingTerms ? [...currentCourse.gradingTerms] : null);
@@ -149,7 +215,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
   };
 
   const saveDraft = async () => {
-    if (!draft) return;
+    if (!draft || !editingSection) return;
     // Grading-terms override: at least one term must stay checked.
     if (editingSection === 'gradingSystem' && gradingTermsOverride !== null && gradingTermsOverride.length === 0) {
       showAlert({
@@ -161,7 +227,14 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
     }
     setIsSaving(true);
     try {
-      await updateCourseSyllabus(courseId, draft);
+      const payloads = syllabusEditorSectionPayloads(editingSection, draft);
+      if (payloads.length === 0) {
+        await updateCourseSyllabus(courseId, draft);
+      } else {
+        for (const [section, value] of payloads) {
+          await updateSyllabusSection(courseId, section, value);
+        }
+      }
       if (editingSection === 'gradingSystem') {
         const current = currentCourse?.gradingTerms ?? null;
         const same =
@@ -179,11 +252,49 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
       setDraft(null);
       setGradingTermsOverride(null);
       setEditingSection(null);
-    } catch {
-      // updateCourseSyllabus already surfaced the alert.
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to save this section.';
+      showAlert(message, 'Save Section Failed');
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleCreateDraft = async () => {
+    if (!data) return;
+    setIsSaving(true);
+    try {
+      await updateCourseSyllabus(courseId, data);
+      showAlert({
+        title: 'Draft Created',
+        message: 'A new draft revision was created from the published syllabus.',
+        type: 'success'
+      });
+    } catch {
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handlePublishDraft = () => {
+    if (!revision || revision.status !== 'draft') return;
+    showConfirm(
+      `Publish revision ${revision.revisionNo} of this syllabus? Students will see the published version.`,
+      () => {
+        void (async () => {
+          try {
+            await publishSyllabusDraft(courseId);
+            showAlert({
+              title: 'Syllabus Published',
+              message: `Revision ${revision.revisionNo} is now published.`,
+              type: 'success'
+            });
+          } catch {
+          }
+        })();
+      },
+      'Publish Syllabus'
+    );
   };
 
   const editBar = (sectionId: string) =>
@@ -421,7 +532,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
       // the scanned bytes ride the multipart upload when still retained.
       upload.start(scannedFile?.name ?? scanResult.fileName);
       try {
-        await uploadCourseFile({
+        const uploaded = await uploadCourseFile({
           courseId,
           area: 'syllabus',
           name: scanResult.fileName,
@@ -431,6 +542,31 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
           visibility: 'published',
         });
         upload.complete();
+        if (uploaded && typeof uploaded.id === 'string') {
+          if (uploaded.courseId !== courseId) {
+            showAlert({
+              title: 'Syllabus Update Blocked',
+              message: `The uploaded file belongs to another course and cannot be linked to ${currentCourse.code}.`,
+              type: 'error'
+            });
+            return;
+          }
+          try {
+            await updateSyllabusSection(
+              courseId,
+              'sourceDocument',
+              buildSourceDocumentValue(
+                {
+                  fileName: scanResult.fileName,
+                  fileSize: scanResult.fileSize,
+                  fileType: scanResult.fileType === 'docx' ? 'docx' : 'pdf',
+                },
+                { id: uploaded.id }
+              )
+            );
+          } catch {
+          }
+        }
       } catch {
         // Context already surfaced the alert; the syllabus itself is saved.
         upload.fail();
@@ -984,6 +1120,15 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
         </div>
       ) : (
         <>
+          <SyllabusRevisionBar
+            revision={revision}
+            canEdit={isFacultyCreator}
+            isDirty={editingSection !== null && draft !== null}
+            onCreateDraft={() => {
+              void handleCreateDraft();
+            }}
+            onPublish={handlePublishDraft}
+          />
           {/* =========================================================
               TOP BANNER: Official University & Syllabus Metadata
               ========================================================= */}
@@ -1129,7 +1274,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                 type="button"
                 onClick={e => { e.stopPropagation(); startEditing('facultySchedule'); setExpandedSections(prev => ({ ...prev, facultySchedule: true })); }}
                 className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer"
-                title="Edit section"
+                title="Edit section" disabled={isPublishedRevision}
               >
                 <Pencil className="w-3.5 h-3.5" />
               </button>
@@ -1344,7 +1489,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                 type="button"
                 onClick={e => { e.stopPropagation(); startEditing('vgmo'); setExpandedSections(prev => ({ ...prev, vgmo: true })); }}
                 className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer"
-                title="Edit section"
+                title="Edit section" disabled={isPublishedRevision}
               >
                 <Pencil className="w-3.5 h-3.5" />
               </button>
@@ -1624,7 +1769,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
           </div>
           <div className="shrink-0 ml-3 flex items-center gap-1.5">
             {isFacultyCreator && (
-              <button type="button" onClick={e => { e.stopPropagation(); startEditing('programOutcomes'); setExpandedSections(prev => ({ ...prev, programOutcomes: true })); }} className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer" title="Edit section">
+              <button type="button" onClick={e => { e.stopPropagation(); startEditing('programOutcomes'); setExpandedSections(prev => ({ ...prev, programOutcomes: true })); }} className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer" title="Edit section" disabled={isPublishedRevision}>
                 <Pencil className="w-3.5 h-3.5" />
               </button>
             )}
@@ -1739,7 +1884,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
           </div>
           <div className="shrink-0 ml-3 flex items-center gap-1.5">
             {isFacultyCreator && (
-              <button type="button" onClick={e => { e.stopPropagation(); startEditing('courseOutcomes'); setExpandedSections(prev => ({ ...prev, courseOutcomes: true })); }} className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer" title="Edit section">
+              <button type="button" onClick={e => { e.stopPropagation(); startEditing('courseOutcomes'); setExpandedSections(prev => ({ ...prev, courseOutcomes: true })); }} className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer" title="Edit section" disabled={isPublishedRevision}>
                 <Pencil className="w-3.5 h-3.5" />
               </button>
             )}
@@ -1851,7 +1996,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
           </div>
           <div className="shrink-0 ml-3 flex items-center gap-1.5">
             {isFacultyCreator && (
-              <button type="button" onClick={e => { e.stopPropagation(); startEditing('gradingSystem'); setExpandedSections(prev => ({ ...prev, gradingSystem: true })); }} className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer" title="Edit section">
+              <button type="button" onClick={e => { e.stopPropagation(); startEditing('gradingSystem'); setExpandedSections(prev => ({ ...prev, gradingSystem: true })); }} className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer" title="Edit section" disabled={isPublishedRevision}>
                 <Pencil className="w-3.5 h-3.5" />
               </button>
             )}
@@ -2131,7 +2276,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
           </div>
           <div className="shrink-0 ml-3 flex items-center gap-1.5">
             {isFacultyCreator && (
-              <button type="button" onClick={e => { e.stopPropagation(); startEditing('projectRubrics'); setExpandedSections(prev => ({ ...prev, projectRubrics: true })); }} className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer" title="Edit section">
+              <button type="button" onClick={e => { e.stopPropagation(); startEditing('projectRubrics'); setExpandedSections(prev => ({ ...prev, projectRubrics: true })); }} className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer" title="Edit section" disabled={isPublishedRevision}>
                 <Pencil className="w-3.5 h-3.5" />
               </button>
             )}
@@ -2279,7 +2424,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
           </div>
           <div className="shrink-0 ml-3 flex items-center gap-1.5">
             {isFacultyCreator && (
-              <button type="button" onClick={e => { e.stopPropagation(); startEditing('classroomPolicies'); setExpandedSections(prev => ({ ...prev, classroomPolicies: true })); }} className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer" title="Edit section">
+              <button type="button" onClick={e => { e.stopPropagation(); startEditing('classroomPolicies'); setExpandedSections(prev => ({ ...prev, classroomPolicies: true })); }} className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer" title="Edit section" disabled={isPublishedRevision}>
                 <Pencil className="w-3.5 h-3.5" />
               </button>
             )}
@@ -2385,7 +2530,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
           </div>
           <div className="shrink-0 ml-3 flex items-center gap-1.5">
             {isFacultyCreator && (
-              <button type="button" onClick={e => { e.stopPropagation(); startEditing('courseOutline'); setExpandedSections(prev => ({ ...prev, courseOutline: true })); }} className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer" title="Edit section">
+              <button type="button" onClick={e => { e.stopPropagation(); startEditing('courseOutline'); setExpandedSections(prev => ({ ...prev, courseOutline: true })); }} className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer" title="Edit section" disabled={isPublishedRevision}>
                 <Pencil className="w-3.5 h-3.5" />
               </button>
             )}
@@ -2527,7 +2672,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
           </div>
           <div className="shrink-0 ml-3 flex items-center gap-1.5">
             {isFacultyCreator && (
-              <button type="button" onClick={e => { e.stopPropagation(); startEditing('learningPlan'); setExpandedSections(prev => ({ ...prev, learningPlan: true })); }} className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer" title="Edit section">
+              <button type="button" onClick={e => { e.stopPropagation(); startEditing('learningPlan'); setExpandedSections(prev => ({ ...prev, learningPlan: true })); }} className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer" title="Edit section" disabled={isPublishedRevision}>
                 <Pencil className="w-3.5 h-3.5" />
               </button>
             )}
@@ -2863,7 +3008,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
           </div>
           <div className="shrink-0 ml-3 flex items-center gap-1.5">
             {isFacultyCreator && (
-              <button type="button" onClick={e => { e.stopPropagation(); startEditing('curriculumMap'); setExpandedSections(prev => ({ ...prev, curriculumMap: true })); }} className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer" title="Edit section">
+              <button type="button" onClick={e => { e.stopPropagation(); startEditing('curriculumMap'); setExpandedSections(prev => ({ ...prev, curriculumMap: true })); }} className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer" title="Edit section" disabled={isPublishedRevision}>
                 <Pencil className="w-3.5 h-3.5" />
               </button>
             )}
@@ -3033,7 +3178,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
           </div>
           <div className="shrink-0 ml-3 flex items-center gap-1.5">
             {isFacultyCreator && (
-              <button type="button" onClick={e => { e.stopPropagation(); startEditing('referencesSignatures'); setExpandedSections(prev => ({ ...prev, referencesSignatures: true })); }} className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer" title="Edit section">
+              <button type="button" onClick={e => { e.stopPropagation(); startEditing('referencesSignatures'); setExpandedSections(prev => ({ ...prev, referencesSignatures: true })); }} className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer" title="Edit section" disabled={isPublishedRevision}>
                 <Pencil className="w-3.5 h-3.5" />
               </button>
             )}

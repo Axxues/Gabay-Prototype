@@ -5,6 +5,7 @@ import { errorMiddleware } from './utils/errors.js';
 import { authRouter } from './routes/auth.js';
 import { usersRouter } from './routes/users.js';
 import { coursesRouter, sectionsRouter } from './routes/courses.js';
+import { syllabusRouter } from './routes/syllabi.js';
 import { requestsRouter } from './routes/requests.js';
 import { modulesRouter } from './routes/modules.js';
 import { quizzesRouter, activitiesRouter, examsRouter, submissionsRouter } from './routes/assessments.js';
@@ -35,6 +36,7 @@ app.get('/api/health', (_req, res) => {
 app.use('/api/auth', authRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/courses', coursesRouter);
+app.use('/api/courses', syllabusRouter);
 app.use('/api/sections', sectionsRouter);
 app.use('/api', requestsRouter);
 app.use('/api', modulesRouter);

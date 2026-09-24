@@ -80,6 +80,40 @@ describe('requests approve', () => {
   });
 });
 
+describe('requests invites', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue(facultyAuth);
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...course,
+      code: 'CMSC 131',
+    });
+    (prisma.enrollmentRequest.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    (prisma.enrollmentRequest.create as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'req-3',
+      courseId: 'c1',
+      studentId: 'student-1',
+      status: 'pending',
+    });
+    (prisma.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'student-1', name: 'Student' });
+  });
+
+  it('returns the course code in a new faculty invite', async () => {
+    const res = await (await import('supertest'))
+      .default(app())
+      .post('/api/courses/c1/invites')
+      .set('Authorization', 'Bearer x')
+      .send({ studentId: 'student-1' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.request.courseCode).toBe('CMSC 131');
+    expect(prisma.course.findUnique).toHaveBeenCalledWith({
+      where: { id: 'c1' },
+      select: { id: true, instructorId: true, title: true, code: true },
+    });
+  });
+});
+
 describe('requests mine', () => {
   beforeEach(() => {
     vi.clearAllMocks();
