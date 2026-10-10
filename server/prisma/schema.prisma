@@ -232,6 +232,8 @@ model Activity {
   availableFrom      DateTime? // classic only
   availableUntil     DateTime? // classic only
   sectionRestriction String?        @db.NVarChar(128) // classic only
+  assessmentType     String?        @default("activity") @db.NVarChar(32)
+  metadata           String?        @db.NVarChar(Max)
   questions          QuizQuestion[]
   submissions        Submission[]
 }

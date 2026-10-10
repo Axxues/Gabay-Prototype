@@ -152,6 +152,19 @@ export interface RubricCriterion {
   ratings: RubricRating[];
 }
 
+export type AssessmentType = 'activity' | 'assignment' | 'project' | 'presentation';
+
+export interface AssessmentMetadata {
+  groupMode?: 'individual' | 'group';
+  maxGroupSize?: number;
+  repositoryUrlRequired?: boolean;
+  liveDemoUrlRequired?: boolean;
+  presentationMode?: 'in_person' | 'recorded' | 'slide_only';
+  durationMinutes?: number;
+  slideDeckRequired?: boolean;
+  rubricFocus?: 'delivery' | 'content' | 'qa' | 'visuals';
+}
+
 export interface Activity {
   id: string;
   courseId: string;
@@ -163,6 +176,8 @@ export interface Activity {
   dueDate?: string;
   published: boolean;
   format: 'classic' | 'questionset';
+  assessmentType?: AssessmentType;
+  metadata?: AssessmentMetadata;
   submissionTypes?: string[];
   category?: string;
   weight?: number;
@@ -444,7 +459,7 @@ export interface CourseFolder {
   autoKey?: string;
 }
 
-export type FileSourceArea = 'announcements' | 'modules' | 'syllabus';
+export type FileSourceArea = 'announcements' | 'modules' | 'syllabus' | 'activities';
 
 export interface FileAreaInput {
   courseId: string;
