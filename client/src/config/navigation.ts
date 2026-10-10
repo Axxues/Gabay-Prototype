@@ -1,5 +1,5 @@
 import type { UserRole } from '../types/lms';
-export type NavIcon = 'dashboard'|'courses'|'calendar'|'inbox'|'history'|'help'|'modules'|'syllabus'|'announcements'|'activities'|'quizzes'|'exams'|'files'|'grades'|'people'|'accounts'|'page1'|'page2'|'page3'|'pending-requests'|'gabay-rag';
+export type NavIcon = 'dashboard'|'courses'|'calendar'|'inbox'|'history'|'help'|'modules'|'syllabus'|'announcements'|'assessments'|'activities'|'quizzes'|'assignments'|'projects'|'presentations'|'exams'|'files'|'grades'|'people'|'accounts'|'page1'|'page2'|'page3'|'pending-requests'|'gabay-rag';
 export interface NavItem { id: string; label: string; icon: NavIcon; roles: UserRole[] }
 const ALL: UserRole[] = ['admin','faculty','student','staff'];
 const NO_STAFF: UserRole[] = ['admin','faculty','student'];
@@ -21,13 +21,26 @@ export const COURSE_CHILDREN: NavItem[] = [
   { id: 'modules', label: 'Modules', icon: 'modules', roles: ALL },
   { id: 'syllabus', label: 'Syllabus', icon: 'syllabus', roles: ALL },
   { id: 'announcements', label: 'Announcements', icon: 'announcements', roles: ALL },
-  { id: 'activities', label: 'Activities', icon: 'activities', roles: ALL },
-  { id: 'quizzes', label: 'Quizzes', icon: 'quizzes', roles: ALL },
-  { id: 'exams', label: 'Exams', icon: 'exams', roles: ALL },
+  { id: 'assessments', label: 'Assessments', icon: 'assessments', roles: ALL },
   { id: 'files', label: 'Files', icon: 'files', roles: ALL },
   { id: 'grades', label: 'Grades', icon: 'grades', roles: ALL },
   { id: 'people', label: 'People', icon: 'people', roles: NO_STAFF },
 ];
+
+export const ASSESSMENT_SUB_ITEMS: { id: string; label: string; icon: NavIcon }[] = [
+  { id: 'assessments', label: 'Overview', icon: 'assessments' },
+  { id: 'activities', label: 'Activities', icon: 'activities' },
+  { id: 'quizzes', label: 'Quizzes', icon: 'quizzes' },
+  { id: 'assignments', label: 'Assignments', icon: 'assignments' },
+  { id: 'projects', label: 'Projects', icon: 'projects' },
+  { id: 'presentations', label: 'Presentations', icon: 'presentations' },
+  { id: 'exams', label: 'Exams', icon: 'exams' },
+];
+
+export const ASSESSMENT_TAB_IDS = ['assessments', 'activities', 'quizzes', 'assignments', 'projects', 'presentations', 'exams'] as const;
+export function isAssessmentTab(tab: string): boolean {
+  return (ASSESSMENT_TAB_IDS as readonly string[]).includes(tab);
+}
 export function isVisible(item: NavItem, role: UserRole): boolean { return item.roles.includes(role); }
 
 // Top-level tabs that live outside the Learning Management section

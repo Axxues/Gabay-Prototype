@@ -124,3 +124,81 @@ export function countFacultyGradingBadge(
   const wanted = new Set(activityKeys);
   return submissions.filter(s => s.activityKey !== undefined && wanted.has(s.activityKey) && s.status === 'submitted').length;
 }
+
+export function countAssessmentCategoryBadge(
+  activities: Array<{ id: string; courseId: string; format?: string; published?: boolean; assessmentType?: string }>,
+  submissions: Array<{ activityKey?: string; courseId?: string; studentId?: string; status?: string }>,
+  category: 'activity' | 'assignment' | 'project' | 'presentation',
+  userId: string,
+  role: UserRole,
+  courseId: string
+): number {
+  const matchesCat = (a: { assessmentType?: string }) =>
+    category === 'activity' ? (!a.assessmentType || a.assessmentType === 'activity') : a.assessmentType === category;
+
+  const courseActivities = (activities || []).filter(a => a.courseId === courseId && matchesCat(a));
+  if (role === 'faculty' || role === 'admin') {
+    const ids = [
+      ...courseActivities.filter(a => a.format === 'classic').map(a => a.id),
+      ...courseActivities.filter(a => a.format !== 'classic').map(a => `asg-activity-${a.id}`),
+    ];
+    return countFacultyGradingBadge(submissions.filter(s => s.courseId === courseId), ids);
+  }
+
+  const published = courseActivities.filter(a => a.published);
+  const pubIds = [
+    ...published.filter(a => a.format === 'classic').map(a => a.id),
+    ...published.filter(a => a.format !== 'classic').map(a => `asg-activity-${a.id}`),
+  ];
+  const mine = submissions
+    .filter(s => s.courseId === courseId && s.studentId === userId)
+    .map(s => s.activityKey ?? '');
+  return countStudentAssessmentBadge(pubIds, mine);
+}
+
+export function countTotalAssessmentBadge(params: {
+  activities?: Array<{ id: string; courseId: string; format?: string; published?: boolean; assessmentType?: string }>;
+  quizzes?: Array<{ id: string; courseId: string; published?: boolean }>;
+  exams?: Array<{ id: string; courseId: string; published?: boolean }>;
+  submissions?: Array<{ activityKey?: string; courseId?: string; studentId?: string; status?: string }>;
+  userId: string;
+  role: UserRole;
+  courseId: string;
+}): number {
+  const { activities = [], quizzes = [], exams = [], submissions = [], userId, role, courseId } = params;
+  let total = 0;
+  for (const cat of ['activity', 'assignment', 'project', 'presentation'] as const) {
+    total += countAssessmentCategoryBadge(activities, submissions, cat, userId, role, courseId);
+  }
+
+  const courseQuizzes = (quizzes || []).filter(q => q.courseId === courseId);
+  if (role === 'faculty' || role === 'admin') {
+    total += countFacultyGradingBadge(
+      submissions.filter(s => s.courseId === courseId),
+      courseQuizzes.map(q => `asg-quiz-${q.id}`)
+    );
+  } else {
+    const pub = courseQuizzes.filter(q => q.published).map(q => q.id);
+    const taken = submissions
+      .filter(s => s.courseId === courseId && s.studentId === userId && (s.activityKey ?? '').startsWith('asg-quiz-'))
+      .map(s => (s.activityKey ?? '').replace('asg-quiz-', ''));
+    total += countStudentAssessmentBadge(pub, taken);
+  }
+
+  const courseExams = (exams || []).filter(e => e.courseId === courseId);
+  if (role === 'faculty' || role === 'admin') {
+    total += countFacultyGradingBadge(
+      submissions.filter(s => s.courseId === courseId),
+      courseExams.map(e => `asg-exam-${e.id}`)
+    );
+  } else {
+    const pub = courseExams.filter(e => e.published).map(e => e.id);
+    const taken = submissions
+      .filter(s => s.courseId === courseId && s.studentId === userId && (s.activityKey ?? '').startsWith('asg-exam-'))
+      .map(s => (s.activityKey ?? '').replace('asg-exam-', ''));
+    total += countStudentAssessmentBadge(pub, taken);
+  }
+
+  return total;
+}
+

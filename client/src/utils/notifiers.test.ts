@@ -8,6 +8,8 @@ import {
   isNewerThanVisit,
   resolveAnnouncementReplyRecipient,
   resolveModuleReplyRecipient,
+  countAssessmentCategoryBadge,
+  countTotalAssessmentBadge,
 } from './notifiers';
 
 describe('reply recipients', () => {
@@ -92,5 +94,35 @@ describe('badge selectors', () => {
   it('compares timestamps safely', () => {
     expect(isNewerThanVisit('2026-09-13T00:00:00.000Z', undefined)).toBe(true);
     expect(isNewerThanVisit('2026-09-10T00:00:00.000Z', '2026-09-12T00:00:00.000Z')).toBe(false);
+  });
+
+  it('counts assessment category badges and total assessment badge', () => {
+    const activities: any[] = [
+      { id: '1', courseId: 'c1', title: 'A1', format: 'classic', published: true, assessmentType: 'assignment' },
+      { id: '2', courseId: 'c1', title: 'P1', format: 'classic', published: true, assessmentType: 'project' },
+      { id: '3', courseId: 'c1', title: 'Act1', format: 'classic', published: true, assessmentType: 'activity' },
+    ];
+    const submissions: any[] = [
+      { id: 's1', activityKey: '1', courseId: 'c1', studentId: 'u1', status: 'submitted' },
+    ];
+
+    const assignmentBadge = countAssessmentCategoryBadge(activities, submissions, 'assignment', 'u1', 'student', 'c1');
+    const projectBadge = countAssessmentCategoryBadge(activities, submissions, 'project', 'u1', 'student', 'c1');
+    const activityBadge = countAssessmentCategoryBadge(activities, submissions, 'activity', 'u1', 'student', 'c1');
+
+    expect(assignmentBadge).toBe(0); // already submitted
+    expect(projectBadge).toBe(1);
+    expect(activityBadge).toBe(1);
+
+    const totalBadge = countTotalAssessmentBadge({
+      activities,
+      quizzes: [],
+      exams: [],
+      submissions,
+      userId: 'u1',
+      role: 'student',
+      courseId: 'c1',
+    });
+    expect(totalBadge).toBe(2);
   });
 });
