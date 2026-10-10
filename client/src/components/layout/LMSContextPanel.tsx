@@ -1,7 +1,36 @@
 import React from 'react';
-import { LayoutDashboard, BookOpen, Calendar, Inbox, History, HelpCircle, Layers, FileText, Megaphone, FileCheck2, HelpCircle as QuizIcon, Folder, Award, Users, Copy, Check } from 'lucide-react';
+import {
+  LayoutDashboard,
+  BookOpen,
+  Calendar,
+  Inbox,
+  History,
+  HelpCircle,
+  Layers,
+  FileText,
+  Megaphone,
+  FileCheck2,
+  HelpCircle as QuizIcon,
+  Folder,
+  Award,
+  Users,
+  Copy,
+  Check,
+  ClipboardList,
+  Briefcase,
+  Presentation,
+  ChevronDown,
+  ChevronRight,
+} from 'lucide-react';
 import { useLMS } from '../../context/LMSContext';
-import { LMS_CHILDREN, COURSE_CHILDREN, isVisible, isLmsSectionTab } from '../../config/navigation';
+import {
+  LMS_CHILDREN,
+  COURSE_CHILDREN,
+  ASSESSMENT_SUB_ITEMS,
+  isAssessmentTab,
+  isVisible,
+  isLmsSectionTab,
+} from '../../config/navigation';
 import {
   countFacultyGradingBadge,
   countNewFiles,
@@ -9,6 +38,8 @@ import {
   countStudentAssessmentBadge,
   countUpcomingCalendar,
   countUnreadAnnouncements,
+  countAssessmentCategoryBadge,
+  countTotalAssessmentBadge,
 } from '../../utils/notifiers';
 import { getDisplaySectionName } from '../../utils/sections';
 const LMS_ICONS: Record<string, React.ReactNode> = {
@@ -17,15 +48,32 @@ const LMS_ICONS: Record<string, React.ReactNode> = {
   history: <History className="h-4 w-4" />, help: <HelpCircle className="h-4 w-4" />,
 };
 const COURSE_ICONS: Record<string, React.ReactNode> = {
-  modules: <Layers className="h-4 w-4" />, syllabus: <FileText className="h-4 w-4" />,
-  announcements: <Megaphone className="h-4 w-4" />, activities: <FileCheck2 className="h-4 w-4" />,
-  quizzes: <QuizIcon className="h-4 w-4" />, exams: <QuizIcon className="h-4 w-4" />, files: <Folder className="h-4 w-4" />,
-  grades: <Award className="h-4 w-4" />, people: <Users className="h-4 w-4" />,
+  modules: <Layers className="h-4 w-4" />,
+  syllabus: <FileText className="h-4 w-4" />,
+  announcements: <Megaphone className="h-4 w-4" />,
+  assessments: <ClipboardList className="h-4 w-4" />,
+  activities: <FileCheck2 className="h-4 w-4" />,
+  quizzes: <QuizIcon className="h-4 w-4" />,
+  assignments: <FileText className="h-4 w-4" />,
+  projects: <Briefcase className="h-4 w-4" />,
+  presentations: <Presentation className="h-4 w-4" />,
+  exams: <QuizIcon className="h-4 w-4" />,
+  files: <Folder className="h-4 w-4" />,
+  grades: <Award className="h-4 w-4" />,
+  people: <Users className="h-4 w-4" />,
   'pending-requests': <Users className="h-4 w-4" />,
 };
 export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: string; onNavigateTab: (t: string) => void; onSelectCourseTab: (t: string) => void; onNavigateCourse: (id: string, sub?: string) => void }> = (p) => {
   const { db, activeCourseId, activeRole, activeUser, getUnreadNotificationCount } = useLMS();
   const [copied, setCopied] = React.useState(false);
+  const [isAssessmentsOpen, setIsAssessmentsOpen] = React.useState(() => isAssessmentTab(p.courseSubTab));
+
+  React.useEffect(() => {
+    if (isAssessmentTab(p.courseSubTab)) {
+      setIsAssessmentsOpen(true);
+    }
+  }, [p.courseSubTab]);
+
   const unread = db.messages.filter(m => m.recipientId === activeUser.id && !m.read).length;
   const studentSection = activeRole === 'student' && activeCourseId
     ? (db.courseSections || []).find(s => s.id === activeUser.courseSections?.[activeCourseId])
@@ -88,25 +136,27 @@ export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: strin
         const sectionId = activeUser.courseSections?.[cid] ?? null;
         return countUnreadAnnouncements(db.announcements || [], { id: activeUser.id, role: activeRole, sectionId }, cid);
       }
-      if (tabId === 'activities') {
-        if (activeRole === 'faculty') {
-          // Classic rows live in db.activities (format === 'classic');
-          // question sets link submissions via the synthetic
-          // asg-activity-<id> key (values preserved).
-          const courseActivities = (db.activities || []).filter(a => a.courseId === cid);
-          const ids = [
-            ...courseActivities.filter(a => a.format === 'classic').map(a => a.id),
-            ...courseActivities.filter(a => a.format !== 'classic').map(a => `asg-activity-${a.id}`),
-          ];
-          return countFacultyGradingBadge(db.submissions.filter(s => s.courseId === cid), ids);
-        }
-        const publishedActivities = (db.activities || []).filter(a => a.courseId === cid && a.published);
-        const pub = [
-          ...publishedActivities.filter(a => a.format === 'classic').map(a => a.id),
-          ...publishedActivities.filter(a => a.format !== 'classic').map(a => `asg-activity-${a.id}`),
-        ];
-        const mine = db.submissions.filter(s => s.courseId === cid && s.studentId === activeUser.id).map(s => s.activityKey ?? '');
-        return countStudentAssessmentBadge(pub, mine);
+      if (tabId === 'assessments') {
+        return countTotalAssessmentBadge({
+          activities: db.activities || [],
+          quizzes: db.quizzes || [],
+          exams: db.exams || [],
+          submissions: db.submissions || [],
+          userId: activeUser.id,
+          role: activeRole,
+          courseId: cid,
+        });
+      }
+      if (tabId === 'activities' || tabId === 'assignments' || tabId === 'projects' || tabId === 'presentations') {
+        const cat = tabId === 'activities' ? 'activity' : tabId === 'assignments' ? 'assignment' : tabId === 'projects' ? 'project' : 'presentation';
+        return countAssessmentCategoryBadge(
+          db.activities || [],
+          db.submissions || [],
+          cat,
+          activeUser.id,
+          activeRole,
+          cid
+        );
       }
       if (tabId === 'quizzes') {
         if (activeRole === 'faculty') {
@@ -115,6 +165,16 @@ export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: strin
         }
         const pub = (db.quizzes || []).filter(q => q.courseId === cid && q.published).map(q => q.id);
         const taken = db.submissions.filter(s => s.courseId === cid && s.studentId === activeUser.id && (s.activityKey ?? '').startsWith('asg-quiz-')).map(s => (s.activityKey ?? '').replace('asg-quiz-', ''));
+        const submitted = new Set(taken);
+        return pub.filter(id => !submitted.has(id)).length;
+      }
+      if (tabId === 'exams') {
+        if (activeRole === 'faculty') {
+          const ids = (db.exams || []).filter(e => e.courseId === cid).map(e => `asg-exam-${e.id}`);
+          return countFacultyGradingBadge(db.submissions.filter(s => s.courseId === cid), ids);
+        }
+        const pub = (db.exams || []).filter(e => e.courseId === cid && e.published).map(e => e.id);
+        const taken = db.submissions.filter(s => s.courseId === cid && s.studentId === activeUser.id && (s.activityKey ?? '').startsWith('asg-exam-')).map(s => (s.activityKey ?? '').replace('asg-exam-', ''));
         const submitted = new Set(taken);
         return pub.filter(id => !submitted.has(id)).length;
       }
@@ -149,17 +209,106 @@ export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: strin
           </div>
           {course?.joinCode && <button type="button" onClick={() => { try { navigator.clipboard.writeText(course.joinCode ?? ''); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch {} }} className="mb-2 flex w-full items-center justify-between rounded-xl border border-border bg-card px-3 py-2 font-mono text-[11px] font-bold cursor-pointer">{course.joinCode}{copied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5 text-muted-foreground" />}</button>}
           <nav className="space-y-1">
-            {COURSE_CHILDREN.filter(i => isVisible(i, activeRole)).map(item => (
-              <button key={item.id} type="button" onClick={() => p.onSelectCourseTab(item.id)}
-                className={`flex w-full items-center justify-between gap-2.5 rounded-xl px-3 py-2.5 text-xs font-bold cursor-pointer transition-all duration-150 ${p.courseSubTab === item.id ? 'bg-primary text-primary-foreground shadow-primary-sm' : 'text-muted-foreground hover:bg-accent hover:text-foreground font-medium'}`}><span className="flex items-center gap-2.5">{COURSE_ICONS[item.id]}<span>{item.label}</span></span>{(() => {
-                  const n = courseBadgeFor(item.id);
-                  return n > 0 ? (
-                    <span className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground">
-                      {n}
-                    </span>
-                  ) : null;
-                })()}</button>
-            ))}
+            {COURSE_CHILDREN.filter(i => isVisible(i, activeRole)).map(item => {
+              if (item.id === 'assessments') {
+                const isParentActive = isAssessmentTab(p.courseSubTab);
+                const totalBadge = courseBadgeFor('assessments');
+
+                return (
+                  <div key={item.id} className="space-y-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAssessmentsOpen(prev => !prev);
+                        p.onSelectCourseTab('assessments');
+                      }}
+                      className={`flex w-full items-center justify-between gap-2.5 rounded-xl px-3 py-2.5 text-xs font-bold cursor-pointer transition-all duration-150 ${
+                        p.courseSubTab === 'assessments'
+                          ? 'bg-primary text-primary-foreground shadow-primary-sm'
+                          : isParentActive
+                          ? 'bg-accent/70 text-foreground'
+                          : 'text-muted-foreground hover:bg-accent hover:text-foreground font-medium'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2.5">
+                        {COURSE_ICONS[item.id]}
+                        <span>{item.label}</span>
+                      </span>
+                      <div className="flex items-center gap-1.5 ml-auto">
+                        {!isAssessmentsOpen && totalBadge > 0 && (
+                          <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground">
+                            {totalBadge}
+                          </span>
+                        )}
+                        {isAssessmentsOpen ? (
+                          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                        ) : (
+                          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+                        )}
+                      </div>
+                    </button>
+
+                    {isAssessmentsOpen && (
+                      <div className="ml-3 pl-2 border-l border-border/70 space-y-1 py-0.5">
+                        {ASSESSMENT_SUB_ITEMS.map(subItem => {
+                          const isSubActive = p.courseSubTab === subItem.id;
+                          const subBadge = courseBadgeFor(subItem.id);
+
+                          return (
+                            <button
+                              key={subItem.id}
+                              type="button"
+                              onClick={() => p.onSelectCourseTab(subItem.id)}
+                              className={`flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold cursor-pointer transition-all duration-150 ${
+                                isSubActive
+                                  ? 'bg-primary text-primary-foreground shadow-primary-sm'
+                                  : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                              }`}
+                            >
+                              <span className="flex items-center gap-2 truncate">
+                                {COURSE_ICONS[subItem.id]}
+                                <span className="truncate">{subItem.label}</span>
+                              </span>
+                              {subBadge > 0 && (
+                                <span className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[9px] font-bold text-primary-foreground">
+                                  {subBadge}
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => p.onSelectCourseTab(item.id)}
+                  className={`flex w-full items-center justify-between gap-2.5 rounded-xl px-3 py-2.5 text-xs font-bold cursor-pointer transition-all duration-150 ${
+                    p.courseSubTab === item.id
+                      ? 'bg-primary text-primary-foreground shadow-primary-sm'
+                      : 'text-muted-foreground hover:bg-accent hover:text-foreground font-medium'
+                  }`}
+                >
+                  <span className="flex items-center gap-2.5">
+                    {COURSE_ICONS[item.id]}
+                    <span>{item.label}</span>
+                  </span>
+                  {(() => {
+                    const n = courseBadgeFor(item.id);
+                    return n > 0 ? (
+                      <span className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground">
+                        {n}
+                      </span>
+                    ) : null;
+                  })()}
+                </button>
+              );
+            })}
           </nav>
         </div>
         <div className="px-2 pt-3 text-[10px] text-muted-foreground">Trail: LMS &gt; courses &gt; {p.courseSubTab}</div>
