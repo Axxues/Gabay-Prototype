@@ -626,4 +626,80 @@ describe('assessments router', () => {
     expect(prisma.submission.create).not.toHaveBeenCalled();
     expect(prisma.submission.update).not.toHaveBeenCalled();
   });
+
+  it('GET /api/activities?assessmentType=project filters activities by assessmentType', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-fac',
+      role: 'faculty',
+    });
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(course);
+    (prisma.activity.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        id: 'act-proj-1',
+        courseId: 'c1',
+        title: 'Final Project',
+        format: 'classic',
+        assessmentType: 'project',
+        metadata: JSON.stringify({ groupMode: 'group', maxGroupSize: 3 }),
+        questions: [],
+      },
+    ]);
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .get('/api/activities?courseId=c1&assessmentType=project')
+      .set('Authorization', 'Bearer x');
+
+    expect(res.status).toBe(200);
+    expect(prisma.activity.findMany).toHaveBeenCalledWith({
+      where: { courseId: 'c1', assessmentType: 'project' },
+      include: { questions: true },
+    });
+    expect(res.body.activities).toHaveLength(1);
+    expect(res.body.activities[0].assessmentType).toBe('project');
+    expect(res.body.activities[0].metadata).toEqual({ groupMode: 'group', maxGroupSize: 3 });
+  });
+
+  it('POST /api/activities persists assessmentType and metadata', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-fac',
+      role: 'faculty',
+    });
+    (prisma.course.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(course);
+    (prisma.activity.create as ReturnType<typeof vi.fn>).mockImplementation(({ data }) =>
+      Promise.resolve({
+        ...data,
+        id: 'act-new-1',
+      })
+    );
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .post('/api/activities')
+      .set('Authorization', 'Bearer x')
+      .send({
+        courseId: 'c1',
+        title: 'Project Submission',
+        instructions: 'Submit demo',
+        format: 'classic',
+        term: 'finals',
+        pointsPossible: 100,
+        dueDate: new Date().toISOString(),
+        assessmentType: 'project',
+        metadata: { groupMode: 'group', repositoryUrlRequired: true },
+      });
+
+    expect(res.status).toBe(201);
+    expect(prisma.activity.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          assessmentType: 'project',
+          metadata: JSON.stringify({ groupMode: 'group', repositoryUrlRequired: true }),
+        }),
+      })
+    );
+    expect(res.body.activity.assessmentType).toBe('project');
+    expect(res.body.activity.metadata).toEqual({ groupMode: 'group', repositoryUrlRequired: true });
+  });
 });
+

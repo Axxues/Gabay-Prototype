@@ -92,11 +92,12 @@ function mapSubmission<T extends { rubricScores: string }>(s: T) {
   return { ...s, rubricScores: parseJsonField<Record<string, number>>(s.rubricScores, {}) };
 }
 
-function mapActivity<T extends { id: string; submissionTypes?: string | null; rubric?: string | null }>(a: T) {
+function mapActivity<T extends { id: string; submissionTypes?: string | null; rubric?: string | null; metadata?: string | null }>(a: T) {
   return {
     ...a,
     submissionTypes: parseJsonField<unknown[]>(a.submissionTypes, []),
     rubric: parseJsonField<unknown[]>(a.rubric, []),
+    metadata: parseJsonField<Record<string, unknown>>(a.metadata, {}),
   };
 }
 
@@ -222,13 +223,17 @@ function buildAssessmentRouter(kind: AssessmentKind) {
     return row;
   }
 
-  async function listForCourse(courseId: string): Promise<AssessmentRow[]> {
+  async function listForCourse(courseId: string, assessmentType?: string): Promise<AssessmentRow[]> {
+    const where: Record<string, unknown> = { courseId };
+    if (!isQuiz && !isExam && assessmentType) {
+      where.assessmentType = assessmentType;
+    }
     const rows = (isQuiz
       ? await prisma.quiz.findMany({ where: { courseId }, include: { questions: true } })
       : isExam
         ? await prisma.exam.findMany({ where: { courseId }, include: { questions: true } })
         : await prisma.activity.findMany({
-            where: { courseId },
+            where,
             include: { questions: true },
           })) as unknown as AssessmentRow[];
     return rows;
@@ -245,7 +250,8 @@ function buildAssessmentRouter(kind: AssessmentKind) {
       }
       const course = await loadCourseOr404(courseId);
       await assertCourseAccess(course, auth);
-      const rows = await listForCourse(course.id);
+      const assessmentType = typeof req.query.assessmentType === 'string' ? req.query.assessmentType : undefined;
+      const rows = await listForCourse(course.id, assessmentType);
       const items = rows.map((r) => ({
         ...((isQuiz || isExam) ? r : mapActivity(r)),
         questions: mapQuestionsFor(auth.role, r.questions),
@@ -372,6 +378,8 @@ function buildAssessmentRouter(kind: AssessmentKind) {
         }
         const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
         const term = body.term === undefined ? 'midterm' : parseTermInput(body.term);
+        const assessmentType = typeof body.assessmentType === 'string' && body.assessmentType ? body.assessmentType : 'activity';
+        const metadata = body.metadata && typeof body.metadata === 'object' ? stringifyJsonField(body.metadata) : null;
         assertActivityStringLengths(body);
         const created = await prisma.activity.create({
           data: {
@@ -380,6 +388,8 @@ function buildAssessmentRouter(kind: AssessmentKind) {
             title,
             instructions,
             format: 'classic',
+            assessmentType,
+            metadata,
             term,
             pointsPossible,
             dueDate: due,
@@ -401,6 +411,8 @@ function buildAssessmentRouter(kind: AssessmentKind) {
         res.status(201).json({ activity: { ...mapActivity(created), questions: [] } });
         return;
       }
+      const assessmentType = typeof body.assessmentType === 'string' && body.assessmentType ? body.assessmentType : 'activity';
+      const metadata = body.metadata && typeof body.metadata === 'object' ? stringifyJsonField(body.metadata) : null;
       const created = await prisma.activity.create({
         data: {
           id: newId('act'),
@@ -408,6 +420,8 @@ function buildAssessmentRouter(kind: AssessmentKind) {
           title,
           instructions,
           format: 'questionset',
+          assessmentType,
+          metadata,
           pointsPossible,
           term: parseTermInput(body.term ?? 'midterm'),
           dueDate: parseOptionalDate(body.dueDate, 'dueDate') ?? null,
@@ -557,6 +571,15 @@ function buildAssessmentRouter(kind: AssessmentKind) {
           throw new ApiError(400, 'bad_request', `Field '${key}' must be a date string.`);
         }
         data[key] = new Date(value);
+      }
+      if (body.assessmentType !== undefined) {
+        if (typeof body.assessmentType !== 'string') {
+          throw new ApiError(400, 'bad_request', "Field 'assessmentType' must be a string.");
+        }
+        data.assessmentType = body.assessmentType;
+      }
+      if (body.metadata !== undefined) {
+        data.metadata = body.metadata && typeof body.metadata === 'object' ? stringifyJsonField(body.metadata) : null;
       }
       const updated = await prisma.activity.update({ where: { id: row.id }, data });
       res.json({ activity: mapActivity(updated) });
