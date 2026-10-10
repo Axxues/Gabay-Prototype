@@ -151,28 +151,29 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
         )}
 
         <PageHeader
-          icon={<FileText className="h-5 w-5 text-amber-500" />}
+          eyebrow="COURSE ASSESSMENTS"
           title="Assignments"
-          subtitle="Course assignments, homework, and formal submissions"
-          primaryAction={
-            activeRole !== 'student'
-              ? {
-                  label: 'Create Assignment',
-                  icon: <Plus className="h-4 w-4" />,
-                  onClick: () => setIsCreating(true),
-                }
-              : undefined
+          description="Course assignments, homework, and formal submissions"
+          actions={
+            <div className="flex items-center gap-2">
+              <TermFilterSelect
+                terms={effectiveTerms}
+                value={termFilter}
+                onChange={v => setTermFilter(v as 'all' | TermId)}
+              />
+              {activeRole !== 'student' && (
+                <button
+                  type="button"
+                  onClick={() => setIsCreating(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-primary text-primary-foreground rounded-xl shadow-sm hover:opacity-95 transition-all cursor-pointer"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  <span>Create Assignment</span>
+                </button>
+              )}
+            </div>
           }
-        >
-          <div className="flex items-center gap-2">
-            <TermFilterSelect
-              terms={effectiveTerms}
-              value={termFilter}
-              onChange={setTermFilter}
-              includeAll
-            />
-          </div>
-        </PageHeader>
+        />
 
         {visibleAssignments.length === 0 ? (
           <EmptyState
@@ -194,6 +195,7 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
                 s => s.activityId === assignment.id || s.activityKey === assignment.id
               );
               const pendingGradeCount = subs.filter(s => s.status === 'submitted').length;
+              const normTerm = normalizeTermId(assignment.term);
 
               return (
                 <div
@@ -208,7 +210,7 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
                     <div className="min-w-0 space-y-1">
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-primary/10 text-primary">
-                          {TERM_LABELS[normalizeTermId(assignment.term)] ?? assignment.term}
+                          {normTerm ? TERM_LABELS[normTerm] : (assignment.term || 'Midterm')}
                         </span>
                         {!assignment.published && (
                           <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600">
@@ -277,7 +279,7 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
           <div>
             <div className="flex items-center gap-2 mb-1">
               <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-primary/10 text-primary">
-                {TERM_LABELS[normalizeTermId(selectedAssignment.term)] ?? selectedAssignment.term}
+                {normalizeTermId(selectedAssignment.term) ? TERM_LABELS[normalizeTermId(selectedAssignment.term)!] : (selectedAssignment.term || 'Midterm')}
               </span>
               <span className="text-xs text-muted-foreground font-semibold">
                 {selectedAssignment.pointsPossible} Points

@@ -164,12 +164,9 @@ export const CreatePresentationPage: React.FC<CreatePresentationPageProps> = ({
               Grading Term
             </label>
             <TermFilterSelect
+              terms={effectiveTerms}
               value={term}
               onChange={val => setTerm(val as TermId)}
-              options={effectiveTerms.map(t => ({
-                id: t,
-                label: t.charAt(0).toUpperCase() + t.slice(1),
-              }))}
             />
           </div>
 

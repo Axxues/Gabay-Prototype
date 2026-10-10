@@ -118,7 +118,7 @@ export function countStudentAssessmentBadge(
 }
 
 export function countFacultyGradingBadge(
-  submissions: Array<{ activityKey?: string; status: string }>,
+  submissions: Array<{ activityKey?: string; status?: string }>,
   activityKeys: string[]
 ): number {
   const wanted = new Set(activityKeys);

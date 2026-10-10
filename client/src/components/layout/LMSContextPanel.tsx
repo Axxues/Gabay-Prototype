@@ -35,7 +35,6 @@ import {
   countFacultyGradingBadge,
   countNewFiles,
   countNewGrades,
-  countStudentAssessmentBadge,
   countUpcomingCalendar,
   countUnreadAnnouncements,
   countAssessmentCategoryBadge,

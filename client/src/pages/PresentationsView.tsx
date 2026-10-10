@@ -175,28 +175,29 @@ export const PresentationsView: React.FC<PresentationsViewProps> = ({
         )}
 
         <PageHeader
-          icon={<Presentation className="h-5 w-5 text-rose-500" />}
+          eyebrow="COURSE ASSESSMENTS"
           title="Presentations"
-          subtitle="Oral defenses, technical pitches, and seminar slide presentations"
-          primaryAction={
-            activeRole !== 'student'
-              ? {
-                  label: 'Create Presentation',
-                  icon: <Plus className="h-4 w-4" />,
-                  onClick: () => setIsCreating(true),
-                }
-              : undefined
+          description="Oral defenses, technical pitches, and seminar slide presentations"
+          actions={
+            <div className="flex items-center gap-2">
+              <TermFilterSelect
+                terms={effectiveTerms}
+                value={termFilter}
+                onChange={v => setTermFilter(v as 'all' | TermId)}
+              />
+              {activeRole !== 'student' && (
+                <button
+                  type="button"
+                  onClick={() => setIsCreating(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-primary text-primary-foreground rounded-xl shadow-sm hover:opacity-95 transition-all cursor-pointer"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  <span>Create Presentation</span>
+                </button>
+              )}
+            </div>
           }
-        >
-          <div className="flex items-center gap-2">
-            <TermFilterSelect
-              terms={effectiveTerms}
-              value={termFilter}
-              onChange={setTermFilter}
-              includeAll
-            />
-          </div>
-        </PageHeader>
+        />
 
         {visiblePresentations.length === 0 ? (
           <EmptyState
@@ -219,6 +220,7 @@ export const PresentationsView: React.FC<PresentationsViewProps> = ({
               );
               const pendingGradeCount = subs.filter(s => s.status === 'submitted').length;
               const mode = getModeLabel(pres.metadata?.presentationMode);
+              const normTerm = normalizeTermId(pres.term);
 
               return (
                 <div
@@ -233,7 +235,7 @@ export const PresentationsView: React.FC<PresentationsViewProps> = ({
                     <div className="min-w-0 space-y-1">
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-primary/10 text-primary">
-                          {TERM_LABELS[normalizeTermId(pres.term)] ?? pres.term}
+                          {normTerm ? TERM_LABELS[normTerm] : (pres.term || 'Midterm')}
                         </span>
                         <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-rose-500/10 text-rose-600 flex items-center gap-1">
                           {mode.icon}
@@ -313,7 +315,7 @@ export const PresentationsView: React.FC<PresentationsViewProps> = ({
           <div>
             <div className="flex items-center gap-2 mb-1">
               <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-primary/10 text-primary">
-                {TERM_LABELS[normalizeTermId(selectedPresentation.term)] ?? selectedPresentation.term}
+                {normalizeTermId(selectedPresentation.term) ? TERM_LABELS[normalizeTermId(selectedPresentation.term)!] : (selectedPresentation.term || 'Midterm')}
               </span>
               <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-rose-500/10 text-rose-600 flex items-center gap-1">
                 {mode.icon}

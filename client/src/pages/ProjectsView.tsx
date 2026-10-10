@@ -164,28 +164,29 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         )}
 
         <PageHeader
-          icon={<Briefcase className="h-5 w-5 text-emerald-500" />}
+          eyebrow="COURSE ASSESSMENTS"
           title="Projects"
-          subtitle="Capstone projects, team deliverables, and technical portfolios"
-          primaryAction={
-            activeRole !== 'student'
-              ? {
-                  label: 'Create Project',
-                  icon: <Plus className="h-4 w-4" />,
-                  onClick: () => setIsCreating(true),
-                }
-              : undefined
+          description="Capstone projects, team deliverables, and technical portfolios"
+          actions={
+            <div className="flex items-center gap-2">
+              <TermFilterSelect
+                terms={effectiveTerms}
+                value={termFilter}
+                onChange={v => setTermFilter(v as 'all' | TermId)}
+              />
+              {activeRole !== 'student' && (
+                <button
+                  type="button"
+                  onClick={() => setIsCreating(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-primary text-primary-foreground rounded-xl shadow-sm hover:opacity-95 transition-all cursor-pointer"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  <span>Create Project</span>
+                </button>
+              )}
+            </div>
           }
-        >
-          <div className="flex items-center gap-2">
-            <TermFilterSelect
-              terms={effectiveTerms}
-              value={termFilter}
-              onChange={setTermFilter}
-              includeAll
-            />
-          </div>
-        </PageHeader>
+        />
 
         {visibleProjects.length === 0 ? (
           <EmptyState
@@ -208,6 +209,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               );
               const pendingGradeCount = subs.filter(s => s.status === 'submitted').length;
               const isGroup = project.metadata?.groupMode === 'group';
+              const normTerm = normalizeTermId(project.term);
 
               return (
                 <div
@@ -222,7 +224,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                     <div className="min-w-0 space-y-1">
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-primary/10 text-primary">
-                          {TERM_LABELS[normalizeTermId(project.term)] ?? project.term}
+                          {normTerm ? TERM_LABELS[normTerm] : (project.term || 'Midterm')}
                         </span>
                         <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 flex items-center gap-1">
                           {isGroup ? <Users className="h-3 w-3" /> : <User className="h-3 w-3" />}
@@ -295,7 +297,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           <div>
             <div className="flex items-center gap-2 mb-1">
               <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-primary/10 text-primary">
-                {TERM_LABELS[normalizeTermId(selectedProject.term)] ?? selectedProject.term}
+                {normalizeTermId(selectedProject.term) ? TERM_LABELS[normalizeTermId(selectedProject.term)!] : (selectedProject.term || 'Midterm')}
               </span>
               <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600">
                 {selectedProject.metadata?.groupMode === 'group' ? 'Group Project' : 'Individual'}

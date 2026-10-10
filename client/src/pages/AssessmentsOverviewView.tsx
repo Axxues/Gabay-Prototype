@@ -3,7 +3,6 @@ import { useLMS } from '../context/LMSContext';
 import type { TermId } from '../types/lms';
 import { normalizeTermId } from '../utils/gradingTerms';
 import { TERM_LABELS, TermFilterSelect } from '../components/common/TermSelect';
-import { PageHeader } from '../components/common/PageHeader';
 import { EmptyState } from '../components/common/EmptyState';
 import {
   ClipboardList,
@@ -19,7 +18,6 @@ import {
   ChevronRight,
   Plus,
   CheckCircle2,
-  AlertCircle
 } from 'lucide-react';
 
 interface AssessmentsOverviewViewProps {
@@ -95,7 +93,7 @@ export const AssessmentsOverviewView: React.FC<AssessmentsOverviewViewProps> = (
           category: type as any,
           categoryLabel: labelMap[type] || 'Activity',
           title: a.title,
-          term: normalizeTermId(a.term),
+          term: normalizeTermId(a.term) || 'midterm',
           points: a.pointsPossible || 0,
           dueDate: a.dueDate,
           published: a.published,
@@ -114,7 +112,7 @@ export const AssessmentsOverviewView: React.FC<AssessmentsOverviewViewProps> = (
           category: 'quiz',
           categoryLabel: 'Quiz',
           title: q.title,
-          term: normalizeTermId(q.term || 'midterm'),
+          term: normalizeTermId(q.term) || 'midterm',
           points,
           dueDate: q.dueDate,
           published: q.published,
@@ -132,7 +130,7 @@ export const AssessmentsOverviewView: React.FC<AssessmentsOverviewViewProps> = (
           category: 'exam',
           categoryLabel: 'Exam',
           title: e.title,
-          term: normalizeTermId(e.term || 'finals'),
+          term: normalizeTermId(e.term) || 'finals',
           points,
           dueDate: e.dueDate,
           published: e.published,
@@ -417,8 +415,7 @@ export const AssessmentsOverviewView: React.FC<AssessmentsOverviewViewProps> = (
           <TermFilterSelect
             terms={effectiveTerms}
             value={selectedTerm}
-            onChange={setSelectedTerm}
-            includeAll
+            onChange={v => setSelectedTerm(v as 'all' | TermId)}
           />
 
           {/* Search box */}

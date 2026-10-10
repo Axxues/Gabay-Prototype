@@ -14,6 +14,10 @@ const ICONS: Record<NavIcon, React.ReactNode> = {
   grades: <BookOpen className="h-5 w-5" />, people: <Users className="h-5 w-5" />,
   'pending-requests': <Users className="h-5 w-5" />,
   'gabay-rag': <Sparkles className="h-5 w-5" />,
+  assessments: <BookOpen className="h-5 w-5" />,
+  assignments: <BookOpen className="h-5 w-5" />,
+  projects: <BookOpen className="h-5 w-5" />,
+  presentations: <BookOpen className="h-5 w-5" />,
   accounts: <Users className="h-5 w-5" />, page1: <Building className="h-5 w-5" />,
   page2: <BarChart3 className="h-5 w-5" />, page3: <FileCheck2 className="h-5 w-5" />,
 };
