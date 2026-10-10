@@ -61,7 +61,9 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
     isSyncing?: boolean;
   };
 
-  const courseActivities = (db.activities || []).filter(a => a.courseId === courseId);
+  const courseActivities = (db.activities || []).filter(
+    a => a.courseId === courseId && (!a.assessmentType || a.assessmentType === 'activity')
+  );
   const courseClassics = courseActivities.filter(a => a.format === 'classic');
   const courseQuestionSets = courseActivities.filter(a => a.format !== 'classic');
 

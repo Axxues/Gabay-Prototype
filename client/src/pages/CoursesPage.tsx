@@ -5,6 +5,9 @@ import { ModulesView } from './ModulesView';
 import { SyllabusView } from './SyllabusView';
 import { AssessmentsOverviewView } from './AssessmentsOverviewView';
 import { ActivitiesView } from './ActivitiesView';
+import { AssignmentsView } from './AssignmentsView';
+import { ProjectsView } from './ProjectsView';
+import { PresentationsView } from './PresentationsView';
 import { QuizzesView } from './QuizzesView';
 import { ExamsView } from './ExamsView';
 import { PeopleView } from './PeopleView';
@@ -39,6 +42,9 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
   const [subTab, setSubTab] = useState(initialSubTab);
   const [returnToTab, setReturnToTab] = useState<string | null>(null);
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
+  const [selectedAssignmentId, setSelectedAssignmentId] = useState<string | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [selectedPresentationId, setSelectedPresentationId] = useState<string | null>(null);
   const [selectedQuizId, setSelectedQuizId] = useState<string | null>(null);
   const [selectedExamId, setSelectedExamId] = useState<string | null>(null);
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
@@ -227,9 +233,12 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
           <AssessmentsOverviewView
             courseId={activeCourse.id}
             onNavigateCategory={(cat, itemId) => {
-              if (cat === 'activities' && itemId) setSelectedActivityId(itemId);
-              if (cat === 'quizzes' && itemId) setSelectedQuizId(itemId);
-              if (cat === 'exams' && itemId) setSelectedExamId(itemId);
+              if (cat === 'activities') setSelectedActivityId(itemId || null);
+              if (cat === 'assignments') setSelectedAssignmentId(itemId || null);
+              if (cat === 'projects') setSelectedProjectId(itemId || null);
+              if (cat === 'presentations') setSelectedPresentationId(itemId || null);
+              if (cat === 'quizzes') setSelectedQuizId(itemId || null);
+              if (cat === 'exams') setSelectedExamId(itemId || null);
               setSubTab(cat);
             }}
           />
@@ -244,6 +253,57 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
               returnToTab === 'modules'
                 ? () => {
                     setSelectedActivityId(null);
+                    setReturnToTab(null);
+                    setSubTab('modules');
+                  }
+                : undefined
+            }
+          />
+        )}
+
+        {subTab === 'assignments' && (
+          <AssignmentsView
+            courseId={activeCourse.id}
+            selectedAssignmentId={selectedAssignmentId}
+            onSelectAssignment={setSelectedAssignmentId}
+            onBackToModules={
+              returnToTab === 'modules'
+                ? () => {
+                    setSelectedAssignmentId(null);
+                    setReturnToTab(null);
+                    setSubTab('modules');
+                  }
+                : undefined
+            }
+          />
+        )}
+
+        {subTab === 'projects' && (
+          <ProjectsView
+            courseId={activeCourse.id}
+            selectedProjectId={selectedProjectId}
+            onSelectProject={setSelectedProjectId}
+            onBackToModules={
+              returnToTab === 'modules'
+                ? () => {
+                    setSelectedProjectId(null);
+                    setReturnToTab(null);
+                    setSubTab('modules');
+                  }
+                : undefined
+            }
+          />
+        )}
+
+        {subTab === 'presentations' && (
+          <PresentationsView
+            courseId={activeCourse.id}
+            selectedPresentationId={selectedPresentationId}
+            onSelectPresentation={setSelectedPresentationId}
+            onBackToModules={
+              returnToTab === 'modules'
+                ? () => {
+                    setSelectedPresentationId(null);
                     setReturnToTab(null);
                     setSubTab('modules');
                   }
