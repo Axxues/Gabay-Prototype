@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLMS } from '../../context/LMSContext';
-import { X, ChevronLeft, ChevronRight, Award, MessageSquare, FileText, CheckCircle2 } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Award, MessageSquare, FileText, CheckCircle2, ExternalLink } from 'lucide-react';
 import { ModalPortal, useModalAnimate } from '../common/ModalPortal';
 
 interface SpeedGraderContentProps {
@@ -18,6 +18,8 @@ interface ResolvedAssessment {
   pointsPossible: number;
   rubric: Array<{ id: string; title: string; description: string; points: number; ratings: Array<{ points: number; description: string }> }>;
   questions: Array<{ id: string; text: string; type: string; points: number; correctAnswer?: string; options?: string[] }>;
+  assessmentType?: string;
+  metadata?: any;
 }
 
 /**
@@ -55,6 +57,8 @@ const resolveAssessment = (
         correctAnswer: q.correctAnswer,
         options: q.options,
       })),
+      assessmentType: activity.assessmentType || 'activity',
+      metadata: activity.metadata,
     };
   }
 
@@ -74,6 +78,7 @@ const resolveAssessment = (
         correctAnswer: q.correctAnswer,
         options: q.options,
       })),
+      assessmentType: 'quiz',
     };
   }
 
@@ -93,6 +98,7 @@ const resolveAssessment = (
         correctAnswer: q.correctAnswer,
         options: q.options,
       })),
+      assessmentType: 'exam',
     };
   }
 
@@ -111,6 +117,49 @@ const parseAnswerMap = (content?: string): Record<string, string> | null => {
     // Plain-text submission — rendered verbatim below.
   }
   return null;
+};
+
+const renderSubmissionContent = (content: string) => {
+  const lines = content.split('\n');
+  return (
+    <div className="space-y-2">
+      {lines.map((line, idx) => {
+        const trimmed = line.trim();
+        if (!trimmed) return <div key={idx} className="h-1.5" />;
+
+        const urlMatch = trimmed.match(/(https?:\/\/[^\s]+)/);
+        if (urlMatch) {
+          const url = urlMatch[1];
+          const rawLabel = trimmed.replace(url, '').trim().replace(/:+$/, '').trim();
+          const label = rawLabel || 'External Link';
+          return (
+            <div
+              key={idx}
+              className="p-3 bg-muted/40 border border-border rounded-xl flex items-center justify-between gap-3"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <ExternalLink className="w-4 h-4 text-primary shrink-0" />
+                <span className="font-semibold text-foreground text-xs shrink-0">
+                  {label}:
+                </span>
+                <span className="text-xs text-muted-foreground truncate font-mono">{url}</span>
+              </div>
+              <a
+                href={url}
+                target="_blank"
+                rel="noreferrer"
+                className="px-3 py-1 bg-primary/10 hover:bg-primary/20 text-primary font-bold text-xs rounded-lg transition-colors shrink-0 flex items-center gap-1"
+              >
+                <span>Open Link</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+          );
+        }
+        return <p key={idx} className="text-foreground leading-relaxed">{line}</p>;
+      })}
+    </div>
+  );
 };
 
 const SpeedGraderContent: React.FC<SpeedGraderContentProps> = ({
@@ -200,6 +249,25 @@ const SpeedGraderContent: React.FC<SpeedGraderContentProps> = ({
           <div className="px-2.5 py-1 text-xs font-sans font-bold bg-primary/10 text-primary rounded-lg border border-primary/20">
             SpeedGrader™ Workspace
           </div>
+          {assessment.assessmentType && (
+            <span
+              className={`px-2 py-0.5 text-[11px] font-sans font-bold rounded-lg border capitalize ${
+                assessment.assessmentType === 'project'
+                  ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20'
+                  : assessment.assessmentType === 'presentation'
+                  ? 'bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/20'
+                  : assessment.assessmentType === 'assignment'
+                  ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20'
+                  : assessment.assessmentType === 'quiz'
+                  ? 'bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/20'
+                  : assessment.assessmentType === 'exam'
+                  ? 'bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border-indigo-500/20'
+                  : 'bg-sky-500/10 text-sky-700 dark:text-sky-400 border-sky-500/20'
+              }`}
+            >
+              {assessment.assessmentType}
+            </span>
+          )}
           {isAdmin && (
             <span className="px-2.5 py-0.5 text-[11px] font-sans font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-lg border border-amber-500/20">
               Read-Only Audit Mode
@@ -315,7 +383,7 @@ const SpeedGraderContent: React.FC<SpeedGraderContentProps> = ({
                 })}
               </div>
             ) : currentSubmission.content ? (
-              <div className="whitespace-pre-line">{currentSubmission.content}</div>
+              renderSubmissionContent(currentSubmission.content)
             ) : (
               <div className="text-center py-12 text-muted-foreground">
                 [PDF Simulated Canvas DocViewer Markup Rendering]
