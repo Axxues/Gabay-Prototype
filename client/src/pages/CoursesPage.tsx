@@ -3,6 +3,7 @@ import { BookOpen } from 'lucide-react';
 import { useLMS } from '../context/LMSContext';
 import { ModulesView } from './ModulesView';
 import { SyllabusView } from './SyllabusView';
+import { AssessmentsOverviewView } from './AssessmentsOverviewView';
 import { ActivitiesView } from './ActivitiesView';
 import { QuizzesView } from './QuizzesView';
 import { ExamsView } from './ExamsView';
@@ -22,6 +23,7 @@ import {
   countPendingPeople,
   countStudentAssessmentBadge,
   countFacultyGradingBadge,
+  countTotalAssessmentBadge,
   countUpcomingCalendar,
   countUnreadAnnouncements,
   countUnreadMessages,
@@ -134,6 +136,16 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
       badgeCount = getUnreadNotificationCount(activeUser.id, 'module_comment_reply');
     } else if (tab.id === 'announcements') {
       badgeCount = countUnreadAnnouncements(db.announcements || [], { id: activeUser.id, role: activeRole, sectionId: null }, cid);
+    } else if (tab.id === 'assessments') {
+      badgeCount = countTotalAssessmentBadge({
+        activities: db.activities || [],
+        quizzes: db.quizzes || [],
+        exams: db.exams || [],
+        submissions: db.submissions || [],
+        userId: activeUser.id,
+        role: activeRole,
+        courseId: cid,
+      });
     } else if (tab.id === 'activities') {
       // Classic rows live in db.activities now (format === 'classic');
       // question sets link submissions via the synthetic asg-activity-<id>
@@ -210,6 +222,18 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
         {subTab === 'syllabus' && <SyllabusView courseId={activeCourse.id} />}
 
         {subTab === 'announcements' && <AnnouncementsView courseId={activeCourse.id} />}
+
+        {subTab === 'assessments' && (
+          <AssessmentsOverviewView
+            courseId={activeCourse.id}
+            onNavigateCategory={(cat, itemId) => {
+              if (cat === 'activities' && itemId) setSelectedActivityId(itemId);
+              if (cat === 'quizzes' && itemId) setSelectedQuizId(itemId);
+              if (cat === 'exams' && itemId) setSelectedExamId(itemId);
+              setSubTab(cat);
+            }}
+          />
+        )}
 
         {subTab === 'activities' && (
           <ActivitiesView
