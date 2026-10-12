@@ -48,3 +48,5 @@ export async function apiFetch<T>(path: string, options: ApiOptions = {}): Promi
   }
   return data as T;
 }
+
+export { likhaLmsApi, LIKHA_URL } from './likhaLmsApi';
