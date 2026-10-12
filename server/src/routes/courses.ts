@@ -8,6 +8,7 @@ import { assertCourseAccess, assertCourseOwner, loadCourseOr404 } from '../utils
 import { getSyllabusRepository } from './syllabi.js';
 import { SyllabusRepositoryError, SyllabusSourceFileError } from '../syllabi/repository.js';
 import { SyllabusValidationError } from '../syllabi/validation.js';
+import { getAllCourses, getCourseById } from '../likha/repositories/coursesRepo.js';
 
 export const coursesRouter = Router();
 export const sectionsRouter = Router();
@@ -58,17 +59,20 @@ coursesRouter.get(
     if (!enrolled && req.auth!.role === 'student') {
       throw new ApiError(403, 'forbidden', 'Students may only list their enrolled courses.');
     }
-    const courses = enrolled
-      ? await prisma.course.findMany({
-          where: {
-            published: true,
-            OR: [
-              { instructorId: enrolled },
-              { requests: { some: { studentId: enrolled, status: 'approved' } } },
-            ],
-          },
-        })
-      : await prisma.course.findMany({ where: { published: true } });
+    let courses = await getAllCourses(enrolled);
+    if (!courses || courses.length === 0) {
+      courses = enrolled
+        ? await prisma.course.findMany({
+            where: {
+              published: true,
+              OR: [
+                { instructorId: enrolled },
+                { requests: { some: { studentId: enrolled, status: 'approved' } } },
+              ],
+            },
+          })
+        : await prisma.course.findMany({ where: { published: true } });
+    }
     res.json({ courses });
   })
 );
@@ -186,7 +190,7 @@ coursesRouter.get(
   asyncHandler(async (req, res) => {
     // Detail view needs the full row (image/syllabus included); the shared
     // loader above intentionally stays narrow for the hot access-check path.
-    const course = await prisma.course.findUnique({ where: { id: req.params.id } });
+    const course = (await getCourseById(req.params.id)) ?? (await prisma.course.findUnique({ where: { id: req.params.id } }));
     if (!course) throw new ApiError(404, 'not_found', 'Course not found.');
     await assertCourseAccess(course, req.auth!);
     res.json({ course });
