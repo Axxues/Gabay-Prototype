@@ -73,13 +73,22 @@ describe('syllabus source-file linking', () => {
     const repository = new PrismaSyllabusRepository(client, (prefix) => `${prefix}-test`);
     const sections = await repository.getRagSections('course-1');
     expect(sections).toEqual({
+      institution: '',
       description: '',
-      outcomes: '',
+      faculty: '',
+      institutional_statement: '',
+      program_outcomes: '',
+      core_values: '',
+      graduate_attributes: '',
+      requirements: '',
       grading: '',
+      rubrics: '',
       policies: '',
       outline: '',
+      learning_plan: '',
+      outcomes: '',
+      course_map: '',
       references: '',
-      faculty: '',
     });
     (course.findUnique as Mock).mockResolvedValue({
       code: 'CS 201',

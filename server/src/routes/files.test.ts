@@ -123,6 +123,41 @@ describe('files + grades routers', () => {
     );
   });
 
+  it('area:activities files flat into the Activities root (no child folder)', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-fac',
+      role: 'faculty',
+    });
+    (prisma.courseFolder.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'fld-act',
+      courseId: 'c1',
+      autoKey: 'area:activities',
+    });
+    (prisma.courseFile.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (prisma.courseFile.create as ReturnType<typeof vi.fn>).mockImplementation(
+      (args: { data: Record<string, unknown> }) =>
+        Promise.resolve({ id: 'file-3', ...args.data })
+    );
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .post('/api/courses/c1/files/upload')
+      .set('Authorization', 'Bearer x')
+      .field('area', 'activities')
+      .attach('file', Buffer.from('pdf-bytes'), 'handout.pdf');
+
+    expect(res.status).toBe(201);
+    expect(prisma.courseFolder.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { courseId: 'c1', autoKey: 'area:activities' } })
+    );
+    expect(prisma.courseFolder.create).not.toHaveBeenCalled();
+    expect(prisma.courseFile.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ folderId: 'fld-act', name: 'handout.pdf', sourceArea: 'activities' }),
+      })
+    );
+  });
+
   it('metadata POST creates the row with no fs write', async () => {
     (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
       sub: 'u-fac',

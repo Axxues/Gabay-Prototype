@@ -100,19 +100,20 @@ export async function getAllCourses(enrolledStudentId?: string): Promise<any[]> 
 }
 
 export async function getCourseById(id: string): Promise<any | null> {
-  const token = await getLikhaAdminToken();
-  const res = await fetch(`${LIKHA_URL}/items/courses/${encodeURIComponent(id)}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  try {
+    const token = await getLikhaAdminToken();
+    const res = await fetch(`${LIKHA_URL}/items/courses/${encodeURIComponent(id)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
 
-  if (!res.ok) {
-    if (res.status === 404) return null;
-    throw new Error(`Failed to get course by id: HTTP ${res.status}`);
+    if (!res.ok) return null;
+
+    const json = (await res.json()) as any;
+    if (!json.data) return null;
+    return formatLikhaCourse(json.data);
+  } catch {
+    return null;
   }
-
-  const json = (await res.json()) as any;
-  if (!json.data) return null;
-  return formatLikhaCourse(json.data);
 }
 
 export async function getCourseByJoinCode(joinCode: string): Promise<any | null> {
@@ -287,6 +288,8 @@ export async function getEnrollmentRequests(courseId: string): Promise<any[]> {
   const json = (await res.json()) as any;
   return (json.data || []).map(formatLikhaRequest);
 }
+
+export const getRequestsForCourse = getEnrollmentRequests;
 
 export async function getStudentRequests(studentId: string): Promise<any[]> {
   const token = await getLikhaAdminToken();

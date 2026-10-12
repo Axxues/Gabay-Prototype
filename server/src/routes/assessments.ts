@@ -406,7 +406,7 @@ function buildAssessmentRouter(kind: AssessmentKind) {
             availableFrom: str(body.availableFrom) ? new Date(str(body.availableFrom)!) : null,
             availableUntil: str(body.availableUntil) ? new Date(str(body.availableUntil)!) : null,
             sectionRestriction: str(body.sectionRestriction) ?? null,
-          },
+          } as any,
         });
         res.status(201).json({ activity: { ...mapActivity(created), questions: [] } });
         return;
@@ -426,7 +426,7 @@ function buildAssessmentRouter(kind: AssessmentKind) {
           term: parseTermInput(body.term ?? 'midterm'),
           dueDate: parseOptionalDate(body.dueDate, 'dueDate') ?? null,
           published,
-        },
+        } as any,
       });
       const rows: RawQuestion[] = [];
       for (const q of questions) {

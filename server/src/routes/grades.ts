@@ -3,6 +3,8 @@ import { prisma } from '../db.js';
 import { asyncHandler, ApiError } from '../utils/errors.js';
 import { authenticateToken, requireRole } from '../middleware/auth.js';
 import type { AuthPayload } from '../middleware/auth.js';
+import { getCourseById, getRequestsForCourse } from '../likha/repositories/coursesRepo.js';
+import { getCourseGrades, upsertCourseGrade } from '../likha/repositories/gradesRepo.js';
 
 export const gradesRouter = Router();
 
@@ -11,24 +13,43 @@ interface CourseRow {
   instructorId: string;
 }
 
-async function loadCourseOr404(courseId: string) {
-  // Narrow select: access checks only need id/instructorId. A full row drag
-  // would pull the multi-MB image/syllabus blobs on every course-scoped call.
+async function loadCourseOr404(courseId: string): Promise<CourseRow> {
   const course = await prisma.course.findUnique({
     where: { id: courseId },
     select: { id: true, instructorId: true },
   });
-  if (!course) throw new ApiError(404, 'not_found', 'Course not found.');
-  return course;
+  if (course) return course;
+
+  try {
+    const likhaCourse = await getCourseById(courseId);
+    if (likhaCourse) {
+      return { id: likhaCourse.id, instructorId: likhaCourse.instructorId };
+    }
+  } catch (err) {
+    // ignore
+  }
+
+  throw new ApiError(404, 'not_found', 'Course not found.');
 }
 
 async function assertCourseAccess(course: CourseRow, auth: AuthPayload): Promise<void> {
   if (auth.role === 'faculty' || auth.role === 'admin') return;
   if (course.instructorId === auth.sub) return;
+
   const membership = await prisma.enrollmentRequest.findFirst({
     where: { courseId: course.id, studentId: auth.sub, status: 'approved' },
   });
-  if (!membership) throw new ApiError(403, 'forbidden', 'You are not a member of this course.');
+  if (membership) return;
+
+  try {
+    const likhaReqs = await getRequestsForCourse(course.id);
+    const found = likhaReqs.find((r: any) => r.studentId === auth.sub && r.status === 'approved');
+    if (found) return;
+  } catch {
+    // ignore
+  }
+
+  throw new ApiError(403, 'forbidden', 'You are not a member of this course.');
 }
 
 function assertCourseOwner(course: { instructorId: string }, auth: AuthPayload): void {
@@ -57,19 +78,18 @@ gradesRouter.get(
     await assertCourseAccess(course, auth);
     const q = req.query.studentId;
     const wanted = typeof q === 'string' && q ? q : null;
+
     if (auth.role === 'faculty' || auth.role === 'admin') {
-      const grades = await prisma.courseGrade.findMany({
-        where: { courseId: course.id, ...(wanted ? { studentId: wanted } : {}) },
-      });
+      const grades = await getCourseGrades(course.id, wanted);
       res.json({ grades });
       return;
     }
+
     if (wanted && wanted !== auth.sub) {
       throw new ApiError(403, 'forbidden', 'You can only view your own grades.');
     }
-    const grades = await prisma.courseGrade.findMany({
-      where: { courseId: course.id, studentId: auth.sub },
-    });
+
+    const grades = await getCourseGrades(course.id, auth.sub);
     res.json({ grades });
   })
 );
@@ -83,29 +103,37 @@ gradesRouter.put(
     const auth = req.auth!;
     const course = await loadCourseOr404(req.params.id);
     assertCourseOwner(course, auth);
+
     const body = (req.body ?? {}) as Record<string, unknown>;
     const midtermGrade = parseGrade(body.midtermGrade, 'midtermGrade');
     const finalGrade = parseGrade(body.finalGrade, 'finalGrade');
     const studentId = req.params.studentId;
+
+    let isMember = false;
     const membership = await prisma.enrollmentRequest.findFirst({
       where: { courseId: course.id, studentId, status: 'approved' },
     });
-    if (!membership) {
+    if (membership) {
+      isMember = true;
+    } else {
+      try {
+        const likhaReqs = await getRequestsForCourse(course.id);
+        const found = likhaReqs.find((r: any) => r.studentId === studentId && r.status === 'approved');
+        if (found) isMember = true;
+      } catch {
+        // ignore
+      }
+    }
+
+    if (!isMember) {
       throw new ApiError(403, 'forbidden', 'Student is not enrolled in this course.');
     }
-    const grade = await prisma.courseGrade.upsert({
-      where: { courseId_studentId: { courseId: course.id, studentId } },
-      update: {
-        ...(midtermGrade !== undefined ? { midtermGrade } : {}),
-        ...(finalGrade !== undefined ? { finalGrade } : {}),
-      },
-      create: {
-        courseId: course.id,
-        studentId,
-        midtermGrade: midtermGrade ?? null,
-        finalGrade: finalGrade ?? null,
-      },
+
+    const grade = await upsertCourseGrade(course.id, studentId, {
+      ...(midtermGrade !== undefined ? { midtermGrade } : {}),
+      ...(finalGrade !== undefined ? { finalGrade } : {}),
     });
+
     res.json({ grade });
   })
 );

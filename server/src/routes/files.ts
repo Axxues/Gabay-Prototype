@@ -8,6 +8,7 @@ import { authenticateToken } from '../middleware/auth.js';
 import type { AuthPayload } from '../middleware/auth.js';
 import { dedupeFileName } from '../utils/names.js';
 import { VISIBILITIES } from '../utils/allowed.js';
+import { createCourseFile } from '../likha/repositories/filesRepo.js';
 
 export const filesRouter = Router();
 
@@ -123,13 +124,14 @@ const AREA_FOLDER_NAMES = {
   announcements: 'Announcements',
   modules: 'Modules',
   syllabus: 'Syllabus',
+  activities: 'Activities',
 } as const;
 
 type FileArea = keyof typeof AREA_FOLDER_NAMES;
 
 function isFileArea(value: unknown): value is FileArea {
   return (
-    value === 'announcements' || value === 'modules' || value === 'syllabus'
+    value === 'announcements' || value === 'modules' || value === 'syllabus' || value === 'activities'
   );
 }
 
@@ -355,6 +357,22 @@ filesRouter.post(
         sourceId: strOrNull(body.sourceId, 'sourceId'),
       },
     });
+    try {
+      await createCourseFile({
+        id: file.id,
+        courseId: scopeId,
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        url: file.url || file.fileUrl || '',
+        visibility: file.visibility,
+        parentId: file.folderId,
+        uploadedBy: file.uploadedBy,
+        uploadedAt: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.warn('[files] Failed to sync to Likha:', e);
+    }
     res.status(201).json({ file });
   })
 );

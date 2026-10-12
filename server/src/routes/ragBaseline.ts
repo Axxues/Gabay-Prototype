@@ -1,8 +1,9 @@
 import { Router } from 'express';
 import { asyncHandler, ApiError } from '../utils/errors.js';
 import { authenticateToken } from '../middleware/auth.js';
-import { normalizeReply } from './rag.js';
+import { normalizeReply, redactRequesterTokens } from './rag.js';
 import { extractExecutionTelemetry } from '../utils/n8nTelemetry.js';
+import { createRequesterToken } from '../utils/requesterToken.js';
 
 export const ragBaselineRouter = Router();
 
@@ -65,6 +66,7 @@ ragBaselineRouter.post(
           requestId,
           userId: req.auth!.sub,
           role: req.auth!.role,
+          requesterToken: createRequesterToken({ sub: req.auth!.sub, role: req.auth!.role }),
         }),
       });
       if (!upstream.ok) {
@@ -88,7 +90,8 @@ ragBaselineRouter.post(
       } catch {
         // keep raw text
       }
-      const { reply, sources, chart } = normalizeReply(data, message);
+      const { reply: normalizedReply, sources, chart } = normalizeReply(data, message);
+      const reply = redactRequesterTokens(normalizedReply);
 
       // Extract authentic execution telemetry from n8n SQLite execution database
       let execution: unknown = undefined;

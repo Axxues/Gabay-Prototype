@@ -5,6 +5,7 @@ import { authenticateToken, requireRole } from '../middleware/auth.js';
 import type { AuthPayload } from '../middleware/auth.js';
 import { createNotification } from '../utils/notifications.js';
 import { dedupeFileName } from '../utils/names.js';
+import { createAnnouncement } from '../likha/repositories/communicationsRepo.js';
 
 export const announcementsRouter = Router();
 
@@ -267,6 +268,20 @@ announcementsRouter.post(
         uploadedBy: auth.sub,
         uploadedByName: me?.name ?? '',
       });
+    }
+    try {
+      await createAnnouncement({
+        id: created.id,
+        courseId: course.id,
+        authorId: auth.sub,
+        authorName: me?.name ?? '',
+        authorAvatar: me?.avatar ?? '',
+        title: title.trim(),
+        content: content.trim(),
+        pinned: false,
+      });
+    } catch (e) {
+      console.warn('[announcements] Failed to sync to Likha:', e);
     }
     res.status(201).json({ announcement: { ...created, attachments: rows } });
   })

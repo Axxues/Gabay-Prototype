@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { prisma } from '../db.js';
 import { asyncHandler, ApiError } from '../utils/errors.js';
 import { authenticateToken, requireRole } from '../middleware/auth.js';
+import { getCourseById, getRequestsForCourse } from '../likha/repositories/coursesRepo.js';
+import { getCourseSprConfig, saveCourseSprConfig, upsertCourseGrade } from '../likha/repositories/gradesRepo.js';
 
 export const sprRouter = Router();
 
@@ -28,6 +30,25 @@ function parseExam(value: unknown, field: string): number | null {
   return value;
 }
 
+async function loadCourseOwnerOr404(courseId: string) {
+  const course = await prisma.course.findUnique({
+    where: { id: courseId },
+    select: { id: true, instructorId: true },
+  });
+  if (course) return course;
+
+  try {
+    const likhaCourse = await getCourseById(courseId);
+    if (likhaCourse) {
+      return { id: likhaCourse.id, instructorId: likhaCourse.instructorId };
+    }
+  } catch {
+    // ignore
+  }
+
+  throw new ApiError(404, 'not_found', 'Course not found.');
+}
+
 sprRouter.get(
   '/courses/:id/spr',
   authenticateToken,
@@ -36,8 +57,23 @@ sprRouter.get(
       where: { id: req.params.id },
       select: { id: true, sprConfig: true },
     });
-    if (!course) throw new ApiError(404, 'not_found', 'Course not found.');
-    res.json({ config: course.sprConfig ? JSON.parse(course.sprConfig) : null });
+    if (course) {
+      res.json({ config: course.sprConfig ? JSON.parse(course.sprConfig) : null });
+      return;
+    }
+
+    try {
+      const likhaCourse = await getCourseById(req.params.id);
+      if (likhaCourse) {
+        const config = await getCourseSprConfig(likhaCourse.id);
+        res.json({ config });
+        return;
+      }
+    } catch {
+      // ignore
+    }
+
+    throw new ApiError(404, 'not_found', 'Course not found.');
   })
 );
 
@@ -46,11 +82,7 @@ sprRouter.put(
   authenticateToken,
   requireRole('faculty', 'admin'),
   asyncHandler(async (req, res) => {
-    const course = await prisma.course.findUnique({
-      where: { id: req.params.id },
-      select: { id: true, instructorId: true },
-    });
-    if (!course) throw new ApiError(404, 'not_found', 'Course not found.');
+    const course = await loadCourseOwnerOr404(req.params.id);
     if (req.auth!.role !== 'admin' && course.instructorId !== req.auth!.sub) {
       throw new ApiError(403, 'forbidden', 'Only the course instructor can do this.');
     }
@@ -58,11 +90,8 @@ sprRouter.put(
     if (!config || typeof config !== 'object') {
       throw new ApiError(400, 'bad_request', "Field 'config' is required.");
     }
-    const updated = await prisma.course.update({
-      where: { id: course.id },
-      data: { sprConfig: JSON.stringify(config) },
-    });
-    res.json({ config: JSON.parse(updated.sprConfig!) });
+    const updated = await saveCourseSprConfig(course.id, config);
+    res.json({ config: updated });
   })
 );
 
@@ -71,33 +100,41 @@ sprRouter.put(
   authenticateToken,
   requireRole('faculty', 'admin'),
   asyncHandler(async (req, res) => {
-    const course = await prisma.course.findUnique({
-      where: { id: req.params.id },
-      select: { id: true, instructorId: true },
-    });
-    if (!course) throw new ApiError(404, 'not_found', 'Course not found.');
+    const course = await loadCourseOwnerOr404(req.params.id);
     if (req.auth!.role !== 'admin' && course.instructorId !== req.auth!.sub) {
       throw new ApiError(403, 'forbidden', 'Only the course instructor can do this.');
     }
     const body = (req.body ?? {}) as Record<string, unknown>;
     const studentId = req.params.studentId;
+
+    let isMember = false;
     const membership = await prisma.enrollmentRequest.findFirst({
       where: { courseId: course.id, studentId, status: 'approved' },
     });
-    if (!membership) {
+    if (membership) {
+      isMember = true;
+    } else {
+      try {
+        const likhaReqs = await getRequestsForCourse(course.id);
+        const found = likhaReqs.find((r: any) => r.studentId === studentId && r.status === 'approved');
+        if (found) isMember = true;
+      } catch {
+        // ignore
+      }
+    }
+
+    if (!isMember) {
       throw new ApiError(403, 'forbidden', 'Student is not enrolled in this course.');
     }
+
     const cells = {
       midtermScores: parseScoreMap(body.midtermScores, 'midtermScores'),
       mtExam: parseExam(body.mtExam, 'mtExam'),
       finalScores: parseScoreMap(body.finalScores, 'finalScores'),
       ftExam: parseExam(body.ftExam, 'ftExam'),
     };
-    const grade = await prisma.courseGrade.upsert({
-      where: { courseId_studentId: { courseId: course.id, studentId: req.params.studentId } },
-      update: { sprCells: JSON.stringify(cells) },
-      create: { courseId: course.id, studentId: req.params.studentId, sprCells: JSON.stringify(cells) },
-    });
-    res.json({ cells: JSON.parse(grade.sprCells!) });
+
+    const grade = await upsertCourseGrade(course.id, studentId, { sprCells: cells });
+    res.json({ cells: typeof grade.sprCells === 'string' ? JSON.parse(grade.sprCells) : grade.sprCells });
   })
 );

@@ -7,6 +7,12 @@ vi.mock('jsonwebtoken', () => {
   return { verify, sign, default: { verify, sign } };
 });
 
+const extractExecutionArtifactsMock = vi.hoisted(() => vi.fn());
+
+vi.mock('../utils/n8nExecutionArtifacts.js', () => ({
+  extractExecutionArtifacts: extractExecutionArtifactsMock,
+}));
+
 process.env.JWT_SECRET ??= 'test-secret';
 
 import jwt from 'jsonwebtoken';
@@ -27,6 +33,7 @@ describe('rag router', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    extractExecutionArtifactsMock.mockReturnValue({ execution: null, structured: null });
     (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
       sub: 'student-1',
       role: 'student',
@@ -83,9 +90,361 @@ describe('rag router', () => {
       'What is enrollment? (My student ID is student-1.)',
     );
     expect(body.sessionId).toBe('convo-123');
+    expect(body.requesterToken).toBe('test-token');
     expect(res.body.reply).toBe('Hello from LIKHA RAG');
     expect(res.body.sessionId).toBe('convo-123');
     expect(res.body.chart).toBeNull();
+  });
+
+  it('leaves a semantic-only Coordinator reply unchanged when no canonical artifact exists', async () => {
+    (globalThis as { fetch?: unknown }).fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ output: 'Enrollment requires registrar approval.' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .post('/api/rag/chat')
+      .set('Authorization', 'Bearer x')
+      .send({ message: 'How do I enroll?', sessionId: 'semantic-only' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.reply).toBe('Enrollment requires registrar approval.');
+    expect(res.body).not.toHaveProperty('structured');
+  });
+
+  it('returns canonical 60-row Markdown for a natural list instead of altered Coordinator text', async () => {
+    const canonicalMarkdown = [
+      '| # | Student | Status |',
+      '| --- | --- | --- |',
+      ...Array.from(
+        { length: 60 },
+        (_, index) => `| ${index + 1} | User ${index + 1} | Enrolled |`
+      ),
+    ].join('\n');
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ output: 'Coordinator invented 61 users' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    (globalThis as { fetch?: unknown }).fetch = fetchMock;
+    extractExecutionArtifactsMock.mockReturnValue({
+      execution: null,
+      structured: {
+        kind: 'rows',
+        version: 1,
+        table: 'user_directory',
+        complete: true,
+        pages: [
+          {
+            table: 'user_directory',
+            offset: 0,
+            markdown: canonicalMarkdown,
+            count: 60,
+            hasMore: false,
+            nextOffset: null,
+            executionId: 41,
+          },
+        ],
+      },
+    });
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .post('/api/rag/chat')
+      .set('Authorization', 'Bearer x')
+      .send({ message: 'List all users', sessionId: 'canonical-single' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.reply).toBe(canonicalMarkdown);
+    expect(res.body.structured).toEqual({
+      kind: 'rows',
+      table: 'user_directory',
+      complete: true,
+      pageCount: 1,
+      nextOffset: null,
+    });
+  });
+
+  it('uses canonical Markdown when the Coordinator response is empty', async () => {
+    const canonicalMarkdown = '| id | name |\n| --- | --- |\n| 1 | Ana |';
+    (globalThis as { fetch?: unknown }).fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ output: '' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    extractExecutionArtifactsMock.mockReturnValue({
+      execution: null,
+      structured: {
+        kind: 'rows',
+        version: 1,
+        table: 'user_directory',
+        complete: true,
+        pages: [
+          {
+            table: 'user_directory',
+            offset: 0,
+            markdown: canonicalMarkdown,
+            count: 1,
+            hasMore: false,
+            nextOffset: null,
+            executionId: 46,
+          },
+        ],
+      },
+    });
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .post('/api/rag/chat')
+      .set('Authorization', 'Bearer x')
+      .send({ message: 'List all users', sessionId: 'canonical-empty' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.reply).toBe(canonicalMarkdown);
+    expect(res.body.sources).toEqual([
+      { label: 'LIKHA RAG', detail: 'Semantic search via Qdrant' },
+    ]);
+  });
+
+  it('concatenates canonical pages in offset order', async () => {
+    const firstPage = '| id | name |\n| --- | --- |\n| 1 | Ana |';
+    const secondPage = '| id | name |\n| --- | --- |\n| 2 | Bea |';
+    (globalThis as { fetch?: unknown }).fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ output: 'Coordinator summary' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    extractExecutionArtifactsMock.mockReturnValue({
+      execution: null,
+      structured: {
+        kind: 'rows',
+        version: 1,
+        table: 'user_directory',
+        complete: true,
+        pages: [
+          {
+            table: 'user_directory',
+            offset: 0,
+            markdown: firstPage,
+            count: 1,
+            hasMore: true,
+            nextOffset: 1,
+            executionId: 41,
+          },
+          {
+            table: 'user_directory',
+            offset: 1,
+            markdown: secondPage,
+            count: 1,
+            hasMore: false,
+            nextOffset: null,
+            executionId: 41,
+          },
+        ],
+      },
+    });
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .post('/api/rag/chat')
+      .set('Authorization', 'Bearer x')
+      .send({ message: 'List users by page', sessionId: 'canonical-pages' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.reply).toBe(`${firstPage}\n\n${secondPage}`);
+    expect(res.body.structured).toEqual({
+      kind: 'rows',
+      table: 'user_directory',
+      complete: true,
+      pageCount: 2,
+      nextOffset: null,
+    });
+  });
+
+  it('preserves upstream chart, sources, and session with canonical Markdown', async () => {
+    const canonicalMarkdown = '| id | name |\n| --- | --- |\n| 1 | Ana |';
+    const chart = {
+      type: 'bar',
+      title: 'User Distribution',
+      data: [{ label: 'Enrolled', value: 1 }],
+    };
+    const sources = [{ label: 'User Directory', detail: 'Structured Analytics result' }];
+    (globalThis as { fetch?: unknown }).fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ output: 'Coordinator rewrite', chart, sources }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    extractExecutionArtifactsMock.mockReturnValue({
+      execution: null,
+      structured: {
+        kind: 'rows',
+        version: 1,
+        table: 'user_directory',
+        complete: true,
+        pages: [
+          {
+            table: 'user_directory',
+            offset: 0,
+            markdown: canonicalMarkdown,
+            count: 1,
+            hasMore: false,
+            nextOffset: null,
+            executionId: 45,
+          },
+        ],
+      },
+    });
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .post('/api/rag/chat')
+      .set('Authorization', 'Bearer x')
+      .send({ message: 'Give me a chart and list all users', sessionId: 'canonical-preserve' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.reply).toBe(canonicalMarkdown);
+    expect(res.body.chart).toEqual(chart);
+    expect(res.body.sources).toEqual(sources);
+    expect(res.body.sessionId).toBe('canonical-preserve');
+  });
+
+  it('redacts JWT-shaped strings from the visible reply', async () => {
+    const token = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJzdHVkZW50LTEifQ.signature';
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ output: `Leaked token: ${token}` }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    (globalThis as { fetch?: unknown }).fetch = fetchMock;
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .post('/api/rag/chat')
+      .set('Authorization', 'Bearer x')
+      .send({ message: 'Show my grades', sessionId: 'redact-main' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.reply).toBe('Leaked token: [redacted token]');
+  });
+
+  it('redacts JWT-shaped strings from canonical Markdown', async () => {
+    const token = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJzdHVkZW50LTEifQ.canonical-signature';
+    const canonicalMarkdown = `| name | token |\n| --- | --- |\n| Ana | ${token} |`;
+    (globalThis as { fetch?: unknown }).fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ output: 'Coordinator rewrite' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    extractExecutionArtifactsMock.mockReturnValue({
+      execution: null,
+      structured: {
+        kind: 'rows',
+        version: 1,
+        table: 'user_directory',
+        complete: true,
+        pages: [
+          {
+            table: 'user_directory',
+            offset: 0,
+            markdown: canonicalMarkdown,
+            count: 1,
+            hasMore: false,
+            nextOffset: null,
+            executionId: 42,
+          },
+        ],
+      },
+    });
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .post('/api/rag/chat')
+      .set('Authorization', 'Bearer x')
+      .send({ message: 'List users', sessionId: 'canonical-redact' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.reply).toBe('| name | token |\n| --- | --- |\n| Ana | [redacted token] |');
+  });
+
+  it('fails closed when Analytics is known but its canonical artifact is missing', async () => {
+    (globalThis as { fetch?: unknown }).fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ output: '| name | role |\n| --- | --- |\n| Ana | student |' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    extractExecutionArtifactsMock.mockReturnValue({
+      execution: { executionId: 43, status: 'success', tasks: [] },
+      structured: null,
+      structuredError: 'child_not_found',
+    });
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .post('/api/rag/chat')
+      .set('Authorization', 'Bearer x')
+      .send({ message: 'List all users', sessionId: 'canonical-missing' });
+
+    expect(res.status).toBe(503);
+    expect(res.body.error).toEqual({
+      code: 'structured_result_unavailable',
+      message: 'Structured result is temporarily unavailable. Please try again.',
+    });
+  });
+
+  it('fails closed when the Coordinator renders a Markdown table but no canonical artifact exists', async () => {
+    (globalThis as { fetch?: unknown }).fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ output: 'Here are all users:\n\n| name | role |\n| --- | --- |\n| Ana | student |' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    extractExecutionArtifactsMock.mockReturnValue({
+      execution: null,
+      structured: null,
+      structuredError: 'main_not_found',
+    });
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .post('/api/rag/chat')
+      .set('Authorization', 'Bearer x')
+      .send({ message: 'List all users', sessionId: 'table-without-artifact' });
+
+    expect(res.status).toBe(503);
+    expect(res.body.error.code).toBe('structured_result_unavailable');
+  });
+
+  it('returns semantic prose unchanged even when telemetry reports a child error', async () => {
+    (globalThis as { fetch?: unknown }).fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ output: 'Enrollment requires registrar approval.' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    extractExecutionArtifactsMock.mockReturnValue({
+      execution: { executionId: 47, status: 'success', tasks: [] },
+      structured: null,
+      structuredError: 'child_not_found',
+    });
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .post('/api/rag/chat')
+      .set('Authorization', 'Bearer x')
+      .send({ message: 'How do I enroll?', sessionId: 'prose-with-child-error' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.reply).toBe('Enrollment requires registrar approval.');
   });
 
   it('forwards and extracts chart object if user asked for a chart', async () => {
@@ -185,7 +544,7 @@ describe('rag router', () => {
     expect(res.body.reply).toContain('| Student Name | Student ID | Status |');
   });
 
-  it('handles execution telemetry in chat response', async () => {
+  it('preserves execution telemetry from the combined artifact lookup', async () => {
     const fetchMock = vi.fn(async () =>
       new Response(JSON.stringify({ output: 'Telemetry test reply' }), {
         status: 200,
@@ -193,6 +552,17 @@ describe('rag router', () => {
       }),
     );
     (globalThis as { fetch?: unknown }).fetch = fetchMock;
+    extractExecutionArtifactsMock.mockReturnValue({
+      execution: {
+        executionId: 44,
+        status: 'success',
+        startedAt: '2026-09-25T00:00:00.000Z',
+        stoppedAt: '2026-09-25T00:00:01.000Z',
+        durationMs: 1000,
+        tasks: [{ name: 'Coordinator', status: 'success' }],
+      },
+      structured: null,
+    });
 
     const res = await (await import('supertest'))
       .default(app())
@@ -202,9 +572,14 @@ describe('rag router', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.reply).toBe('Telemetry test reply');
-    if (res.body.execution) {
-      expect(Array.isArray(res.body.execution.tasks)).toBe(true);
-    }
+    expect(res.body.execution).toEqual({
+      executionId: 44,
+      status: 'success',
+      startedAt: '2026-09-25T00:00:00.000Z',
+      stoppedAt: '2026-09-25T00:00:01.000Z',
+      durationMs: 1000,
+      tasks: [{ name: 'Coordinator', status: 'success' }],
+    });
   });
 
   it('returns 502 when n8n is unreachable', async () => {

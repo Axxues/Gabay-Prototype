@@ -56,6 +56,7 @@ function mockRepo() {
     replaceSection: vi.fn(),
     publish: vi.fn(),
     deleteDraft: vi.fn(),
+    withdrawSyllabus: vi.fn(),
     replaceFromLegacy: vi.fn(),
   };
 }
@@ -345,6 +346,21 @@ describe('syllabus router', () => {
     expect(res.status).toBe(200);
     expect(repo.publish).toHaveBeenCalledWith('c1', 'rev-1', 3, 'u-fac');
     expect(res.body.revision.status).toBe('published');
+  });
+
+  it('DELETE syllabus withdraws the whole syllabus and maps missing ones to 404', async () => {
+    repo.withdrawSyllabus.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new SyllabusNotFoundError());
+    const ok = await (await request())(app(repo))
+      .delete('/api/courses/c1/syllabus')
+      .set('Authorization', 'Bearer x');
+    expect(ok.status).toBe(200);
+    expect(ok.body.ok).toBe(true);
+    expect(repo.withdrawSyllabus).toHaveBeenCalledWith('c1');
+    const missing = await (await request())(app(repo))
+      .delete('/api/courses/c1/syllabus')
+      .set('Authorization', 'Bearer x');
+    expect(missing.status).toBe(404);
+    expect(missing.body.error.code).toBe('syllabus_not_found');
   });
 
   it('DELETE draft returns ok and maps missing drafts to 404', async () => {

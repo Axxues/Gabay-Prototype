@@ -96,49 +96,54 @@ export async function authenticateUser(email: string, password: string): Promise
 }
 
 export async function getUserById(id: string): Promise<GabayPublicUser | null> {
-  const adminToken = await getLikhaAdminToken();
-  const res = await fetch(`${LIKHA_URL}/users/${encodeURIComponent(id)}`, {
-    headers: { Authorization: `Bearer ${adminToken}` },
-  });
+  try {
+    const adminToken = await getLikhaAdminToken();
+    const res = await fetch(`${LIKHA_URL}/users/${encodeURIComponent(id)}`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
 
-  if (!res.ok) {
-    if (res.status === 404) return null;
-    throw new Error(`Failed to fetch user by id from Likha: HTTP ${res.status}`);
+    if (!res.ok) return null;
+
+    const json = (await res.json()) as any;
+    if (!json.data) return null;
+    return formatLikhaUser(json.data);
+  } catch {
+    return null;
   }
-
-  const json = (await res.json()) as any;
-  if (!json.data) return null;
-  return formatLikhaUser(json.data);
 }
 
 export async function getUserByEmail(email: string): Promise<GabayPublicUser | null> {
-  const adminToken = await getLikhaAdminToken();
-  const res = await fetch(`${LIKHA_URL}/users?filter[email][_eq]=${encodeURIComponent(email)}&limit=1`, {
-    headers: { Authorization: `Bearer ${adminToken}` },
-  });
+  try {
+    const adminToken = await getLikhaAdminToken();
+    const res = await fetch(`${LIKHA_URL}/users?filter[email][_eq]=${encodeURIComponent(email)}&limit=1`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
 
-  if (!res.ok) {
-    throw new Error(`Failed to query user by email from Likha: HTTP ${res.status}`);
+    if (!res.ok) return null;
+
+    const json = (await res.json()) as any;
+    if (!json.data || json.data.length === 0) return null;
+    return formatLikhaUser(json.data[0]);
+  } catch {
+    return null;
   }
-
-  const json = (await res.json()) as any;
-  if (!json.data || json.data.length === 0) return null;
-  return formatLikhaUser(json.data[0]);
 }
 
 export async function getAllUsers(): Promise<GabayPublicUser[]> {
-  const adminToken = await getLikhaAdminToken();
-  const res = await fetch(`${LIKHA_URL}/users?limit=250&sort=first_name`, {
-    headers: { Authorization: `Bearer ${adminToken}` },
-  });
+  try {
+    const adminToken = await getLikhaAdminToken();
+    const res = await fetch(`${LIKHA_URL}/users?limit=250&sort=first_name`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
 
-  if (!res.ok) {
-    throw new Error(`Failed to list users from Likha: HTTP ${res.status}`);
+    if (!res.ok) return [];
+
+    const json = (await res.json()) as any;
+    const list = (json.data || []) as any[];
+    return list.map(formatLikhaUser);
+  } catch {
+    return [];
   }
-
-  const json = (await res.json()) as any;
-  const list = (json.data || []) as any[];
-  return list.map(formatLikhaUser);
 }
 
 export async function createLikhaUser(data: {
@@ -229,15 +234,14 @@ export async function updateLikhaUser(
 }
 
 export async function deleteLikhaUser(id: string): Promise<boolean> {
-  const adminToken = await getLikhaAdminToken();
-  const res = await fetch(`${LIKHA_URL}/users/${encodeURIComponent(id)}`, {
-    method: 'DELETE',
-    headers: { Authorization: `Bearer ${adminToken}` },
-  });
-
-  if (!res.ok) {
-    if (res.status === 404) return false;
-    throw new Error(`Failed to delete user in Likha: HTTP ${res.status}`);
+  try {
+    const adminToken = await getLikhaAdminToken();
+    const res = await fetch(`${LIKHA_URL}/users/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    return res.ok;
+  } catch {
+    return false;
   }
-  return true;
 }

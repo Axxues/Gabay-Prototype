@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../db.js';
 import { asyncHandler, ApiError } from '../utils/errors.js';
 import { authenticateToken, requireRole } from '../middleware/auth.js';
+import { createCalendarEvent } from '../likha/repositories/communicationsRepo.js';
 
 export const calendarRouter = Router();
 export const advisingRouter = Router();
@@ -113,6 +114,23 @@ calendarRouter.post(
         meetingJoinUrl: optString(body.meetingJoinUrl, 'meetingJoinUrl') ?? null,
       },
     });
+    try {
+      await createCalendarEvent({
+        id: event.id,
+        title: event.title,
+        date: event.date,
+        startTime: event.time || null,
+        endTime: null,
+        type: event.type,
+        location: event.location,
+        description: event.description,
+        allDay: event.isAllDay,
+        courseId: event.courseId,
+        userId: req.auth!.sub,
+      });
+    } catch (e) {
+      console.warn('[calendar] Failed to sync to Likha:', e);
+    }
     res.status(201).json({ event });
   })
 );

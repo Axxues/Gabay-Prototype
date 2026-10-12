@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { asyncHandler, ApiError } from '../utils/errors.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { extractExecutionTelemetry } from '../utils/n8nTelemetry.js';
+import { extractExecutionArtifacts } from '../utils/n8nExecutionArtifacts.js';
+import { createRequesterToken } from '../utils/requesterToken.js';
 
 export const ragRouter = Router();
 
@@ -10,6 +12,58 @@ interface ChartSpec {
   title?: string;
   description?: string;
   data: Array<{ label: string; value: number; color?: string; [key: string]: unknown }>;
+}
+
+export function redactRequesterTokens(text: string): string {
+  return text.replace(/\beyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, '[redacted token]');
+}
+
+// Detects a GitHub-flavored Markdown table (header row plus delimiter row)
+// in raw Coordinator text. Used for canonical fail-closed: a rendered table
+// claims structured completeness, so it must come from a canonical artifact.
+export function hasMarkdownTable(text: string): boolean {
+  if (!text || !text.includes('|')) return false;
+  const lines = text.split('\n');
+  for (let i = 0; i < lines.length - 1; i++) {
+    const header = lines[i].trim();
+    const separator = lines[i + 1].trim();
+    if (!header.startsWith('|') || !header.endsWith('|')) continue;
+    if (!separator.startsWith('|') || !separator.endsWith('|')) continue;
+    const cells = separator.slice(1, -1).split('|').map((cell) => cell.trim());
+    if (cells.length > 0 && cells.every((cell) => /^:?-+:?$/.test(cell))) return true;
+  }
+  return false;
+}
+
+// Collects raw Coordinator text candidates from an n8n webhook payload
+// before reply normalization (normalization may convert tables to bullets).
+export function coordinatorTexts(data: unknown): string[] {
+  const out: string[] = [];
+  const pushFields = (obj: Record<string, unknown>): void => {
+    for (const key of ['output', 'text', 'reply', 'answer', 'message', 'result']) {
+      const value = obj[key];
+      if (typeof value === 'string' && value.trim()) out.push(value);
+    }
+  };
+  if (typeof data === 'string') {
+    if (data.trim()) out.push(data);
+  } else if (Array.isArray(data)) {
+    for (const item of data) {
+      if (item && typeof item === 'object') {
+        const record = item as Record<string, unknown>;
+        if (record.json && typeof record.json === 'object') {
+          pushFields(record.json as Record<string, unknown>);
+        } else {
+          pushFields(record);
+        }
+      } else if (typeof item === 'string' && item.trim()) {
+        out.push(item);
+      }
+    }
+  } else if (data && typeof data === 'object') {
+    pushFields(data as Record<string, unknown>);
+  }
+  return out;
 }
 
 function webhookUrl(): string {
@@ -421,6 +475,7 @@ ragRouter.post(
           requestId,
           userId: req.auth!.sub,
           role: req.auth!.role,
+          requesterToken: createRequesterToken({ sub: req.auth!.sub, role: req.auth!.role }),
         }),
       });
       if (!upstream.ok) {
@@ -444,21 +499,69 @@ ragRouter.post(
       } catch {
         // keep raw text
       }
-      const { reply, sources, chart } = normalizeReply(data, message);
+      let execution: unknown;
+      let canonicalReply: string | undefined;
+      let structured:
+        | {
+            kind: 'rows';
+            table: string;
+            complete: boolean;
+            pageCount: number;
+            nextOffset: number | null;
+          }
+        | null
+        | undefined;
 
-      // Extract authentic execution telemetry from n8n SQLite execution database
-      let execution: unknown = undefined;
       try {
-        const telemetry = extractExecutionTelemetry({
-          requestId,
-          sessionId,
-        });
-        if (telemetry) {
-          execution = telemetry;
+        const artifacts = extractExecutionArtifacts({ requestId, sessionId });
+        execution = artifacts.execution ?? undefined;
+        if (artifacts.structured) {
+          const pages = artifacts.structured.pages;
+          const finalPage = pages[pages.length - 1];
+          canonicalReply = redactRequesterTokens(
+            pages.map((page) => page.markdown).join('\n\n')
+          );
+          structured = {
+            kind: artifacts.structured.kind,
+            table: artifacts.structured.table,
+            complete: artifacts.structured.complete,
+            pageCount: pages.length,
+            nextOffset: finalPage.nextOffset,
+          };
+        } else if (coordinatorTexts(data).some(hasMarkdownTable)) {
+          // Fail closed: the Coordinator rendered a Markdown table, which
+          // claims structured completeness, but no canonical artifact was
+          // recovered (lock, lag, or missing child). Never serve the
+          // unverified table as if it were complete. Semantic prose without
+          // a table stays telemetry-independent and falls through below, as
+          // does a reply when telemetry itself was unreachable (no
+          // structuredError recorded).
+          if (artifacts.structuredError !== undefined) {
+            throw new ApiError(
+              503,
+              'structured_result_unavailable',
+              'Structured result is temporarily unavailable. Please try again.'
+            );
+          }
         }
       } catch (e) {
-        console.warn('[rag] Telemetry extraction error:', e);
+        if (e instanceof ApiError) throw e;
+        console.warn('[rag] Execution artifact extraction error:', e);
       }
+
+      const normalizationData =
+        canonicalReply === undefined
+          ? data
+          : Array.isArray(data)
+            ? [{ json: { output: canonicalReply } }, ...data]
+            : data && typeof data === 'object'
+              ? { ...data, output: canonicalReply }
+              : { output: canonicalReply };
+      const { reply: normalizedReply, sources, chart } = normalizeReply(
+        normalizationData,
+        message
+      );
+      const reply = canonicalReply ?? redactRequesterTokens(normalizedReply);
 
       res.json({
         reply,
@@ -466,6 +569,7 @@ ragRouter.post(
         sources,
         sessionId,
         execution,
+        structured,
       });
     } catch (err) {
       if (err instanceof ApiError) throw err;

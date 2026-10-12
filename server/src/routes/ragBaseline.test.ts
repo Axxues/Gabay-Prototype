@@ -95,8 +95,29 @@ describe('rag-baseline router', () => {
     const body = JSON.parse(String((init as { body?: string }).body)) as Record<string, unknown>;
     expect(body.chatInput).toBe('What is enrollment? (My student ID is STU-2024-001.)');
     expect(body.sessionId).toBe('default-session');
+    expect(body.requesterToken).toBe('test-token');
     expect(res.body.reply).toBe('Hello from baseline');
     expect(res.body.sessionId).toBe('default-session');
+  });
+
+  it('redacts JWT-shaped strings from the visible reply', async () => {
+    const token = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJzdHVkZW50LTIifQ.signature';
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ output: `Leaked token: ${token}` }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    (globalThis as { fetch?: unknown }).fetch = fetchMock;
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .post('/api/rag-baseline/chat')
+      .set('Authorization', 'Bearer x')
+      .send({ message: 'Show my grades', sessionId: 'redact-baseline' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.reply).toBe('Leaked token: [redacted token]');
   });
 
   it('provides live progress endpoint GET /api/rag-baseline/progress/:sessionId', async () => {

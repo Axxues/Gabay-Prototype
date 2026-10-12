@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../db.js';
 import { asyncHandler, ApiError } from '../utils/errors.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { sendMessage } from '../likha/repositories/communicationsRepo.js';
 
 export const messagesRouter = Router();
 export const groupsRouter = Router();
@@ -163,6 +164,21 @@ messagesRouter.post(
         isGroup,
       },
     });
+    try {
+      await sendMessage({
+        id: message.id,
+        senderId: me,
+        senderName: (sender as { name?: string } | null)?.name ?? '',
+        recipientId,
+        recipientName: (recipient as { name?: string } | null)?.name ?? '',
+        courseId: typeof courseId === 'string' ? courseId : null,
+        subject: (subject as string).trim(),
+        body: (body.body as string).trim(),
+        groupId: isGroup ? (groupId as string) : null,
+      });
+    } catch (e) {
+      console.warn('[messages] Failed to sync to Likha:', e);
+    }
     res.status(201).json({ message });
   }),
 );

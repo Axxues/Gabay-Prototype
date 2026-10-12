@@ -14,6 +14,7 @@ import {
 } from '../syllabi/repository.js';
 import { SyllabusNormalizationError } from '../utils/syllabusNormalization.js';
 import { prisma } from '../db.js';
+import { saveCourseSyllabus } from '../likha/repositories/syllabiRepo.js';
 import {
   SYLLABUS_SECTION_KEYS,
   SyllabusValidationError,
@@ -153,6 +154,11 @@ export function createSyllabusRouter(repository: SyllabusRepository = getSyllabu
       );
       const envelope = await runSyllabus(() => repository.getRevisionEnvelope(course.id, req.params.revisionId));
       if (!envelope) throw new ApiError(404, 'syllabus_not_found', 'The syllabus revision was not found for this course.');
+      try {
+        await saveCourseSyllabus(course.id, envelope.syllabus);
+      } catch (e) {
+        console.warn('[syllabi] Failed to sync published syllabus to Likha:', e);
+      }
       res.json(envelope satisfies SyllabusRevisionResponse);
     }),
   );
@@ -165,6 +171,18 @@ export function createSyllabusRouter(repository: SyllabusRepository = getSyllabu
       const course = await loadCourseOr404(req.params.courseId);
       assertCourseOwner(course, req.auth!);
       await runSyllabus(() => repository.deleteDraft(course.id, req.params.revisionId));
+      res.json({ ok: true });
+    }),
+  );
+
+  router.delete(
+    '/:courseId/syllabus',
+    authenticateToken,
+    requireRole('faculty', 'admin'),
+    asyncHandler(async (req, res) => {
+      const course = await loadCourseOr404(req.params.courseId);
+      assertCourseOwner(course, req.auth!);
+      await runSyllabus(() => repository.withdrawSyllabus(course.id));
       res.json({ ok: true });
     }),
   );

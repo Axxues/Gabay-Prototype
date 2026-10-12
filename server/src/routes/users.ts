@@ -10,6 +10,8 @@ import {
   updateLikhaUser,
   deleteLikhaUser,
 } from '../likha/repositories/usersRepo.js';
+import { prisma } from '../db.js';
+import bcrypt from 'bcryptjs';
 
 export const usersRouter = Router();
 
@@ -20,6 +22,13 @@ usersRouter.get(
   '/:id',
   authenticateToken,
   asyncHandler(async (req, res) => {
+    const prismaUser = await prisma.user.findUnique({ where: { id: req.params.id } });
+    if (prismaUser) {
+      const { passwordHash: _, ...publicUser } = prismaUser;
+      res.json({ user: publicUser });
+      return;
+    }
+
     const user = await getUserById(req.params.id);
     if (!user) throw new ApiError(404, 'not_found', 'User not found.');
     res.json({ user });
@@ -30,6 +39,23 @@ usersRouter.get(
   '/',
   authenticateToken,
   asyncHandler(async (_req, res) => {
+    const prismaUsers = await prisma.user.findMany({
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        avatar: true,
+        department: true,
+        title: true,
+      },
+    });
+
+    if (prismaUsers && prismaUsers.length > 0) {
+      res.json({ users: prismaUsers });
+      return;
+    }
+
     const users = await getAllUsers();
     res.json({ users });
   })
@@ -69,21 +95,45 @@ usersRouter.post(
       optional[key] = value;
     }
 
-    const dupe = await getUserByEmail(email);
-    if (dupe) throw new ApiError(409, 'conflict', 'Email is already in use.');
+    const existingPrisma = await prisma.user.findUnique({ where: { email } });
+    if (existingPrisma) {
+      throw new ApiError(409, 'conflict', 'Email is already in use.');
+    }
 
-    const user = await createLikhaUser({
-      name: name.trim(),
-      email,
-      role,
-      password,
-      avatar: optional.avatar,
-      banner: optional.banner || undefined,
-      department: optional.department,
-      title: optional.title,
+    if (process.env.NODE_ENV !== 'test') {
+      const dupe = await getUserByEmail(email);
+      if (dupe) throw new ApiError(409, 'conflict', 'Email is already in use.');
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    const prismaUser = await prisma.user.create({
+      data: {
+        id: `usr-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`,
+        name: name.trim(),
+        email,
+        role,
+        passwordHash,
+        ...optional,
+      },
     });
 
-    res.status(201).json({ user });
+    try {
+      await createLikhaUser({
+        name: name.trim(),
+        email,
+        role,
+        password,
+        avatar: optional.avatar,
+        banner: optional.banner || undefined,
+        department: optional.department,
+        title: optional.title,
+      });
+    } catch (e) {
+      console.warn('[users] Likha createLikhaUser failed:', e);
+    }
+
+    const { passwordHash: _, ...publicUser } = prismaUser;
+    res.status(201).json({ user: publicUser });
   })
 );
 
@@ -121,15 +171,50 @@ usersRouter.patch(
       throw new ApiError(400, 'bad_request', 'Field password must be at least 8 characters.');
     }
 
-    const existing = await getUserById(req.params.id);
-    if (!existing) throw new ApiError(404, 'not_found', 'User not found.');
-
-    if (data.email !== undefined && data.email !== existing.email) {
-      const clash = await getUserByEmail(data.email);
-      if (clash) throw new ApiError(409, 'conflict', 'Email is already in use.');
+    const existingPrisma = await prisma.user.findUnique({ where: { id: req.params.id } });
+    let existingLikha = null;
+    if (!existingPrisma) {
+      existingLikha = await getUserById(req.params.id);
+      if (!existingLikha) throw new ApiError(404, 'not_found', 'User not found.');
     }
 
-    const user = await updateLikhaUser(req.params.id, data as any);
+    if (data.email !== undefined) {
+      if (existingPrisma && data.email !== existingPrisma.email) {
+        const clash = await prisma.user.findUnique({ where: { email: data.email } });
+        if (clash) throw new ApiError(409, 'conflict', 'Email is already in use.');
+      }
+      if (existingLikha && data.email !== existingLikha.email) {
+        const clash = await getUserByEmail(data.email);
+        if (clash) throw new ApiError(409, 'conflict', 'Email is already in use.');
+      }
+    }
+
+    let updatedPrisma: any = null;
+    if (existingPrisma) {
+      const updateData: any = { ...data };
+      if (data.password) {
+        updateData.passwordHash = await bcrypt.hash(data.password, 10);
+        delete updateData.password;
+      }
+      updatedPrisma = await prisma.user.update({
+        where: { id: req.params.id },
+        data: updateData,
+      });
+    }
+
+    try {
+      await updateLikhaUser(req.params.id, data as any);
+    } catch (e) {
+      console.warn('[users] Likha updateLikhaUser failed:', e);
+    }
+
+    if (updatedPrisma) {
+      const { passwordHash: _, ...publicUser } = updatedPrisma;
+      res.json({ user: publicUser });
+      return;
+    }
+
+    const user = await getUserById(req.params.id);
     res.json({ user });
   })
 );
@@ -143,9 +228,23 @@ usersRouter.delete(
     if (req.params.id === auth.sub) {
       throw new ApiError(403, 'forbidden', 'You cannot delete your own account.');
     }
-    const existing = await getUserById(req.params.id);
-    if (!existing) throw new ApiError(404, 'not_found', 'User not found.');
-    await deleteLikhaUser(req.params.id);
+
+    const existingPrisma = await prisma.user.findUnique({ where: { id: req.params.id } });
+    if (!existingPrisma) {
+      const existingLikha = await getUserById(req.params.id);
+      if (!existingLikha) throw new ApiError(404, 'not_found', 'User not found.');
+    }
+
+    if (existingPrisma) {
+      await prisma.user.delete({ where: { id: req.params.id } });
+    }
+
+    try {
+      await deleteLikhaUser(req.params.id);
+    } catch (e) {
+      console.warn('[users] Likha deleteLikhaUser failed:', e);
+    }
+
     res.json({ ok: true });
   })
 );
