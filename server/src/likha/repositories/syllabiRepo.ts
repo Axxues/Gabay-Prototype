@@ -5,7 +5,7 @@ export async function getCourseSyllabus(courseId: string): Promise<any | null> {
   const token = await getLikhaAdminToken();
 
   // 1. Find active syllabus revision
-  const res = await fetch(`${LIKHA_URL}/items/syllabi?filter[course_id][_eq]=${encodeURIComponent(courseId)}&sort=-version&limit=1`, {
+  const res = await fetch(`${LIKHA_URL}/items/syllabi?filter[course_id][_eq]=${encodeURIComponent(courseId)}&sort=-created_at,-version&limit=1`, {
     headers: { Authorization: `Bearer ${token}` },
   });
 
@@ -104,7 +104,9 @@ export async function getCourseSyllabus(courseId: string): Promise<any | null> {
       status: sylHeader.status || 'published',
       courseInfo: {
         code: rawInfo.course_code || '',
+        courseCode: rawInfo.course_code || '',
         title: rawInfo.course_title || '',
+        courseTitle: rawInfo.course_title || '',
         credits: rawInfo.credits || 3,
         lectureHours: rawInfo.lecture_hours || 2,
         labHours: rawInfo.lab_hours || 3,
@@ -148,9 +150,36 @@ export async function getCourseSyllabus(courseId: string): Promise<any | null> {
         outcomes: l.intended_learning_outcome,
         topic: l.topic_content,
         activities: l.teaching_activities,
+        teachingActivities: l.teaching_activities,
         assessments: l.assessment_tasks,
         resources: l.learning_resources,
       })),
+      learningPlans: plansRows.map((l: any) => ({
+        unitNo: l.unit_no,
+        weeks: l.time_allotment_weeks,
+        outcomes: l.intended_learning_outcome,
+        topic: l.topic_content,
+        activities: l.teaching_activities,
+        teachingActivities: l.teaching_activities,
+        assessments: l.assessment_tasks,
+        resources: l.learning_resources,
+      })),
+      learningPlan: plansRows.map((l: any) => {
+        const topics = l.topic_content ? l.topic_content.split('; ').map((s: string) => s.trim()).filter(Boolean) : [];
+        const outcomes = l.intended_learning_outcome ? l.intended_learning_outcome.split('; ').map((s: string) => s.trim()).filter(Boolean) : [];
+        const activities = l.teaching_activities ? l.teaching_activities.split('; ').map((s: string) => s.trim()).filter(Boolean) : [];
+        const assessments = l.assessment_tasks ? l.assessment_tasks.split('; ').map((s: string) => s.trim()).filter(Boolean) : [];
+        return {
+          unitNo: l.unit_no,
+          week: l.time_allotment_weeks || `Week ${l.unit_no || 1}`,
+          topics: topics.length > 0 ? topics : ['Course Topic'],
+          learningOutcomes: outcomes,
+          methodology: activities,
+          assessment: assessments,
+          hoursLec: 2,
+          hoursLab: 3,
+        };
+      }),
       evaluation: {
         lectureWeight: rawGrading.lecture_weight || 0.6,
         labWeight: rawGrading.lab_weight || 0.4,
@@ -310,7 +339,138 @@ export async function saveCourseSyllabus(courseId: string, content: any): Promis
     }
   }
 
-  // 6. Update courses table
+  // 6. Unpack Curriculum Map
+  const mapsArr = Array.isArray(parsed.curriculumMap) ? parsed.curriculumMap : [];
+  for (let i = 0; i < mapsArr.length; i++) {
+    const m = mapsArr[i];
+    await fetch(`${LIKHA_URL}/items/syllabus_course_maps`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        id: `scm-${syllabusId}-${i}`,
+        syllabus_id: syllabusId,
+        course_outcome_code: m.coCode || m.courseOutcomeCode || '',
+        program_outcome_code: m.poCode || m.programOutcomeCode || '',
+        level: m.level || 'I',
+      }),
+    }).catch(() => {});
+  }
+
+  // 7. Unpack Learning Plans
+  const plansArr = Array.isArray(parsed.learningPlan)
+    ? parsed.learningPlan
+    : (Array.isArray(parsed.learningPlans) ? parsed.learningPlans : []);
+  for (let i = 0; i < plansArr.length; i++) {
+    const lp = plansArr[i];
+    await fetch(`${LIKHA_URL}/items/syllabus_learning_plans`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        id: `slp-${syllabusId}-${i}`,
+        syllabus_id: syllabusId,
+        unit_no: lp.unitNo || lp.unit_no || i + 1,
+        time_allotment_weeks: String(lp.weeks || lp.week || lp.time_allotment_weeks || `Week ${i + 1}`),
+        intended_learning_outcome: Array.isArray(lp.learningOutcomes) ? lp.learningOutcomes.join('; ') : (lp.outcomes || lp.intended_learning_outcome || ''),
+        topic_content: Array.isArray(lp.topics) ? lp.topics.join('; ') : (lp.topic || lp.topic_content || ''),
+        teaching_activities: Array.isArray(lp.methodology) ? lp.methodology.join('; ') : (lp.activities || lp.teachingActivities || lp.teaching_activities || ''),
+        assessment_tasks: Array.isArray(lp.assessment) ? lp.assessment.join('; ') : (lp.assessments || lp.assessment_tasks || ''),
+        learning_resources: lp.resources || lp.learning_resources || '',
+        order: i + 1,
+      }),
+    }).catch(() => {});
+  }
+
+  // 8. Unpack Grading Systems / Evaluation
+  const evalData = parsed.evaluation || parsed.grading || parsed.gradingSystem;
+  if (evalData && typeof evalData === 'object') {
+    await fetch(`${LIKHA_URL}/items/syllabus_grading_systems`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        id: `sgs-${syllabusId}`,
+        syllabus_id: syllabusId,
+        lecture_weight: evalData.lectureWeight ?? 0.6,
+        lab_weight: evalData.labWeight ?? 0.4,
+        term_formula: evalData.formula || evalData.termFormula || '',
+        passing_grade: evalData.passingGrade ?? 75,
+        components_summary: evalData.summary || evalData.componentsSummary || '',
+      }),
+    }).catch(() => {});
+  }
+
+  // 9. Unpack Rubrics
+  const rubricsArr = Array.isArray(parsed.rubrics) ? parsed.rubrics : [];
+  for (let i = 0; i < rubricsArr.length; i++) {
+    const r = rubricsArr[i];
+    await fetch(`${LIKHA_URL}/items/syllabus_rubrics`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        id: `srub-${syllabusId}-${i}`,
+        syllabus_id: syllabusId,
+        title: r.title || '',
+        description: r.description || '',
+        rubric_type: r.type || r.rubric_type || 'analytic',
+      }),
+    }).catch(() => {});
+  }
+
+  // 10. Unpack Policies
+  const policiesArr = Array.isArray(parsed.policies) ? parsed.policies : [];
+  for (let i = 0; i < policiesArr.length; i++) {
+    const pol = policiesArr[i];
+    await fetch(`${LIKHA_URL}/items/syllabus_policies`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        id: `spol-${syllabusId}-${i}`,
+        syllabus_id: syllabusId,
+        policy_type: pol.type || 'classroom',
+        title: pol.title || '',
+        content: pol.content || pol.description || '',
+        order: i + 1,
+      }),
+    }).catch(() => {});
+  }
+
+  // 11. Unpack References
+  const refsArr = Array.isArray(parsed.references) ? parsed.references : [];
+  for (let i = 0; i < refsArr.length; i++) {
+    const ref = refsArr[i];
+    await fetch(`${LIKHA_URL}/items/syllabus_references`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        id: `sref-${syllabusId}-${i}`,
+        syllabus_id: syllabusId,
+        title: ref.title || '',
+        author: ref.author || '',
+        year: String(ref.year || ''),
+        url: ref.url || null,
+        order: i + 1,
+      }),
+    }).catch(() => {});
+  }
+
+  // 12. Unpack Signatories
+  const sigsArr = Array.isArray(parsed.signatories) ? parsed.signatories : [];
+  for (let i = 0; i < sigsArr.length; i++) {
+    const sig = sigsArr[i];
+    await fetch(`${LIKHA_URL}/items/syllabus_signatories`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        id: `ssig-${syllabusId}-${i}`,
+        syllabus_id: syllabusId,
+        name: sig.name || '',
+        title: sig.title || '',
+        role: sig.role || '',
+        order: i + 1,
+      }),
+    }).catch(() => {});
+  }
+
+  // 13. Update courses table
   await fetch(`${LIKHA_URL}/items/courses/${encodeURIComponent(courseId)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
