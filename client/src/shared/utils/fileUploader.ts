@@ -5,6 +5,8 @@
  * persist permanently on disk and survive reloads and builds.
  */
 
+import { likhaLmsApi } from '../api/likhaLmsApi';
+
 export interface UploadResult {
   name: string;
   size: string;
@@ -72,6 +74,22 @@ export const isImageFile = (name: string, type?: string, url?: string): boolean 
 export const uploadFileToPublic = async (file: File): Promise<UploadResult> => {
   const formattedSize = formatFileSize(file.size);
   const isImg = isImageFile(file.name, file.type);
+
+  // 1. Direct-to-Likha ERP native asset upload
+  try {
+    const likhaRes = await likhaLmsApi.uploadFile(file);
+    if (likhaRes?.url) {
+      return {
+        name: likhaRes.filename_download || file.name,
+        size: formattedSize,
+        url: likhaRes.url,
+        type: toShortFileType(file.name),
+        isImage: isImg
+      };
+    }
+  } catch (_likhaErr) {
+    // Gracefully fall through to local Vite dev upload or data URL
+  }
 
   // Convert to base64 DataURL for payload and immediate preview
   const dataUrl = await new Promise<string>((resolve, reject) => {

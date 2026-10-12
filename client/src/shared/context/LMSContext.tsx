@@ -45,7 +45,7 @@ import { isSyllabusGradeReady } from '../utils/syllabusGradeGate';
 import { AlertModal, type AlertModalOptions } from '../components/common/AlertModal';
 import { canPickSection } from '../utils/sections';
 import type { OfficialSyllabusData } from '../data/syllabusData';
-import { apiFetch, ApiError, getToken, setToken, clearToken } from '../api/client';
+import { apiFetch, ApiError, getToken, setToken, clearToken, likhaLmsApi } from '../api/client';
 import { syllabusApi, deleteDraft, withdrawSyllabus } from '../api/syllabus';
 import type { SyllabusRevisionHeader, SyllabusRevisionResponse, SyllabusSectionKey } from '../types/syllabusApi';
 import { settledValue } from '../utils/promise';
@@ -741,7 +741,53 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         fresh.users = [user];
       }
       fresh.courses = coursesRes.courses.map(normalizeCourseSyllabus);
+      if (fresh.courses.length === 0) {
+        try {
+          const likhaCourses = await likhaLmsApi.getCoursesWithRelations();
+          if (Array.isArray(likhaCourses) && likhaCourses.length > 0) {
+            fresh.courses = likhaCourses.map((c: any) => normalizeCourseSyllabus({
+              id: c.id,
+              code: c.code || c.id,
+              title: c.title || c.name || c.id,
+              description: c.description || '',
+              department: c.department || '',
+              term: c.term || '1st Semester 2026-2027',
+              units: Number(c.units) || 3,
+              enrolledCount: Number(c.enrolled_count ?? c.enrolledCount) || 0,
+              published: Boolean(c.published),
+              syllabus: c.syllabus || null,
+              section: c.section || '',
+            }));
+          }
+        } catch (_likhaCourseErr) {
+          // Keep empty if Likha is offline or mock in test
+        }
+      }
       fresh.notifications = notificationsRes.notifications;
+      try {
+        const likhaNotifs = await likhaLmsApi.getNotifications(user.id);
+        if (Array.isArray(likhaNotifs) && likhaNotifs.length > 0) {
+          const mapped: Notification[] = likhaNotifs.map((ln: any) => ({
+            id: ln.id || `notif-likha-${Date.now()}`,
+            recipientId: ln.user_id || user.id,
+            title: ln.title || 'Likha System Notification',
+            message: ln.message || '',
+            type: ln.type || 'system',
+            read: Boolean(ln.read),
+            createdAt: ln.created_at || new Date().toISOString(),
+            link: ln.link || undefined,
+          }));
+          const seen = new Set(fresh.notifications.map(n => n.id));
+          for (const item of mapped) {
+            if (!seen.has(item.id)) {
+              fresh.notifications.unshift(item);
+              seen.add(item.id);
+            }
+          }
+        }
+      } catch (_likhaNotifErr) {
+        // Tolerated if Likha notifications offline
+      }
       fresh.messages = messagesRes.messages;
       fresh.calendarEvents = calendarRes.events;
       // Task 5: chat groups + advising slots are global (no per-course
@@ -1019,6 +1065,37 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const activeRole: UserRole = currentUser?.role || 'student';
 
   const login = async (emailOrId: string, password: string): Promise<{ success: boolean; message?: string }> => {
+    // Attempt direct Likha ERP authentication when an email address is provided
+    if (emailOrId.includes('@')) {
+      try {
+        const likhaAuth = await likhaLmsApi.loginLikhaUser(emailOrId, password);
+        if (likhaAuth?.token && likhaAuth?.user) {
+          const roleName = (likhaAuth.user.role?.name || '').toLowerCase();
+          const mappedRole: UserRole =
+            roleName.includes('faculty') || roleName.includes('instructor')
+              ? 'faculty'
+              : roleName.includes('admin')
+                ? 'admin'
+                : 'student';
+          const mappedUser: User = {
+            id: likhaAuth.user.id,
+            name: `${likhaAuth.user.first_name || ''} ${likhaAuth.user.last_name || ''}`.trim() || likhaAuth.user.email,
+            email: likhaAuth.user.email,
+            role: mappedRole,
+            avatar: likhaAuth.user.avatar ? `${likhaLmsApi ? 'https://gabay.zyberlab.com/assets/' + likhaAuth.user.avatar : ''}` : undefined,
+            department: likhaAuth.user.department || 'College of Computer Science',
+            title: likhaAuth.user.title || (mappedRole === 'student' ? 'Undergraduate Student' : 'Instructor'),
+          };
+          setToken(likhaAuth.token);
+          setCurrentUser(mappedUser);
+          await refreshAll(mappedUser);
+          return { success: true };
+        }
+      } catch (_likhaErr) {
+        // Fall back to standard Express auth router
+      }
+    }
+
     try {
       const { token, user } = await apiFetch<{ token: string; user: User }>('/api/auth/login', {
         method: 'POST',
@@ -1613,6 +1690,21 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }));
       }
 
+      // Sync to Likha ERP backend (triggers native Directus automation Flows)
+      try {
+        void likhaLmsApi.saveActivity({
+          id: merged.id,
+          course_id: merged.courseId,
+          title: merged.title,
+          instructions: merged.instructions,
+          term: merged.term || 'midterm',
+          points_possible: merged.pointsPossible,
+          due_date: merged.dueDate,
+          published: merged.published,
+          format: merged.format || 'classic',
+        }).catch(err => console.warn('[likhaLmsApi] saveActivity background sync:', err));
+      } catch {}
+
       return merged;
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to create activity.';
@@ -1664,6 +1756,15 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           activities: (prev.activities || []).map(a => (a.id === activityId ? merged : a))
         };
       });
+
+      // Sync to Likha ERP backend (triggers native Directus automation Flows)
+      try {
+        void likhaLmsApi.saveActivity({
+          id: activityId,
+          ...body,
+        }).catch(err => console.warn('[likhaLmsApi] updateActivity background sync:', err));
+      } catch {}
+
       return merged;
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to update activity.';
@@ -2282,6 +2383,13 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             : sub
         )
       }));
+
+      // Sync to Likha ERP backend (triggers gabay-submission-spr-flow)
+      try {
+        void likhaLmsApi.gradeSubmission(submissionId, grade, commentText).catch(err =>
+          console.warn('[likhaLmsApi] gradeSubmission background sync:', err)
+        );
+      } catch {}
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to grade submission.';
       setLastError(message);
@@ -2364,6 +2472,19 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         return { ...prev, submissions: [merged, ...prev.submissions] };
       });
+
+      // Sync to Likha ERP backend
+      try {
+        void likhaLmsApi.submitActivity({
+          activity_id: activityId,
+          student_id: activeUser.id,
+          submission_type: submissionType,
+          content: content || JSON.stringify(answers || {}),
+          file_name: fileName || '',
+          status: 'submitted',
+          submitted_at: new Date().toISOString(),
+        }).catch(err => console.warn('[likhaLmsApi] submitActivity background sync:', err));
+      } catch {}
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to submit activity.';
       setLastError(message);
