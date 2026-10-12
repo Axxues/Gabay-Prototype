@@ -11,6 +11,8 @@
     "backfill-syllabi": "tsx prisma/backfillSyllabi.ts",
     "verify-syllabi": "tsx prisma/verifySyllabiParity.ts",
     "test": "vitest run",
+    "likha:provision": "tsx ../scripts/provision-likha-schema.ts",
+    "likha:seed": "tsx ../scripts/seed-likha-data.ts",
     "prisma:validate": "prisma validate --schema prisma/schema.prisma",
     "prisma:studio": "prisma studio --schema prisma/schema.prisma"
   },
