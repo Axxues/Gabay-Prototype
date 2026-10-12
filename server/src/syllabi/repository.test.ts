@@ -7,6 +7,7 @@ import {
   buildSyllabusRagSections,
   recordSyllabusMigrationAudit,
   SyllabusConflictError,
+  SyllabusNotFoundError,
   SyllabusSourceFileError,
 } from './repository.js';
 
@@ -536,19 +537,64 @@ describe('PrismaSyllabusRepository', () => {
     const expectedDocument = mapWriteModelToDocument(model);
 
     expect(Object.keys(sections)).toEqual([
+      'institution',
       'description',
-      'outcomes',
+      'faculty',
+      'institutional_statement',
+      'program_outcomes',
+      'core_values',
+      'graduate_attributes',
+      'requirements',
       'grading',
+      'rubrics',
       'policies',
       'outline',
+      'learning_plan',
+      'outcomes',
+      'course_map',
       'references',
-      'faculty',
     ]);
     expect(sections.description).toContain('CS 201: Data Structures.');
     expect(sections.outcomes).toBe(
       `Course outcomes: ${expectedDocument.courseOutcomes.map((row) => `CO${row.number}: ${row.statement}`).join(' ')}`,
     );
     expect(sections.policies).toBe(`Classroom policies: ${expectedDocument.classroomPolicies.join(' ')}`);
+    expect(sections.institution).toContain('Example University');
+    expect(sections.institutional_statement).toContain('Education for service.');
+    expect(sections.program_outcomes).toContain('PO1:');
+    expect(sections.requirements).toBe('');
+    expect(sections.rubrics).toBe('');
+    expect(sections.learning_plan).toBe('');
+    expect(sections.course_map).toBe('');
+  });
+
+  it('withdraws the whole syllabus in one transaction', async () => {
+    const { client, repository, tx } = createHarness();
+    tx.course.findUnique.mockResolvedValue({ id: 'course-1', currentSyllabusId: 'rev-pub', syllabus: '{"courseInfo":{}}' });
+    tx.syllabus.findFirst.mockResolvedValue({ id: 'rev-draft-1' });
+
+    await repository.withdrawSyllabus('course-1');
+
+    expect(client.$transaction).toHaveBeenCalledTimes(1);
+    expect(tx.syllabus.deleteMany).toHaveBeenCalledWith({ where: { courseId: 'course-1', status: 'draft' } });
+    expect(tx.syllabus.updateMany).toHaveBeenCalledWith({
+      where: { courseId: 'course-1', status: 'published' },
+      data: { status: 'archived' },
+    });
+    expect(tx.course.updateMany).toHaveBeenCalledWith({
+      where: { id: 'course-1' },
+      data: { currentSyllabusId: null, syllabus: null },
+    });
+  });
+
+  it('rejects withdrawing a course with no syllabus', async () => {
+    const { repository, tx } = createHarness();
+    tx.course.findUnique.mockResolvedValue({ id: 'course-1', currentSyllabusId: null, syllabus: null });
+    tx.syllabus.findFirst.mockResolvedValue(null);
+
+    await expect(repository.withdrawSyllabus('course-1')).rejects.toBeInstanceOf(SyllabusNotFoundError);
+    expect(tx.syllabus.deleteMany).not.toHaveBeenCalled();
+    expect(tx.course.updateMany).not.toHaveBeenCalled();
   });
 
   it('caps every RAG section at a total of 1500 characters', () => {
@@ -564,13 +610,22 @@ describe('PrismaSyllabusRepository', () => {
       },
     );
     expect(Object.keys(sections)).toEqual([
+      'institution',
       'description',
-      'outcomes',
+      'faculty',
+      'institutional_statement',
+      'program_outcomes',
+      'core_values',
+      'graduate_attributes',
+      'requirements',
       'grading',
+      'rubrics',
       'policies',
       'outline',
+      'learning_plan',
+      'outcomes',
+      'course_map',
       'references',
-      'faculty',
     ]);
     for (const text of Object.values(sections)) {
       expect(text.length).toBeLessThanOrEqual(1500);

@@ -1,0 +1,40 @@
+// Gabay LMS - DFD Level 0 (Context Diagram), Gane-Sarson notation.
+// External entity = rectangle (yellow), system process = rounded Gane-Sarson
+// process (number top-left, name middle, yellow bands top/bottom).
+// NOTE: exports/dfd-context.svg/.png are hand-aligned (exact lanes/ports);
+// this .dot documents the same flows/symbols and is not re-rendered.
+digraph dfd_context {
+  rankdir=LR;
+  label="Gabay LMS - DFD Level 0 (Context Diagram)";
+  labelloc="t";
+  fontsize="16";
+  fontname="Arial";
+  node [fontsize="11", fontname="Arial"];
+  edge [fontsize="10", fontname="Arial", arrowhead=vee];
+  splines=ortho; ranksep=2.0; nodesep=2.0;
+  // ponytail: compass ports keep each direction in its own ortho lane
+
+  Student [shape=box, style=filled, fillcolor="#FFF59D"];
+  Faculty [shape=box, style=filled, fillcolor="#FFF59D"];
+  Admin [shape=box, style=filled, fillcolor="#FFF59D"];
+  Staff [shape=box, style=filled, fillcolor="#FFF59D"];
+  // ponytail: process 0 as HTML table mimics Gane-Sarson rounded box
+  LMS [shape=plaintext, label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" STYLE="ROUNDED" BGCOLOR="#FFF59D">
+      <TR><TD ALIGN="LEFT">0</TD></TR>
+      <HR/>
+      <TR><TD BGCOLOR="WHITE">Gabay LMS</TD></TR>
+      <HR/>
+      <TR><TD> </TD></TR>
+    </TABLE>
+  >];
+
+  Student:ne -> LMS:nw [xlabel="Join code\nSubmissions\nMessages"];
+  LMS:sw -> Student:se [xlabel="Grades / SPR\nAnnouncements\nContent files"];
+  Faculty:w -> LMS:n [xlabel="Courses, modules\nActivities, quizzes\nGrades"];
+  LMS:e -> Faculty:sw [xlabel="Enrollment requests\nStudent submissions"];
+  Admin:nw -> LMS:ne [xlabel="Account data\nCourse shells"];
+  LMS:e -> Admin:w [xlabel="Records\nReports"];
+  Staff:n -> LMS:s [xlabel="Support queries"];
+  LMS:e -> Staff:w [xlabel="Calendar, inbox\nRAG answers, history"];
+}

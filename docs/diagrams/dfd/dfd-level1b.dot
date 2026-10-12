@@ -1,0 +1,97 @@
+// Gabay LMS - DFD Level 1 (Part B: Assessments, Communication, RAG).
+// Gane-Sarson notation: external entity = yellow rectangle, process = rounded
+// box (number top-left, name middle, yellow bands), data store = rectangle
+// (grey D-id + yellow name). See dfd-level1a.dot for processes 1-3.
+// D3 is duplicated here (standard DFD duplication) as read-only source for RAG.
+// NOTE: exports/dfd-level1b.svg is the master artwork (hand-aligned exact
+// lanes/labels on a 1200x1000 canvas, same technique as dfd-context.svg);
+// this .dot documents the same flows/symbols and is not re-rendered.
+// Lanes: vertical trunks run ONLY in column gaps (never through boxes);
+// each arrowhead lands on its box edge.
+// Stores map to docs/diagrams/erd.puml: D3 Module(+ModuleItem), CourseFile,
+// Syllabus; D4 Activity, Quiz, Submission; D5 Announcement(+Discussion), Message.
+digraph dfd_level1b {
+  rankdir=LR;
+  label="Gabay LMS - DFD Level 1 (B: Assessments, Communication, RAG)";
+  labelloc="t";
+  fontsize="16";
+  fontname="Arial";
+  node [fontsize="11", fontname="Arial"];
+  edge [fontsize="10", fontname="Arial", arrowhead=vee];
+  splines=ortho; ranksep=3.2; nodesep=2.4; overlap=false;
+  size="12,10"; ratio=fill; pad=0.5;
+
+  { rank=source; Student; Faculty; Staff; }
+  { rank=same; P4; P5; P6; }
+  { rank=sink; D3; D4; D5; }
+  // ponytail: invisible chains pin top-to-bottom order inside each column
+  Student -> Faculty -> Staff [style=invis];
+  P4 -> P5 -> P6 [style=invis];
+  D4 -> D5 -> D3 [style=invis];
+
+  Student [shape=box, style=filled, fillcolor="#FFF59D", group=g1];
+  Faculty [shape=box, style=filled, fillcolor="#FFF59D", group=g2];
+  Staff [shape=box, style=filled, fillcolor="#FFF59D", group=g3];
+
+  // ponytail: HTML-table processes mimic Gane-Sarson rounded boxes
+  P4 [shape=plaintext, group=g1, label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" STYLE="ROUNDED" BGCOLOR="#FFF59D">
+      <TR><TD ALIGN="LEFT">4</TD></TR><HR/>
+      <TR><TD BGCOLOR="WHITE">Assessments<BR/>and Grades</TD></TR><HR/>
+      <TR><TD> </TD></TR>
+    </TABLE>
+  >];
+  P5 [shape=plaintext, group=g2, label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" STYLE="ROUNDED" BGCOLOR="#FFF59D">
+      <TR><TD ALIGN="LEFT">5</TD></TR><HR/>
+      <TR><TD BGCOLOR="WHITE">Communication<BR/>and Calendar</TD></TR><HR/>
+      <TR><TD> </TD></TR>
+    </TABLE>
+  >];
+  P6 [shape=plaintext, group=g3, label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" STYLE="ROUNDED" BGCOLOR="#FFF59D">
+      <TR><TD ALIGN="LEFT">6</TD></TR><HR/>
+      <TR><TD BGCOLOR="WHITE">RAG<BR/>and History</TD></TR><HR/>
+      <TR><TD> </TD></TR>
+    </TABLE>
+  >];
+
+  D3 [shape=plaintext, group=g3, label=<
+    <TABLE BORDER="1" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+      <TR><TD BGCOLOR="#D3D3D3">D3</TD><TD BGCOLOR="#FFF59D">Content and<BR/>Syllabus</TD></TR>
+    </TABLE>
+  >];
+  D4 [shape=plaintext, group=g1, label=<
+    <TABLE BORDER="1" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+      <TR><TD BGCOLOR="#D3D3D3">D4</TD><TD BGCOLOR="#FFF59D">Assessments,<BR/>Submissions,<BR/>Grades</TD></TR>
+    </TABLE>
+  >];
+  D5 [shape=plaintext, group=g2, label=<
+    <TABLE BORDER="1" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+      <TR><TD BGCOLOR="#D3D3D3">D5</TD><TD BGCOLOR="#FFF59D">Messages<BR/>and Events</TD></TR>
+    </TABLE>
+  >];
+
+  // ponytail: compass ports keep each direction in its own ortho lane
+  Student:ne -> P4:nw [xlabel="answers / submissions"];
+  P4:sw -> Student:e [xlabel="scores / SPR"];
+  Faculty:n -> P4:s [xlabel="activities, quizzes,\nexams, grades"];
+  P4:e -> D4:w [xlabel="store assessments\nand submissions"];
+
+  Faculty:ne -> P5:nw [xlabel="announcements"];
+  P5:sw -> Faculty:se [xlabel="comment alerts"];
+  Student:s -> P5:n [xlabel="messages / comments"];
+  P5:w -> Student:se [xlabel="notifications"];
+  Staff:n -> P5:s [xlabel="schedule events"];
+  P5:e -> D5:w [xlabel="posts, messages, events"];
+
+  // ponytail: long-haul edges use side ports so trunks stay in column gaps
+  Student:e -> P6:w [xlabel="questions"];
+  P6:s -> Student:w [xlabel="answers / reports"];
+  Faculty:e -> P6:w [xlabel="questions"];
+  P6:s -> Faculty:w [xlabel="answers / reports"];
+  Staff:ne -> P6:se [xlabel="queries"];
+  P6:s -> Staff:e [xlabel="answers"];
+  D3:w -> P6:ne [xlabel="content"];
+  D4:w -> P6:e [xlabel="grade data"];
+}

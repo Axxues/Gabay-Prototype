@@ -1,0 +1,127 @@
+@startuml
+title Gabay LMS - Admin Use Case
+left to right direction
+skinparam usecase {
+  BackgroundColor #8AC9F5
+  BorderColor black
+}
+skinparam actor {
+  BackgroundColor #8AC9F5
+  BorderColor black
+}
+skinparam rectangle {
+  BackgroundColor white
+  BorderColor black
+}
+skinparam rectangle<<grp>> {
+  BackgroundColor white
+  BorderColor white
+  FontColor white
+}
+skinparam usecase<<spacer>> {
+  BackgroundColor none
+  BorderColor white
+  FontColor white
+}
+skinparam arrowColor black
+skinparam linetype polyline
+skinparam nodesep 6
+skinparam ranksep 12
+
+actor "Admin" as Admin
+
+rectangle "Gabay LMS" {
+  ' Accounts
+  rectangle " " as P1 <<grp>> {
+    usecase "Manage College Accounts\n(Create / Edit / Deactivate)" as UC1
+  }
+  ' Courses
+  rectangle " " as P2 <<grp>> {
+    usecase "Manage Courses and Sections\n(Create shell + capacity)" as UC2
+    usecase "Approve Enrollment Requests\n(People queue + Bell)" as UC3
+  }
+  ' Content
+  rectangle " " as P3 <<grp>> {
+    usecase "Manage Courses\n(Publish Modules)" as UC4
+    usecase "Manage Module Items" as UC4a
+    usecase "Add / Reply on Module" as UC4b
+    usecase "Upload Syllabus Files" as UC5a
+    usecase "Publish Syllabus" as UC5b
+  }
+  ' Assessments
+  rectangle " " as P4 <<grp>> {
+    usecase "Manage Activities" as UC6a
+    usecase "Manage Quizzes" as UC6b
+    usecase "Manage Exams" as UC6c
+    usecase "Release Grades and SPR" as UC6d
+    usecase " " as SP6d <<spacer>>
+  }
+  ' Communication
+  rectangle " " as P5 <<grp>> {
+    usecase "Post Institutional\nAnnouncements" as UC7
+    usecase "Add / Reply Comments" as UC7b
+  }
+  ' Calendar
+  rectangle " " as P6 <<grp>> {
+    usecase "Access Calendar" as UC8
+    usecase "Add Schedule Event" as UC8a
+    usecase "Remove Schedule Event" as UC8b
+    usecase " " as SP8 <<spacer>>
+  }
+  ' Inbox
+  rectangle " " as P7 <<grp>> {
+    usecase "Access Inbox" as UC9
+    usecase "Direct message users" as UC9a
+    usecase "Create group" as UC9b
+    usecase "Message group" as UC9c
+    usecase " " as SP9 <<spacer>>
+  }
+  ' Gabay RAG
+  rectangle " " as P8 <<grp>> {
+    usecase "Access Gabay RAG" as UCRAG
+    usecase "Generate Graph" as UCRAG_G
+    usecase "Generate Tables" as UCRAG_T
+    usecase "Generate Report" as UCRAG_R
+    usecase " " as SPRAG <<spacer>>
+  }
+  ' History
+  rectangle " " as P9 <<grp>> {
+    usecase "Access History" as UC10
+  }
+}
+
+Admin --> UC1
+Admin --> UC2
+Admin --> UC3
+Admin --> UC4
+Admin --> UC5a
+Admin --> UC6a
+Admin --> UC6b
+Admin --> UC6c
+Admin --> UC7
+Admin --> UC8
+Admin --> UC9
+Admin --> UCRAG
+Admin --> UC10
+
+UC4 ..> UC4a : <<extend>>
+UC4a ..> UC4b : <<extend>>
+UC5a ..> UC5b : <<include>>
+UC6a ..> UC6d : <<extend>>
+UC6b ..> UC6d : <<extend>>
+UC6c ..> UC6d : <<extend>>
+UC7 ..> UC7b : <<extend>>
+UC8 ..> UC8a : <<extend>>
+UC8 ..> UC8b : <<extend>>
+UC9 ..> UC9a : <<extend>>
+UC9 ..> UC9b : <<extend>>
+UC9b ..> UC9c : <<extend>>
+UCRAG ..> UCRAG_G : <<extend>>
+UCRAG ..> UCRAG_T : <<extend>>
+UCRAG ..> UCRAG_R : <<extend>>
+UC6d -[hidden]down-> SP6d
+UC8 -[hidden]down-> SP8
+UC9 -[hidden]down-> SP9
+UCRAG -[hidden]down-> SPRAG
+note right of UC3 : self_join,\nfaculty_enroll
+@enduml

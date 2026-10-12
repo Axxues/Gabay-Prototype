@@ -1,0 +1,195 @@
+@startuml
+' Gabay LMS - Simplified ERD (Crow's Foot)
+' Source: server/prisma/schema.prisma
+' Style: lavender header, teal junctions, rounded corners (cf. reference image)
+title Gabay LMS - Simplified ERD
+hide circle
+skinparam linetype ortho
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam nodesep 50
+skinparam ranksep 50
+skinparam arrowColor #555555
+skinparam arrowThickness 1.2
+skinparam titleFontSize 18
+skinparam titleFontStyle bold
+skinparam entity {
+  BackgroundColor white
+  BorderColor #555555
+  BorderThickness 1
+  HeaderBackgroundColor #C9C9F5
+  HeaderFontColor #222222
+  HeaderFontStyle bold
+  HeaderFontSize 13
+  FontColor #333333
+  AttributeFontColor #333333
+  AttributeFontName Monospaced
+  AttributeFontSize 12
+}
+' ponytail: teal header marks junction tables (cf. reference image)
+skinparam entity<<junction>> {
+  BackgroundColor white
+  BorderColor #555555
+  HeaderBackgroundColor #7DD3CF
+}
+<style>
+entityDiagram {
+  entity {
+    BackgroundColor white
+    BorderColor #555555
+    HeaderBackgroundColor #C9C9F5
+    HeaderFontColor #222222
+  }
+  .junction {
+    HeaderBackgroundColor #7DD3CF
+  }
+}
+</style>
+entity "User" as User #F5D0FE {
+  PK id :  VARCHAR(64)
+  --
+  email : VARCHAR(256)
+  role  :  VARCHAR(32)
+  name  : VARCHAR(128)
+}
+
+entity "Course" as Course #BFDBFE {
+  PK id            :  VARCHAR(64)
+  --
+  FK1 instructorId :  VARCHAR(64)
+  code             :  VARCHAR(32)
+  title            : VARCHAR(256)
+  section          :  VARCHAR(32)
+  joinCode         :  VARCHAR(32)
+}
+
+entity "EnrollmentRequest" as EnrollmentRequest #99F6E4 {
+  PK id        : VARCHAR(64)
+  --
+  FK1 courseId : VARCHAR(64)
+  studentId    : VARCHAR(64)
+  status       : VARCHAR(32)
+}
+
+entity "Module" as Module #DDD6FE {
+  PK id        :  VARCHAR(64)
+  --
+  FK1 courseId :  VARCHAR(64)
+  title        : VARCHAR(256)
+}
+
+entity "ModuleItem" as ModuleItem #C7D2FE {
+  PK id            :  VARCHAR(64)
+  --
+  FK1 moduleId     :  VARCHAR(64)
+  FK2 courseFileId :  VARCHAR(64)
+  title            : VARCHAR(256)
+  type             :  VARCHAR(32)
+}
+
+entity "ModuleComment" as ModuleComment #E9D5FF {
+  PK id        :  VARCHAR(64)
+  --
+  FK1 moduleId :  VARCHAR(64)
+  FK2 authorId :  VARCHAR(64)
+  content      : VARCHAR(1024)
+}
+
+entity "CourseFile" as CourseFile #A5F3FC {
+  PK id        :  VARCHAR(64)
+  --
+  FK1 courseId :  VARCHAR(64)
+  FK2 folderId :  VARCHAR(64)
+  name         : VARCHAR(256)
+}
+
+entity "Activity" as Activity #A7F3D0 {
+  PK id            :  VARCHAR(64)
+  --
+  FK1 courseId     :  VARCHAR(64)
+  FK2 courseFileId :  VARCHAR(64)
+  title            : VARCHAR(256)
+  pointsPossible   :        FLOAT
+}
+
+entity "Quiz" as Quiz #FDE68A {
+  PK id        :  VARCHAR(64)
+  --
+  FK1 courseId :  VARCHAR(64)
+  title        : VARCHAR(256)
+}
+
+entity "Submission" as Submission #D9F99D {
+  PK id          : VARCHAR(64)
+  --
+  FK1 courseId   : VARCHAR(64)
+  FK2 activityId : VARCHAR(64)
+  FK3 quizId     : VARCHAR(64)
+  studentId      : VARCHAR(64)
+  grade          :       FLOAT
+}
+
+entity "Announcement" as Announcement #FED7AA {
+  PK id            :  VARCHAR(64)
+  --
+  FK1 courseId     :  VARCHAR(64)
+  FK2 courseFileId :  VARCHAR(64)
+  title            : VARCHAR(256)
+}
+
+entity "AnnouncementComment" as AnnouncementComment #FECDD3 {
+  PK id              :  VARCHAR(64)
+  --
+  FK1 announcementId :  VARCHAR(64)
+  FK2 authorId       :  VARCHAR(64)
+  content            : VARCHAR(1024)
+}
+
+entity "Message" as Message #BAE6FD {
+  PK id           :  VARCHAR(64)
+  --
+  FK1 senderId    :  VARCHAR(64)
+  FK2 recipientId :  VARCHAR(64)
+  FK3 courseId    :  VARCHAR(64)
+  subject         : VARCHAR(256)
+  messageContent  : VARCHAR(1024)
+}
+
+entity "GroupMessage" as GroupMessage #FBCFE8 {
+  PK id           :  VARCHAR(64)
+  --
+  FK1 senderId    :  VARCHAR(64)
+  groupName       : VARCHAR(128)
+  subject         : VARCHAR(256)
+  messageContent  : VARCHAR(1024)
+}
+
+entity "Syllabus" as Syllabus #FEF08A {
+  PK id        : VARCHAR(64)
+  --
+  FK1 courseId : VARCHAR(64)
+  revisionNo   :         INT
+  status       : VARCHAR(32)
+}
+
+User }o--o{ Course
+Course ||--o{ EnrollmentRequest
+Course ||--o{ Module
+Module ||--o{ ModuleItem
+Module ||--o{ ModuleComment
+Course ||--o{ CourseFile
+CourseFile }o--o{ ModuleItem
+CourseFile }o--o{ Activity
+CourseFile }o--o{ Announcement
+Course ||--o{ Activity
+Course ||--o{ Quiz
+Activity ||--o{ Submission
+Quiz ||--o{ Submission
+Course ||--o{ Announcement
+Announcement ||--o{ AnnouncementComment
+Course ||--o{ Syllabus
+User }o--o{ Message
+Course ||--o{ Message
+User }o--o{ GroupMessage
+
+@enduml

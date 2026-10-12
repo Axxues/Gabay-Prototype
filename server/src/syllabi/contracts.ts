@@ -357,3 +357,52 @@ export interface SyllabusWriteModel extends SyllabusRevisionHeader {
   sourceDocument: SyllabusSourceDocumentRow | null;
   extensions: SyllabusExtensionField[];
 }
+
+export type RagSectionKey =
+  | 'institution'
+  | 'description'
+  | 'faculty'
+  | 'institutional_statement'
+  | 'program_outcomes'
+  | 'core_values'
+  | 'graduate_attributes'
+  | 'requirements'
+  | 'grading'
+  | 'rubrics'
+  | 'policies'
+  | 'outline'
+  | 'learning_plan'
+  | 'outcomes'
+  | 'course_map'
+  | 'references';
+
+export const RagSectionKeyOrder: readonly RagSectionKey[] = [
+  'institution',
+  'description',
+  'faculty',
+  'institutional_statement',
+  'program_outcomes',
+  'core_values',
+  'graduate_attributes',
+  'requirements',
+  'grading',
+  'rubrics',
+  'policies',
+  'outline',
+  'learning_plan',
+  'outcomes',
+  'course_map',
+  'references',
+] as const;
+
+export type RagSectionStatus = 'published';
+
+export interface RagSectionRecord {
+  syllabusId: string;
+  revisionNo: number;
+  status: RagSectionStatus;
+  sectionKey: RagSectionKey;
+  sectionText: string;
+}
+
+export type RagSectionMap = Record<RagSectionKey, string>;

@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1180" height="1360" viewBox="0 0 1180 1360" xmlns="http://www.w3.org/2000/svg">
+<defs><marker id="arr" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#000"/></marker></defs>
+<rect x="0" y="0" width="1180" height="1360" fill="#fff"/>
+<text x="590" y="42" text-anchor="middle" font-family="Arial" font-size="22">Google Classroom (As-Is) - DFD Level 1</text>
+<rect x="20" y="160" width="140" height="70" fill="#FFF59D" stroke="#000" stroke-width="1.5"/>
+<text x="90" y="200" text-anchor="middle" font-family="Arial" font-size="15">Teacher</text>
+<rect x="20" y="520" width="140" height="70" fill="#FFF59D" stroke="#000" stroke-width="1.5"/>
+<text x="90" y="560" text-anchor="middle" font-family="Arial" font-size="15">Student</text>
+<rect x="20" y="800" width="140" height="70" fill="#FFF59D" stroke="#000" stroke-width="1.5"/>
+<text x="90" y="840" text-anchor="middle" font-family="Arial" font-size="15">Teacher</text>
+<rect x="20" y="1160" width="140" height="70" fill="#FFF59D" stroke="#000" stroke-width="1.5"/>
+<text x="90" y="1200" text-anchor="middle" font-family="Arial" font-size="15">Student</text>
+<rect x="470" y="120" width="270" height="150" rx="30" fill="#FFF59D" stroke="#000" stroke-width="1.5"/>
+<line x1="478" y1="164" x2="732" y2="164" stroke="#000" stroke-width="1.5"/>
+<line x1="478" y1="226" x2="732" y2="226" stroke="#000" stroke-width="1.5"/>
+<rect x="470" y="120" width="270" height="150" rx="30" fill="none" stroke="#000" stroke-width="1.5"/>
+<rect x="471" y="165" width="268" height="60" fill="#fff"/>
+<text x="492" y="150" font-family="Arial" font-size="15">1</text>
+<text x="605" y="191" text-anchor="middle" font-family="Arial" font-size="16">Manage Classes</text>
+<text x="605" y="210" text-anchor="middle" font-family="Arial" font-size="16">and Enrollment</text>
+<rect x="470" y="480" width="270" height="150" rx="30" fill="#FFF59D" stroke="#000" stroke-width="1.5"/>
+<line x1="478" y1="524" x2="732" y2="524" stroke="#000" stroke-width="1.5"/>
+<line x1="478" y1="586" x2="732" y2="586" stroke="#000" stroke-width="1.5"/>
+<rect x="470" y="480" width="270" height="150" rx="30" fill="none" stroke="#000" stroke-width="1.5"/>
+<rect x="471" y="525" width="268" height="60" fill="#fff"/>
+<text x="492" y="510" font-family="Arial" font-size="15">2</text>
+<text x="605" y="551" text-anchor="middle" font-family="Arial" font-size="16">Manage Classwork</text>
+<text x="605" y="570" text-anchor="middle" font-family="Arial" font-size="16">and Materials</text>
+<rect x="470" y="760" width="270" height="150" rx="30" fill="#FFF59D" stroke="#000" stroke-width="1.5"/>
+<line x1="478" y1="804" x2="732" y2="804" stroke="#000" stroke-width="1.5"/>
+<line x1="478" y1="866" x2="732" y2="866" stroke="#000" stroke-width="1.5"/>
+<rect x="470" y="760" width="270" height="150" rx="30" fill="none" stroke="#000" stroke-width="1.5"/>
+<rect x="471" y="805" width="268" height="60" fill="#fff"/>
+<text x="492" y="790" font-family="Arial" font-size="15">3</text>
+<text x="605" y="831" text-anchor="middle" font-family="Arial" font-size="16">Handle Submissions</text>
+<text x="605" y="850" text-anchor="middle" font-family="Arial" font-size="16">and Grades</text>
+<rect x="470" y="1120" width="270" height="150" rx="30" fill="#FFF59D" stroke="#000" stroke-width="1.5"/>
+<line x1="478" y1="1164" x2="732" y2="1164" stroke="#000" stroke-width="1.5"/>
+<line x1="478" y1="1226" x2="732" y2="1226" stroke="#000" stroke-width="1.5"/>
+<rect x="470" y="1120" width="270" height="150" rx="30" fill="none" stroke="#000" stroke-width="1.5"/>
+<rect x="471" y="1165" width="268" height="60" fill="#fff"/>
+<text x="492" y="1150" font-family="Arial" font-size="15">4</text>
+<text x="605" y="1191" text-anchor="middle" font-family="Arial" font-size="16">Post Stream</text>
+<text x="605" y="1210" text-anchor="middle" font-family="Arial" font-size="16">and Comments</text>
+<rect x="930" y="130" width="160" height="55" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<rect x="930" y="130" width="48" height="55" fill="#D3D3D3" stroke="#000" stroke-width="1.5"/>
+<rect x="978" y="130" width="112" height="55" fill="#FFF59D" stroke="#000" stroke-width="1.5"/>
+<text x="954" y="162" text-anchor="middle" font-family="Arial" font-size="14">D1</text>
+<text x="1034" y="162" text-anchor="middle" font-family="Arial" font-size="14">Users</text>
+<rect x="930" y="200" width="200" height="80" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<rect x="930" y="200" width="48" height="80" fill="#D3D3D3" stroke="#000" stroke-width="1.5"/>
+<rect x="978" y="200" width="152" height="80" fill="#FFF59D" stroke="#000" stroke-width="1.5"/>
+<text x="954" y="245" text-anchor="middle" font-family="Arial" font-size="14">D2</text>
+<text x="1054" y="236" text-anchor="middle" font-family="Arial" font-size="14">Classes and</text>
+<text x="1054" y="255" text-anchor="middle" font-family="Arial" font-size="14">Enrollments</text>
+<rect x="930" y="525" width="200" height="80" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<rect x="930" y="525" width="48" height="80" fill="#D3D3D3" stroke="#000" stroke-width="1.5"/>
+<rect x="978" y="525" width="152" height="80" fill="#FFF59D" stroke="#000" stroke-width="1.5"/>
+<text x="954" y="570" text-anchor="middle" font-family="Arial" font-size="14">D3</text>
+<text x="1054" y="561" text-anchor="middle" font-family="Arial" font-size="14">Classwork and</text>
+<text x="1054" y="580" text-anchor="middle" font-family="Arial" font-size="14">Materials</text>
+<rect x="930" y="840" width="200" height="80" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<rect x="930" y="840" width="48" height="80" fill="#D3D3D3" stroke="#000" stroke-width="1.5"/>
+<rect x="978" y="840" width="152" height="80" fill="#FFF59D" stroke="#000" stroke-width="1.5"/>
+<text x="954" y="885" text-anchor="middle" font-family="Arial" font-size="14">D4</text>
+<text x="1054" y="876" text-anchor="middle" font-family="Arial" font-size="14">Submissions</text>
+<text x="1054" y="895" text-anchor="middle" font-family="Arial" font-size="14">and Grades</text>
+<rect x="930" y="1165" width="200" height="80" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<rect x="930" y="1165" width="48" height="80" fill="#D3D3D3" stroke="#000" stroke-width="1.5"/>
+<rect x="978" y="1165" width="152" height="80" fill="#FFF59D" stroke="#000" stroke-width="1.5"/>
+<text x="954" y="1210" text-anchor="middle" font-family="Arial" font-size="14">D5</text>
+<text x="1054" y="1201" text-anchor="middle" font-family="Arial" font-size="14">Stream and</text>
+<text x="1054" y="1220" text-anchor="middle" font-family="Arial" font-size="14">Comments</text>
+<polyline points="160,195 470,195" fill="none" stroke="#000" stroke-width="1.5" marker-end="url(#arr)"/>
+<text x="315" y="172" text-anchor="middle" font-family="Arial" font-size="13">new class, invite code</text>
+<polyline points="470,220 160,220" fill="none" stroke="#000" stroke-width="1.5" marker-end="url(#arr)"/>
+<text x="240" y="239" text-anchor="middle" font-family="Arial" font-size="13">class roster</text>
+<polyline points="740,157 930,157" fill="none" stroke="#000" stroke-width="1.5" marker-end="url(#arr)"/>
+<text x="835" y="145" text-anchor="middle" font-family="Arial" font-size="13">store users</text>
+<polyline points="930,178 740,178" fill="none" stroke="#000" stroke-width="1.5" marker-end="url(#arr)"/>
+<text x="835" y="192" text-anchor="middle" font-family="Arial" font-size="13">user records</text>
+<polyline points="740,245 930,245" fill="none" stroke="#000" stroke-width="1.5" marker-end="url(#arr)"/>
+<text x="835" y="233" text-anchor="middle" font-family="Arial" font-size="13">class and roster records</text>
+<polyline points="160,555 210,555 210,250 470,250" fill="none" stroke="#000" stroke-width="1.5" marker-end="url(#arr)"/>
+<text x="380" y="238" text-anchor="middle" font-family="Arial" font-size="13">join code / invite</text>
+<polyline points="740,270 910,270 910,650 100,650 100,590" fill="none" stroke="#000" stroke-width="1.5" marker-end="url(#arr)"/>
+<text x="450" y="665" text-anchor="middle" font-family="Arial" font-size="13">enrollment confirmation</text>
+<polyline points="90,230 90,440 500,440 500,480" fill="none" stroke="#000" stroke-width="1.5" marker-end="url(#arr)"/>
+<text x="330" y="428" text-anchor="middle" font-family="Arial" font-size="13">assignments, quizzes, materials</text>
+<polyline points="740,565 930,565" fill="none" stroke="#000" stroke-width="1.5" marker-end="url(#arr)"/>
+<text x="835" y="553" text-anchor="middle" font-family="Arial" font-size="13">store classwork</text>
+<polyline points="160,530 250,530 250,505 470,505" fill="none" stroke="#000" stroke-width="1.5" marker-end="url(#arr)"/>
+<text x="360" y="493" text-anchor="middle" font-family="Arial" font-size="13">view request</text>
+<polyline points="470,560 290,560 290,575 160,575" fill="none" stroke="#000" stroke-width="1.5" marker-end="url(#arr)"/>
+<text x="380" y="548" text-anchor="middle" font-family="Arial" font-size="13">classwork files</text>
+<polyline points="160,835 470,835" fill="none" stroke="#000" stroke-width="1.5" marker-end="url(#arr)"/>
+<text x="315" y="822" text-anchor="middle" font-family="Arial" font-size="13">grades, feedback</text>
+<polyline points="470,860 160,860" fill="none" stroke="#000" stroke-width="1.5" marker-end="url(#arr)"/>
+<text x="230" y="884" text-anchor="middle" font-family="Arial" font-size="13">submissions for review</text>
+<polyline points="740,880 930,880" fill="none" stroke="#000" stroke-width="1.5" marker-end="url(#arr)"/>
+<text x="835" y="868" text-anchor="middle" font-family="Arial" font-size="13">store submissions and grades</text>
+<polyline points="160,1195 210,1195 210,890 470,890" fill="none" stroke="#000" stroke-width="1.5" marker-end="url(#arr)"/>
+<text x="390" y="878" text-anchor="middle" font-family="Arial" font-size="13">turned-in work</text>
+<polyline points="740,910 910,910 910,1290 100,1290 100,1230" fill="none" stroke="#000" stroke-width="1.5" marker-end="url(#arr)"/>
+<text x="450" y="1305" text-anchor="middle" font-family="Arial" font-size="13">returned grades</text>
+<polyline points="90,870 90,1080 500,1080 500,1120" fill="none" stroke="#000" stroke-width="1.5" marker-end="url(#arr)"/>
+<text x="290" y="1068" text-anchor="middle" font-family="Arial" font-size="13">announcements</text>
+<polyline points="740,1205 930,1205" fill="none" stroke="#000" stroke-width="1.5" marker-end="url(#arr)"/>
+<text x="835" y="1193" text-anchor="middle" font-family="Arial" font-size="13">store posts</text>
+<polyline points="160,1170 250,1170 250,1145 470,1145" fill="none" stroke="#000" stroke-width="1.5" marker-end="url(#arr)"/>
+<text x="360" y="1133" text-anchor="middle" font-family="Arial" font-size="13">comments</text>
+<polyline points="470,1200 290,1200 290,1215 160,1215" fill="none" stroke="#000" stroke-width="1.5" marker-end="url(#arr)"/>
+<text x="380" y="1188" text-anchor="middle" font-family="Arial" font-size="13">stream updates</text>
+<line x1="20" y1="705" x2="1160" y2="705" stroke="#888" stroke-width="1" stroke-dasharray="8,6"/>
+<text x="30" y="697" font-family="Arial" font-size="12" fill="#666">A: Classes, Enrollment, Classwork</text>
+<text x="30" y="727" font-family="Arial" font-size="12" fill="#666">B: Submissions, Grades, Stream</text>
+</svg>

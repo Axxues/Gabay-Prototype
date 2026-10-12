@@ -1,0 +1,114 @@
+// Google Classroom (As-Is) - DFD Level 1 (Classes, Enrollment, Classwork, Submissions, Grades, Stream).
+// Gane-Sarson notation: external entity = yellow rectangle, process = rounded
+// box (number top-left, name middle, yellow bands), data store = rectangle
+// (grey D-id + yellow name). Merged from dfd-lvl1a.dot (processes 1-2) and
+// dfd-lvl1b.dot (processes 3-4).
+// Stores map to classroom-as-is/erd.puml: D1 User; D2 Classroom(+Enrollment);
+// D3 CourseWork(+CourseWorkMaterial); D4 StudentSubmission; D5 Announcement.
+// NOTE: dfd-lvl1.svg/.png are hand-placed masters (same technique as
+// dfd-context.svg); this .dot documents the same flows/symbols and is not
+// re-rendered. The SVG repeats Teacher/Student per section (A/B) to avoid
+// long crossing lines.
+digraph dfd_level1 {
+  rankdir=LR;
+  label="Google Classroom (As-Is) - DFD Level 1";
+  labelloc="t";
+  fontsize="16";
+  fontname="Arial";
+  node [fontsize="11", fontname="Arial"];
+  edge [fontsize="10", fontname="Arial", arrowhead=vee];
+  splines=ortho; ranksep=2.0; nodesep=1.8; overlap=false;
+  pad=0.5;
+
+  { rank=source; Teacher; Student; }
+  { rank=same; P1; P2; P3; P4; }
+  { rank=sink; D1; D2; D3; D4; D5; }
+  // ponytail: invisible chains pin top-to-bottom order inside each column
+  Teacher -> Student [style=invis];
+  P1 -> P2 -> P3 -> P4 [style=invis];
+  D1 -> D2 -> D3 -> D4 -> D5 [style=invis];
+
+  Teacher [shape=box, style=filled, fillcolor="#FFF59D", group=g1];
+  Student [shape=box, style=filled, fillcolor="#FFF59D", group=g2];
+
+  // ponytail: HTML-table processes mimic Gane-Sarson rounded boxes
+  P1 [shape=plaintext, group=g1, label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" STYLE="ROUNDED" BGCOLOR="#FFF59D">
+      <TR><TD ALIGN="LEFT">1</TD></TR><HR/>
+      <TR><TD BGCOLOR="WHITE">Manage Classes<BR/>and Enrollment</TD></TR><HR/>
+      <TR><TD> </TD></TR>
+    </TABLE>
+  >];
+  P2 [shape=plaintext, group=g2, label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" STYLE="ROUNDED" BGCOLOR="#FFF59D">
+      <TR><TD ALIGN="LEFT">2</TD></TR><HR/>
+      <TR><TD BGCOLOR="WHITE">Manage Classwork<BR/>and Materials</TD></TR><HR/>
+      <TR><TD> </TD></TR>
+    </TABLE>
+  >];
+  P3 [shape=plaintext, group=g1, label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" STYLE="ROUNDED" BGCOLOR="#FFF59D">
+      <TR><TD ALIGN="LEFT">3</TD></TR><HR/>
+      <TR><TD BGCOLOR="WHITE">Handle Submissions<BR/>and Grades</TD></TR><HR/>
+      <TR><TD> </TD></TR>
+    </TABLE>
+  >];
+  P4 [shape=plaintext, group=g2, label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" STYLE="ROUNDED" BGCOLOR="#FFF59D">
+      <TR><TD ALIGN="LEFT">4</TD></TR><HR/>
+      <TR><TD BGCOLOR="WHITE">Post Stream<BR/>and Comments</TD></TR><HR/>
+      <TR><TD> </TD></TR>
+    </TABLE>
+  >];
+
+  D1 [shape=plaintext, group=g1, label=<
+    <TABLE BORDER="1" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+      <TR><TD BGCOLOR="#D3D3D3">D1</TD><TD BGCOLOR="#FFF59D">Users</TD></TR>
+    </TABLE>
+  >];
+  D2 [shape=plaintext, group=g1, label=<
+    <TABLE BORDER="1" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+      <TR><TD BGCOLOR="#D3D3D3">D2</TD><TD BGCOLOR="#FFF59D">Classes and<BR/>Enrollments</TD></TR>
+    </TABLE>
+  >];
+  D3 [shape=plaintext, group=g2, label=<
+    <TABLE BORDER="1" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+      <TR><TD BGCOLOR="#D3D3D3">D3</TD><TD BGCOLOR="#FFF59D">Classwork and<BR/>Materials</TD></TR>
+    </TABLE>
+  >];
+  D4 [shape=plaintext, group=g1, label=<
+    <TABLE BORDER="1" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+      <TR><TD BGCOLOR="#D3D3D3">D4</TD><TD BGCOLOR="#FFF59D">Submissions<BR/>and Grades</TD></TR>
+    </TABLE>
+  >];
+  D5 [shape=plaintext, group=g2, label=<
+    <TABLE BORDER="1" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+      <TR><TD BGCOLOR="#D3D3D3">D5</TD><TD BGCOLOR="#FFF59D">Stream and<BR/>Comments</TD></TR>
+    </TABLE>
+  >];
+
+  // ponytail: compass ports keep each direction in its own ortho lane
+  // --- ex dfd-lvl1a.dot (processes 1-2) ---
+  P1:e -> D1:w [xlabel="store users"];
+  D1:sw -> P1:se [xlabel="user records"];
+  Teacher:n -> P1:s [xlabel="new class, invite code"];
+  P1:n -> Teacher:s [xlabel="class roster"];
+  Student:ne -> P1:nw [xlabel="join code / invite"];
+  P1:w -> Student:e [xlabel="enrollment confirmation"];
+  P1:e -> D2:w [xlabel="class and roster records"];
+  Teacher:ne -> P2:nw [xlabel="assignments, quizzes,\nmaterials"];
+  P2:e -> D3:w [xlabel="store classwork"];
+  Student:s -> P2:n [xlabel="view request"];
+  P2:w -> Student:se [xlabel="classwork files"];
+
+  // --- ex dfd-lvl1b.dot (processes 3-4) ---
+  Student:e -> P3:w [xlabel="turned-in work"];
+  P3:e -> D4:w [xlabel="store submissions\nand grades"];
+  Teacher:e -> P3:w [xlabel="grades, feedback"];
+  P3:w -> Teacher:e [xlabel="submissions for review"];
+  P3:w -> Student:e [xlabel="returned grades"];
+  Teacher:ne -> P4:nw [xlabel="announcements"];
+  P4:e -> D5:w [xlabel="store posts"];
+  Student:s -> P4:n [xlabel="comments"];
+  P4:w -> Student:se [xlabel="stream updates"];
+}

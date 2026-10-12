@@ -1,30 +1,30 @@
 import React, { useEffect, useState } from 'react';
 import { Routes, Route, Navigate, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { useLMS, LMSProvider } from './context/LMSContext';
-import { GabayChatProvider } from './context/GabayChatContext';
-import { AppRail } from './components/layout/AppRail';
-import { LMSContextPanel } from './components/layout/LMSContextPanel';
-import { Topbar } from './components/layout/Topbar';
-import { DashboardPage } from './pages/DashboardPage';
-import { CoursesPage } from './pages/CoursesPage';
-import { CalendarPage } from './pages/CalendarPage';
-import { InboxPage } from './pages/InboxPage';
-import { LoginPage } from './pages/LoginPage';
-import { ProfilePage } from './pages/ProfilePage';
-import { HistoryPage } from './pages/HistoryPage';
-import { HelpPage } from './pages/HelpPage';
-import { EmptyPage } from './pages/EmptyPage';
-import { CreateCoursePage } from './pages/CreateCoursePage';
-import { ManageAccountsPage } from './pages/ManageAccountsPage';
-import { CreateAccountPage } from './pages/CreateAccountPage';
-import { EditAccountPage } from './pages/EditAccountPage';
-import { GabayRAGPage } from './pages/GabayRAGPage';
-import { SpeedGraderModal } from './components/grading/SpeedGraderModal';
-import { RoleSwitcherModal } from './components/common/RoleSwitcherModal';
-import { GlobalSearchDialog } from './components/common/GlobalSearchDialog';
-import { PageTransition } from './components/common/PageTransition';
-import { AppSkeleton } from './components/common/AppSkeleton';
-import { tabToPath, courseToPath, pathToTab } from './config/routes';
+import { useLMS, LMSProvider } from './shared/context/LMSContext';
+import { GabayChatProvider } from './shared/context/GabayChatContext';
+import { AppRail } from './shared/components/layout/AppRail';
+import { LMSContextPanel } from './shared/components/layout/LMSContextPanel';
+import { Topbar } from './shared/components/layout/Topbar';
+import { DashboardPage } from './features/dashboard/DashboardPage';
+import { CoursesPage } from './features/courses/CoursesPage';
+import { CalendarPage } from './features/calendar/CalendarPage';
+import { InboxPage } from './features/inbox/InboxPage';
+import { LoginPage } from './features/auth/LoginPage';
+import { ProfilePage } from './features/auth/ProfilePage';
+import { HistoryPage } from './features/system/HistoryPage';
+import { HelpPage } from './features/system/HelpPage';
+import { EmptyPage } from './features/system/EmptyPage';
+import { CreateCoursePage } from './features/courses/CreateCoursePage';
+import { ManageAccountsPage } from './features/accounts/ManageAccountsPage';
+import { CreateAccountPage } from './features/accounts/CreateAccountPage';
+import { EditAccountPage } from './features/accounts/EditAccountPage';
+import { GabayRAGPage } from './features/rag/GabayRAGPage';
+import { SpeedGraderModal } from './features/assessments/components/grading/SpeedGraderModal';
+import { RoleSwitcherModal } from './shared/components/common/RoleSwitcherModal';
+import { GlobalSearchDialog } from './shared/components/common/GlobalSearchDialog';
+import { PageTransition } from './shared/components/common/PageTransition';
+import { AppSkeleton, ProfileSkeleton } from './shared/components/common/AppSkeleton';
+import { tabToPath, courseToPath, pathToTab } from './shared/config/routes';
 
 function useAppNavigation() {
   const navigate = useNavigate();
@@ -63,7 +63,13 @@ function useAppNavigation() {
   return { handleNavigateTab, handleNavigateCourse, handleSelectCourseTab, handleEditAccount };
 }
 
-const AuthLoadingScreen: React.FC = () => <AppSkeleton />;
+const AuthLoadingScreen: React.FC = () => {
+  const { pathname } = useLocation();
+  if (pathname === '/profile' || pathname.startsWith('/profile/')) {
+    return <ProfileSkeleton />;
+  }
+  return <AppSkeleton />;
+};
 
 const RequireAuth: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, authReady } = useLMS();
@@ -128,7 +134,7 @@ const EditAccountRoute: React.FC<{ nav: ReturnType<typeof useAppNavigation> }> =
 
 export const AppShell: React.FC = () => {
   const location = useLocation();
-  const { activeCourseId, setActiveCourseId, isLoading, activeRole, isAuthenticated } = useLMS();
+  const { activeCourseId, setActiveCourseId, activeRole } = useLMS();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
 
@@ -172,10 +178,6 @@ export const AppShell: React.FC = () => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
-
-  if (isAuthenticated && isLoading) {
-    return <AppSkeleton />;
-  }
 
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-muted font-sans selection:bg-primary/20 dark:bg-background">

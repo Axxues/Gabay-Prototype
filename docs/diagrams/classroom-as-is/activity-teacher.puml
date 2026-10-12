@@ -1,0 +1,47 @@
+@startuml
+title Google Classroom (As-Is) - Teacher Activity
+skinparam activity {
+  BackgroundColor #8AC9F5
+  BorderColor black
+}
+skinparam diamond {
+  BackgroundColor #8AC9F5
+  BorderColor black
+}
+skinparam activityBarColor black
+skinparam arrowColor black
+
+start
+repeat
+  :Login with Google;
+  :Validate credentials;
+repeat while (Is Valid Account?) is (no) not (yes)
+
+fork
+  :Create Class;
+  :Share Invite Code / Link;
+  :Manage People;
+fork again
+  :Create Classwork;
+  fork
+    :Create Assignment / Quiz / Question;
+  fork again
+    :Post Material;
+  fork again
+    :Reuse Post;
+  end fork
+  :Schedule / Publish;
+fork again
+  :Post Stream Announcement;
+  :Add / Reply Comment;
+fork again
+  :Review Submissions;
+  :Grade Submission;
+  :Return Submission;
+fork again
+  :Archive Class;
+end fork
+
+:Logout;
+stop
+@enduml

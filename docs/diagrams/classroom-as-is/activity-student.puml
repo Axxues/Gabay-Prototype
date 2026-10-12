@@ -1,0 +1,44 @@
+@startuml
+title Google Classroom (As-Is) - Student Activity
+skinparam activity {
+  BackgroundColor #8AC9F5
+  BorderColor black
+}
+skinparam diamond {
+  BackgroundColor #8AC9F5
+  BorderColor black
+}
+skinparam activityBarColor black
+skinparam arrowColor black
+
+start
+repeat
+  :Login with Google;
+  :Validate credentials;
+repeat while (Is Valid Account?) is (no) not (yes)
+
+:Join Class via Code / Accept Invite;
+if (Enrolled?) then (yes)
+  fork
+    :View Stream + Classwork + People;
+  fork again
+    :Open Assignment;
+    :Attach Files (Drive);
+    :Turn In Assignment;
+    if (Need changes?) then (yes)
+      :Unsubmit / Resubmit;
+    endif
+  fork again
+    :Add Class / Private Comment;
+  fork again
+    :View Returned Grade;
+  fork again
+    :Access Drive Folder + Calendar / Meet;
+  end fork
+else (no)
+  :Show Not Enrolled;
+endif
+
+:Logout;
+stop
+@enduml

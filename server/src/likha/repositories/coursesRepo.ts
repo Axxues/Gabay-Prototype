@@ -1,5 +1,5 @@
 import { LIKHA_URL } from '../../env.js';
-import { getLikhaAdminToken } from '../client.js';
+import { likhaFetch } from '../client.js';
 import { ApiError } from '../../utils/errors.js';
 import type { LikhaCourse, LikhaCourseSection, LikhaEnrollmentRequest } from '../types.js';
 
@@ -67,10 +67,7 @@ export function formatLikhaRequest(r: any): any {
 }
 
 export async function getAllCourses(enrolledStudentId?: string): Promise<any[]> {
-  const token = await getLikhaAdminToken();
-  const res = await fetch(`${LIKHA_URL}/items/courses?limit=100`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const res = await likhaFetch('/items/courses?limit=100');
 
   if (!res.ok) {
     throw new Error(`Failed to list courses from Likha: HTTP ${res.status}`);
@@ -84,9 +81,8 @@ export async function getAllCourses(enrolledStudentId?: string): Promise<any[]> 
   }
 
   // Filter courses by approved enrollment requests
-  const reqRes = await fetch(
-    `${LIKHA_URL}/items/enrollment_requests?filter[student_id][_eq]=${encodeURIComponent(enrolledStudentId)}&filter[status][_eq]=approved&limit=100`,
-    { headers: { Authorization: `Bearer ${token}` } }
+  const reqRes = await likhaFetch(
+    `/items/enrollment_requests?filter[student_id][_eq]=${encodeURIComponent(enrolledStudentId)}&filter[status][_eq]=approved&limit=100`
   );
   if (!reqRes.ok) return courses;
   const reqJson = (await reqRes.json()) as any;
@@ -101,11 +97,7 @@ export async function getAllCourses(enrolledStudentId?: string): Promise<any[]> 
 
 export async function getCourseById(id: string): Promise<any | null> {
   try {
-    const token = await getLikhaAdminToken();
-    const res = await fetch(`${LIKHA_URL}/items/courses/${encodeURIComponent(id)}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-
+    const res = await likhaFetch(`/items/courses/${encodeURIComponent(id)}`);
     if (!res.ok) return null;
 
     const json = (await res.json()) as any;
@@ -117,10 +109,7 @@ export async function getCourseById(id: string): Promise<any | null> {
 }
 
 export async function getCourseByJoinCode(joinCode: string): Promise<any | null> {
-  const token = await getLikhaAdminToken();
-  const res = await fetch(`${LIKHA_URL}/items/courses?filter[join_code][_eq]=${encodeURIComponent(joinCode)}&limit=1`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const res = await likhaFetch(`/items/courses?filter[join_code][_eq]=${encodeURIComponent(joinCode)}&limit=1`);
 
   if (!res.ok) return null;
   const json = (await res.json()) as any;
@@ -129,7 +118,6 @@ export async function getCourseByJoinCode(joinCode: string): Promise<any | null>
 }
 
 export async function createCourse(data: any): Promise<any> {
-  const token = await getLikhaAdminToken();
   const body: any = {
     id: data.id,
     code: data.code,
@@ -150,12 +138,8 @@ export async function createCourse(data: any): Promise<any> {
     syllabus: data.syllabus ? JSON.stringify(data.syllabus) : null,
   };
 
-  const res = await fetch(`${LIKHA_URL}/items/courses`, {
+  const res = await likhaFetch('/items/courses', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
     body: JSON.stringify(body),
   });
 
@@ -169,7 +153,6 @@ export async function createCourse(data: any): Promise<any> {
 }
 
 export async function updateCourse(id: string, updates: any): Promise<any> {
-  const token = await getLikhaAdminToken();
   const body: any = {};
   if (updates.code !== undefined) body.code = updates.code;
   if (updates.title !== undefined) body.title = updates.title;
@@ -191,12 +174,8 @@ export async function updateCourse(id: string, updates: any): Promise<any> {
     body.syllabus = typeof updates.syllabus === 'string' ? updates.syllabus : JSON.stringify(updates.syllabus);
   }
 
-  const res = await fetch(`${LIKHA_URL}/items/courses/${encodeURIComponent(id)}`, {
+  const res = await likhaFetch(`/items/courses/${encodeURIComponent(id)}`, {
     method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
     body: JSON.stringify(body),
   });
 
@@ -210,19 +189,14 @@ export async function updateCourse(id: string, updates: any): Promise<any> {
 }
 
 export async function deleteCourse(id: string): Promise<boolean> {
-  const token = await getLikhaAdminToken();
-  const res = await fetch(`${LIKHA_URL}/items/courses/${encodeURIComponent(id)}`, {
+  const res = await likhaFetch(`/items/courses/${encodeURIComponent(id)}`, {
     method: 'DELETE',
-    headers: { Authorization: `Bearer ${token}` },
   });
   return res.ok;
 }
 
 export async function getCourseSections(courseId: string): Promise<any[]> {
-  const token = await getLikhaAdminToken();
-  const res = await fetch(`${LIKHA_URL}/items/course_sections?filter[course_id][_eq]=${encodeURIComponent(courseId)}&limit=100`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const res = await likhaFetch(`/items/course_sections?filter[course_id][_eq]=${encodeURIComponent(courseId)}&limit=100`);
 
   if (!res.ok) return [];
   const json = (await res.json()) as any;
@@ -230,7 +204,6 @@ export async function getCourseSections(courseId: string): Promise<any[]> {
 }
 
 export async function createCourseSection(courseId: string, data: any): Promise<any> {
-  const token = await getLikhaAdminToken();
   const body = {
     id: data.id || `sec-${Date.now().toString(36)}`,
     course_id: courseId,
@@ -241,12 +214,8 @@ export async function createCourseSection(courseId: string, data: any): Promise<
     location: data.location || null,
   };
 
-  const res = await fetch(`${LIKHA_URL}/items/course_sections`, {
+  const res = await likhaFetch('/items/course_sections', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
     body: JSON.stringify(body),
   });
 
@@ -255,13 +224,8 @@ export async function createCourseSection(courseId: string, data: any): Promise<
 }
 
 export async function updateCourseSection(sectionId: string, updates: any): Promise<any> {
-  const token = await getLikhaAdminToken();
-  const res = await fetch(`${LIKHA_URL}/items/course_sections/${encodeURIComponent(sectionId)}`, {
+  const res = await likhaFetch(`/items/course_sections/${encodeURIComponent(sectionId)}`, {
     method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
     body: JSON.stringify(updates),
   });
   const json = (await res.json()) as any;
@@ -269,19 +233,15 @@ export async function updateCourseSection(sectionId: string, updates: any): Prom
 }
 
 export async function deleteCourseSection(sectionId: string): Promise<boolean> {
-  const token = await getLikhaAdminToken();
-  const res = await fetch(`${LIKHA_URL}/items/course_sections/${encodeURIComponent(sectionId)}`, {
+  const res = await likhaFetch(`/items/course_sections/${encodeURIComponent(sectionId)}`, {
     method: 'DELETE',
-    headers: { Authorization: `Bearer ${token}` },
   });
   return res.ok;
 }
 
 export async function getEnrollmentRequests(courseId: string): Promise<any[]> {
-  const token = await getLikhaAdminToken();
-  const res = await fetch(
-    `${LIKHA_URL}/items/enrollment_requests?filter[course_id][_eq]=${encodeURIComponent(courseId)}&sort=-requested_at&limit=100`,
-    { headers: { Authorization: `Bearer ${token}` } }
+  const res = await likhaFetch(
+    `/items/enrollment_requests?filter[course_id][_eq]=${encodeURIComponent(courseId)}&sort=-requested_at&limit=100`
   );
 
   if (!res.ok) return [];
@@ -292,10 +252,8 @@ export async function getEnrollmentRequests(courseId: string): Promise<any[]> {
 export const getRequestsForCourse = getEnrollmentRequests;
 
 export async function getStudentRequests(studentId: string): Promise<any[]> {
-  const token = await getLikhaAdminToken();
-  const res = await fetch(
-    `${LIKHA_URL}/items/enrollment_requests?filter[student_id][_eq]=${encodeURIComponent(studentId)}&sort=-requested_at&limit=100`,
-    { headers: { Authorization: `Bearer ${token}` } }
+  const res = await likhaFetch(
+    `/items/enrollment_requests?filter[student_id][_eq]=${encodeURIComponent(studentId)}&sort=-requested_at&limit=100`
   );
 
   if (!res.ok) return [];
@@ -304,7 +262,6 @@ export async function getStudentRequests(studentId: string): Promise<any[]> {
 }
 
 export async function createEnrollmentRequest(data: any): Promise<any> {
-  const token = await getLikhaAdminToken();
   const body = {
     id: data.id || `req-${Date.now().toString(36)}`,
     course_id: data.courseId,
@@ -317,12 +274,8 @@ export async function createEnrollmentRequest(data: any): Promise<any> {
     target_section_id: data.targetSectionId || null,
   };
 
-  const res = await fetch(`${LIKHA_URL}/items/enrollment_requests`, {
+  const res = await likhaFetch('/items/enrollment_requests', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
     body: JSON.stringify(body),
   });
 
@@ -331,13 +284,8 @@ export async function createEnrollmentRequest(data: any): Promise<any> {
 }
 
 export async function resolveEnrollmentRequest(requestId: string, status: 'approved' | 'rejected', resolvedBy: string): Promise<any> {
-  const token = await getLikhaAdminToken();
-  const res = await fetch(`${LIKHA_URL}/items/enrollment_requests/${encodeURIComponent(requestId)}`, {
+  const res = await likhaFetch(`/items/enrollment_requests/${encodeURIComponent(requestId)}`, {
     method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
     body: JSON.stringify({
       status,
       resolved_at: new Date().toISOString(),

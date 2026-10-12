@@ -1,0 +1,38 @@
+// Google Classroom (As-Is) - DFD Level 0 (Context Diagram), Gane-Sarson notation.
+// Mirrors docs/diagrams/exports/dfd-context.svg layout for thesis comparison:
+// straight row with system process center, Student left, Teacher right.
+// NOTE: dfd-context.svg/.png are hand-placed masters (see Temp\opencode\dfd-draw.js,
+// same technique as exports/dfd-context.svg); this .dot documents the same
+// flows/symbols and is not re-rendered.
+digraph dfd_context {
+  rankdir=LR;
+  label="Google Classroom (As-Is) - DFD Level 0 (Context Diagram)";
+  labelloc="t";
+  fontsize="16";
+  fontname="Arial";
+  node [fontsize="11", fontname="Arial"];
+  edge [fontsize="10", fontname="Arial", arrowhead=vee];
+  splines=ortho; ranksep=2.2; nodesep=2.6;
+  // ponytail: pin columns (Student left, Teacher right)
+  { rank=source; Student; }
+  { rank=sink; Teacher; }
+
+  Student [shape=box, style=filled, fillcolor="#FFF59D"];
+  Teacher [shape=box, style=filled, fillcolor="#FFF59D"];
+  // ponytail: process 0 as HTML table mimics Gane-Sarson rounded box
+  Classroom [shape=plaintext, label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" STYLE="ROUNDED" BGCOLOR="#FFF59D">
+      <TR><TD ALIGN="LEFT">0</TD></TR>
+      <HR/>
+      <TR><TD BGCOLOR="WHITE">Google Classroom</TD></TR>
+      <HR/>
+      <TR><TD> </TD></TR>
+    </TABLE>
+  >];
+
+  // ponytail: straight row, one lane per direction
+  Student:e -> Classroom:w [xlabel="Join code / invite\nTurned-in work\nComments"];
+  Classroom:w -> Student:e [xlabel="Returned grades\nAnnouncements\nClasswork"];
+  Teacher:w -> Classroom:e [xlabel="Classes, classwork\nGrades, announcements"];
+  Classroom:e -> Teacher:w [xlabel="Roster / enrollments\nSubmissions for review"];
+}

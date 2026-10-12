@@ -1,0 +1,68 @@
+---
+title: Google Classroom (As-Is) - Simplified ERD
+---
+erDiagram
+    User {
+        string id PK
+        string email
+        string role
+        string name
+    }
+    Classroom {
+        string id PK
+        string ownerId FK
+        string title
+        string enrollmentCode
+    }
+    Enrollment {
+        string id PK
+        string classId FK
+        string userId FK
+        string role
+    }
+    CourseWork {
+        string id PK
+        string classId FK
+        string title
+        string type
+        float maxPoints
+    }
+    CourseWorkMaterial {
+        string id PK
+        string classId FK
+        string title
+    }
+    StudentSubmission {
+        string id PK
+        string courseWorkId FK
+        string classId FK
+        string studentId FK
+        string state
+        float assignedGrade
+    }
+    Announcement {
+        string id PK
+        string classId FK
+        string text
+    }
+    GuardianLink {
+        string id PK
+        string studentId FK
+        string guardianEmail
+    }
+    DriveFile {
+        string id PK
+        string classId FK
+        string courseWorkId FK
+        string name
+    }
+
+    User ||--o{ Classroom : ""
+    Classroom ||--o{ Enrollment : ""
+    Classroom ||--o{ CourseWork : ""
+    Classroom ||--o{ CourseWorkMaterial : ""
+    CourseWork ||--o{ StudentSubmission : ""
+    Classroom ||--o{ Announcement : ""
+    User ||--o{ GuardianLink : ""
+    Classroom ||--o{ DriveFile : ""
+    CourseWork ||--o{ DriveFile : ""

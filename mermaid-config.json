@@ -1,0 +1,1 @@
+{"theme": "base", "themeCSS": "\n    [id*=\"entity-User\"] path { stroke: #D946EF !important; }\n    "}

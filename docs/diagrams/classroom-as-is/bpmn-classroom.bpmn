@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Google Classroom (As-Is) - BPMN 2.0 collaboration: one pool per role.
+     Mirrors docs/diagrams/bpmn/bpmn-gabay.bpmn structure for thesis comparison.
+     Teacher creates class + invite; Student joins and submits; Teacher grades
+     and returns. -->
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+    xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+    xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+    xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+    id="Classroom_Defs" targetNamespace="http://classroom/as-is">
+  <collaboration id="Classroom_Collab" name="Google Classroom As-Is">
+    <participant id="Part_Teacher" name="Teacher" processRef="Proc_Teacher" />
+    <participant id="Part_Student" name="Student" processRef="Proc_Student" />
+    <messageFlow id="MF_Invite" name="Invite code / link" sourceRef="T_ShareInvite" targetRef="S_Join" />
+    <messageFlow id="MF_Submit" name="Turned-in submission" sourceRef="S_TurnIn" targetRef="T_Review" />
+    <messageFlow id="MF_Return" name="Returned grade" sourceRef="T_Return" targetRef="S_ViewGrade" />
+  </collaboration>
+
+  <process id="Proc_Teacher" name="Teacher" isExecutable="false">
+    <startEvent id="T_Start" name="Start"><outgoing>TF1</outgoing></startEvent>
+    <task id="T_Login" name="Log in with Google"><incoming>TF1</incoming><incoming>TF3</incoming><outgoing>TF2</outgoing></task>
+    <exclusiveGateway id="T_Valid" name="Valid account?"><incoming>TF2</incoming><outgoing>TF3</outgoing><outgoing>TF4</outgoing></exclusiveGateway>
+    <task id="T_Create" name="Create class"><incoming>TF4</incoming><outgoing>TF5</outgoing></task>
+    <task id="T_ShareInvite" name="Share invite code / link"><incoming>TF5</incoming><outgoing>TF6</outgoing></task>
+    <task id="T_Publish" name="Publish assignment / material"><incoming>TF6</incoming><outgoing>TF7</outgoing></task>
+    <task id="T_Review" name="Review submission"><incoming>TF7</incoming><outgoing>TF8</outgoing></task>
+    <task id="T_Grade" name="Grade submission"><incoming>TF8</incoming><outgoing>TF9</outgoing></task>
+    <sendTask id="T_Return" name="Return to student"><incoming>TF9</incoming><outgoing>TF10</outgoing></sendTask>
+    <endEvent id="T_End" name="End"><incoming>TF10</incoming></endEvent>
+    <sequenceFlow id="TF1" sourceRef="T_Start" targetRef="T_Login" />
+    <sequenceFlow id="TF2" sourceRef="T_Login" targetRef="T_Valid" />
+    <sequenceFlow id="TF3" name="no" sourceRef="T_Valid" targetRef="T_Login" />
+    <sequenceFlow id="TF4" sourceRef="T_Valid" targetRef="T_Create" />
+    <sequenceFlow id="TF5" sourceRef="T_Create" targetRef="T_ShareInvite" />
+    <sequenceFlow id="TF6" sourceRef="T_ShareInvite" targetRef="T_Publish" />
+    <sequenceFlow id="TF7" sourceRef="T_Publish" targetRef="T_Review" />
+    <sequenceFlow id="TF8" sourceRef="T_Review" targetRef="T_Grade" />
+    <sequenceFlow id="TF9" sourceRef="T_Grade" targetRef="T_Return" />
+    <sequenceFlow id="TF10" sourceRef="T_Return" targetRef="T_End" />
+  </process>
+
+  <process id="Proc_Student" name="Student" isExecutable="false">
+    <startEvent id="S_Start" name="Start"><outgoing>SF1</outgoing></startEvent>
+    <task id="S_Login" name="Log in with Google"><incoming>SF1</incoming><incoming>SF3</incoming><outgoing>SF2</outgoing></task>
+    <exclusiveGateway id="S_Valid" name="Valid account?"><incoming>SF2</incoming><outgoing>SF3</outgoing><outgoing>SF4</outgoing></exclusiveGateway>
+    <task id="S_Join" name="Join via code / invite"><incoming>SF4</incoming><outgoing>SF5</outgoing></task>
+    <task id="S_View" name="View classwork"><incoming>SF5</incoming><outgoing>SF6</outgoing></task>
+    <task id="S_TurnIn" name="Attach + turn in"><incoming>SF6</incoming><outgoing>SF7</outgoing></task>
+    <task id="S_ViewGrade" name="View returned grade"><incoming>SF7</incoming><outgoing>SF8</outgoing></task>
+    <endEvent id="S_End" name="End"><incoming>SF8</incoming></endEvent>
+    <sequenceFlow id="SF1" sourceRef="S_Start" targetRef="S_Login" />
+    <sequenceFlow id="SF2" sourceRef="S_Login" targetRef="S_Valid" />
+    <sequenceFlow id="SF3" name="no" sourceRef="S_Valid" targetRef="S_Login" />
+    <sequenceFlow id="SF4" sourceRef="S_Valid" targetRef="S_Join" />
+    <sequenceFlow id="SF5" sourceRef="S_Join" targetRef="S_View" />
+    <sequenceFlow id="SF6" sourceRef="S_View" targetRef="S_TurnIn" />
+    <sequenceFlow id="SF7" sourceRef="S_TurnIn" targetRef="S_ViewGrade" />
+    <sequenceFlow id="SF8" sourceRef="S_ViewGrade" targetRef="S_End" />
+  </process>
+
+  <bpmndi:BPMNDiagram id="Classroom_Diagram">
+    <bpmndi:BPMNPlane id="Classroom_Plane" bpmnElement="Classroom_Collab">
+      <bpmndi:BPMNShape id="Sh_Part_T" bpmnElement="Part_Teacher" isHorizontal="true"><dc:Bounds x="20" y="20" width="1700" height="200" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_Part_S" bpmnElement="Part_Student" isHorizontal="true"><dc:Bounds x="20" y="234" width="1700" height="200" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_T_Start" bpmnElement="T_Start"><dc:Bounds x="60" y="82" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_T_Login" bpmnElement="T_Login"><dc:Bounds x="130" y="65" width="110" height="70" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_T_Valid" bpmnElement="T_Valid" isMarkerVisible="true"><dc:Bounds x="270" y="75" width="50" height="50" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_T_Create" bpmnElement="T_Create"><dc:Bounds x="350" y="65" width="110" height="70" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_T_ShareInvite" bpmnElement="T_ShareInvite"><dc:Bounds x="490" y="65" width="110" height="70" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_T_Publish" bpmnElement="T_Publish"><dc:Bounds x="630" y="65" width="110" height="70" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_T_Review" bpmnElement="T_Review"><dc:Bounds x="950" y="65" width="110" height="70" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_T_Grade" bpmnElement="T_Grade"><dc:Bounds x="1090" y="65" width="110" height="70" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_T_Return" bpmnElement="T_Return"><dc:Bounds x="1230" y="65" width="110" height="70" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_T_End" bpmnElement="T_End"><dc:Bounds x="1370" y="82" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_S_Start" bpmnElement="S_Start"><dc:Bounds x="60" y="296" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_S_Login" bpmnElement="S_Login"><dc:Bounds x="130" y="279" width="110" height="70" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_S_Valid" bpmnElement="S_Valid" isMarkerVisible="true"><dc:Bounds x="270" y="289" width="50" height="50" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_S_Join" bpmnElement="S_Join"><dc:Bounds x="350" y="279" width="110" height="70" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_S_View" bpmnElement="S_View"><dc:Bounds x="630" y="279" width="110" height="70" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_S_TurnIn" bpmnElement="S_TurnIn"><dc:Bounds x="950" y="279" width="110" height="70" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_S_ViewGrade" bpmnElement="S_ViewGrade"><dc:Bounds x="1230" y="279" width="110" height="70" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_S_End" bpmnElement="S_End"><dc:Bounds x="1370" y="296" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="E_TF1" bpmnElement="TF1"><di:waypoint x="96" y="100" /><di:waypoint x="130" y="100" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_TF2" bpmnElement="TF2"><di:waypoint x="240" y="100" /><di:waypoint x="270" y="100" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_TF3" bpmnElement="TF3"><di:waypoint x="295" y="125" /><di:waypoint x="295" y="150" /><di:waypoint x="185" y="150" /><di:waypoint x="185" y="135" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_TF4" bpmnElement="TF4"><di:waypoint x="320" y="100" /><di:waypoint x="350" y="100" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_TF5" bpmnElement="TF5"><di:waypoint x="460" y="100" /><di:waypoint x="490" y="100" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_TF6" bpmnElement="TF6"><di:waypoint x="600" y="100" /><di:waypoint x="630" y="100" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_TF7" bpmnElement="TF7"><di:waypoint x="740" y="100" /><di:waypoint x="950" y="100" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_TF8" bpmnElement="TF8"><di:waypoint x="1060" y="100" /><di:waypoint x="1090" y="100" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_TF9" bpmnElement="TF9"><di:waypoint x="1200" y="100" /><di:waypoint x="1230" y="100" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_TF10" bpmnElement="TF10"><di:waypoint x="1340" y="100" /><di:waypoint x="1370" y="100" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_SF1" bpmnElement="SF1"><di:waypoint x="96" y="314" /><di:waypoint x="130" y="314" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_SF2" bpmnElement="SF2"><di:waypoint x="240" y="314" /><di:waypoint x="270" y="314" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_SF3" bpmnElement="SF3"><di:waypoint x="295" y="339" /><di:waypoint x="295" y="364" /><di:waypoint x="185" y="364" /><di:waypoint x="185" y="349" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_SF4" bpmnElement="SF4"><di:waypoint x="320" y="314" /><di:waypoint x="350" y="314" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_SF5" bpmnElement="SF5"><di:waypoint x="460" y="314" /><di:waypoint x="630" y="314" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_SF6" bpmnElement="SF6"><di:waypoint x="740" y="314" /><di:waypoint x="950" y="314" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_SF7" bpmnElement="SF7"><di:waypoint x="1060" y="314" /><di:waypoint x="1230" y="314" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_SF8" bpmnElement="SF8"><di:waypoint x="1340" y="314" /><di:waypoint x="1370" y="314" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_MF_Invite" bpmnElement="MF_Invite"><di:waypoint x="545" y="135" /><di:waypoint x="405" y="279" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_MF_Submit" bpmnElement="MF_Submit"><di:waypoint x="1005" y="279" /><di:waypoint x="1005" y="135" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_MF_Return" bpmnElement="MF_Return"><di:waypoint x="1285" y="135" /><di:waypoint x="1285" y="279" /></bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>

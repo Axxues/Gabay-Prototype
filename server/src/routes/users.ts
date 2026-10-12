@@ -22,6 +22,12 @@ usersRouter.get(
   '/:id',
   authenticateToken,
   asyncHandler(async (req, res) => {
+    const user = await getUserById(req.params.id);
+    if (user) {
+      res.json({ user });
+      return;
+    }
+
     const prismaUser = await prisma.user.findUnique({ where: { id: req.params.id } });
     if (prismaUser) {
       const { passwordHash: _, ...publicUser } = prismaUser;
@@ -29,9 +35,7 @@ usersRouter.get(
       return;
     }
 
-    const user = await getUserById(req.params.id);
-    if (!user) throw new ApiError(404, 'not_found', 'User not found.');
-    res.json({ user });
+    throw new ApiError(404, 'not_found', 'User not found.');
   })
 );
 
@@ -39,24 +43,21 @@ usersRouter.get(
   '/',
   authenticateToken,
   asyncHandler(async (_req, res) => {
-    const prismaUsers = await prisma.user.findMany({
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        avatar: true,
-        department: true,
-        title: true,
-      },
-    });
-
-    if (prismaUsers && prismaUsers.length > 0) {
-      res.json({ users: prismaUsers });
-      return;
+    let users = await getAllUsers();
+    if (!users || users.length === 0) {
+      const prismaUsers = await prisma.user.findMany({
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          avatar: true,
+          department: true,
+          title: true,
+        },
+      });
+      users = prismaUsers || [];
     }
-
-    const users = await getAllUsers();
     res.json({ users });
   })
 );

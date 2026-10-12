@@ -1,0 +1,9 @@
+
+#my-svg .node.color-0 path {
+  stroke: #D946EF !important;
+  fill: #FDF4FF !important;
+}
+#my-svg [id*="entity-User"] path {
+  stroke: #D946EF !important;
+  fill: #FDF4FF !important;
+}

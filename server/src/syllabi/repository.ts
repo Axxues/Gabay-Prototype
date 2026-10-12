@@ -1,6 +1,9 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 import type {
   CourseMapLevel,
+  RagSectionKey,
+  RagSectionMap,
+  RagSectionRecord,
   RequirementCategory,
   SignatoryRole,
   SyllabusCourseMapRow,
@@ -11,6 +14,7 @@ import type {
   SyllabusStatus,
   SyllabusWriteModel,
 } from './contracts.js';
+import { RagSectionKeyOrder } from './contracts.js';
 import {
   mapLegacyToWriteModel,
   mapWriteModelToDocument,
@@ -26,6 +30,7 @@ export interface SyllabusRepository {
   listRevisions(courseId: string): Promise<SyllabusRevisionHeader[]>;
   replaceFromLegacy(courseId: string, createdById: string, normalizedSyllabus: string): Promise<SyllabusRevisionHeader>;
   getRagSections(courseId: string): Promise<SyllabusRagSections>;
+  getRagSectionRecords(courseId: string): Promise<SyllabusRagRecord[]>;
   createDraft(courseId: string, createdById: string, sourceRevisionId?: string): Promise<SyllabusRevisionHeader>;
   replaceSection(
     courseId: string,
@@ -41,6 +46,7 @@ export interface SyllabusRepository {
     publishedById: string,
   ): Promise<SyllabusRevisionHeader>;
   deleteDraft(courseId: string, revisionId: string): Promise<void>;
+  withdrawSyllabus(courseId: string): Promise<void>;
 }
 
 export interface SyllabusRevisionEnvelope {
@@ -48,16 +54,11 @@ export interface SyllabusRevisionEnvelope {
   syllabus: SyllabusDocument;
 }
 
-export type SyllabusRagSectionKey =
-  | 'description'
-  | 'outcomes'
-  | 'grading'
-  | 'policies'
-  | 'outline'
-  | 'references'
-  | 'faculty';
+export type SyllabusRagSectionKey = RagSectionKey;
 
-export type SyllabusRagSections = Record<SyllabusRagSectionKey, string>;
+export type SyllabusRagSections = RagSectionMap;
+
+export type SyllabusRagRecord = RagSectionRecord;
 
 export type SyllabusMigrationAuditStatus = 'created' | 'updated' | 'skipped' | 'conflict';
 
@@ -1388,20 +1389,50 @@ const capRagText = (text: string): string => {
     : normalized;
 };
 
+export function emptySyllabusRagSections(): SyllabusRagSections {
+  return {
+    institution: '',
+    description: '',
+    faculty: '',
+    institutional_statement: '',
+    program_outcomes: '',
+    core_values: '',
+    graduate_attributes: '',
+    requirements: '',
+    grading: '',
+    rubrics: '',
+    policies: '',
+    outline: '',
+    learning_plan: '',
+    outcomes: '',
+    course_map: '',
+    references: '',
+  };
+}
+
 export function buildSyllabusRagSections(
   course: { code: string; title: string },
   syllabus: SyllabusDocument | null,
 ): SyllabusRagSections {
-  const sections: SyllabusRagSections = {
-    description: '',
-    outcomes: '',
-    grading: '',
-    policies: '',
-    outline: '',
-    references: '',
-    faculty: '',
-  };
+  const sections: SyllabusRagSections = emptySyllabusRagSections();
   if (!syllabus) return sections;
+  const institution = syllabus.institution;
+  if (
+    [institution.university, institution.college, institution.formCode, institution.revision].some(
+      (value) => value.trim() !== '',
+    )
+  ) {
+    sections.institution = capRagText(
+      [
+        `Institution: ${institution.university}.`,
+        institution.college ? `College: ${institution.college}.` : '',
+        institution.formCode ? `Form: ${institution.formCode}.` : '',
+        institution.revision ? `Revision: ${institution.revision}.` : '',
+      ]
+        .filter(Boolean)
+        .join(' '),
+    );
+  }
   const info = syllabus.courseInfo;
   const hasInfo = [
     info.semester,
@@ -1478,7 +1509,118 @@ export function buildSyllabusRagSections(
         .join(', ')}.`,
     );
   }
+  const statements = syllabus.institutionalStatements;
+  if (
+    [statements.philosophy, statements.vision, statements.mission, statements.goal].some(
+      (value) => value.trim() !== '',
+    )
+  ) {
+    sections.institutional_statement = capRagText(
+      [
+        statements.philosophy ? `Philosophy: ${statements.philosophy}` : '',
+        statements.vision ? `Vision: ${statements.vision}` : '',
+        statements.mission ? `Mission: ${statements.mission}` : '',
+        statements.goal ? `Goal: ${statements.goal}` : '',
+      ]
+        .filter(Boolean)
+        .join(' '),
+    );
+  }
+  if (syllabus.programOutcomes.length > 0) {
+    sections.program_outcomes = capRagText(
+      `Program outcomes: ${syllabus.programOutcomes
+        .map((outcome) => `PO${outcome.number}: ${outcome.description}`)
+        .join(' ')}`,
+    );
+  }
+  if (statements.coreValues.length > 0) {
+    sections.core_values = capRagText(
+      `Core values: ${statements.coreValues
+        .map((value) => `${value.acronym} (${value.keyword}): ${value.description}`)
+        .join(' ')}`,
+    );
+  }
+  if (statements.graduateAttributes.length > 0) {
+    sections.graduate_attributes = capRagText(
+      `Graduate attributes: ${statements.graduateAttributes
+        .map((attribute) => `${attribute.number} ${attribute.title}: ${attribute.description}`)
+        .join(' ')}`,
+    );
+  }
+  const requirements = syllabus.courseRequirements;
+  if (requirements.major.length > 0 || requirements.other.length > 0) {
+    sections.requirements = capRagText(
+      [
+        requirements.major.length > 0 ? `Major requirements: ${requirements.major.join(' ')}` : '',
+        requirements.other.length > 0 ? `Other requirements: ${requirements.other.join(' ')}` : '',
+      ]
+        .filter(Boolean)
+        .join(' '),
+    );
+  }
+  if (syllabus.projectRubrics.length > 0) {
+    sections.rubrics = capRagText(
+      `Rubrics: ${syllabus.projectRubrics
+        .map(
+          (rubric) =>
+            `${rubric.category}: ${[1, 2, 3, 4]
+              .map((level) => `L${level} ${rubric.levels[level] ?? ''}`.trim())
+              .join('; ')}`,
+        )
+        .join(' ')}`,
+    );
+  }
+  if (syllabus.learningPlan.length > 0) {
+    sections.learning_plan = capRagText(
+      `Learning plan: ${syllabus.learningPlan
+        .map((entry) =>
+          [
+            entry.week,
+            entry.learningOutcomes.length > 0 ? `Outcomes: ${entry.learningOutcomes.join(', ')}` : '',
+            entry.topics.length > 0 ? `Topics: ${entry.topics.join(', ')}` : '',
+            entry.methodology.length > 0 ? `Methods: ${entry.methodology.join(', ')}` : '',
+            entry.resources.length > 0 ? `Resources: ${entry.resources.join(', ')}` : '',
+            entry.assessment.length > 0 ? `Assessment: ${entry.assessment.join(', ')}` : '',
+            entry.sdgCoherence
+              ? `SDG ${entry.sdgCoherence.goal} ${entry.sdgCoherence.title}: ${entry.sdgCoherence.description}`
+              : '',
+          ]
+            .filter(Boolean)
+            .join(' '),
+        )
+        .join(' ')}`,
+    );
+  }
+  if (syllabus.courseMap.length > 0) {
+    sections.course_map = capRagText(
+      `Curriculum map: ${syllabus.courseMap
+        .map((entry) => {
+          const alignments = Object.entries(entry.poAlignments)
+            .filter(([, level]) => level === 'I' || level === 'P' || level === 'D')
+            .sort(([a], [b]) => Number(a) - Number(b))
+            .map(([po, level]) => `PO${po}=${level}`)
+            .join(', ');
+          return `CO${entry.coNumber} (${entry.coStatement})${alignments ? `: ${alignments}` : ''};`;
+        })
+        .join(' ')}`,
+    );
+  }
   return sections;
+}
+
+export function toSyllabusRagRecords(
+  syllabusId: string,
+  revisionNo: number,
+  sections: SyllabusRagSections,
+): SyllabusRagRecord[] {
+  const records: SyllabusRagRecord[] = [];
+  for (const sectionKey of RagSectionKeyOrder) {
+    const sectionText = sections[sectionKey] ?? '';
+    if (sectionText !== '') {
+      records.push({ syllabusId, revisionNo, status: 'published', sectionKey, sectionText });
+    }
+  }
+  return records;
 }
 
 export async function recordSyllabusMigrationAudit(
@@ -1657,6 +1799,21 @@ export class PrismaSyllabusRepository implements SyllabusRepository {
     );
   }
 
+  async getRagSectionRecords(courseId: string): Promise<SyllabusRagRecord[]> {
+    const course = await this.client.course.findUnique({
+      where: { id: courseId },
+      select: { code: true, title: true, currentSyllabus: { include: syllabusRelations } },
+    });
+    const record = course?.currentSyllabus;
+    if (!record || record.status !== 'published') return [];
+    const syllabus = mapWriteModelToDocument(assembleSyllabusWriteModel(record));
+    const sections = buildSyllabusRagSections(
+      { code: course?.code ?? '', title: course?.title ?? '' },
+      syllabus,
+    );
+    return toSyllabusRagRecords(record.id, record.revisionNo, sections);
+  }
+
   async createDraft(
     courseId: string,
     createdById: string,
@@ -1794,6 +1951,25 @@ export class PrismaSyllabusRepository implements SyllabusRepository {
         where: { id: revisionId, courseId, status: 'draft' },
       });
       if (deleted.count !== 1) throw new SyllabusNotFoundError();
+    });
+  }
+
+  async withdrawSyllabus(courseId: string): Promise<void> {
+    return this.client.$transaction(async (tx) => {
+      const course = await tx.course.findUnique({
+        where: { id: courseId },
+        select: { id: true, syllabus: true },
+      });
+      if (!course) throw new SyllabusNotFoundError();
+      const existing = await tx.syllabus.findFirst({ where: { courseId }, select: { id: true } });
+      if (!existing && course.syllabus == null) throw new SyllabusNotFoundError();
+      await tx.syllabus.deleteMany({ where: { courseId, status: 'draft' } });
+      await tx.syllabus.updateMany({ where: { courseId, status: 'published' }, data: { status: 'archived' } });
+      const updated = await tx.course.updateMany({
+        where: { id: courseId },
+        data: { currentSyllabusId: null, syllabus: null },
+      });
+      if (updated.count !== 1) throw new SyllabusNotFoundError();
     });
   }
 }

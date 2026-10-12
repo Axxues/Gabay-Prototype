@@ -211,7 +211,6 @@ export async function upsertCourseGrade(
       },
     },
     create: {
-      id: gradeId,
       courseId,
       studentId,
       midtermGrade: patch.midtermGrade ?? null,

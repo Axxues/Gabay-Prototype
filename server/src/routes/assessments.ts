@@ -5,6 +5,7 @@ import { authenticateToken, requireRole } from '../middleware/auth.js';
 import type { AuthPayload } from '../middleware/auth.js';
 import { createNotification } from '../utils/notifications.js';
 import { parseJsonField, stringifyJsonField } from '../utils/jsonFields.js';
+import { assertCourseAccess, assertCourseOwner, loadCourseOr404 } from '../utils/courseAccess.js';
 
 export const quizzesRouter = buildAssessmentRouter('quiz');
 export const activitiesRouter = buildAssessmentRouter('activity');
@@ -25,11 +26,6 @@ function newId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-interface CourseRow {
-  id: string;
-  instructorId: string;
-}
-
 type RawQuestion = Record<string, unknown> & { options: string };
 
 interface AssessmentRow {
@@ -38,32 +34,6 @@ interface AssessmentRow {
   title: string;
   questions: RawQuestion[];
   format?: string | null;
-}
-
-async function loadCourseOr404(courseId: string) {
-  // Narrow select: access checks only need id/instructorId. A full row drag
-  // would pull the multi-MB image/syllabus blobs on every course-scoped call.
-  const course = await prisma.course.findUnique({
-    where: { id: courseId },
-    select: { id: true, instructorId: true },
-  });
-  if (!course) throw new ApiError(404, 'not_found', 'Course not found.');
-  return course;
-}
-
-async function assertCourseAccess(course: CourseRow, auth: AuthPayload): Promise<void> {
-  if (auth.role === 'faculty' || auth.role === 'admin') return;
-  if (course.instructorId === auth.sub) return;
-  const membership = await prisma.enrollmentRequest.findFirst({
-    where: { courseId: course.id, studentId: auth.sub, status: 'approved' },
-  });
-  if (!membership) throw new ApiError(403, 'forbidden', 'You are not a member of this course.');
-}
-
-function assertCourseOwner(course: { instructorId: string }, auth: AuthPayload): void {
-  if (auth.role !== 'admin' && course.instructorId !== auth.sub) {
-    throw new ApiError(403, 'forbidden', 'Only the course instructor can do this.');
-  }
 }
 
 // `options` is stored as a JSON string; the API speaks arrays.

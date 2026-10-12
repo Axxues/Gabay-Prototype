@@ -3,7 +3,7 @@ import { authenticateUser, getUserById, getUserByEmail, getAllUsers } from '../l
 
 describe('Likha Users Repository & Auth Flow', () => {
   it('authenticates seed faculty user against Likha ERP', async () => {
-    const { user, token } = await authenticateUser('faculty1@dmmmsu.edu.ph', 'faculty2026');
+    const { user, token } = await authenticateUser('faculty1@dmmmsu.edu.ph', 'gabay2026');
     expect(user).toBeDefined();
     expect(user.email).toBe('faculty1@dmmmsu.edu.ph');
     expect(user.role).toBe('faculty');

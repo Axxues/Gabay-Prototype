@@ -1,0 +1,135 @@
+@startuml
+' Google Classroom (As-Is) - Simplified ERD (Crow's Foot)
+' Style mirrors docs/diagrams/erd.puml for thesis comparison
+title Google Classroom (As-Is) - Simplified ERD
+hide circle
+skinparam linetype ortho
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam nodesep 50
+skinparam ranksep 50
+skinparam arrowColor #555555
+skinparam arrowThickness 1.2
+skinparam titleFontSize 18
+skinparam titleFontStyle bold
+skinparam entity {
+  BackgroundColor white
+  BorderColor #555555
+  BorderThickness 1
+  HeaderBackgroundColor #C9C9F5
+  HeaderFontColor #222222
+  HeaderFontStyle bold
+  HeaderFontSize 13
+  FontColor #333333
+  AttributeFontColor #333333
+  AttributeFontName Monospaced
+  AttributeFontSize 12
+}
+' ponytail: teal header marks junction tables (cf. reference image)
+skinparam entity<<junction>> {
+  BackgroundColor white
+  BorderColor #555555
+  HeaderBackgroundColor #7DD3CF
+}
+<style>
+entityDiagram {
+  entity {
+    BackgroundColor white
+    BorderColor #555555
+    HeaderBackgroundColor #C9C9F5
+    HeaderFontColor #222222
+  }
+  .junction {
+    HeaderBackgroundColor #7DD3CF
+  }
+}
+</style>
+legend right
+  |= Color |= Meaning |
+  |<#C9C9F5> | Regular table |
+  |<#7DD3CF> | Junction table |
+endlegend
+
+entity "User" as User #C9C9F5 {
+  PK id    :  VARCHAR(64)
+  --
+  email : VARCHAR(256)
+  role  :  VARCHAR(32)
+  name  : VARCHAR(128)
+}
+
+entity "Class" as Class #C9C9F5 {
+  PK id           :  VARCHAR(64)
+  --
+  FK1 ownerId    :  VARCHAR(64)
+  title          : VARCHAR(256)
+  enrollmentCode :  VARCHAR(32)
+}
+
+entity "Enrollment" as Enrollment <<junction>> #7DD3CF {
+  PK id      : VARCHAR(64)
+  --
+  FK1 classId : VARCHAR(64)
+  FK2 userId  : VARCHAR(64)
+  role        : VARCHAR(32)
+}
+
+entity "CourseWork" as CourseWork #C9C9F5 {
+  PK id        :  VARCHAR(64)
+  --
+  FK1 classId :  VARCHAR(64)
+  title        : VARCHAR(256)
+  type         :  VARCHAR(32)
+  maxPoints    :        FLOAT
+}
+
+entity "CourseWorkMaterial" as CourseWorkMaterial #C9C9F5 {
+  PK id        :  VARCHAR(64)
+  --
+  FK1 classId :  VARCHAR(64)
+  title        : VARCHAR(256)
+}
+
+entity "StudentSubmission" as StudentSubmission <<junction>> #7DD3CF {
+  PK id            : VARCHAR(64)
+  --
+  FK1 courseWorkId : VARCHAR(64)
+  FK2 classId      : VARCHAR(64)
+  FK3 studentId    : VARCHAR(64)
+  state            : VARCHAR(32)
+  assignedGrade    :       FLOAT
+}
+
+entity "Announcement" as Announcement #C9C9F5 {
+  PK id        :  VARCHAR(64)
+  --
+  FK1 classId :  VARCHAR(64)
+  text         : VARCHAR(1024)
+}
+
+entity "GuardianLink" as GuardianLink #C9C9F5 {
+  PK id          : VARCHAR(64)
+  --
+  FK1 studentId  : VARCHAR(64)
+  guardianEmail  : VARCHAR(256)
+}
+
+entity "DriveFile" as DriveFile <<junction>> #7DD3CF {
+  PK id          :  VARCHAR(64)
+  --
+  FK1 classId   :  VARCHAR(64)
+  FK2 courseWorkId :  VARCHAR(64)
+  name           : VARCHAR(256)
+}
+
+User ||--o{ Class
+Class ||--o{ Enrollment
+Class ||--o{ CourseWork
+Class ||--o{ CourseWorkMaterial
+CourseWork ||--o{ StudentSubmission
+Class ||--o{ Announcement
+User ||--o{ GuardianLink
+Class ||--o{ DriveFile
+CourseWork ||--o{ DriveFile
+
+@enduml

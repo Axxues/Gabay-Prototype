@@ -20,6 +20,14 @@ vi.mock('bcryptjs', () => {
   const compare = vi.fn();
   return { hash, compare, default: { hash, compare } };
 });
+vi.mock('../likha/repositories/usersRepo.js', () => ({
+  getUserById: vi.fn().mockResolvedValue(null),
+  getUserByEmail: vi.fn().mockResolvedValue(null),
+  getAllUsers: vi.fn().mockResolvedValue([]),
+  createLikhaUser: vi.fn().mockResolvedValue(null),
+  updateLikhaUser: vi.fn().mockResolvedValue(null),
+  deleteLikhaUser: vi.fn().mockResolvedValue(true),
+}));
 
 process.env.JWT_SECRET ??= 'test-secret';
 

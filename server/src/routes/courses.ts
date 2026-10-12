@@ -8,7 +8,8 @@ import { assertCourseAccess, assertCourseOwner, loadCourseOr404 } from '../utils
 import { getSyllabusRepository } from './syllabi.js';
 import { SyllabusRepositoryError, SyllabusSourceFileError } from '../syllabi/repository.js';
 import { SyllabusValidationError } from '../syllabi/validation.js';
-import { getAllCourses, getCourseById } from '../likha/repositories/coursesRepo.js';
+import { createCourse, getAllCourses, getCourseById, getCourseByJoinCode } from '../likha/repositories/coursesRepo.js';
+import { getUserById } from '../likha/repositories/usersRepo.js';
 
 export const coursesRouter = Router();
 export const sectionsRouter = Router();
@@ -102,6 +103,24 @@ coursesRouter.post(
     if (isOversizedDataUrl(body.image)) {
       throw new ApiError(413, 'image_too_large', 'Cover image must be uploaded as a file (/uploads/…) or an external URL, not an inlined data URL.');
     }
+    // Ensure instructor user exists in Prisma DB so Course foreign key passes
+    let instructorUser = await prisma.user.findUnique({ where: { id: auth.sub } });
+    if (!instructorUser) {
+      const likhaUser = await getUserById(auth.sub).catch(() => null);
+      await prisma.user.create({
+        data: {
+          id: auth.sub,
+          name: likhaUser?.name || str(body.instructorName) || 'Faculty Instructor',
+          email: likhaUser?.email || `${auth.sub}@dmmmsu.edu.ph`,
+          passwordHash: 'likha_synced',
+          role: auth.role || 'faculty',
+          avatar: likhaUser?.avatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+          department: likhaUser?.department || 'College of Computer Science',
+          title: likhaUser?.title || 'Faculty Instructor',
+        },
+      }).catch(() => {});
+    }
+
     const baseData = {
       id: newId('c'),
       code,
@@ -121,6 +140,7 @@ coursesRouter.post(
       const course = await prisma.course.create({
         data: { ...baseData, joinCode: suppliedJoinCode },
       });
+      await createCourse(course).catch(() => {});
       res.status(201).json({ course });
       return;
     }
@@ -130,6 +150,7 @@ coursesRouter.post(
         const course = await prisma.course.create({
           data: { ...baseData, joinCode: generateJoinCode() },
         });
+        await createCourse(course).catch(() => {});
         res.status(201).json({ course });
         return;
       } catch (err) {
@@ -158,7 +179,28 @@ coursesRouter.post(
     if (typeof code !== 'string' || !code) {
       throw new ApiError(400, 'bad_request', 'Field code is required.');
     }
-    const course = await prisma.course.findUnique({ where: { joinCode: code } });
+    let course = await prisma.course.findUnique({ where: { joinCode: code } });
+    if (!course) {
+      const likhaCourse = await getCourseByJoinCode(code).catch(() => null);
+      if (likhaCourse) {
+        const instructorExists = await prisma.user.findUnique({ where: { id: likhaCourse.instructorId } });
+        const validInstructorId = instructorExists?.id ?? 'usr-fac-1';
+        course = await prisma.course.create({
+          data: {
+            id: likhaCourse.id,
+            code: likhaCourse.code,
+            title: likhaCourse.title,
+            section: likhaCourse.section || 'BSCS 4A',
+            term: likhaCourse.term || '1st Semester 2026-2027',
+            instructorId: validInstructorId,
+            instructorName: likhaCourse.instructorName || 'Faculty Instructor',
+            published: Boolean(likhaCourse.published),
+            credits: likhaCourse.credits || 3,
+            joinCode: likhaCourse.joinCode,
+          },
+        }).catch(() => null);
+      }
+    }
     if (!course || !course.published) {
       throw new ApiError(404, 'course_not_found', 'No published course matches that code.');
     }

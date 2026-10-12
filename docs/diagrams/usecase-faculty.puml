@@ -1,7 +1,6 @@
 @startuml
 title Gabay LMS - Faculty Use Case
 left to right direction
-skinparam packageStyle rectangle
 skinparam usecase {
   BackgroundColor #8AC9F5
   BorderColor black
@@ -10,82 +9,96 @@ skinparam actor {
   BackgroundColor #8AC9F5
   BorderColor black
 }
-skinparam package {
+skinparam rectangle {
   BackgroundColor white
   BorderColor black
 }
+skinparam usecase<<spacer>> {
+  BackgroundColor none
+  BorderColor white
+  FontColor white
+}
 skinparam arrowColor black
 skinparam linetype polyline
+skinparam nodesep 6
+skinparam ranksep 12
 
 actor "Faculty" as Faculty
 
 rectangle "Gabay LMS" {
-  package "Courses" as P2 {
+  together {
     usecase "Manage Courses and Sections\n(Create shell + capacity)" as UC2
     usecase "Approve Enrollment Requests\n(People queue + Bell)" as UC3
   }
-  package "Content" as P3 {
+  together {
     usecase "Manage Courses\n(Publish Modules)" as UC4
     usecase "Manage Module Items" as UC4a
     usecase "Add / Reply on Module" as UC4b
+  }
+  together {
     usecase "Upload Syllabus Files" as UC5a
     usecase "Publish Syllabus" as UC5b
   }
-  package "Assessments" as P4 {
+  together {
     usecase "Manage Activities" as UC6a
     usecase "Manage Quizzes" as UC6b
     usecase "Manage Exams" as UC6c
     usecase "Release Grades and SPR" as UC6d
+    usecase " " as SP6d <<spacer>>
   }
-  package "Communication" as P5 {
+  together {
     usecase "Post Institutional\nAnnouncements" as UC7
     usecase "Add / Reply Comments" as UC7b
   }
-  package "Calendar" as P6 {
+  together {
     usecase "Access Calendar" as UC8
     usecase "Add Schedule Event" as UC8a
     usecase "Remove Schedule Event" as UC8b
   }
-  package "Inbox" as P7 {
+  together {
     usecase "Access Inbox" as UC9
     usecase "Direct message users" as UC9a
     usecase "Create group" as UC9b
     usecase "Message group" as UC9c
   }
-  package "Gabay RAG" as P8 {
+  together {
     usecase "Access Gabay RAG" as UCRAG
     usecase "Generate Graph" as UCRAG_G
     usecase "Generate Tables" as UCRAG_T
     usecase "Generate Report" as UCRAG_R
   }
-  package "History" as P9 {
+  together {
     usecase "Access History" as UC10
   }
 }
 
-Faculty --> P2
-Faculty --> P3
-Faculty --> P4
-Faculty --> P5
-Faculty --> P6
-Faculty --> P7
-Faculty --> P8
-Faculty --> P9
+Faculty --> UC2
+Faculty --> UC3
+Faculty --> UC4
+Faculty --> UC5a
+Faculty --> UC6a
+Faculty --> UC6b
+Faculty --> UC6c
+Faculty --> UC7
+Faculty --> UC8
+Faculty --> UC9
+Faculty --> UCRAG
+Faculty --> UC10
 
-UC4a ..> UC4 : <<include>>
-UC4b ..> UC4a : <<extend>>
-UC5b ..> UC5a : <<include>>
-UC6a ..> UC6d : <<include>>
-UC6b ..> UC6d : <<include>>
-UC6c ..> UC6d : <<include>>
-UC7b ..> UC7 : <<include>>
-UC8a ..> UC8 : <<include>>
-UC8b ..> UC8 : <<include>>
-UC9a ..> UC9 : <<include>>
-UC9b ..> UC9 : <<include>>
-UC9c ..> UC9b : <<include>>
-UCRAG ..> UCRAG_G : <<include>>
-UCRAG ..> UCRAG_T : <<include>>
-UCRAG ..> UCRAG_R : <<include>>
-note right of UC3 : self_join,\nfaculty_enroll
+UC4 ..> UC4a : <<extend>>
+UC4a ..> UC4b : <<extend>>
+UC5a ..> UC5b : <<include>>
+UC6a ..> UC6d : <<extend>>
+UC6b ..> UC6d : <<extend>>
+UC6c ..> UC6d : <<extend>>
+UC7 ..> UC7b : <<extend>>
+UC8 ..> UC8a : <<extend>>
+UC8 ..> UC8b : <<extend>>
+UC9 ..> UC9a : <<extend>>
+UC9 ..> UC9b : <<extend>>
+UC9b ..> UC9c : <<extend>>
+UCRAG ..> UCRAG_G : <<extend>>
+UCRAG ..> UCRAG_T : <<extend>>
+UCRAG ..> UCRAG_R : <<extend>>
+UC6d -[hidden]down-> SP6d
 @enduml

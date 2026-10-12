@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="640" viewBox="0 0 900 640" font-family="Arial, Helvetica, sans-serif">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#000"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="900" height="640" fill="#fff"/>
+  <text x="450" y="34" text-anchor="middle" font-size="22">Gabay LMS - DFD Level 0 (Context Diagram)</text>
+
+  <g stroke="#000" stroke-width="1.5" fill="none" marker-end="url(#arr)">
+    <path d="M150,345 H400"/>
+    <path d="M400,360 H150"/>
+    <path d="M700,65 H520 V280"/>
+    <path d="M440,280 V200 H760 V90"/>
+    <path d="M760,280 V230 H480 V280"/>
+    <path d="M560,305 H700"/>
+    <path d="M780,540 V450 H480 V400"/>
+    <path d="M560,385 H740 V540"/>
+  </g>
+
+  <g font-size="14">
+    <rect x="30" y="320" width="120" height="50" fill="#FFF59D" stroke="#000" stroke-width="1.5"/>
+    <text x="90" y="350" text-anchor="middle">Student</text>
+    <rect x="700" y="40" width="120" height="50" fill="#FFF59D" stroke="#000" stroke-width="1.5"/>
+    <text x="760" y="69" text-anchor="middle">Faculty</text>
+    <rect x="700" y="280" width="120" height="50" fill="#FFF59D" stroke="#000" stroke-width="1.5"/>
+    <text x="760" y="309" text-anchor="middle">Admin</text>
+    <rect x="680" y="540" width="160" height="50" fill="#FFF59D" stroke="#000" stroke-width="1.5"/>
+    <text x="760" y="569" text-anchor="middle">Staff</text>
+    <rect x="400" y="280" width="160" height="120" rx="18" fill="#FFF59D" stroke="#000" stroke-width="1.5"/>
+    <rect x="401.5" y="312" width="157" height="56" fill="#fff" stroke="none"/>
+    <line x1="400" y1="312" x2="560" y2="312" stroke="#000" stroke-width="1.5"/>
+    <line x1="400" y1="368" x2="560" y2="368" stroke="#000" stroke-width="1.5"/>
+    <text x="415" y="303" font-size="13">0</text>
+    <text x="480" y="350" text-anchor="middle">Gabay LMS</text>
+  </g>
+
+  <g font-size="12" text-anchor="middle">
+    <text x="275" y="303">Join code</text>
+    <text x="275" y="317">Submissions</text>
+    <text x="275" y="331">Messages</text>
+    <text x="275" y="377">Grades / SPR</text>
+    <text x="275" y="391">Announcements</text>
+    <text x="275" y="405">Content files</text>
+    <text x="610" y="82">Courses, modules</text>
+    <text x="610" y="96">Activities, quizzes</text>
+    <text x="610" y="110">Grades</text>
+    <text x="620" y="172">Enrollment requests</text>
+    <text x="620" y="186">Student submissions</text>
+    <text x="620" y="244">Account data</text>
+    <text x="620" y="258">Course shells</text>
+    <text x="630" y="277">Records</text>
+    <text x="630" y="291">Reports</text>
+    <text x="630" y="437">Support queries</text>
+    <text x="640" y="399">Calendar, inbox</text>
+    <text x="640" y="413">RAG answers, history</text>
+  </g>
+</svg>

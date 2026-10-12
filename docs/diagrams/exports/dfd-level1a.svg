@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="700" viewBox="0 0 1000 700" font-family="Arial, Helvetica, sans-serif">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#000"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="1000" height="700" fill="#fff"/>
+  <text x="500" y="34" text-anchor="middle" font-size="22">Gabay LMS - DFD Level 1 (A: Accounts, Enrollment, Content)</text>
+
+  <g stroke="#000" stroke-width="1.5" fill="none" marker-end="url(#arr)">
+    <path d="M160,142 H420"/>
+    <path d="M420,158 H160"/>
+    <path d="M590,142 H760"/>
+    <path d="M880,175 V340 H590"/>
+    <path d="M160,372 H420"/>
+    <path d="M420,388 H160"/>
+    <path d="M120,585 V408 H420"/>
+    <path d="M460,435 V548 H140 V585"/>
+    <path d="M590,372 H760"/>
+    <path d="M160,604 H420"/>
+    <path d="M590,610 H760"/>
+    <path d="M40,405 V560 H185 V624 H420"/>
+    <path d="M420,644 H20 V380 H30"/>
+  </g>
+
+  <g font-size="14">
+    <rect x="30" y="125" width="130" height="50" fill="#FFF59D" stroke="#000" stroke-width="1.5"/>
+    <text x="95" y="155" text-anchor="middle">Admin</text>
+    <rect x="30" y="355" width="130" height="50" fill="#FFF59D" stroke="#000" stroke-width="1.5"/>
+    <text x="95" y="385" text-anchor="middle">Student</text>
+    <rect x="30" y="585" width="130" height="50" fill="#FFF59D" stroke="#000" stroke-width="1.5"/>
+    <text x="95" y="615" text-anchor="middle">Faculty</text>
+    <rect x="420" y="95" width="170" height="110" rx="18" fill="#FFF59D" stroke="#000" stroke-width="1.5"/>
+    <rect x="421.5" y="122" width="167" height="56" fill="#fff" stroke="none"/>
+    <line x1="420" y1="122" x2="590" y2="122" stroke="#000" stroke-width="1.5"/>
+    <line x1="420" y1="178" x2="590" y2="178" stroke="#000" stroke-width="1.5"/>
+    <text x="435" y="118" font-size="13">1</text>
+    <text x="505" y="155" text-anchor="middle">Manage Accounts</text>
+    <rect x="420" y="325" width="170" height="110" rx="18" fill="#FFF59D" stroke="#000" stroke-width="1.5"/>
+    <rect x="421.5" y="352" width="167" height="56" fill="#fff" stroke="none"/>
+    <line x1="420" y1="352" x2="590" y2="352" stroke="#000" stroke-width="1.5"/>
+    <line x1="420" y1="408" x2="590" y2="408" stroke="#000" stroke-width="1.5"/>
+    <text x="435" y="348" font-size="13">2</text>
+    <text x="505" y="385" text-anchor="middle">Manage Enrollment</text>
+    <rect x="420" y="555" width="170" height="110" rx="18" fill="#FFF59D" stroke="#000" stroke-width="1.5"/>
+    <rect x="421.5" y="582" width="167" height="56" fill="#fff" stroke="none"/>
+    <line x1="420" y1="582" x2="590" y2="582" stroke="#000" stroke-width="1.5"/>
+    <line x1="420" y1="638" x2="590" y2="638" stroke="#000" stroke-width="1.5"/>
+    <text x="435" y="578" font-size="13">3</text>
+    <text x="505" y="602" text-anchor="middle">Manage Content</text>
+    <text x="505" y="618" text-anchor="middle">and Syllabus</text>
+    <rect x="760" y="125" width="200" height="50" fill="#FFF59D" stroke="#000" stroke-width="1.5"/>
+    <rect x="760" y="125" width="45" height="50" fill="#D3D3D3" stroke="#000" stroke-width="1.5"/>
+    <text x="782" y="155" text-anchor="middle">D1</text>
+    <text x="882" y="155" text-anchor="middle">Users</text>
+    <rect x="760" y="355" width="200" height="50" fill="#FFF59D" stroke="#000" stroke-width="1.5"/>
+    <rect x="760" y="355" width="45" height="50" fill="#D3D3D3" stroke="#000" stroke-width="1.5"/>
+    <text x="782" y="385" text-anchor="middle">D2</text>
+    <text x="882" y="378" text-anchor="middle">Courses and</text>
+    <text x="882" y="392" text-anchor="middle">Enrollments</text>
+    <rect x="760" y="585" width="200" height="50" fill="#FFF59D" stroke="#000" stroke-width="1.5"/>
+    <rect x="760" y="585" width="45" height="50" fill="#D3D3D3" stroke="#000" stroke-width="1.5"/>
+    <text x="782" y="615" text-anchor="middle">D3</text>
+    <text x="882" y="608" text-anchor="middle">Content and</text>
+    <text x="882" y="622" text-anchor="middle">Syllabus</text>
+  </g>
+
+  <g font-size="12" text-anchor="middle">
+    <text x="290" y="132">account data</text>
+    <text x="290" y="172">confirmation</text>
+    <text x="675" y="132">store accounts</text>
+    <text x="735" y="330">account records</text>
+    <text x="290" y="362">join code</text>
+    <text x="290" y="402">decision notice</text>
+    <text x="290" y="420">enrollment request</text>
+    <text x="300" y="540">approval decision</text>
+    <text x="675" y="386">enrollment records</text>
+    <text x="290" y="580">modules, items,</text>
+    <text x="290" y="594">syllabus files</text>
+    <text x="675" y="602">store content</text>
+    <text x="290" y="636">view / download request</text>
+    <text x="290" y="658">content files</text>
+  </g>
+</svg>

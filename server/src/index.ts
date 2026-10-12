@@ -65,7 +65,7 @@ app.use('/uploads', express.static(uploadsDir));
 
 app.use(errorMiddleware);
 
-const port = Number(process.env.PORT || 4000);
+const port = Number(process.env.PORT || 4001);
 const server = app.listen(port, () => {
   console.log(`gabay-server listening on http://localhost:${port}`);
 });

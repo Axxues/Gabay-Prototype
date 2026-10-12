@@ -1,0 +1,122 @@
+---
+title: Gabay LMS - Simplified ERD (Landscape)
+---
+erDiagram
+    direction LR
+    User {
+        string id PK
+        string email
+        string role
+        string name
+    }
+    Course {
+        string id PK
+        string instructorId FK
+        string code
+        string title
+        string section
+        string joinCode
+    }
+    EnrollmentRequest {
+        string id PK
+        string courseId FK
+        string studentId
+        string status
+    }
+    Module {
+        string id PK
+        string courseId FK
+        string title
+    }
+    ModuleItem {
+        string id PK
+        string moduleId FK
+        string courseFileId FK
+        string title
+        string type
+    }
+    ModuleComment {
+        string id PK
+        string moduleId FK
+        string authorId FK
+        string content
+    }
+    CourseFile {
+        string id PK
+        string courseId FK
+        string folderId FK
+        string name
+    }
+    Activity {
+        string id PK
+        string courseId FK
+        string courseFileId FK
+        string title
+        float pointsPossible
+    }
+    Quiz {
+        string id PK
+        string courseId FK
+        string title
+    }
+    Submission {
+        string id PK
+        string courseId FK
+        string activityId FK
+        string quizId FK
+        string studentId
+        float grade
+    }
+    Announcement {
+        string id PK
+        string courseId FK
+        string courseFileId FK
+        string title
+    }
+    AnnouncementComment {
+        string id PK
+        string announcementId FK
+        string authorId FK
+        string content
+    }
+    Message {
+        string id PK
+        string senderId FK
+        string recipientId FK
+        string courseId FK
+        string subject
+        string messageContent
+    }
+    GroupMessage {
+        string id PK
+        string senderId FK
+        string groupName
+        string subject
+        string messageContent
+    }
+    Syllabus {
+        string id PK
+        string courseId FK
+        int revisionNo
+        string status
+    }
+
+    User }o--o{ Course : ""
+    User }o--o{ Message : ""
+    User }o--o{ GroupMessage : ""
+    Course ||--o{ Message : ""
+    Course ||--o{ EnrollmentRequest : ""
+    Course ||--o{ Syllabus : ""
+    Course ||--o{ Module : ""
+    Module ||--o{ ModuleItem : ""
+    Module ||--o{ ModuleComment : ""
+    ModuleItem }o--o{ CourseFile : ""
+    Course ||--o{ CourseFile : ""
+    CourseFile }o--o{ Activity : ""
+    CourseFile }o--o{ Announcement : ""
+    Course ||--o{ Announcement : ""
+    Announcement ||--o{ AnnouncementComment : ""
+    Course ||--o{ Activity : ""
+    Course ||--o{ Quiz : ""
+    Activity ||--o{ Submission : ""
+    Quiz ||--o{ Submission : ""

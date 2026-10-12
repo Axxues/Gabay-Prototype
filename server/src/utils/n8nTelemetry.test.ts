@@ -37,6 +37,30 @@ describe('n8nTelemetry', () => {
     }
   });
 
+  it('terminates on cyclic execution data instead of overflowing the stack', () => {
+    const result = extractExecutionTelemetry({
+      allowRunning: true,
+      rows: [
+        {
+          id: 999001,
+          status: 'success',
+          startedAt: '2026-09-25T00:00:00.000Z',
+          stoppedAt: '2026-09-25T00:00:01.000Z',
+          data: JSON.stringify([
+            { resultData: '1' },
+            { runData: '2', lastNodeExecuted: '3' },
+            { NodeA: '4' },
+            'Gabay Webhook',
+            '4',
+          ]),
+        },
+      ],
+    });
+
+    expect(result).not.toBeNull();
+    expect(result?.executionId).toBe(999001);
+  });
+
   it('extracts running execution telemetry with active status when allowRunning is true', () => {
     const result = extractExecutionTelemetry({
       allowRunning: true,

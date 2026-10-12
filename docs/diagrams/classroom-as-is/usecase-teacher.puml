@@ -1,0 +1,66 @@
+@startuml
+title Google Classroom (As-Is) - Teacher Use Case
+left to right direction
+skinparam usecase {
+  BackgroundColor #8AC9F5
+  BorderColor black
+}
+skinparam actor {
+  BackgroundColor #8AC9F5
+  BorderColor black
+}
+skinparam rectangle {
+  BackgroundColor white
+  BorderColor black
+}
+skinparam arrowColor black
+skinparam linetype polyline
+skinparam nodesep 6
+skinparam ranksep 12
+
+actor "Teacher" as Teacher
+
+rectangle "Google Classroom" {
+  together {
+    usecase "Create Class" as UC1
+    usecase "Share Invite Code / Link" as UC2
+    usecase "Manage People\n(Add co-teacher / Remove student)" as UC3
+  }
+  together {
+    usecase "Create Assignment" as UC4
+    usecase "Create Quiz Assignment" as UC4q
+    usecase "Create Question" as UC4u
+    usecase "Post Material" as UC4m
+  }
+  together {
+    usecase "Post Stream Announcement" as UC5
+    usecase "Add / Reply Comment" as UC5b
+  }
+  together {
+    usecase "Grade Submission" as UC6
+    usecase "Return Submission" as UC6b
+  }
+  together {
+    usecase "Schedule Assignment" as UC7
+  }
+  together {
+    usecase "Archive Class" as UC8
+  }
+}
+
+Teacher --> UC1
+Teacher --> UC2
+Teacher --> UC3
+Teacher --> UC4
+Teacher --> UC4q
+Teacher --> UC4u
+Teacher --> UC4m
+Teacher --> UC5
+Teacher --> UC6
+Teacher --> UC8
+
+UC4 ..> UC7 : <<extend>>
+UC4q ..> UC7 : <<extend>>
+UC5 ..> UC5b : <<extend>>
+UC6 ..> UC6b : <<include>>
+@enduml

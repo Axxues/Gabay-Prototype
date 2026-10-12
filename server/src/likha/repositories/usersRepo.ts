@@ -1,5 +1,5 @@
 import { LIKHA_URL } from '../../env.js';
-import { getLikhaAdminToken } from '../client.js';
+import { likhaFetch } from '../client.js';
 import { ApiError } from '../../utils/errors.js';
 import { signToken } from '../../middleware/auth.js';
 
@@ -97,11 +97,7 @@ export async function authenticateUser(email: string, password: string): Promise
 
 export async function getUserById(id: string): Promise<GabayPublicUser | null> {
   try {
-    const adminToken = await getLikhaAdminToken();
-    const res = await fetch(`${LIKHA_URL}/users/${encodeURIComponent(id)}`, {
-      headers: { Authorization: `Bearer ${adminToken}` },
-    });
-
+    const res = await likhaFetch(`/users/${encodeURIComponent(id)}`);
     if (!res.ok) return null;
 
     const json = (await res.json()) as any;
@@ -114,11 +110,7 @@ export async function getUserById(id: string): Promise<GabayPublicUser | null> {
 
 export async function getUserByEmail(email: string): Promise<GabayPublicUser | null> {
   try {
-    const adminToken = await getLikhaAdminToken();
-    const res = await fetch(`${LIKHA_URL}/users?filter[email][_eq]=${encodeURIComponent(email)}&limit=1`, {
-      headers: { Authorization: `Bearer ${adminToken}` },
-    });
-
+    const res = await likhaFetch(`/users?filter[email][_eq]=${encodeURIComponent(email)}&limit=1`);
     if (!res.ok) return null;
 
     const json = (await res.json()) as any;
@@ -131,11 +123,7 @@ export async function getUserByEmail(email: string): Promise<GabayPublicUser | n
 
 export async function getAllUsers(): Promise<GabayPublicUser[]> {
   try {
-    const adminToken = await getLikhaAdminToken();
-    const res = await fetch(`${LIKHA_URL}/users?limit=250&sort=first_name`, {
-      headers: { Authorization: `Bearer ${adminToken}` },
-    });
-
+    const res = await likhaFetch('/users?limit=250&sort=first_name');
     if (!res.ok) return [];
 
     const json = (await res.json()) as any;
@@ -157,7 +145,6 @@ export async function createLikhaUser(data: {
   avatar?: string;
   banner?: string;
 }): Promise<GabayPublicUser> {
-  const adminToken = await getLikhaAdminToken();
   const [firstName, ...lastParts] = data.name.trim().split(' ');
   const lastName = lastParts.join(' ') || '';
 
@@ -174,12 +161,8 @@ export async function createLikhaUser(data: {
   };
   if (data.password) body.password = data.password;
 
-  const res = await fetch(`${LIKHA_URL}/users`, {
+  const res = await likhaFetch('/users', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${adminToken}`,
-    },
     body: JSON.stringify(body),
   });
 
@@ -196,7 +179,6 @@ export async function updateLikhaUser(
   id: string,
   updates: Partial<GabayPublicUser> & { password?: string }
 ): Promise<GabayPublicUser> {
-  const adminToken = await getLikhaAdminToken();
   const body: any = {};
 
   if (updates.name !== undefined) {
@@ -215,12 +197,8 @@ export async function updateLikhaUser(
   }
   if (updates.password) body.password = updates.password;
 
-  const res = await fetch(`${LIKHA_URL}/users/${encodeURIComponent(id)}`, {
+  const res = await likhaFetch(`/users/${encodeURIComponent(id)}`, {
     method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${adminToken}`,
-    },
     body: JSON.stringify(body),
   });
 
@@ -235,10 +213,8 @@ export async function updateLikhaUser(
 
 export async function deleteLikhaUser(id: string): Promise<boolean> {
   try {
-    const adminToken = await getLikhaAdminToken();
-    const res = await fetch(`${LIKHA_URL}/users/${encodeURIComponent(id)}`, {
+    const res = await likhaFetch(`/users/${encodeURIComponent(id)}`, {
       method: 'DELETE',
-      headers: { Authorization: `Bearer ${adminToken}` },
     });
     return res.ok;
   } catch {

@@ -45,23 +45,46 @@ function getNodeType(name: string): TelemetryTask['nodeType'] {
   return 'default';
 }
 
-function dereference(ref: unknown, data: unknown[]): unknown {
+const DEREF_MAX_DEPTH = 50;
+
+function dereference(ref: unknown, data: unknown[], seen?: Set<unknown>, depth?: number): unknown {
+  const visited = seen ?? new Set<unknown>();
+  const level = depth ?? 0;
+  if (level > DEREF_MAX_DEPTH) return ref;
   if (typeof ref === 'string' && /^\d+$/.test(ref)) {
     const idx = parseInt(ref, 10);
     if (idx >= 0 && idx < data.length) {
-      return dereference(data[idx], data);
+      const target = data[idx];
+      if (visited.has(target)) return ref;
+      visited.add(target);
+      return dereference(target, data, visited, level + 1);
     }
   } else if (Array.isArray(ref)) {
-    return ref.map((item) => dereference(item, data));
+    if (visited.has(ref)) return ref;
+    visited.add(ref);
+    const out = ref.map((item) => dereference(item, data, visited, level + 1));
+    visited.delete(ref);
+    return out;
   } else if (ref && typeof ref === 'object') {
+    if (visited.has(ref)) return ref;
+    visited.add(ref);
     const obj = ref as Record<string, unknown>;
     const res: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(obj)) {
-      res[k] = dereference(v, data);
+      res[k] = dereference(v, data, visited, level + 1);
     }
+    visited.delete(ref);
     return res;
   }
   return ref;
+}
+
+export interface TelemetryExecutionRow {
+  id: number;
+  status: string;
+  startedAt: string | null;
+  stoppedAt: string | null;
+  data: string;
 }
 
 export function extractExecutionTelemetry(opts: {
@@ -69,29 +92,28 @@ export function extractExecutionTelemetry(opts: {
   sessionId?: string;
   dbPath?: string;
   allowRunning?: boolean;
+  rows?: TelemetryExecutionRow[];
 }): TelemetryExecution | null {
   const dbPath = opts.dbPath || process.env.N8N_SQLITE_PATH || 'C:/Users/JV/n8n_data/database.sqlite';
 
   let db: DatabaseSync | null = null;
+  let rows: TelemetryExecutionRow[];
   try {
-    db = new DatabaseSync(dbPath, { readOnly: true });
-
-    const rows = db
-      .prepare(
-        `SELECT e.id, e.status, e.startedAt, e.stoppedAt, d.data
-         FROM execution_entity e
-         JOIN execution_data d ON e.id = d.executionId
-         WHERE e.mode = 'webhook'
-         ORDER BY e.id DESC
-         LIMIT 10`
-      )
-      .all() as Array<{
-      id: number;
-      status: string;
-      startedAt: string | null;
-      stoppedAt: string | null;
-      data: string;
-    }>;
+    if (opts.rows) {
+      rows = opts.rows;
+    } else {
+      db = new DatabaseSync(dbPath, { readOnly: true });
+      rows = db
+        .prepare(
+          `SELECT e.id, e.status, e.startedAt, e.stoppedAt, d.data
+           FROM execution_entity e
+           JOIN execution_data d ON e.id = d.executionId
+           WHERE e.mode = 'webhook'
+           ORDER BY e.id DESC
+           LIMIT 10`
+        )
+        .all() as unknown as TelemetryExecutionRow[];
+    }
 
     const finishedRows = rows.filter((r) => r.status === 'success' || r.status === 'error');
     const runningRows = rows.filter((r) => r.status === 'running');
@@ -116,7 +138,7 @@ export function extractExecutionTelemetry(opts: {
       }
     }
 
-    if (!targetRow && opts.sessionId) {
+    if (!targetRow && !opts.requestId && opts.sessionId) {
       for (const row of rows) {
         if (row.data.includes(opts.sessionId)) {
           if (opts.allowRunning || row.status === 'success' || row.status === 'error') {

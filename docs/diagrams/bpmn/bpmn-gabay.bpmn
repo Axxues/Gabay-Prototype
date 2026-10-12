@@ -1,0 +1,241 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Gabay LMS - BPMN 2.0 collaboration: one pool per role.
+     Source flows: docs/diagrams/activity-{student,faculty,admin,staff}.puml
+     The Faculty / Admin pool forks after the course shell: enrollment
+     handling and content/assessment run as independent branches.
+     The shared Staff / All Roles pool holds the support views (calendar,
+     inbox, RAG, history) once for every role. The solo Admin
+     swimlane keeps account management only. -->
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+    xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+    xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+    xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+    id="Gabay_Defs" targetNamespace="http://gabay/lms">
+  <collaboration id="Gabay_Collab" name="Gabay LMS">
+    <participant id="Part_Student" name="Student" processRef="Proc_Student" />
+    <participant id="Part_Faculty" name="Faculty / Admin" processRef="Proc_Faculty" />
+    <participant id="Part_Admin" name="Admin" processRef="Proc_Admin" />
+    <participant id="Part_Staff" name="Staff / All Roles" processRef="Proc_Staff" />
+    <messageFlow id="MF_Request" name="Enrollment request" sourceRef="S_SendReq" targetRef="F_RevReq" />
+    <messageFlow id="MF_Decision" name="Approval decision" sourceRef="F_NotifyDec" targetRef="S_RecvDec" />
+    <messageFlow id="MF_Grades" name="Released grades" sourceRef="F_ReleaseGr" targetRef="S_RecvGrades" />
+  </collaboration>
+
+  <process id="Proc_Student" name="Student" isExecutable="false">
+    <startEvent id="S_Start" name="Start"><outgoing>SF1</outgoing></startEvent>
+    <task id="S_Login" name="Log in"><incoming>SF1</incoming><incoming>SF3</incoming><outgoing>SF2</outgoing></task>
+    <exclusiveGateway id="S_Valid" name="Valid account?"><incoming>SF2</incoming><outgoing>SF3</outgoing><outgoing>SF4</outgoing></exclusiveGateway>
+    <task id="S_Join" name="Join course via code"><incoming>SF4</incoming><outgoing>SF5</outgoing></task>
+    <sendTask id="S_SendReq" name="Send enrollment request"><incoming>SF5</incoming><outgoing>SF6</outgoing></sendTask>
+    <receiveTask id="S_RecvDec" name="Receive decision"><incoming>SF6</incoming><outgoing>SF7</outgoing></receiveTask>
+    <exclusiveGateway id="S_Appr" name="Approved?"><incoming>SF7</incoming><outgoing>SF8</outgoing><outgoing>SF9</outgoing></exclusiveGateway>
+    <endEvent id="S_EndRej" name="Not enrolled"><incoming>SF8</incoming></endEvent>
+    <task id="S_View" name="View modules and items"><incoming>SF9</incoming><outgoing>SF10</outgoing></task>
+    <task id="S_Take" name="Take activity / quiz / exam"><incoming>SF10</incoming><outgoing>SF11</outgoing></task>
+    <task id="S_Submit" name="Submit answers / files"><incoming>SF11</incoming><outgoing>SF12</outgoing></task>
+    <receiveTask id="S_RecvGrades" name="Receive released grades"><incoming>SF12</incoming><outgoing>SF13</outgoing></receiveTask>
+    <task id="S_Grades" name="View grades and SPR"><incoming>SF13</incoming><outgoing>SF14</outgoing></task>
+    <endEvent id="S_End" name="End"><incoming>SF14</incoming></endEvent>
+    <sequenceFlow id="SF1" sourceRef="S_Start" targetRef="S_Login" />
+    <sequenceFlow id="SF2" sourceRef="S_Login" targetRef="S_Valid" />
+    <sequenceFlow id="SF3" name="no" sourceRef="S_Valid" targetRef="S_Login" />
+    <sequenceFlow id="SF4" sourceRef="S_Valid" targetRef="S_Join" />
+    <sequenceFlow id="SF5" sourceRef="S_Join" targetRef="S_SendReq" />
+    <sequenceFlow id="SF6" sourceRef="S_SendReq" targetRef="S_RecvDec" />
+    <sequenceFlow id="SF7" sourceRef="S_RecvDec" targetRef="S_Appr" />
+    <sequenceFlow id="SF8" name="no" sourceRef="S_Appr" targetRef="S_EndRej" />
+    <sequenceFlow id="SF9" name="yes" sourceRef="S_Appr" targetRef="S_View" />
+    <sequenceFlow id="SF10" sourceRef="S_View" targetRef="S_Take" />
+    <sequenceFlow id="SF11" sourceRef="S_Take" targetRef="S_Submit" />
+    <sequenceFlow id="SF12" sourceRef="S_Submit" targetRef="S_RecvGrades" />
+    <sequenceFlow id="SF13" sourceRef="S_RecvGrades" targetRef="S_Grades" />
+    <sequenceFlow id="SF14" sourceRef="S_Grades" targetRef="S_End" />
+  </process>
+
+  <process id="Proc_Faculty" name="Faculty / Admin" isExecutable="false">
+    <startEvent id="F_Start" name="Start"><outgoing>FF1</outgoing></startEvent>
+    <task id="F_Login" name="Log in"><incoming>FF1</incoming><incoming>FF3</incoming><outgoing>FF2</outgoing></task>
+    <exclusiveGateway id="F_Valid" name="Valid account?"><incoming>FF2</incoming><outgoing>FF3</outgoing><outgoing>FF4</outgoing></exclusiveGateway>
+    <task id="F_Shell" name="Create course shell + join code"><incoming>FF4</incoming><outgoing>FF5</outgoing></task>
+    <parallelGateway id="F_Fork"><incoming>FF5</incoming><outgoing>FF6</outgoing><outgoing>FF7</outgoing></parallelGateway>
+    <task id="F_Publish" name="Publish modules and syllabus"><incoming>FF6</incoming><outgoing>FF14</outgoing></task>
+    <task id="F_Assess" name="Create activity / quiz / exam"><incoming>FF14</incoming><outgoing>FF15</outgoing></task>
+    <task id="F_Grade" name="Grade submissions"><incoming>FF15</incoming><outgoing>FF16</outgoing></task>
+    <sendTask id="F_ReleaseGr" name="Release grades and SPR"><incoming>FF16</incoming><outgoing>FF17</outgoing></sendTask>
+    <endEvent id="F_EndB" name="End"><incoming>FF17</incoming></endEvent>
+    <receiveTask id="F_RevReq" name="Receive enrollment request"><incoming>FF7</incoming><outgoing>FF8</outgoing></receiveTask>
+    <exclusiveGateway id="F_Decide" name="Approve?"><incoming>FF8</incoming><outgoing>FF9</outgoing><outgoing>FF10</outgoing></exclusiveGateway>
+    <task id="F_Enroll" name="Enroll student"><incoming>FF9</incoming><outgoing>FF12</outgoing></task>
+    <sendTask id="F_NotifyDec" name="Notify decision"><incoming>FF12</incoming><outgoing>FF13</outgoing></sendTask>
+    <endEvent id="F_EndA" name="End"><incoming>FF13</incoming></endEvent>
+    <sendTask id="F_Reject" name="Notify rejection"><incoming>FF10</incoming><outgoing>FF11</outgoing></sendTask>
+    <endEvent id="F_EndRej" name="End"><incoming>FF11</incoming></endEvent>
+    <sequenceFlow id="FF1" sourceRef="F_Start" targetRef="F_Login" />
+    <sequenceFlow id="FF2" sourceRef="F_Login" targetRef="F_Valid" />
+    <sequenceFlow id="FF3" name="no" sourceRef="F_Valid" targetRef="F_Login" />
+    <sequenceFlow id="FF4" sourceRef="F_Valid" targetRef="F_Shell" />
+    <sequenceFlow id="FF5" sourceRef="F_Shell" targetRef="F_Fork" />
+    <sequenceFlow id="FF6" sourceRef="F_Fork" targetRef="F_Publish" />
+    <sequenceFlow id="FF7" sourceRef="F_Fork" targetRef="F_RevReq" />
+    <sequenceFlow id="FF8" sourceRef="F_RevReq" targetRef="F_Decide" />
+    <sequenceFlow id="FF9" name="yes" sourceRef="F_Decide" targetRef="F_Enroll" />
+    <sequenceFlow id="FF10" name="no" sourceRef="F_Decide" targetRef="F_Reject" />
+    <sequenceFlow id="FF11" sourceRef="F_Reject" targetRef="F_EndRej" />
+    <sequenceFlow id="FF12" sourceRef="F_Enroll" targetRef="F_NotifyDec" />
+    <sequenceFlow id="FF13" sourceRef="F_NotifyDec" targetRef="F_EndA" />
+    <sequenceFlow id="FF14" sourceRef="F_Publish" targetRef="F_Assess" />
+    <sequenceFlow id="FF15" sourceRef="F_Assess" targetRef="F_Grade" />
+    <sequenceFlow id="FF16" sourceRef="F_Grade" targetRef="F_ReleaseGr" />
+    <sequenceFlow id="FF17" sourceRef="F_ReleaseGr" targetRef="F_EndB" />
+  </process>
+
+  <process id="Proc_Admin" name="Admin" isExecutable="false">
+    <startEvent id="A_Start" name="Start"><outgoing>AF1</outgoing></startEvent>
+    <task id="A_Login" name="Log in"><incoming>AF1</incoming><incoming>AF3</incoming><outgoing>AF2</outgoing></task>
+    <exclusiveGateway id="A_Valid" name="Valid account?"><incoming>AF2</incoming><outgoing>AF3</outgoing><outgoing>AF4</outgoing></exclusiveGateway>
+    <task id="A_Manage" name="Create / edit / deactivate account"><incoming>AF4</incoming><outgoing>AF5</outgoing></task>
+    <task id="A_Persist" name="Validate and persist"><incoming>AF5</incoming><outgoing>AF6</outgoing></task>
+    <endEvent id="A_End" name="End"><incoming>AF6</incoming></endEvent>
+    <sequenceFlow id="AF1" sourceRef="A_Start" targetRef="A_Login" />
+    <sequenceFlow id="AF2" sourceRef="A_Login" targetRef="A_Valid" />
+    <sequenceFlow id="AF3" name="no" sourceRef="A_Valid" targetRef="A_Login" />
+    <sequenceFlow id="AF4" sourceRef="A_Valid" targetRef="A_Manage" />
+    <sequenceFlow id="AF5" sourceRef="A_Manage" targetRef="A_Persist" />
+    <sequenceFlow id="AF6" sourceRef="A_Persist" targetRef="A_End" />
+  </process>
+
+  <process id="Proc_Staff" name="Staff / All Roles" isExecutable="false">
+    <startEvent id="T_Start" name="Start"><outgoing>TF1</outgoing></startEvent>
+    <task id="T_Login" name="Log in"><incoming>TF1</incoming><incoming>TF3</incoming><outgoing>TF2</outgoing></task>
+    <exclusiveGateway id="T_Valid" name="Valid account?"><incoming>TF2</incoming><outgoing>TF3</outgoing><outgoing>TF4</outgoing></exclusiveGateway>
+    <parallelGateway id="T_Fork"><incoming>TF4</incoming><outgoing>TF5a</outgoing><outgoing>TF5b</outgoing><outgoing>TF5c</outgoing><outgoing>TF5d</outgoing></parallelGateway>
+    <task id="T_Cal" name="View calendar"><incoming>TF5a</incoming><outgoing>TF6a</outgoing></task>
+    <task id="T_Inbox" name="View inbox"><incoming>TF5b</incoming><outgoing>TF6b</outgoing></task>
+    <task id="T_RAG" name="Query Gabay RAG"><incoming>TF5c</incoming><outgoing>TF6c</outgoing></task>
+    <task id="T_Hist" name="View history"><incoming>TF5d</incoming><outgoing>TF6d</outgoing></task>
+    <parallelGateway id="T_Join"><incoming>TF6a</incoming><incoming>TF6b</incoming><incoming>TF6c</incoming><incoming>TF6d</incoming><outgoing>TF7</outgoing></parallelGateway>
+    <endEvent id="T_End" name="End"><incoming>TF7</incoming></endEvent>
+    <sequenceFlow id="TF1" sourceRef="T_Start" targetRef="T_Login" />
+    <sequenceFlow id="TF2" sourceRef="T_Login" targetRef="T_Valid" />
+    <sequenceFlow id="TF3" name="no" sourceRef="T_Valid" targetRef="T_Login" />
+    <sequenceFlow id="TF4" sourceRef="T_Valid" targetRef="T_Fork" />
+    <sequenceFlow id="TF5a" sourceRef="T_Fork" targetRef="T_Cal" />
+    <sequenceFlow id="TF5b" sourceRef="T_Fork" targetRef="T_Inbox" />
+    <sequenceFlow id="TF5c" sourceRef="T_Fork" targetRef="T_RAG" />
+    <sequenceFlow id="TF5d" sourceRef="T_Fork" targetRef="T_Hist" />
+    <sequenceFlow id="TF6a" sourceRef="T_Cal" targetRef="T_Join" />
+    <sequenceFlow id="TF6b" sourceRef="T_Inbox" targetRef="T_Join" />
+    <sequenceFlow id="TF6c" sourceRef="T_RAG" targetRef="T_Join" />
+    <sequenceFlow id="TF6d" sourceRef="T_Hist" targetRef="T_Join" />
+    <sequenceFlow id="TF7" sourceRef="T_Join" targetRef="T_End" />
+  </process>
+
+  <bpmndi:BPMNDiagram id="Gabay_Diagram">
+    <bpmndi:BPMNPlane id="Gabay_Plane" bpmnElement="Gabay_Collab">
+      <bpmndi:BPMNShape id="Sh_Part_S" bpmnElement="Part_Student" isHorizontal="true"><dc:Bounds x="20" y="20" width="2040" height="200" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_Part_F" bpmnElement="Part_Faculty" isHorizontal="true"><dc:Bounds x="20" y="234" width="2040" height="260" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_Part_A" bpmnElement="Part_Admin" isHorizontal="true"><dc:Bounds x="20" y="508" width="2040" height="200" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_Part_T" bpmnElement="Part_Staff" isHorizontal="true"><dc:Bounds x="20" y="722" width="2040" height="320" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_S_Start" bpmnElement="S_Start"><dc:Bounds x="60" y="82" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_S_Login" bpmnElement="S_Login"><dc:Bounds x="130" y="65" width="110" height="70" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_S_Valid" bpmnElement="S_Valid" isMarkerVisible="true"><dc:Bounds x="270" y="75" width="50" height="50" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_S_Join" bpmnElement="S_Join"><dc:Bounds x="350" y="65" width="110" height="70" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_S_SendReq" bpmnElement="S_SendReq"><dc:Bounds x="490" y="65" width="110" height="70" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_S_RecvDec" bpmnElement="S_RecvDec"><dc:Bounds x="880" y="65" width="110" height="70" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_S_Appr" bpmnElement="S_Appr" isMarkerVisible="true"><dc:Bounds x="1020" y="75" width="50" height="50" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_S_EndRej" bpmnElement="S_EndRej"><dc:Bounds x="1027" y="150" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_S_View" bpmnElement="S_View"><dc:Bounds x="1100" y="65" width="110" height="70" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_S_Take" bpmnElement="S_Take"><dc:Bounds x="1240" y="65" width="110" height="70" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_S_Submit" bpmnElement="S_Submit"><dc:Bounds x="1380" y="65" width="110" height="70" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_S_RecvGrades" bpmnElement="S_RecvGrades"><dc:Bounds x="1520" y="65" width="110" height="70" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_S_Grades" bpmnElement="S_Grades"><dc:Bounds x="1660" y="65" width="110" height="70" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_S_End" bpmnElement="S_End"><dc:Bounds x="1800" y="82" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_F_Start" bpmnElement="F_Start"><dc:Bounds x="60" y="272" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_F_Login" bpmnElement="F_Login"><dc:Bounds x="145" y="255" width="110" height="70" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_F_Valid" bpmnElement="F_Valid" isMarkerVisible="true"><dc:Bounds x="300" y="265" width="50" height="50" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_F_Shell" bpmnElement="F_Shell"><dc:Bounds x="395" y="255" width="110" height="70" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_F_Fork" bpmnElement="F_Fork" isMarkerVisible="true"><dc:Bounds x="560" y="265" width="50" height="50" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_F_Reject" bpmnElement="F_Reject"><dc:Bounds x="655" y="255" width="110" height="70" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_F_EndRej" bpmnElement="F_EndRej"><dc:Bounds x="810" y="272" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_F_Publish" bpmnElement="F_Publish"><dc:Bounds x="960" y="255" width="110" height="70" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_F_Assess" bpmnElement="F_Assess"><dc:Bounds x="1115" y="255" width="110" height="70" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_F_Grade" bpmnElement="F_Grade"><dc:Bounds x="1270" y="255" width="110" height="70" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_F_ReleaseGr" bpmnElement="F_ReleaseGr"><dc:Bounds x="1520" y="255" width="110" height="70" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_F_EndB" bpmnElement="F_EndB"><dc:Bounds x="1675" y="272" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_F_RevReq" bpmnElement="F_RevReq"><dc:Bounds x="490" y="385" width="110" height="70" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_F_Decide" bpmnElement="F_Decide" isMarkerVisible="true"><dc:Bounds x="630" y="385" width="50" height="50" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_F_Enroll" bpmnElement="F_Enroll"><dc:Bounds x="740" y="385" width="110" height="70" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_F_NotifyDec" bpmnElement="F_NotifyDec"><dc:Bounds x="880" y="385" width="110" height="70" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_F_EndA" bpmnElement="F_EndA"><dc:Bounds x="1020" y="402" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_A_Start" bpmnElement="A_Start"><dc:Bounds x="60" y="622" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_A_Login" bpmnElement="A_Login"><dc:Bounds x="130" y="605" width="110" height="70" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_A_Valid" bpmnElement="A_Valid" isMarkerVisible="true"><dc:Bounds x="270" y="615" width="50" height="50" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_A_Manage" bpmnElement="A_Manage"><dc:Bounds x="350" y="605" width="110" height="70" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_A_Persist" bpmnElement="A_Persist"><dc:Bounds x="490" y="605" width="110" height="70" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_A_End" bpmnElement="A_End"><dc:Bounds x="630" y="622" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_T_Start" bpmnElement="T_Start"><dc:Bounds x="60" y="864" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_T_Login" bpmnElement="T_Login"><dc:Bounds x="130" y="847" width="110" height="70" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_T_Valid" bpmnElement="T_Valid" isMarkerVisible="true"><dc:Bounds x="270" y="857" width="50" height="50" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_T_Fork" bpmnElement="T_Fork" isMarkerVisible="true"><dc:Bounds x="350" y="857" width="50" height="50" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_T_Cal" bpmnElement="T_Cal"><dc:Bounds x="450" y="742" width="110" height="60" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_T_Inbox" bpmnElement="T_Inbox"><dc:Bounds x="450" y="812" width="110" height="60" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_T_RAG" bpmnElement="T_RAG"><dc:Bounds x="450" y="880" width="110" height="60" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_T_Hist" bpmnElement="T_Hist"><dc:Bounds x="450" y="950" width="110" height="60" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_T_Join" bpmnElement="T_Join" isMarkerVisible="true"><dc:Bounds x="650" y="857" width="50" height="50" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sh_T_End" bpmnElement="T_End"><dc:Bounds x="740" y="864" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="E_SF1" bpmnElement="SF1"><di:waypoint x="96" y="100" /><di:waypoint x="130" y="100" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_SF2" bpmnElement="SF2"><di:waypoint x="240" y="100" /><di:waypoint x="270" y="100" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_SF3" bpmnElement="SF3"><di:waypoint x="295" y="75" /><di:waypoint x="295" y="40" /><di:waypoint x="185" y="40" /><di:waypoint x="185" y="65" /><bpmndi:BPMNLabel><dc:Bounds x="222" y="28" width="20" height="14" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_SF4" bpmnElement="SF4"><di:waypoint x="320" y="100" /><di:waypoint x="350" y="100" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_SF5" bpmnElement="SF5"><di:waypoint x="460" y="100" /><di:waypoint x="490" y="100" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_SF6" bpmnElement="SF6"><di:waypoint x="600" y="100" /><di:waypoint x="880" y="100" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_SF7" bpmnElement="SF7"><di:waypoint x="990" y="100" /><di:waypoint x="1020" y="100" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_SF8" bpmnElement="SF8"><di:waypoint x="1045" y="125" /><di:waypoint x="1045" y="150" /><bpmndi:BPMNLabel><dc:Bounds x="1050" y="132" width="20" height="14" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_SF9" bpmnElement="SF9"><di:waypoint x="1070" y="100" /><di:waypoint x="1100" y="100" /><bpmndi:BPMNLabel><dc:Bounds x="1074" y="80" width="24" height="14" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_SF10" bpmnElement="SF10"><di:waypoint x="1210" y="100" /><di:waypoint x="1240" y="100" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_SF11" bpmnElement="SF11"><di:waypoint x="1350" y="100" /><di:waypoint x="1380" y="100" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_SF12" bpmnElement="SF12"><di:waypoint x="1490" y="100" /><di:waypoint x="1520" y="100" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_SF13" bpmnElement="SF13"><di:waypoint x="1630" y="100" /><di:waypoint x="1660" y="100" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_SF14" bpmnElement="SF14"><di:waypoint x="1770" y="100" /><di:waypoint x="1800" y="100" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_FF1" bpmnElement="FF1"><di:waypoint x="96" y="290" /><di:waypoint x="145" y="290" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_FF2" bpmnElement="FF2"><di:waypoint x="255" y="290" /><di:waypoint x="300" y="290" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_FF3" bpmnElement="FF3"><di:waypoint x="325" y="315" /><di:waypoint x="325" y="355" /><di:waypoint x="200" y="355" /><di:waypoint x="200" y="325" /><bpmndi:BPMNLabel><dc:Bounds x="240" y="357" width="20" height="14" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_FF4" bpmnElement="FF4"><di:waypoint x="350" y="290" /><di:waypoint x="395" y="290" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_FF5" bpmnElement="FF5"><di:waypoint x="505" y="290" /><di:waypoint x="560" y="290" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_FF6" bpmnElement="FF6"><di:waypoint x="585" y="265" /><di:waypoint x="585" y="244" /><di:waypoint x="1015" y="244" /><di:waypoint x="1015" y="255" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_FF7" bpmnElement="FF7"><di:waypoint x="585" y="315" /><di:waypoint x="585" y="385" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_FF8" bpmnElement="FF8"><di:waypoint x="600" y="420" /><di:waypoint x="630" y="420" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_FF9" bpmnElement="FF9"><di:waypoint x="680" y="410" /><di:waypoint x="740" y="410" /><bpmndi:BPMNLabel><dc:Bounds x="700" y="390" width="24" height="14" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_FF10" bpmnElement="FF10"><di:waypoint x="655" y="385" /><di:waypoint x="655" y="350" /><di:waypoint x="710" y="350" /><di:waypoint x="710" y="325" /><bpmndi:BPMNLabel><dc:Bounds x="700" y="336" width="20" height="14" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_FF11" bpmnElement="FF11"><di:waypoint x="765" y="290" /><di:waypoint x="810" y="290" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_FF12" bpmnElement="FF12"><di:waypoint x="850" y="420" /><di:waypoint x="880" y="420" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_FF13" bpmnElement="FF13"><di:waypoint x="990" y="420" /><di:waypoint x="1020" y="420" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_FF14" bpmnElement="FF14"><di:waypoint x="1070" y="290" /><di:waypoint x="1115" y="290" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_FF15" bpmnElement="FF15"><di:waypoint x="1225" y="290" /><di:waypoint x="1270" y="290" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_FF16" bpmnElement="FF16"><di:waypoint x="1380" y="290" /><di:waypoint x="1520" y="290" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_FF17" bpmnElement="FF17"><di:waypoint x="1630" y="290" /><di:waypoint x="1675" y="290" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_AF1" bpmnElement="AF1"><di:waypoint x="96" y="640" /><di:waypoint x="130" y="640" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_AF2" bpmnElement="AF2"><di:waypoint x="240" y="640" /><di:waypoint x="270" y="640" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_AF3" bpmnElement="AF3"><di:waypoint x="295" y="615" /><di:waypoint x="295" y="580" /><di:waypoint x="185" y="580" /><di:waypoint x="185" y="605" /><bpmndi:BPMNLabel><dc:Bounds x="222" y="568" width="20" height="14" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_AF4" bpmnElement="AF4"><di:waypoint x="320" y="640" /><di:waypoint x="350" y="640" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_AF5" bpmnElement="AF5"><di:waypoint x="460" y="640" /><di:waypoint x="490" y="640" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_AF6" bpmnElement="AF6"><di:waypoint x="600" y="640" /><di:waypoint x="630" y="640" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_TF1" bpmnElement="TF1"><di:waypoint x="96" y="882" /><di:waypoint x="130" y="882" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_TF2" bpmnElement="TF2"><di:waypoint x="240" y="882" /><di:waypoint x="270" y="882" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_TF3" bpmnElement="TF3"><di:waypoint x="295" y="857" /><di:waypoint x="295" y="812" /><di:waypoint x="185" y="812" /><di:waypoint x="185" y="847" /><bpmndi:BPMNLabel><dc:Bounds x="222" y="800" width="20" height="14" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_TF4" bpmnElement="TF4"><di:waypoint x="320" y="882" /><di:waypoint x="350" y="882" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_TF5a" bpmnElement="TF5a"><di:waypoint x="400" y="882" /><di:waypoint x="450" y="772" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_TF5b" bpmnElement="TF5b"><di:waypoint x="400" y="882" /><di:waypoint x="450" y="842" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_TF5c" bpmnElement="TF5c"><di:waypoint x="400" y="882" /><di:waypoint x="450" y="910" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_TF5d" bpmnElement="TF5d"><di:waypoint x="400" y="882" /><di:waypoint x="450" y="980" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_TF6a" bpmnElement="TF6a"><di:waypoint x="560" y="772" /><di:waypoint x="650" y="882" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_TF6b" bpmnElement="TF6b"><di:waypoint x="560" y="842" /><di:waypoint x="650" y="882" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_TF6c" bpmnElement="TF6c"><di:waypoint x="560" y="910" /><di:waypoint x="650" y="882" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_TF6d" bpmnElement="TF6d"><di:waypoint x="560" y="980" /><di:waypoint x="650" y="882" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_TF7" bpmnElement="TF7"><di:waypoint x="700" y="882" /><di:waypoint x="740" y="882" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_MF_Request" bpmnElement="MF_Request"><di:waypoint x="545" y="135" /><di:waypoint x="545" y="385" /><bpmndi:BPMNLabel><dc:Bounds x="560" y="150" width="120" height="14" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_MF_Decision" bpmnElement="MF_Decision"><di:waypoint x="935" y="385" /><di:waypoint x="935" y="135" /><bpmndi:BPMNLabel><dc:Bounds x="805" y="150" width="120" height="14" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_MF_Grades" bpmnElement="MF_Grades"><di:waypoint x="1575" y="255" /><di:waypoint x="1575" y="135" /><bpmndi:BPMNLabel><dc:Bounds x="1590" y="150" width="120" height="14" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>
