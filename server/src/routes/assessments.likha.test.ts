@@ -27,10 +27,12 @@ describe('Likha Modules & Assessments Repositories', () => {
   });
 
   it('records student submission and allows faculty grading in Likha ERP', async () => {
+    const activities = await getActivities('c-cs101');
+    const actId = activities[0]?.id;
     const sub = await recordSubmission({
       courseId: 'c-cs101',
       studentId: 'usr-stud-1',
-      activityId: 'act-101-1',
+      activityId: actId,
       status: 'submitted',
       answers: { q1: 'Sparse uses lexical matching, dense uses vector embeddings.' },
     });

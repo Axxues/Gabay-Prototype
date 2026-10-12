@@ -29,10 +29,27 @@ const app = express();
 // so anything bigger than 35mb gets an honest 413.
 app.use(express.json({ limit: '35mb' }));
 
+// ============================================================================
+// 1. DEDICATED RAG MICROSERVICE & ANALYTICAL TELEMETRY ENGINE
+// ============================================================================
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true });
+  res.json({
+    ok: true,
+    service: 'gabay-rag-microservice',
+    port: 4001,
+    backend: 'Likha ERP (https://gabay.zyberlab.com)',
+  });
 });
 
+app.use('/api/rag', ragRouter);
+app.use('/api/rag-baseline', ragBaselineRouter);
+app.use('/api/rag-aggregate', ragAggregateRouter);
+app.use('/api/rag-export', ragExportRouter);
+
+// ============================================================================
+// 2. LMS RELATIONAL ADAPTER & COMPATIBILITY LAYER
+// (Primary LMS truth, relations, files & Flows reside directly in Likha ERP)
+// ============================================================================
 app.use('/api/auth', authRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/courses', coursesRouter);
@@ -54,10 +71,6 @@ app.use('/api/notifications', notificationsRouter);
 app.use('/api', filesRouter);
 app.use('/api', gradesRouter);
 app.use('/api', sprRouter);
-app.use('/api/rag', ragRouter);
-app.use('/api/rag-baseline', ragBaselineRouter);
-app.use('/api/rag-aggregate', ragAggregateRouter);
-app.use('/api/rag-export', ragExportRouter);
 
 const uploadsDir =
   process.cwd().endsWith('server') ? path.resolve('uploads') : path.resolve('server/uploads');
@@ -67,7 +80,8 @@ app.use(errorMiddleware);
 
 const port = Number(process.env.PORT || 4001);
 const server = app.listen(port, () => {
-  console.log(`gabay-server listening on http://localhost:${port}`);
+  console.log(`[gabay-server] RAG Microservice listening on http://localhost:${port}`);
+  console.log(`[gabay-server] Likha ERP true backend active at https://gabay.zyberlab.com`);
 });
 server.on('error', (err: NodeJS.ErrnoException) => {
   if (err.code === 'EADDRINUSE') {

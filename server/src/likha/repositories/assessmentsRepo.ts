@@ -372,7 +372,13 @@ export async function createExam(data: any): Promise<any> {
 export async function recordSubmission(data: any): Promise<any> {
   const token = await getLikhaAdminToken();
   const subId = data.id || `sub-${Date.now().toString(36)}`;
-  const body = {
+  const answersArr = Array.isArray(data.answers)
+    ? data.answers
+    : typeof data.answers === 'object' && data.answers !== null
+      ? Object.entries(data.answers).map(([k, v]) => ({ questionId: k, answer: String(v) }))
+      : [];
+
+  const body: any = {
     id: subId,
     course_id: data.courseId,
     student_id: data.studentId,
@@ -383,7 +389,6 @@ export async function recordSubmission(data: any): Promise<any> {
     score: data.score ?? null,
     max_score: data.maxScore ?? null,
     submitted_at: data.submittedAt || new Date().toISOString(),
-    answers: typeof data.answers === 'string' ? data.answers : JSON.stringify(data.answers || []),
     rubric_scores: typeof data.rubricScores === 'string' ? data.rubricScores : JSON.stringify(data.rubricScores || {}),
     comments: typeof data.comments === 'string' ? data.comments : JSON.stringify(data.comments || []),
     file_url: data.fileUrl || null,
@@ -398,7 +403,6 @@ export async function recordSubmission(data: any): Promise<any> {
   });
 
   // Relational write for submission answers
-  const answersArr = Array.isArray(data.answers) ? data.answers : [];
   for (let i = 0; i < answersArr.length; i++) {
     const ans = answersArr[i];
     await fetch(`${LIKHA_URL}/items/submission_answers`, {
@@ -415,8 +419,14 @@ export async function recordSubmission(data: any): Promise<any> {
     }).catch(() => {});
   }
 
-  const json = (await res.json()) as any;
-  return formatLikhaSubmission(json.data || body);
+  let json: any = null;
+  if (!res.ok) {
+    const errText = await res.text();
+    console.warn('[assessmentsRepo] recordSubmission failed:', res.status, errText);
+  } else {
+    json = await res.json().catch(() => null);
+  }
+  return formatLikhaSubmission(json?.data || body);
 }
 
 
@@ -459,7 +469,19 @@ export async function gradeSubmission(
     return { id: submissionId, score, status: 'graded', ...updateData };
   }
 
-  const json = (await res.json()) as any;
-  return formatLikhaSubmission(json.data);
+  const text = await res.text();
+  let json: any = null;
+  if (text && text.trim()) {
+    try {
+      json = JSON.parse(text);
+    } catch {
+      // Body not JSON
+    }
+  }
+
+  if (json?.data) {
+    return formatLikhaSubmission(json.data);
+  }
+  return { id: submissionId, score, status: 'graded', ...updateData };
 }
 
