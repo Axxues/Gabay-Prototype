@@ -227,3 +227,52 @@ export async function upsertCourseGrade(
 
   return likhaSaved || formatLikhaGrade(prismaRow);
 }
+
+export async function getCourseSprConfig(courseId: string): Promise<any | null> {
+  try {
+    const token = await getLikhaAdminToken();
+    const res = await fetch(`${LIKHA_URL}/items/courses/${encodeURIComponent(courseId)}?fields=spr_config`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      const json = (await res.json()) as any;
+      const conf = json.data?.spr_config;
+      if (conf) {
+        return typeof conf === 'string' ? JSON.parse(conf) : conf;
+      }
+    }
+  } catch (err) {
+    console.warn('[gradesRepo] Likha getCourseSprConfig failed, falling back to Prisma:', err);
+  }
+
+  const course = await prisma.course.findUnique({
+    where: { id: courseId },
+    select: { sprConfig: true },
+  });
+  if (!course || !course.sprConfig) return null;
+  return JSON.parse(course.sprConfig);
+}
+
+export async function saveCourseSprConfig(courseId: string, config: any): Promise<any> {
+  const configObj = typeof config === 'string' ? JSON.parse(config) : config;
+  const configStr = typeof config === 'string' ? config : JSON.stringify(config);
+
+  try {
+    const token = await getLikhaAdminToken();
+    await fetch(`${LIKHA_URL}/items/courses/${encodeURIComponent(courseId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ spr_config: configObj }),
+    });
+  } catch (err) {
+    console.warn('[gradesRepo] Likha saveCourseSprConfig failed:', err);
+  }
+
+  const updated = await prisma.course.update({
+    where: { id: courseId },
+    data: { sprConfig: configStr },
+  });
+
+  return JSON.parse(updated.sprConfig!);
+}
+

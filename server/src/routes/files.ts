@@ -9,6 +9,7 @@ import type { AuthPayload } from '../middleware/auth.js';
 import { dedupeFileName } from '../utils/names.js';
 import { VISIBILITIES } from '../utils/allowed.js';
 import { createCourseFile } from '../likha/repositories/filesRepo.js';
+import { uploadFileToLikha } from '../likha/services/fileStorageService.js';
 
 export const filesRouter = Router();
 
@@ -431,9 +432,24 @@ filesRouter.post(
       req.file.originalname,
       siblings.map((f: { name: string }) => f.name)
     );
+    let likhaUrl: string | null = null;
+    try {
+      const likhaUploaded = await uploadFileToLikha({
+        buffer: req.file.buffer,
+        filename: storedName,
+        mimetype: req.file.mimetype || 'application/octet-stream',
+        title: storedName,
+      });
+      likhaUrl = likhaUploaded.url;
+    } catch (err) {
+      console.warn('[files] Likha upload failed, fallback to local URL:', err);
+    }
+    const finalUrl = likhaUrl || `/uploads/${scopeId}/${storedName}`;
+
     const dir = path.join(uploadsRoot(), scopeId);
     mkdirSync(dir, { recursive: true });
     writeFileSync(path.join(dir, path.basename(storedName)), req.file.buffer);
+
     const me = await prisma.user.findUnique({ where: { id: auth.sub } });
     const file = await prisma.courseFile.create({
       data: {
@@ -448,12 +464,30 @@ filesRouter.post(
         uploadedBy: auth.sub,
         uploadedByName: (me as { name?: string } | null)?.name ?? '',
         content: '',
-        url: `/uploads/${scopeId}/${storedName}`,
-        fileUrl: `/uploads/${scopeId}/${storedName}`,
+        url: finalUrl,
+        fileUrl: finalUrl,
         sourceArea,
         sourceId,
       },
     });
+
+    try {
+      await createCourseFile({
+        id: file.id,
+        courseId: scopeId,
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        url: finalUrl,
+        visibility: file.visibility,
+        parentId: file.folderId,
+        uploadedBy: file.uploadedBy,
+        uploadedAt: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.warn('[files] Failed to sync to Likha course_files collection:', e);
+    }
+
     res.status(201).json({ file });
   })
 );

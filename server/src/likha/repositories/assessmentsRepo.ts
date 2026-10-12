@@ -418,3 +418,48 @@ export async function recordSubmission(data: any): Promise<any> {
   const json = (await res.json()) as any;
   return formatLikhaSubmission(json.data || body);
 }
+
+
+
+export async function gradeSubmission(
+  submissionId: string,
+  score: number,
+  rubricScores?: Record<string, number>,
+  feedback?: string,
+  gradedByName?: string
+): Promise<any> {
+  const token = await getLikhaAdminToken();
+  const updateData: Record<string, any> = {
+    score,
+    status: 'graded',
+    graded_at: new Date().toISOString(),
+    graded_by: gradedByName || 'Faculty Instructor',
+  };
+  if (rubricScores) updateData.rubric_scores = JSON.stringify(rubricScores);
+  if (feedback) {
+    updateData.comments = JSON.stringify([
+      {
+        id: `c-${Date.now().toString(36)}`,
+        authorName: gradedByName || 'Faculty Instructor',
+        text: feedback,
+        createdAt: new Date().toISOString(),
+      },
+    ]);
+  }
+
+  const res = await fetch(`${LIKHA_URL}/items/submissions/${encodeURIComponent(submissionId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(updateData),
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    console.warn('[assessmentsRepo] gradeSubmission PATCH failed:', errorText);
+    return { id: submissionId, score, status: 'graded', ...updateData };
+  }
+
+  const json = (await res.json()) as any;
+  return formatLikhaSubmission(json.data);
+}
+

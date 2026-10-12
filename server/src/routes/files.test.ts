@@ -254,4 +254,44 @@ describe('files + grades routers', () => {
     expect(res.status).toBe(403);
     expect(prisma.courseGrade.findMany).not.toHaveBeenCalled();
   });
+
+  it('stores Likha ERP asset URL when Likha file upload succeeds', async () => {
+    (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      sub: 'u-fac',
+      role: 'faculty',
+    });
+    (prisma.courseFile.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (prisma.courseFile.create as ReturnType<typeof vi.fn>).mockImplementation(
+      (args: { data: Record<string, unknown> }) =>
+        Promise.resolve({ id: 'file-likha', ...args.data })
+    );
+
+    const fileStorage = await import('../likha/services/fileStorageService.js');
+    const uploadSpy = vi.spyOn(fileStorage, 'uploadFileToLikha').mockResolvedValueOnce({
+      id: 'likha-asset-123',
+      filename_download: 'syllabus.docx',
+      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      filesize: 1024,
+      url: 'https://gabay.zyberlab.com/assets/likha-asset-123',
+    });
+
+    const res = await (await import('supertest'))
+      .default(app())
+      .post('/api/courses/c1/files/upload')
+      .set('Authorization', 'Bearer x')
+      .attach('file', Buffer.from('docx-bytes'), 'syllabus.docx');
+
+    expect(res.status).toBe(201);
+    expect(uploadSpy).toHaveBeenCalledTimes(1);
+    expect(prisma.courseFile.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          url: 'https://gabay.zyberlab.com/assets/likha-asset-123',
+          fileUrl: 'https://gabay.zyberlab.com/assets/likha-asset-123',
+        }),
+      })
+    );
+    expect(res.body.file.url).toBe('https://gabay.zyberlab.com/assets/likha-asset-123');
+  });
 });
+
