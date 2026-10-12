@@ -1,11 +1,11 @@
 // server/src/routes/auth.test.ts
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
-vi.mock('../db.js', () => ({ prisma: { user: { findUnique: vi.fn() } } }));
-vi.mock('bcryptjs', () => {
-  const compare = vi.fn();
-  return { compare, default: { compare } };
-});
+vi.mock('../likha/repositories/usersRepo.js', () => ({
+  authenticateUser: vi.fn(),
+  getUserById: vi.fn(),
+}));
+
 vi.mock('jsonwebtoken', () => {
   const verify = vi.fn();
   const sign = vi.fn(() => 'test-token');
@@ -14,10 +14,11 @@ vi.mock('jsonwebtoken', () => {
 
 process.env.JWT_SECRET ??= 'test-secret';
 
-import { prisma } from '../db.js';
-import bcrypt from 'bcryptjs';
+import { authenticateUser } from '../likha/repositories/usersRepo.js';
 import { authRouter } from './auth.js';
+import { ApiError } from '../utils/errors.js';
 import express from 'express';
+import request from 'supertest';
 
 function app() {
   const a = express();
@@ -32,25 +33,39 @@ function app() {
 
 describe('POST /api/auth/login', () => {
   beforeEach(() => vi.clearAllMocks());
+
   it('returns token + public user on valid credentials', async () => {
-    (prisma.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
-      id: 'u1', name: 'N', email: 'e', role: 'faculty', avatar: 'a', department: 'd', title: 't', passwordHash: 'h',
+    (authenticateUser as ReturnType<typeof vi.fn>).mockResolvedValue({
+      token: 'test-token',
+      user: {
+        id: 'u1',
+        name: 'Faculty 1',
+        email: 'faculty1@dmmmsu.edu.ph',
+        role: 'faculty',
+        avatar: 'a',
+        department: 'd',
+        title: 't',
+      },
     });
-    (bcrypt.compare as ReturnType<typeof vi.fn>).mockResolvedValue(true);
-    const res = await (await import('supertest')).default(app()).post('/api/auth/login').send({ email: 'e', password: 'p' });
+
+    const res = await request(app()).post('/api/auth/login').send({ email: 'faculty1@dmmmsu.edu.ph', password: 'p' });
     expect(res.status).toBe(200);
     expect(res.body.token).toBe('test-token');
-    expect(res.body.user.passwordHash).toBeUndefined();
+    expect(res.body.user.name).toBe('Faculty 1');
   });
+
   it('rejects wrong password with the generic message', async () => {
-    (prisma.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'u1', passwordHash: 'h' });
-    (bcrypt.compare as ReturnType<typeof vi.fn>).mockResolvedValue(false);
-    const res = await (await import('supertest')).default(app()).post('/api/auth/login').send({ email: 'e', password: 'p' });
+    (authenticateUser as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new ApiError(401, 'invalid_credentials', 'Invalid email or password.')
+    );
+
+    const res = await request(app()).post('/api/auth/login').send({ email: 'e', password: 'wrong' });
     expect(res.status).toBe(401);
     expect(res.body.error.message).toBe('Invalid email or password.');
   });
+
   it('rejects missing fields with 400', async () => {
-    const res = await (await import('supertest')).default(app()).post('/api/auth/login').send({ email: 'e' });
+    const res = await request(app()).post('/api/auth/login').send({ email: 'e' });
     expect(res.status).toBe(400);
   });
 });
