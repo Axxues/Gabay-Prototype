@@ -156,3 +156,85 @@ export async function ensureLikhaRelationalSchema(): Promise<void> {
     }).catch(() => {});
   }
 }
+
+export async function ensureLikhaAutomationFlows(): Promise<void> {
+  const flowsRes = await likhaFetch('/flows');
+  if (!flowsRes.ok) {
+    throw new Error(`Failed to list flows: ${flowsRes.status}`);
+  }
+  const flowsJson = await flowsRes.json();
+  const existingFlowsByName = new Map<string, any>(
+    (flowsJson.data || []).map((f: any) => [f.name, f])
+  );
+
+  const flowsToProvision = [
+    {
+      name: 'gabay-publish-notification-flow',
+      icon: 'campaign',
+      color: '#6366F1',
+      description: 'Dispatches notifications to enrolled students when activities or announcements are published.',
+      status: 'active',
+      trigger: 'event',
+      options: {
+        type: 'action',
+        scope: ['items.create', 'items.update'],
+        collections: ['activities', 'announcements'],
+      },
+    },
+    {
+      name: 'gabay-submission-spr-flow',
+      icon: 'calculate',
+      color: '#10B981',
+      description: 'Recalculates student permanent record (SPR) cells and updates course grades on submission grading.',
+      status: 'active',
+      trigger: 'event',
+      options: {
+        type: 'action',
+        scope: ['items.update'],
+        collections: ['submissions'],
+      },
+    },
+    {
+      name: 'gabay-enrollment-alert-flow',
+      icon: 'school',
+      color: '#F59E0B',
+      description: 'Alerts course faculty of incoming student enrollment requests and auto-approves open courses.',
+      status: 'active',
+      trigger: 'event',
+      options: {
+        type: 'action',
+        scope: ['items.create'],
+        collections: ['enrollment_requests'],
+      },
+    },
+    {
+      name: 'gabay-due-date-reminder-cron',
+      icon: 'schedule',
+      color: '#EF4444',
+      description: 'Scheduled CRON workflow that checks for upcoming activity deadlines and reminds students.',
+      status: 'active',
+      trigger: 'schedule',
+      options: {
+        cron: '0 */6 * * *',
+      },
+    },
+  ];
+
+  for (const flowDef of flowsToProvision) {
+    const existing = existingFlowsByName.get(flowDef.name);
+    if (!existing) {
+      await likhaFetch('/flows', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(flowDef),
+      });
+    } else {
+      await likhaFetch(`/flows/${encodeURIComponent(existing.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(flowDef),
+      });
+    }
+  }
+}
+
