@@ -100,7 +100,16 @@ export function formatLikhaExam(e: any, relationalQuestions?: any[]): any {
   };
 }
 
-export function formatLikhaSubmission(s: any): any {
+export function formatLikhaSubmission(s: any, relationalAnswers?: any[]): any {
+  const answers = relationalAnswers && relationalAnswers.length > 0
+    ? relationalAnswers.map((a: any) => ({
+        questionId: a.question_id || a.questionId,
+        answer: a.student_answer ?? a.answer,
+        points: a.awarded_points ?? a.points ?? null,
+        feedback: a.feedback || null,
+      }))
+    : parseJsonField(s.answers, []);
+
   return {
     id: s.id,
     courseId: s.course_id,
@@ -114,7 +123,7 @@ export function formatLikhaSubmission(s: any): any {
     submittedAt: s.submitted_at,
     gradedAt: s.graded_at || null,
     gradedBy: s.graded_by || null,
-    answers: parseJsonField(s.answers, []),
+    answers,
     rubricScores: parseJsonField(s.rubric_scores, {}),
     comments: parseJsonField(s.comments, []),
     fileUrl: s.file_url || null,
@@ -204,7 +213,19 @@ export async function getSubmissions(courseId: string, studentId?: string): Prom
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok) return [];
   const json = (await res.json()) as any;
-  return (json.data || []).map(formatLikhaSubmission);
+  const submissions = json.data || [];
+  if (submissions.length === 0) return [];
+
+  // Query relational submission_answers
+  const ansRes = await fetch(`${LIKHA_URL}/items/submission_answers?limit=1000`, {
+    headers: { Authorization: `Bearer ${token}` },
+  }).catch(() => null);
+  const allAnswers = ansRes && ansRes.ok ? ((await ansRes.json()) as any).data || [] : [];
+
+  return submissions.map((s: any) => {
+    const subAnswers = allAnswers.filter((a: any) => a.submission_id === s.id);
+    return formatLikhaSubmission(s, subAnswers);
+  });
 }
 
 export async function createActivity(data: any): Promise<any> {
@@ -227,8 +248,6 @@ export async function createActivity(data: any): Promise<any> {
     available_from: data.availableFrom || null,
     available_until: data.availableUntil || null,
     published: Boolean(data.published),
-    questions: JSON.stringify(questionsArr),
-    rubric: JSON.stringify(rubricArr),
   };
 
   const res = await fetch(`${LIKHA_URL}/items/activities`, {
@@ -292,7 +311,6 @@ export async function createQuiz(data: any): Promise<any> {
     total_points: data.totalPoints ?? 20,
     due_date: data.dueDate || null,
     published: Boolean(data.published),
-    questions: JSON.stringify(questionsArr),
   };
 
   const res = await fetch(`${LIKHA_URL}/items/quizzes`, {
@@ -338,7 +356,6 @@ export async function createExam(data: any): Promise<any> {
     total_points: data.totalPoints ?? 100,
     due_date: data.dueDate || null,
     published: Boolean(data.published),
-    questions: JSON.stringify(questionsArr),
   };
 
   const res = await fetch(`${LIKHA_URL}/items/exams`, {

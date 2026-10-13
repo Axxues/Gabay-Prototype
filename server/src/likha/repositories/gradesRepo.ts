@@ -96,9 +96,6 @@ export async function upsertCourseGrade(
     };
     if (patch.midtermGrade !== undefined) body.midterm_grade = patch.midtermGrade;
     if (patch.finalGrade !== undefined) body.final_grade = patch.finalGrade;
-    if (patch.sprCells !== undefined) {
-      body.spr_cells = typeof patch.sprCells === 'string' ? JSON.parse(patch.sprCells) : patch.sprCells;
-    }
 
     if (checkRes.ok) {
       const checkJson = (await checkRes.json()) as any;
