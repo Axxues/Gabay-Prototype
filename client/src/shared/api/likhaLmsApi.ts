@@ -127,39 +127,109 @@ export const likhaLmsApi = {
   },
 
   /**
-   * Saves or updates an activity directly on Likha ERP.
+   * Saves or updates an activity directly on Likha ERP with relational child items.
    */
   async saveActivity(activity: any): Promise<any> {
-    const isUpdate = Boolean(activity.id);
+    const { questions, rubric, ...rootPayload } = activity;
+    const isUpdate = Boolean(rootPayload.id);
     const url = isUpdate
-      ? `${LIKHA_URL}/items/activities/${encodeURIComponent(activity.id)}`
+      ? `${LIKHA_URL}/items/activities/${encodeURIComponent(rootPayload.id)}`
       : `${LIKHA_URL}/items/activities`;
     const res = await fetch(url, {
       method: isUpdate ? 'PATCH' : 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify(activity),
+      body: JSON.stringify(rootPayload),
     });
     if (!res.ok) {
       throw new Error(`Failed to save activity: ${res.status}`);
     }
     const json = await res.json();
-    return json.data;
+    const saved = json.data || rootPayload;
+    const actId = saved.id || rootPayload.id;
+
+    // Relational child items to assessment_questions
+    if (Array.isArray(questions) && questions.length > 0) {
+      for (let i = 0; i < questions.length; i++) {
+        const q = questions[i];
+        await fetch(`${LIKHA_URL}/items/assessment_questions`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({
+            id: q.id || `q-${actId}-${i}`,
+            activity_id: actId,
+            question_text: q.question_text || q.text || q.prompt || '',
+            question_type: q.question_type || q.type || 'essay',
+            points: Number(q.points) || 10,
+            correct_answer: q.correct_answer || q.correctAnswer || null,
+            options_json: typeof q.options === 'string' ? q.options : JSON.stringify(q.options || []),
+            order: i + 1,
+          }),
+        }).catch(() => {});
+      }
+    }
+
+    // Relational child items to rubric_criteria
+    if (Array.isArray(rubric) && rubric.length > 0) {
+      for (let i = 0; i < rubric.length; i++) {
+        const r = rubric[i];
+        await fetch(`${LIKHA_URL}/items/rubric_criteria`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({
+            id: r.id || `rub-${actId}-${i}`,
+            activity_id: actId,
+            title: r.title || r.criterion || '',
+            description: r.description || '',
+            max_points: Number(r.max_points ?? r.points) || 10,
+            order: i + 1,
+          }),
+        }).catch(() => {});
+      }
+    }
+
+    return { ...saved, questions: questions || [], rubric: rubric || [] };
   },
 
   /**
-   * Submits an activity response directly to Likha ERP.
+   * Submits an activity response directly to Likha ERP with relational answers.
    */
   async submitActivity(submission: any): Promise<any> {
+    const { answers, ...rootPayload } = submission;
+    const subId = rootPayload.id || `sub-${Date.now().toString(36)}`;
     const res = await fetch(`${LIKHA_URL}/items/submissions`, {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify(submission),
+      body: JSON.stringify({ id: subId, ...rootPayload }),
     });
     if (!res.ok) {
       throw new Error(`Failed to submit activity: ${res.status}`);
     }
+
+    // Relational child items to submission_answers
+    const answersList = Array.isArray(answers)
+      ? answers
+      : typeof answers === 'object' && answers !== null
+        ? Object.entries(answers).map(([qid, val]) => ({ questionId: qid, answer: String(val) }))
+        : [];
+
+    for (let i = 0; i < answersList.length; i++) {
+      const a = answersList[i];
+      await fetch(`${LIKHA_URL}/items/submission_answers`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          id: `sa-${subId}-${i}`,
+          submission_id: subId,
+          question_id: a.questionId || a.question_id || `q-${i}`,
+          student_answer: a.answer || a.studentAnswer || String(a),
+          awarded_points: a.points ?? null,
+          feedback: a.feedback || null,
+        }),
+      }).catch(() => {});
+    }
+
     const json = await res.json();
-    return json.data;
+    return { ...json.data, answers: answersList };
   },
 
   /**
