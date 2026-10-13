@@ -12,3 +12,4 @@ describe('Likha Relational Data Unpacking', () => {
     expect(typeof counts.grades).toBe('number');
   });
 });
+

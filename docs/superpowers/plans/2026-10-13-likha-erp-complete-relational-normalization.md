@@ -72,60 +72,18 @@ git commit -m "feat(likha): implement data unpacking script for legacy JSON fiel
 
 ---
 
-### Task 2: Dropping Physical JSON Columns & Registering Native Directus O2M Alias Fields
+### Task 2: Directus Schema & Relation UI Configuration via Browser Subagent (NO REST DDL)
 
-**Files:**
-- Modify: `server/src/likha/migrations/normalizeLikhaRelationalData.ts`
-- Modify: `server/src/likha/migrations/normalizeLikhaRelationalData.test.ts`
+**Directive:**
+- ❌ **DO NOT USE THE DIRECTUS / REST API** to modify Likha ERP schema, fields, or relations.
+- ✅ **USE BROWSER SUBAGENT EXCLUSIVELY** navigating `https://gabay.zyberlab.com/admin` to visually inspect, configure, or adjust field interfaces and relations.
 
-**Interfaces:**
-- Consumes: Directus `/fields` API via `likhaFetch`
-- Produces: `reconfigureLikhaRelationalFields(): Promise<void>`
+**Approach:**
+- Use `browser_subagent` to open `https://gabay.zyberlab.com/admin/settings/data-model`.
+- Visually inspect the Collections (`activities`, `quizzes`, `exams`, `submissions`, `course_grades`).
+- In the Directus Settings UI, configure the One-to-Many fields (`questions`, `rubrics`, `answers`, `spr_cells`) with `list-o2m` interface directly through the web form.
+- Directus Admin UI performs all schema and validation checks natively without risking server crashes or 502 Bad Gateway.
 
-- [ ] **Step 1: Write test for dropping JSON fields and creating O2M alias fields**
-
-Add test to `server/src/likha/migrations/normalizeLikhaRelationalData.test.ts`:
-```typescript
-it('removes physical JSON columns and registers native Directus list-o2m alias fields', async () => {
-  await reconfigureLikhaRelationalFields();
-  const fRes = await likhaFetch('/fields/activities');
-  const fData = await fRes.json();
-  const questionsField = (fData.data || []).find((f: any) => f.field === 'questions');
-  expect(questionsField).toBeDefined();
-  expect(questionsField.meta?.special).toContain('o2m');
-  expect(questionsField.meta?.interface).toBe('list-o2m');
-});
-```
-
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `npx vitest run src/likha/migrations/normalizeLikhaRelationalData.test.ts` in `server/`  
-Expected: FAIL (`reconfigureLikhaRelationalFields` not implemented).
-
-- [ ] **Step 3: Implement `reconfigureLikhaRelationalFields`**
-
-In `server/src/likha/migrations/normalizeLikhaRelationalData.ts`:
-- Check existing fields on `activities`, `quizzes`, `exams`, `submissions`, `course_grades`.
-- If physical field `questions` on `activities` is type `json`:
-  1. `DELETE /fields/activities/questions`
-  2. `POST /fields/activities` with `{ field: "questions", type: "alias", meta: { special: ["o2m"], interface: "list-o2m", options: { enableCreate: true, sortField: "order" } } }`
-- If physical field `rubric` on `activities` is type `json`:
-  1. `DELETE /fields/activities/rubric`
-  2. `POST /fields/activities` with `{ field: "rubrics", type: "alias", meta: { special: ["o2m"], interface: "list-o2m", options: { enableCreate: true, sortField: "order" } } }`
-- Repeat for `quizzes.questions`, `exams.questions`, `submissions.answers`, `course_grades.spr_cells`.
-- Ensure relations on Directus connect `one_field: "questions"`, `one_field: "rubrics"`, `one_field: "answers"`, `one_field: "spr_cells"`.
-
-- [ ] **Step 4: Run test to verify it passes**
-
-Run: `npx vitest run src/likha/migrations/normalizeLikhaRelationalData.test.ts` in `server/`  
-Expected: PASS (2 tests passing).
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add server/src/likha/migrations/normalizeLikhaRelationalData.ts server/src/likha/migrations/normalizeLikhaRelationalData.test.ts
-git commit -m "feat(likha): drop physical JSON columns and register native Directus list-o2m alias fields"
-```
 
 ---
 
@@ -236,7 +194,7 @@ git commit -m "feat(migration): execute live complete relational normalization a
 - Test: Live browser subagent verification
 - Create: `task-normalization-report.md`
 
-- [ ] **Step 1: Browser subagent inspection of Likha Admin Activities Form**
+- [x] **Step 1: Browser subagent inspection of Likha Admin Activities Form**
 
 Use `browser_subagent` to open `https://gabay.zyberlab.com/admin/content/activities/:id` (or log in as admin):
 1. Navigate to Activities collection and click on an item.
@@ -244,13 +202,13 @@ Use `browser_subagent` to open `https://gabay.zyberlab.com/admin/content/activit
 3. Verify that the raw JSON code editor for `rubric` is GONE and replaced by the native Directus One-to-Many table (`list-o2m`).
 4. Capture screenshot evidence.
 
-- [ ] **Step 2: Browser subagent inspection of Gabay LMS Activities View**
+- [x] **Step 2: Browser subagent inspection of Gabay LMS Activities View**
 
 Use `browser_subagent` to open `http://localhost:5173/courses/c-cs101/activities`:
 1. Verify that activities list and activity runners render with fully hydrated questions and rubrics.
 2. Capture screenshot evidence.
 
-- [ ] **Step 3: Commit and write completion report**
+- [x] **Step 3: Commit and write completion report**
 
 ```bash
 git add task-normalization-report.md
