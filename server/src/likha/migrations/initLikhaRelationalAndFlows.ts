@@ -184,7 +184,7 @@ export async function ensureLikhaAutomationFlows(): Promise<void> {
         {
           key: 'read_enrolled_students',
           name: 'Read Enrolled Students',
-          type: 'read-data',
+          type: 'read',
           position_x: 20,
           position_y: 1,
           options: {
@@ -202,7 +202,7 @@ export async function ensureLikhaAutomationFlows(): Promise<void> {
         {
           key: 'create_publish_notification',
           name: 'Create Notification Item',
-          type: 'create-data',
+          type: 'create',
           position_x: 39,
           position_y: 1,
           options: {
@@ -235,7 +235,7 @@ export async function ensureLikhaAutomationFlows(): Promise<void> {
         {
           key: 'read_activity_info',
           name: 'Read Activity Info',
-          type: 'read-data',
+          type: 'read',
           position_x: 20,
           position_y: 1,
           options: {
@@ -250,7 +250,7 @@ export async function ensureLikhaAutomationFlows(): Promise<void> {
         {
           key: 'upsert_spr_cell',
           name: 'Record SPR Score Cell',
-          type: 'create-data',
+          type: 'create',
           position_x: 39,
           position_y: 1,
           options: {
@@ -266,7 +266,7 @@ export async function ensureLikhaAutomationFlows(): Promise<void> {
         {
           key: 'notify_graded_student',
           name: 'Notify Student of Grade',
-          type: 'create-data',
+          type: 'create',
           position_x: 58,
           position_y: 1,
           options: {
@@ -299,7 +299,7 @@ export async function ensureLikhaAutomationFlows(): Promise<void> {
         {
           key: 'read_course_instructor',
           name: 'Read Course Instructor',
-          type: 'read-data',
+          type: 'read',
           position_x: 20,
           position_y: 1,
           options: {
@@ -314,7 +314,7 @@ export async function ensureLikhaAutomationFlows(): Promise<void> {
         {
           key: 'notify_faculty_enrollment',
           name: 'Notify Faculty of Enrollment',
-          type: 'create-data',
+          type: 'create',
           position_x: 39,
           position_y: 1,
           options: {
@@ -345,7 +345,7 @@ export async function ensureLikhaAutomationFlows(): Promise<void> {
         {
           key: 'find_upcoming_activities',
           name: 'Find Upcoming Activities',
-          type: 'read-data',
+          type: 'read',
           position_x: 20,
           position_y: 1,
           options: {

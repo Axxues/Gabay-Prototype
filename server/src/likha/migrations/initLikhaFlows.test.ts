@@ -33,5 +33,13 @@ describe('Likha Automation Flows Provisioning', () => {
     expect(opsKeys).toContain('notify_faculty_enrollment');
     expect(opsKeys).toContain('find_upcoming_activities');
     expect(opsKeys).toContain('log_due_date_sweep');
+
+    // Verify all operation types are valid Directus native types
+    const validTypes = ['read', 'create', 'update', 'delete', 'log', 'request', 'notification', 'exec'];
+    for (const op of opsData.data || []) {
+      if (opsKeys.includes(op.key)) {
+        expect(validTypes).toContain(op.type);
+      }
+    }
   }, 45000);
 });
