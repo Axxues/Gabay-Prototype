@@ -45,7 +45,7 @@ import { isSyllabusGradeReady } from '../utils/syllabusGradeGate';
 import { AlertModal, type AlertModalOptions } from '../components/common/AlertModal';
 import { canPickSection } from '../utils/sections';
 import type { OfficialSyllabusData } from '../data/syllabusData';
-import { apiFetch, ApiError, getToken, setToken, clearToken, likhaLmsApi } from '../api/client';
+import { apiFetch, ApiError, getToken, setToken, clearToken, likhaLmsApi, LIKHA_URL } from '../api/client';
 import { syllabusApi, deleteDraft, withdrawSyllabus } from '../api/syllabus';
 import type { SyllabusRevisionHeader, SyllabusRevisionResponse, SyllabusSectionKey } from '../types/syllabusApi';
 import { settledValue } from '../utils/promise';
@@ -432,42 +432,116 @@ const normalizeSubmissionComment = (raw: any): SubmissionComment => ({
   createdAt: raw.createdAt ? toIsoString(raw.createdAt) : new Date().toISOString(),
 });
 
-const normalizeSubmission = (raw: any): Submission => ({
-  id: raw.id,
-  activityKey: raw.activityKey ?? undefined,
-  quizId: raw.quizId ?? undefined,
-  activityId: raw.activityId ?? undefined,
-  examId: raw.examId ?? undefined,
-  courseId: raw.courseId,
-  studentId: raw.studentId,
-  studentName: raw.studentName ?? '',
-  studentAvatar: raw.studentAvatar ?? '',
-  submittedAt: raw.submittedAt ? toIsoString(raw.submittedAt) : new Date().toISOString(),
-  submissionType: raw.submissionType === 'file' ? 'file' : 'online_text',
-  content: raw.content ?? undefined,
-  fileUrl: raw.fileUrl ?? undefined,
-  fileName: raw.fileName ?? undefined,
-  grade: raw.grade ?? undefined,
-  gradedAt: toOptionalIso(raw.gradedAt),
-  gradedBy: raw.gradedBy ?? undefined,
-  status: raw.status === 'graded' ? 'graded' : raw.status === 'missing' ? 'missing' : 'submitted',
-  rubricScores: (() => {
-    const v = raw.rubricScores;
-    if (v && typeof v === 'object' && !Array.isArray(v)) return v as Record<string, number>;
-    if (typeof v === 'string') {
-      try {
-        const parsed: unknown = JSON.parse(v);
-        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-          return parsed as Record<string, number>;
-        }
-      } catch {
-        // fall through to empty
-      }
+export const resolveDirectusAssetUrl = (fileOrId: any): string | undefined => {
+  if (!fileOrId) return undefined;
+  if (typeof fileOrId === 'string') {
+    if (fileOrId.startsWith('http://') || fileOrId.startsWith('https://') || fileOrId.startsWith('/')) {
+      return fileOrId;
     }
-    return {};
-  })(),
-  comments: Array.isArray(raw.comments) ? raw.comments.map(normalizeSubmissionComment) : [],
-});
+    return `${LIKHA_URL}/assets/${fileOrId}`;
+  }
+  if (typeof fileOrId === 'object' && fileOrId !== null) {
+    if (fileOrId.id) {
+      return `${LIKHA_URL}/assets/${fileOrId.id}`;
+    }
+    if (fileOrId.url) {
+      return fileOrId.url;
+    }
+  }
+  return undefined;
+};
+
+export const resolveDirectusUserName = (userOrId: any, fallbackName = ''): string => {
+  if (!userOrId) return fallbackName;
+  if (typeof userOrId === 'object' && userOrId !== null) {
+    const full = `${userOrId.first_name || ''} ${userOrId.last_name || ''}`.trim();
+    if (full) return full;
+    if (userOrId.name) return userOrId.name;
+    if (userOrId.email) return userOrId.email;
+  }
+  return fallbackName;
+};
+
+export const resolveDirectusUserAvatar = (userOrId: any, fallbackAvatar = ''): string => {
+  if (!userOrId) return fallbackAvatar;
+  if (typeof userOrId === 'object' && userOrId !== null) {
+    if (userOrId.avatar) {
+      const assetUrl = resolveDirectusAssetUrl(userOrId.avatar);
+      if (assetUrl) return assetUrl;
+    }
+    if (userOrId.avatarUrl) return userOrId.avatarUrl;
+  }
+  return fallbackAvatar;
+};
+
+export const normalizeSubmission = (raw: any): Submission => {
+  const studentObj = raw?.student ?? raw?.student_id;
+  const studentId =
+    (typeof studentObj === 'object' && studentObj !== null && studentObj.id)
+      ? String(studentObj.id)
+      : (typeof raw?.student_id === 'string' || typeof raw?.student_id === 'number')
+        ? String(raw.student_id)
+        : raw?.studentId ?? '';
+
+  const studentName =
+    resolveDirectusUserName(studentObj, raw?.studentName ?? '') ||
+    raw?.studentName ||
+    '';
+
+  const studentAvatar =
+    resolveDirectusUserAvatar(studentObj, raw?.studentAvatar ?? '') ||
+    raw?.studentAvatar ||
+    '';
+
+  const fileObj = raw?.file;
+  const fileName =
+    (typeof fileObj === 'object' && fileObj !== null && fileObj.filename_download)
+      ? fileObj.filename_download
+      : raw?.fileName ?? raw?.file_name ?? undefined;
+
+  const fileUrl =
+    resolveDirectusAssetUrl(fileObj) ||
+    raw?.fileUrl ||
+    raw?.file_url ||
+    undefined;
+
+  return {
+    id: raw.id,
+    activityKey: raw.activityKey ?? undefined,
+    quizId: raw.quizId ?? undefined,
+    activityId: raw.activityId ?? undefined,
+    examId: raw.examId ?? undefined,
+    courseId: raw.courseId,
+    studentId,
+    studentName,
+    studentAvatar,
+    submittedAt: raw.submittedAt ? toIsoString(raw.submittedAt) : new Date().toISOString(),
+    submissionType: raw.submissionType === 'file' || fileObj ? 'file' : (raw.submissionType ?? 'online_text'),
+    content: raw.content ?? undefined,
+    fileUrl,
+    fileName,
+    grade: raw.grade ?? undefined,
+    gradedAt: toOptionalIso(raw.gradedAt),
+    gradedBy: raw.gradedBy ?? undefined,
+    status: raw.status === 'graded' ? 'graded' : raw.status === 'missing' ? 'missing' : 'submitted',
+    rubricScores: (() => {
+      const v = raw.rubricScores;
+      if (v && typeof v === 'object' && !Array.isArray(v)) return v as Record<string, number>;
+      if (typeof v === 'string') {
+        try {
+          const parsed: unknown = JSON.parse(v);
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            return parsed as Record<string, number>;
+          }
+        } catch {
+          // fall through to empty
+        }
+      }
+      return {};
+    })(),
+    comments: Array.isArray(raw.comments) ? raw.comments.map(normalizeSubmissionComment) : [],
+  };
+};
 
 const normalizeCourseGrade = (raw: any): CourseStudentGrade => ({
   courseId: raw.courseId,
@@ -571,8 +645,9 @@ const normalizeCourseGradingTerms = (raw: unknown): TermId[] | null => {
 };
 
 /** Task 5: the server stores Course.syllabus as a JSON string (nullable);
- *  the client cache holds the parsed OfficialSyllabusData object. */
-const normalizeCourseSyllabus = (raw: any): Course => {
+ *  the client cache holds the parsed OfficialSyllabusData object and resolves
+ *  Directus relational user and media objects (cover_image, instructor). */
+export const normalizeCourse = (raw: any): Course => {
   const syllabus = raw?.syllabus;
   let parsedSyllabus: Course['syllabus'];
   if (typeof syllabus !== 'string' || !syllabus) {
@@ -584,8 +659,38 @@ const normalizeCourseSyllabus = (raw: any): Course => {
       parsedSyllabus = null;
     }
   }
-  return { ...raw, syllabus: parsedSyllabus, gradingTerms: normalizeCourseGradingTerms(raw?.gradingTerms), gradesReleased: normalizeGradesReleased(raw?.gradesReleased) };
+
+  const instructorObj = raw?.instructor ?? raw?.instructor_id;
+  const instructorId =
+    (typeof instructorObj === 'object' && instructorObj !== null && instructorObj.id)
+      ? String(instructorObj.id)
+      : (typeof raw?.instructor_id === 'string' || typeof raw?.instructor_id === 'number')
+        ? String(raw.instructor_id)
+        : raw?.instructorId ?? '';
+
+  const instructorName =
+    resolveDirectusUserName(instructorObj, raw?.instructorName || raw?.instructor_name || '') ||
+    raw?.instructorName ||
+    '';
+
+  const coverImageUrl =
+    resolveDirectusAssetUrl(raw?.cover_image) ||
+    resolveDirectusAssetUrl(raw?.coverImage) ||
+    raw?.image ||
+    undefined;
+
+  return {
+    ...raw,
+    instructorId,
+    instructorName,
+    image: coverImageUrl ?? raw?.image,
+    syllabus: parsedSyllabus,
+    gradingTerms: normalizeCourseGradingTerms(raw?.gradingTerms),
+    gradesReleased: normalizeGradesReleased(raw?.gradesReleased),
+  };
 };
+
+export const normalizeCourseSyllabus = normalizeCourse;
 
 export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Theme state
@@ -745,6 +850,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               published: Boolean(c.published),
               syllabus: c.syllabus || null,
               section: c.section || '',
+              cover_image: c.cover_image,
+              instructor: c.instructor,
+              instructor_id: c.instructor_id,
             }));
           }
         } catch (_likhaCourseErr) {
@@ -855,6 +963,39 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ]);
       if (mineSettled[0].status === 'fulfilled') {
         for (const req of mineSettled[0].value.requests) requestMap.set(req.id, req);
+      }
+      try {
+        if (likhaLmsApi?.courses?.getCourseEnrollments) {
+          await Promise.allSettled(
+            coursesRes.courses.map(async course => {
+              const enrollments = await likhaLmsApi.courses.getCourseEnrollments(course.id);
+              if (Array.isArray(enrollments)) {
+                for (const enr of enrollments) {
+                  const studentUser = typeof enr.user === 'object' ? enr.user : null;
+                  const studentId = studentUser?.id || (typeof enr.user === 'string' ? enr.user : String(enr.user || ''));
+                  const reqId = `enr-${enr.id || `${course.id}-${studentId}`}`;
+                  if (!requestMap.has(reqId)) {
+                    const studentName = studentUser
+                      ? `${studentUser.first_name || ''} ${studentUser.last_name || ''}`.trim() || studentUser.email
+                      : `Student ${studentId}`;
+                    requestMap.set(reqId, {
+                      id: reqId,
+                      courseId: course.id,
+                      studentId: String(studentId),
+                      studentName: studentName || 'Enrolled Student',
+                      type: 'self_join',
+                      status: 'approved',
+                      requestedAt: enr.enrolled_at || new Date().toISOString(),
+                      resolvedAt: enr.enrolled_at || new Date().toISOString(),
+                    });
+                  }
+                }
+              }
+            })
+          );
+        }
+      } catch {
+        // Tolerated if Likha enrollments endpoint offline
       }
       fresh.courseSections = [...sectionMap.values()];
       fresh.enrollmentRequests = [...requestMap.values()];
@@ -1020,7 +1161,17 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const allFiles: CourseFile[] = [];
       for (const r of fileResults) {
         if (r.foldersSettled.status === 'fulfilled') allFolders.push(...r.foldersSettled.value.folders);
-        if (r.filesSettled.status === 'fulfilled') allFiles.push(...r.filesSettled.value.files);
+        if (r.filesSettled.status === 'fulfilled') {
+          for (const f of r.filesSettled.value.files) {
+            const fileObj = (f as any).file;
+            allFiles.push({
+              ...f,
+              name: (typeof fileObj === 'object' && fileObj?.filename_download) || f.name,
+              url: resolveDirectusAssetUrl(fileObj) || f.url,
+              size: (typeof fileObj === 'object' && typeof fileObj?.filesize === 'number') ? fileObj.filesize : f.size,
+            });
+          }
+        }
       }
       fresh.courseFolders = allFolders;
       fresh.courseFiles = allFiles;

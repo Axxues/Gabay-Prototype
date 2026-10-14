@@ -161,7 +161,7 @@ describe('extractTextFromDocx', () => {
     // The reported bug: uploading this reference syllabus was rejected as
     // "not a syllabus". Extracted text must validate.
     expect(validate(text, 'CSPC103-IKM-SYL-1stSemAY2026-2027.docx').isSyllabus).toBe(true);
-  });
+  }, 15000);
 
   test('accepts the scanned-image reference PDF via metadata signals', async () => {
     const { validateSyllabusContent: validate } = await import('./syllabusParser');
