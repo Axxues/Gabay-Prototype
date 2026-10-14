@@ -47,9 +47,13 @@ app.use('/api/rag-aggregate', ragAggregateRouter);
 app.use('/api/rag-export', ragExportRouter);
 
 // ============================================================================
-// 2. LMS RELATIONAL ADAPTER & COMPATIBILITY LAYER
-// (Primary LMS truth, relations, files & Flows reside directly in Likha ERP)
+// 2. MIGRATED TO LIKHA ERP (https://gabay.zyberlab.com)
+// All LMS data models, relations, rich field types, SpeedGrader mutations,
+// SPR grade calculation, and event-driven automation Flows now run natively
+// on Likha ERP (Directus). Express server on port 4001 is decoupled to act
+// strictly as a high-performance RAG microservice and n8n telemetry proxy.
 // ============================================================================
+/*
 app.use('/api/auth', authRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/courses', coursesRouter);
@@ -71,6 +75,7 @@ app.use('/api/notifications', notificationsRouter);
 app.use('/api', filesRouter);
 app.use('/api', gradesRouter);
 app.use('/api', sprRouter);
+*/
 
 const uploadsDir =
   process.cwd().endsWith('server') ? path.resolve('uploads') : path.resolve('server/uploads');
