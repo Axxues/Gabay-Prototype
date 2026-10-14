@@ -382,6 +382,30 @@ export const likhaLmsApi = {
     async gradeSubmission(id: string, score: number, feedback?: string): Promise<any> {
       return likhaLmsApi.gradeSubmission(id, score, feedback);
     },
+
+    async addRubricScore(submissionId: string, criterionId: string, points: number, feedback?: string): Promise<any> {
+      return likhaRequest('/items/submission_rubric_scores', {
+        method: 'POST',
+        body: JSON.stringify({
+          submission_id: submissionId,
+          criterion_id: criterionId,
+          points_awarded: points,
+          feedback: feedback || '',
+        }),
+      });
+    },
+
+    async addSubmissionComment(submissionId: string, authorId: string, content: string): Promise<any> {
+      return likhaRequest('/items/submission_comments', {
+        method: 'POST',
+        body: JSON.stringify({
+          submission_id: submissionId,
+          author_id: authorId,
+          content,
+          created_at: new Date().toISOString(),
+        }),
+      });
+    },
   },
 
   // =========================================================================
@@ -544,7 +568,33 @@ export const likhaLmsApi = {
   },
 
   // =========================================================================
-  // 8. FILE STORAGE
+  // 8. SYLLABUS MANAGEMENT
+  // =========================================================================
+  syllabus: {
+    async getSyllabus(courseId: string): Promise<any | null> {
+      const list = await likhaRequest<any[]>(
+        `/items/syllabi?filter[course_id][_eq]=${encodeURIComponent(courseId)}&fields=*,course_info.*,course_outcomes.*,learning_plans.*,policies.*,institution.*&limit=1`
+      );
+      return list?.[0] || null;
+    },
+
+    async createSyllabus(data: any): Promise<any> {
+      return likhaRequest('/items/syllabi', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+    },
+
+    async updateSyllabus(syllabusId: string, data: any): Promise<any> {
+      return likhaRequest(`/items/syllabi/${encodeURIComponent(syllabusId)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      });
+    },
+  },
+
+  // =========================================================================
+  // 9. FILE STORAGE
   // =========================================================================
   files: {
     async uploadFile(file: File): Promise<LikhaUploadedFile> {

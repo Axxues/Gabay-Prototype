@@ -660,6 +660,30 @@ export const normalizeCourse = (raw: any): Course => {
     }
   }
 
+  if (!parsedSyllabus && (raw?.syllabi || raw?.syllabus_id)) {
+    const s = Array.isArray(raw.syllabi) ? raw.syllabi[0] : (raw.syllabi || raw.syllabus_id);
+    if (typeof s === 'object' && s !== null) {
+      const info = Array.isArray(s.course_info) ? s.course_info[0] : (s.course_info || {});
+      const inst = Array.isArray(s.institution) ? s.institution[0] : (s.institution || {});
+      parsedSyllabus = {
+        courseId: raw.id,
+        courseInfo: {
+          courseCode: info.course_code || raw.code,
+          courseTitle: info.course_title || raw.title,
+          credits: info.credits || raw.credits || 3,
+          courseDescription: info.rationale_description || '',
+        },
+        institution: {
+          vision: inst.vision || '',
+          mission: inst.mission || '',
+        },
+        courseOutcomes: Array.isArray(s.course_outcomes) ? s.course_outcomes : [],
+        learningPlan: Array.isArray(s.learning_plans) ? s.learning_plans : [],
+        policies: Array.isArray(s.policies) ? s.policies : [],
+      } as any;
+    }
+  }
+
   const instructorObj = raw?.instructor ?? raw?.instructor_id;
   const instructorId =
     (typeof instructorObj === 'object' && instructorObj !== null && instructorObj.id)

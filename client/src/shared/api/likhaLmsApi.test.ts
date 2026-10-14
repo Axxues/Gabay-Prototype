@@ -101,4 +101,51 @@ describe('Likha LMS Direct API Client', () => {
     expect(notifs[0].id).toBe('notif-1');
     expect(fetchSpy).toHaveBeenCalledTimes(3);
   });
+
+  it('queries normalized relational syllabus with child tables', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: [{
+          id: 'syl-1',
+          course_id: 'c-101',
+          course_info: [{ course_code: 'CS 101', course_title: 'Intro' }],
+          course_outcomes: [{ code: 'CO1', statement: 'Learn algorithms' }],
+        }],
+      }),
+    } as any);
+
+    const syl = await likhaLmsApi.syllabus.getSyllabus('c-101');
+    expect(syl).not.toBeNull();
+    expect(syl.id).toBe('syl-1');
+    expect(syl.course_outcomes[0].code).toBe('CO1');
+  });
+
+  it('posts replies to normalized announcement_replies and discussion_replies', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch')
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: { id: 'ar-1' } }) } as any)
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: { id: 'dr-1' } }) } as any);
+
+    const annReply = await likhaLmsApi.communications.addAnnouncementReply('ann-1', { content: 'test reply' });
+    const discReply = await likhaLmsApi.communications.addDiscussionReply('disc-1', { content: 'test discussion' });
+
+    expect(annReply.id).toBe('ar-1');
+    expect(discReply.id).toBe('dr-1');
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('posts rubric scores and comments to normalized assessment tables', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch')
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: { id: 'srs-1' } }) } as any)
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: { id: 'sc-1' } }) } as any);
+
+    const rubricScore = await likhaLmsApi.submissions.addRubricScore('sub-1', 'crit-1', 25, 'Great work');
+    const comment = await likhaLmsApi.submissions.addSubmissionComment('sub-1', 'u-fac', 'Good effort');
+
+    expect(rubricScore.id).toBe('srs-1');
+    expect(comment.id).toBe('sc-1');
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
 });
+
