@@ -37,11 +37,13 @@ async function getServiceToken(): Promise<string> {
   return '';
 }
 
+import { likhaCache } from './likhaCache';
+
 /**
- * Robust fetch wrapper that applies Directus JWT auth, and on HTTP 403
- * transparently retries with an authenticated service token.
+ * Robust fetch wrapper that applies Directus JWT auth, transparent in-memory TTL
+ * caching for GET requests, request deduplication, and auto-invalidation on mutations.
  */
-async function likhaRequest<T = any>(
+async function rawLikhaFetch<T = any>(
   path: string,
   options: RequestInit = {},
   allowRetry = true
@@ -79,7 +81,46 @@ async function likhaRequest<T = any>(
   return json.data !== undefined ? json.data : json;
 }
 
+function getPathTtl(path: string): number {
+  if (path.includes('/items/courses')) return 60000;
+  if (path.includes('/items/syllabi')) return 120000;
+  if (path.includes('/users')) return 300000;
+  if (path.includes('/items/calendar_events')) return 60000;
+  if (path.includes('/items/notifications')) return 15000;
+  return 30000;
+}
+
+async function likhaRequest<T = any>(
+  path: string,
+  options: RequestInit = {},
+  allowRetry = true
+): Promise<T> {
+  const method = (options.method || 'GET').toUpperCase();
+
+  if (method === 'GET') {
+    const token = getToken() || 'anon';
+    const cacheKey = `${token}:${path}`;
+    const ttl = getPathTtl(path);
+    return likhaCache.getOrFetch<T>(cacheKey, () => rawLikhaFetch<T>(path, options, allowRetry), ttl);
+  }
+
+  // Mutation: execute and invalidate affected collection cache
+  const result = await rawLikhaFetch<T>(path, options, allowRetry);
+  const resourceBase = path.split('?')[0];
+  likhaCache.invalidate(resourceBase);
+  return result;
+}
+
 export const likhaLmsApi = {
+  cache: likhaCache,
+  invalidateCache(pattern?: string): void {
+    if (pattern) {
+      likhaCache.invalidate(pattern);
+    } else {
+      likhaCache.clear();
+    }
+  },
+
   // =========================================================================
   // 1. AUTHENTICATION & DIRECTORY
   // =========================================================================
@@ -108,6 +149,7 @@ export const likhaLmsApi = {
     logout(): void {
       clearToken();
       cachedServiceToken = null;
+      likhaCache.clear();
     },
   },
 

@@ -4,6 +4,7 @@ import { likhaLmsApi } from './likhaLmsApi';
 describe('Likha LMS Direct API Client', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    likhaLmsApi.invalidateCache();
   });
 
   it('requests courses with deep nested relations via Directus fields parameter', async () => {
