@@ -725,27 +725,15 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         apiFetch<{ messages: Message[] }>('/api/messages'),
         apiFetch<{ events: CalendarEvent[] }>('/api/calendar'),
       ]);
-      if (coursesSettled.status === 'rejected') throw coursesSettled.reason;
-      const coursesRes = coursesSettled.value;
-      const notificationsRes = settledValue(notificationsSettled, { notifications: [] });
-      const messagesRes = settledValue(messagesSettled, { messages: [] });
-      const calendarRes = settledValue(calendarSettled, { events: [] });
-      const fresh = emptyDb();
-      // User directory for inbox threads/compose/group-member lookups. The
-      // signed-in row stays authoritative; failure tolerates to self-only.
-      try {
-        const { users } = await apiFetch<{ users: User[] }>('/api/users');
-        const others = (users || []).filter(u => u.id !== user.id);
-        fresh.users = [user, ...others];
-      } catch {
-        fresh.users = [user];
+      let resolvedCourses: Course[] = [];
+      if (coursesSettled.status === 'fulfilled') {
+        resolvedCourses = coursesSettled.value.courses;
       }
-      fresh.courses = coursesRes.courses.map(normalizeCourseSyllabus);
-      if (fresh.courses.length === 0) {
+      if (resolvedCourses.length === 0) {
         try {
           const likhaCourses = await likhaLmsApi.getCoursesWithRelations();
           if (Array.isArray(likhaCourses) && likhaCourses.length > 0) {
-            fresh.courses = likhaCourses.map((c: any) => normalizeCourseSyllabus({
+            resolvedCourses = likhaCourses.map((c: any) => ({
               id: c.id,
               code: c.code || c.id,
               title: c.title || c.name || c.id,
@@ -763,6 +751,24 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           // Keep empty if Likha is offline or mock in test
         }
       }
+      if (resolvedCourses.length === 0 && coursesSettled.status === 'rejected') {
+        throw coursesSettled.reason;
+      }
+      const coursesRes = { courses: resolvedCourses };
+      const notificationsRes = settledValue(notificationsSettled, { notifications: [] });
+      const messagesRes = settledValue(messagesSettled, { messages: [] });
+      const calendarRes = settledValue(calendarSettled, { events: [] });
+      const fresh = emptyDb();
+      // User directory for inbox threads/compose/group-member lookups. The
+      // signed-in row stays authoritative; failure tolerates to self-only.
+      try {
+        const { users } = await apiFetch<{ users: User[] }>('/api/users');
+        const others = (users || []).filter(u => u.id !== user.id);
+        fresh.users = [user, ...others];
+      } catch {
+        fresh.users = [user];
+      }
+      fresh.courses = coursesRes.courses.map(normalizeCourseSyllabus);
       fresh.notifications = notificationsRes.notifications;
       try {
         const likhaNotifs = await likhaLmsApi.getNotifications(user.id);
@@ -1038,7 +1044,37 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     let cancelled = false;
     (async () => {
       try {
-        const { user } = await apiFetch<{ user: User }>('/api/auth/me');
+        let user: User | null = null;
+        try {
+          const res = await apiFetch<{ user: User }>('/api/auth/me');
+          user = res.user;
+        } catch {
+          // Fall back to direct Likha ERP me check
+          if (likhaLmsApi?.auth?.getMe) {
+            try {
+              const me = await likhaLmsApi.auth.getMe();
+              if (me?.id) {
+                const roleName = (me.role?.name || '').toLowerCase();
+                const mappedRole: UserRole =
+                  roleName.includes('faculty') || roleName.includes('instructor')
+                    ? 'faculty'
+                    : roleName.includes('admin')
+                      ? 'admin'
+                      : 'student';
+                user = {
+                  id: me.id,
+                  name: `${me.first_name || ''} ${me.last_name || ''}`.trim() || me.email,
+                  email: me.email,
+                  role: mappedRole,
+                  avatar: me.avatar ? `https://gabay.zyberlab.com/assets/${me.avatar}` : undefined,
+                  department: me.department || 'College of Computer Science',
+                  title: me.title || (mappedRole === 'student' ? 'Undergraduate Student' : 'Instructor'),
+                };
+              }
+            } catch {}
+          }
+        }
+        if (!user) throw new Error('Failed to restore session');
         if (cancelled) return;
         setCurrentUser(user);
         await refreshAll(user);
