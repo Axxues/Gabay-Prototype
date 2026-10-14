@@ -130,7 +130,7 @@ export const likhaLmsApi = {
   // =========================================================================
   courses: {
     async getCourses(studentId?: string): Promise<any[]> {
-      const query = 'fields=*,sections.*,activities.*,modules.*,course_files.*';
+      const query = 'fields=*,cover_image.*,instructor.*,sections.*,activities.*,modules.*,course_files.*';
       const all = await likhaRequest<any[]>(`/items/courses?${query}`);
       if (!studentId) return all || [];
 
@@ -146,7 +146,14 @@ export const likhaLmsApi = {
     },
 
     async getCourse(id: string): Promise<any> {
-      return likhaRequest(`/items/courses/${encodeURIComponent(id)}?fields=*,sections.*`);
+      return likhaRequest(`/items/courses/${encodeURIComponent(id)}?fields=*,cover_image.*,instructor.*,sections.*`);
+    },
+
+    async getCourseEnrollments(courseId?: string): Promise<any[]> {
+      const query = courseId
+        ? `filter[course][_eq]=${encodeURIComponent(courseId)}&fields=*,user.*,course.*`
+        : 'fields=*,user.*,course.*';
+      return likhaRequest<any[]>(`/items/Course_Enrollments?${query}`).catch(() => []);
     },
 
     async createCourse(course: any): Promise<any> {
@@ -560,12 +567,12 @@ export const likhaLmsApi = {
   // BACKWARD COMPATIBILITY TOP-LEVEL METHODS
   // =========================================================================
   async getCoursesWithRelations(): Promise<any[]> {
-    const fields = 'fields=*,activities.*,modules.*,modules.items.*,course_files.*';
+    const fields = 'fields=*,cover_image.*,instructor.*,activities.*,modules.*,modules.items.*,course_files.*';
     return likhaRequest(`/items/courses?${fields}`);
   },
 
   async getActivitiesWithRelations(courseId: string): Promise<any[]> {
-    const query = `filter[course_id][_eq]=${encodeURIComponent(courseId)}&fields=*,questions.*,rubrics.*`;
+    const query = `filter[course_id][_eq]=${encodeURIComponent(courseId)}&fields=*,attachments.directus_files_id.*,questions.*,rubrics.*`;
     return likhaRequest(`/items/activities?${query}`);
   },
 
