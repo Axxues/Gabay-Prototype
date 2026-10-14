@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useLMS } from '../../shared/context/LMSContext';
 import type { EnrollmentRequest } from '../../shared/types/lms';
 import { getDisplaySectionName } from '../../shared/utils/sections';
+import { resolveDirectusAssetUrl } from '../../shared/utils/avatar';
 import { JoinCourseModal } from '../../shared/components/common/JoinCourseModal';
 import { PageHeader } from '../../shared/components/common/PageHeader';
 import { EmptyState } from '../../shared/components/common/EmptyState';
@@ -270,8 +271,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   >
                     {course.image && (
                       <img
-                        src={course.image}
+                        src={resolveDirectusAssetUrl(course.image, { width: 640, quality: 80, format: 'webp' }) || course.image}
                         alt={course.title}
+                        loading="lazy"
+                        decoding="async"
                         className="absolute inset-0 w-full h-full object-cover opacity-20 pointer-events-none"
                       />
                     )}

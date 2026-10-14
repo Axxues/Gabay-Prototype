@@ -5,6 +5,7 @@ import {
   getInitials,
   hasCustomAvatar,
   isDefaultAvatarUrl,
+  resolveDirectusAssetUrl,
 } from './avatar';
 
 describe('avatar initials', () => {
@@ -67,5 +68,23 @@ describe('default avatar detection', () => {
     expect(hasCustomAvatar('')).toBe(false);
     expect(hasCustomAvatar('https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150')).toBe(false);
     expect(hasCustomAvatar('/uploads/1725900000_photo.png')).toBe(true);
+  });
+});
+
+describe('resolveDirectusAssetUrl', () => {
+  it('appends webp format, quality, and width transformation parameters to Directus asset url', () => {
+    const url = resolveDirectusAssetUrl('img-uuid-456', { width: 640, quality: 80, format: 'webp' });
+    expect(url).toContain('https://gabay.zyberlab.com/assets/img-uuid-456?width=640&quality=80&format=webp');
+  });
+
+  it('preserves full http urls and root-relative urls without changes', () => {
+    expect(resolveDirectusAssetUrl('https://example.com/banner.png')).toBe('https://example.com/banner.png');
+    expect(resolveDirectusAssetUrl('/banner.png')).toBe('/banner.png');
+  });
+
+  it('handles object representation with id', () => {
+    expect(resolveDirectusAssetUrl({ id: 'uuid-123' }, { width: 320, format: 'webp' })).toBe(
+      'https://gabay.zyberlab.com/assets/uuid-123?width=320&format=webp'
+    );
   });
 });

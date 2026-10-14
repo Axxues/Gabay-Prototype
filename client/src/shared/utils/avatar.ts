@@ -32,3 +32,35 @@ export function isDefaultAvatarUrl(url: string | null | undefined): boolean {
 export function hasCustomAvatar(url: string | null | undefined): boolean {
   return !isDefaultAvatarUrl(url);
 }
+
+export interface AssetTransformOptions {
+  width?: number;
+  height?: number;
+  quality?: number;
+  format?: 'webp' | 'auto' | 'png' | 'jpg';
+}
+
+export function resolveDirectusAssetUrl(
+  asset: any,
+  options?: AssetTransformOptions
+): string {
+  if (!asset) return '';
+  const assetId = typeof asset === 'string' ? asset : asset.id || asset.url || '';
+  if (!assetId) return '';
+  if (assetId.startsWith('http://') || assetId.startsWith('https://') || assetId.startsWith('/')) {
+    return assetId;
+  }
+
+  let url = `https://gabay.zyberlab.com/assets/${assetId}`;
+  const params: string[] = [];
+  if (options?.width) params.push(`width=${options.width}`);
+  if (options?.height) params.push(`height=${options.height}`);
+  if (options?.quality) params.push(`quality=${options.quality}`);
+  if (options?.format) params.push(`format=${options.format}`);
+
+  if (params.length > 0) {
+    url += `?${params.join('&')}`;
+  }
+  return url;
+}
+

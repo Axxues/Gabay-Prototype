@@ -43,6 +43,7 @@ import { commonsTemplates } from '../data/commonsTemplates';
 import { effectiveTerms, normalizeGradesReleased, normalizeTermId } from '../utils/gradingTerms';
 import { isSyllabusGradeReady } from '../utils/syllabusGradeGate';
 import { AlertModal, type AlertModalOptions } from '../components/common/AlertModal';
+import type { AssetTransformOptions } from '../utils/avatar';
 import { canPickSection } from '../utils/sections';
 import type { OfficialSyllabusData } from '../data/syllabusData';
 import { apiFetch, ApiError, getToken, setToken, clearToken, likhaLmsApi, LIKHA_URL } from '../api/client';
@@ -432,17 +433,27 @@ const normalizeSubmissionComment = (raw: any): SubmissionComment => ({
   createdAt: raw.createdAt ? toIsoString(raw.createdAt) : new Date().toISOString(),
 });
 
-export const resolveDirectusAssetUrl = (fileOrId: any): string | undefined => {
+export const resolveDirectusAssetUrl = (fileOrId: any, options?: AssetTransformOptions): string | undefined => {
   if (!fileOrId) return undefined;
+  const appendParams = (baseUrl: string) => {
+    if (!options) return baseUrl;
+    const params: string[] = [];
+    if (options.width) params.push(`width=${options.width}`);
+    if (options.height) params.push(`height=${options.height}`);
+    if (options.quality) params.push(`quality=${options.quality}`);
+    if (options.format) params.push(`format=${options.format}`);
+    return params.length > 0 ? `${baseUrl}?${params.join('&')}` : baseUrl;
+  };
+
   if (typeof fileOrId === 'string') {
     if (fileOrId.startsWith('http://') || fileOrId.startsWith('https://') || fileOrId.startsWith('/')) {
       return fileOrId;
     }
-    return `${LIKHA_URL}/assets/${fileOrId}`;
+    return appendParams(`${LIKHA_URL}/assets/${fileOrId}`);
   }
   if (typeof fileOrId === 'object' && fileOrId !== null) {
     if (fileOrId.id) {
-      return `${LIKHA_URL}/assets/${fileOrId.id}`;
+      return appendParams(`${LIKHA_URL}/assets/${fileOrId.id}`);
     }
     if (fileOrId.url) {
       return fileOrId.url;
