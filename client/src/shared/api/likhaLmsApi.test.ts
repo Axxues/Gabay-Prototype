@@ -55,4 +55,34 @@ describe('Likha LMS Direct API Client', () => {
     expect(uploaded.id).toBe('file-uuid-123');
     expect(uploaded.url).toContain('/assets/file-uuid-123');
   });
+
+  it('authenticates user and returns profile and token', async () => {
+    vi.spyOn(global, 'fetch')
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: { access_token: 'test-user-token' } }),
+      } as any)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: { id: 'u-faculty1', email: 'faculty1@dmmmsu.edu.ph', role: 'faculty' } }),
+      } as any);
+
+    const auth = await likhaLmsApi.auth.login('faculty1@dmmmsu.edu.ph', 'gabay2026');
+    expect(auth.token).toBe('test-user-token');
+    expect(auth.user.email).toBe('faculty1@dmmmsu.edu.ph');
+  });
+
+  it('retries with service token on HTTP 403 Forbidden', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch')
+      // 1. Initial user request fails with 403
+      .mockResolvedValueOnce({ ok: false, status: 403, json: async () => ({ error: 'Forbidden' }) } as any)
+      // 2. Service token login succeeds
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: { access_token: 'service-token-xyz' } }) } as any)
+      // 3. Retry with service token succeeds
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [{ id: 'notif-1' }] }) } as any);
+
+    const notifs = await likhaLmsApi.communications.getNotifications('u-1');
+    expect(notifs[0].id).toBe('notif-1');
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+  });
 });
