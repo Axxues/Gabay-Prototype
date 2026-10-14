@@ -130,7 +130,7 @@ export const likhaLmsApi = {
   // =========================================================================
   courses: {
     async getCourses(studentId?: string): Promise<any[]> {
-      const query = 'fields=*,cover_image.*,instructor.*,sections.*,activities.*,modules.*,course_files.*';
+      const query = 'fields=*,cover_image.*,instructor.*,sections.*';
       const all = await likhaRequest<any[]>(`/items/courses?${query}`);
       if (!studentId) return all || [];
 
@@ -216,7 +216,22 @@ export const likhaLmsApi = {
   // =========================================================================
   modules: {
     async getModulesWithItems(courseId: string): Promise<any[]> {
-      return likhaRequest(`/items/modules?filter[course_id][_eq]=${encodeURIComponent(courseId)}&fields=*,items.*&sort=order`);
+      const modules = await likhaRequest<any[]>(
+        `/items/modules?filter[course_id][_eq]=${encodeURIComponent(courseId)}&fields=*&sort=order`
+      );
+      if (!Array.isArray(modules) || modules.length === 0) return [];
+      const moduleIds = modules.map((m: any) => m.id).filter(Boolean);
+      if (moduleIds.length === 0) return modules.map((m: any) => ({ ...m, items: [] }));
+      const items = await likhaRequest<any[]>(
+        `/items/module_items?filter[module_id][_in]=${moduleIds.join(',')}&sort=order`
+      ).catch(() => []);
+      const itemMap = new Map<string, any[]>();
+      for (const item of (items || [])) {
+        const list = itemMap.get(item.module_id) || [];
+        list.push(item);
+        itemMap.set(item.module_id, list);
+      }
+      return modules.map((m: any) => ({ ...m, items: itemMap.get(m.id) || [] }));
     },
 
     async createModule(module: any): Promise<any> {
@@ -272,7 +287,7 @@ export const likhaLmsApi = {
   // =========================================================================
   assessments: {
     async getActivities(courseId: string): Promise<any[]> {
-      const query = `filter[course_id][_eq]=${encodeURIComponent(courseId)}&fields=*,questions.*,rubrics.*`;
+      const query = `filter[course_id][_eq]=${encodeURIComponent(courseId)}&fields=*,attachments.directus_files_id.*,questions.*`;
       return likhaRequest(`/items/activities?${query}`);
     },
 
@@ -617,12 +632,12 @@ export const likhaLmsApi = {
   // BACKWARD COMPATIBILITY TOP-LEVEL METHODS
   // =========================================================================
   async getCoursesWithRelations(): Promise<any[]> {
-    const fields = 'fields=*,cover_image.*,instructor.*,activities.*,modules.*,modules.items.*,course_files.*';
+    const fields = 'fields=*,cover_image.*,instructor.*,sections.*';
     return likhaRequest(`/items/courses?${fields}`);
   },
 
   async getActivitiesWithRelations(courseId: string): Promise<any[]> {
-    const query = `filter[course_id][_eq]=${encodeURIComponent(courseId)}&fields=*,attachments.directus_files_id.*,questions.*,rubrics.*`;
+    const query = `filter[course_id][_eq]=${encodeURIComponent(courseId)}&fields=*,attachments.directus_files_id.*,questions.*`;
     return likhaRequest(`/items/activities?${query}`);
   },
 

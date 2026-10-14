@@ -16,7 +16,7 @@ describe('Likha LMS Direct API Client', () => {
 
     const courses = await likhaLmsApi.getCoursesWithRelations();
     expect(fetchSpy).toHaveBeenCalledWith(
-      expect.stringContaining('/items/courses?fields=*,cover_image.*,instructor.*,activities.*,modules.*,modules.items.*,course_files.*'),
+      expect.stringContaining('/items/courses?fields=*,cover_image.*,instructor.*,sections.*'),
       expect.any(Object)
     );
     expect(courses[0].id).toBe('c-1');
@@ -32,7 +32,7 @@ describe('Likha LMS Direct API Client', () => {
 
     const activities = await likhaLmsApi.getActivitiesWithRelations('c-1');
     expect(fetchSpy).toHaveBeenCalledWith(
-      expect.stringContaining('/items/activities?filter[course_id][_eq]=c-1&fields=*,attachments.directus_files_id.*,questions.*,rubrics.*'),
+      expect.stringContaining('/items/activities?filter[course_id][_eq]=c-1&fields=*,attachments.directus_files_id.*,questions.*'),
       expect.any(Object)
     );
     expect(activities[0].id).toBe('act-1');

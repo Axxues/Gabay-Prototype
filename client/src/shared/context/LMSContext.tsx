@@ -844,64 +844,92 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         user.role === 'student'
           ? `/api/courses?enrolled=${encodeURIComponent(user.id)}`
           : '/api/courses';
-      // The first batch is failure-tolerant: only the course list is fatal
-      // (nothing renders without it). A single failing notifications /
-      // messages / calendar fetch must never empty the whole workspace —
-      // that was the intermittent blank-screen cause.
-      const [coursesSettled, notificationsSettled, messagesSettled, calendarSettled] = await Promise.allSettled([
-        apiFetch<{ courses: Course[] }>(coursesPath),
-        apiFetch<{ notifications: Notification[] }>('/api/notifications?limit=200'),
-        apiFetch<{ messages: Message[] }>('/api/messages'),
-        apiFetch<{ events: CalendarEvent[] }>('/api/calendar'),
-      ]);
+
       let resolvedCourses: Course[] = [];
-      if (coursesSettled.status === 'fulfilled') {
-        resolvedCourses = coursesSettled.value.courses;
+      try {
+        const likhaCourses = await likhaLmsApi.getCoursesWithRelations();
+        if (Array.isArray(likhaCourses) && likhaCourses.length > 0) {
+          resolvedCourses = likhaCourses.map((c: any) => ({
+            id: c.id,
+            code: c.code || c.id,
+            title: c.title || c.name || c.id,
+            description: c.description || '',
+            department: c.department || '',
+            term: c.term || '1st Semester 2026-2027',
+            units: Number(c.units) || 3,
+            enrolledCount: Number(c.enrolled_count ?? c.enrolledCount) || 0,
+            published: Boolean(c.published),
+            syllabus: c.syllabus || null,
+            section: c.section || '',
+            cover_image: c.cover_image,
+            instructor: c.instructor,
+            instructor_id: c.instructor_id,
+          }));
+        }
+      } catch (_likhaCourseErr) {
+        // Fall back to local Express courses
       }
+
+      let notificationsRes = { notifications: [] as Notification[] };
+      let messagesRes = { messages: [] as Message[] };
+      let calendarRes = { events: [] as CalendarEvent[] };
+
+      // Fall back to Express / test mock if Likha didn't yield courses
       if (resolvedCourses.length === 0) {
-        try {
-          const likhaCourses = await likhaLmsApi.getCoursesWithRelations();
-          if (Array.isArray(likhaCourses) && likhaCourses.length > 0) {
-            resolvedCourses = likhaCourses.map((c: any) => ({
-              id: c.id,
-              code: c.code || c.id,
-              title: c.title || c.name || c.id,
-              description: c.description || '',
-              department: c.department || '',
-              term: c.term || '1st Semester 2026-2027',
-              units: Number(c.units) || 3,
-              enrolledCount: Number(c.enrolled_count ?? c.enrolledCount) || 0,
-              published: Boolean(c.published),
-              syllabus: c.syllabus || null,
-              section: c.section || '',
-              cover_image: c.cover_image,
-              instructor: c.instructor,
-              instructor_id: c.instructor_id,
+        const [coursesSettled, notificationsSettled, messagesSettled, calendarSettled] = await Promise.allSettled([
+          apiFetch<{ courses: Course[] }>(coursesPath),
+          apiFetch<{ notifications: Notification[] }>('/api/notifications?limit=200'),
+          apiFetch<{ messages: Message[] }>('/api/messages'),
+          apiFetch<{ events: CalendarEvent[] }>('/api/calendar'),
+        ]);
+        if (coursesSettled.status === 'fulfilled') {
+          resolvedCourses = coursesSettled.value.courses;
+        } else if (coursesSettled.status === 'rejected') {
+          throw coursesSettled.reason;
+        }
+        notificationsRes = settledValue(notificationsSettled, { notifications: [] });
+        messagesRes = settledValue(messagesSettled, { messages: [] });
+        calendarRes = settledValue(calendarSettled, { events: [] });
+      }
+
+      const coursesRes = { courses: resolvedCourses };
+      const fresh = emptyDb();
+
+      // User directory: try Likha ERP users first, fallback to Express / mock
+      try {
+        const likhaUsers = await likhaLmsApi.users.getUsers();
+        if (Array.isArray(likhaUsers) && likhaUsers.length > 0) {
+          const others = likhaUsers
+            .filter((u: any) => u.id !== user.id)
+            .map((u: any) => ({
+              id: u.id,
+              name: `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email,
+              email: u.email,
+              role: (u.role?.name || u.role || 'student').toLowerCase().includes('faculty')
+                ? 'faculty'
+                : (u.role?.name || u.role || 'student').toLowerCase().includes('admin')
+                  ? 'admin'
+                  : 'student',
+              avatar: u.avatar ? `https://gabay.zyberlab.com/assets/${u.avatar}` : undefined,
+              department: u.department || 'College of Computer Science',
             }));
-          }
-        } catch (_likhaCourseErr) {
-          // Keep empty if Likha is offline or mock in test
+          fresh.users = [user, ...others];
+        } else {
+          throw new Error('Fallback');
+        }
+      } catch {
+        try {
+          const { users } = await apiFetch<{ users: User[] }>('/api/users');
+          const others = (users || []).filter(u => u.id !== user.id);
+          fresh.users = [user, ...others];
+        } catch {
+          fresh.users = [user];
         }
       }
-      if (resolvedCourses.length === 0 && coursesSettled.status === 'rejected') {
-        throw coursesSettled.reason;
-      }
-      const coursesRes = { courses: resolvedCourses };
-      const notificationsRes = settledValue(notificationsSettled, { notifications: [] });
-      const messagesRes = settledValue(messagesSettled, { messages: [] });
-      const calendarRes = settledValue(calendarSettled, { events: [] });
-      const fresh = emptyDb();
-      // User directory for inbox threads/compose/group-member lookups. The
-      // signed-in row stays authoritative; failure tolerates to self-only.
-      try {
-        const { users } = await apiFetch<{ users: User[] }>('/api/users');
-        const others = (users || []).filter(u => u.id !== user.id);
-        fresh.users = [user, ...others];
-      } catch {
-        fresh.users = [user];
-      }
+
       fresh.courses = coursesRes.courses.map(normalizeCourseSyllabus);
       fresh.notifications = notificationsRes.notifications;
+
       try {
         const likhaNotifs = await likhaLmsApi.getNotifications(user.id);
         if (Array.isArray(likhaNotifs) && likhaNotifs.length > 0) {
@@ -911,7 +939,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             title: ln.title || 'Likha System Notification',
             message: ln.message || '',
             type: ln.type || 'system',
-            read: Boolean(ln.read),
+            read: Boolean(ln.is_read ?? ln.read),
             createdAt: ln.created_at || new Date().toISOString(),
             link: ln.link || undefined,
           }));
@@ -926,27 +954,70 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } catch (_likhaNotifErr) {
         // Tolerated if Likha notifications offline
       }
+
       fresh.messages = messagesRes.messages;
       fresh.calendarEvents = calendarRes.events;
-      // Task 5: chat groups + advising slots are global (no per-course
-      // scope). Failures are tolerated; sync getters read the cache.
-      const groupAdvisingResults = await Promise.allSettled([
-        apiFetch<{ groups: ChatGroup[] }>('/api/groups'),
-        apiFetch<{ slots: AdvisingSlot[] }>('/api/advising'),
-      ]);
-      if (groupAdvisingResults[0].status === 'fulfilled') {
-        const groups = groupAdvisingResults[0].value.groups || [];
-        fresh.chatGroups = groups.map(g => ({
-          ...g,
-          memberIds: Array.isArray((g as any).memberIds)
-            ? (g as any).memberIds
-            : Array.isArray((g as any).members)
-              ? (g as any).members.map((m: any) => m.userId)
-              : [],
-        }));
+
+      // Calendar events: also augment from Likha ERP
+      try {
+        const likhaEvents = await likhaLmsApi.communications.getCalendarEvents();
+        if (Array.isArray(likhaEvents) && likhaEvents.length > 0) {
+          const seen = new Set(fresh.calendarEvents.map(e => e.id));
+          for (const ev of likhaEvents) {
+            if (!seen.has(ev.id)) {
+              fresh.calendarEvents.push(ev);
+              seen.add(ev.id);
+            }
+          }
+        }
+      } catch {
+        // Tolerated
       }
-      if (groupAdvisingResults[1].status === 'fulfilled') {
-        fresh.advisingSlots = groupAdvisingResults[1].value.slots || [];
+
+      // Chat groups + advising slots: try Likha first, fallback to Express
+      try {
+        const [groups, slots] = await Promise.all([
+          likhaLmsApi.communications.getChatGroups(),
+          likhaLmsApi.communications.getAdvisingSlots(),
+        ]);
+        if (Array.isArray(groups) && groups.length > 0) {
+          fresh.chatGroups = groups.map((g: any) => ({
+            id: g.id,
+            name: g.name || 'Chat Group',
+            courseId: g.course_id || undefined,
+            memberIds: Array.isArray(g.member_ids)
+              ? g.member_ids
+              : Array.isArray(g.members)
+                ? g.members.map((m: any) => m.userId || m.id)
+                : [],
+          }));
+        }
+        if (Array.isArray(slots) && slots.length > 0) {
+          fresh.advisingSlots = slots;
+        }
+      } catch {
+        // Tolerated
+      }
+
+      if (fresh.chatGroups.length === 0 || fresh.advisingSlots.length === 0) {
+        const groupAdvisingResults = await Promise.allSettled([
+          apiFetch<{ groups: ChatGroup[] }>('/api/groups'),
+          apiFetch<{ slots: AdvisingSlot[] }>('/api/advising'),
+        ]);
+        if (fresh.chatGroups.length === 0 && groupAdvisingResults[0].status === 'fulfilled') {
+          const groups = groupAdvisingResults[0].value.groups || [];
+          fresh.chatGroups = groups.map(g => ({
+            ...g,
+            memberIds: Array.isArray((g as any).memberIds)
+              ? (g as any).memberIds
+              : Array.isArray((g as any).members)
+                ? (g as any).members.map((m: any) => m.userId)
+                : [],
+          }));
+        }
+        if (fresh.advisingSlots.length === 0 && groupAdvisingResults[1].status === 'fulfilled') {
+          fresh.advisingSlots = groupAdvisingResults[1].value.slots || [];
+        }
       }
       // Task 2: fill the course/request cache scope — sections plus pending
       // requests for each course. Per-course failures are tolerated (e.g.
