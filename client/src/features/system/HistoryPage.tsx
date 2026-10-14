@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { PageHeader } from '../../shared/components/common/PageHeader';
 import { EmptyState } from '../../shared/components/common/EmptyState';
+import { useDebounce } from '../../shared/hooks/useDebounce';
 
 interface HistoryPageProps {
   onNavigateCourse?: (courseId: string, subTab?: string) => void;
@@ -26,6 +27,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
 }) => {
   const { db, isLoading, isSyncing, clearHistory, setActiveCourseId, showConfirm } = useLMS();
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedQuery = useDebounce(searchQuery, 200);
   const [filterType, setFilterType] = useState<'all' | 'courses' | 'lms'>('all');
 
   const historyLogs = db.historyLogs || [];
@@ -33,9 +35,9 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
   // Filter logs by query and type
   const filteredLogs = historyLogs.filter(log => {
     const matchesSearch =
-      log.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      log.path.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      log.timestamp.toLowerCase().includes(searchQuery.toLowerCase());
+      log.title.toLowerCase().includes(debouncedQuery.toLowerCase()) ||
+      log.path.toLowerCase().includes(debouncedQuery.toLowerCase()) ||
+      log.timestamp.toLowerCase().includes(debouncedQuery.toLowerCase());
 
     if (!matchesSearch) return false;
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Search, Command, ArrowRight, BookOpen, Calendar, Inbox, FileText, Award, X } from 'lucide-react';
 import { useLMS } from '../../context/LMSContext';
 import { AnimatedModal } from './ModalPortal';
+import { useDebounce } from '../../hooks/useDebounce';
 
 interface GlobalSearchDialogProps {
   isOpen: boolean;
@@ -18,6 +19,7 @@ export const GlobalSearchDialog: React.FC<GlobalSearchDialogProps> = ({
 }) => {
   const { db } = useLMS();
   const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearchTerm = useDebounce(searchTerm, 150);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -42,7 +44,7 @@ export const GlobalSearchDialog: React.FC<GlobalSearchDialogProps> = ({
   ];
 
   const filteredResults = useMemo(() => {
-    const q = searchTerm.toLowerCase().trim();
+    const q = debouncedSearchTerm.toLowerCase().trim();
     if (!q) return { pages: [], courses: [], activities: [], quizzes: [] };
 
     const pages = navItems.filter(i => i.label.toLowerCase().includes(q));
@@ -60,7 +62,7 @@ export const GlobalSearchDialog: React.FC<GlobalSearchDialogProps> = ({
     );
 
     return { pages, courses, activities, quizzes };
-  }, [searchTerm, db.courses, db.activities, db.quizzes]);
+  }, [debouncedSearchTerm, db.courses, db.activities, db.quizzes]);
 
   const hasResults =
     filteredResults.pages?.length > 0 ||

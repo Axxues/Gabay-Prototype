@@ -64,6 +64,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     return true;
   });
 
+  const [coursePage, setCoursePage] = useState(1);
+  const COURSES_PER_PAGE = 12;
+  const totalCoursePages = Math.max(1, Math.ceil(userCourses.length / COURSES_PER_PAGE));
+  const paginatedCourses = userCourses.slice((coursePage - 1) * COURSES_PER_PAGE, coursePage * COURSES_PER_PAGE);
+
   const unsubmittedList = db.submissions.filter(s => s.status === 'submitted');
 
   // Pending rows can reference courses outside the cached (enrolled-only)
@@ -241,7 +246,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             />
           ) : (
             <div className={`grid gap-5 ${hasRightSidebar ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1 md:grid-cols-2 lg:grid-cols-3"}`}>
-            {userCourses.map(course => {
+            {paginatedCourses.map(course => {
               const deleting = isProcessing(`delete:${course.id}`);
               return (
               <div
@@ -391,8 +396,36 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 </div>
               </div>
               );
-            })}
           </div>
+          )}
+
+          {totalCoursePages > 1 && (
+            <div className="flex items-center justify-between pt-3 px-1 border-t border-border/60">
+              <span className="text-xs text-muted-foreground font-medium">
+                Showing {(coursePage - 1) * COURSES_PER_PAGE + 1}–{Math.min(coursePage * COURSES_PER_PAGE, userCourses.length)} of {userCourses.length} courses
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCoursePage(p => Math.max(1, p - 1))}
+                  disabled={coursePage === 1}
+                  className="px-3 py-1.5 text-xs font-semibold bg-card hover:bg-muted disabled:opacity-40 rounded-xl border border-border cursor-pointer transition-all"
+                >
+                  Previous
+                </button>
+                <span className="text-xs font-semibold px-2">
+                  {coursePage} / {totalCoursePages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setCoursePage(p => Math.min(totalCoursePages, p + 1))}
+                  disabled={coursePage === totalCoursePages}
+                  className="px-3 py-1.5 text-xs font-semibold bg-card hover:bg-muted disabled:opacity-40 rounded-xl border border-border cursor-pointer transition-all"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
           )}
         </div>
 
