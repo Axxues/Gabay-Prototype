@@ -114,3 +114,51 @@ The following visual artifacts were captured and persisted during execution:
 - `5d53a5e`: `docs(verify): verify Directus user M2O relations and Course_Enrollments M2M junction`
 - `c23952e`: `feat(api): expand Likha API adapter with deep relational queries and course enrollments`
 - `2d48651`: `feat(context): normalize Directus relational user, media, and enrollment objects`
+- `2e49658`: `chore(likha): purge transactional test data across submissions, enrollments, and spr`
+- `503092e`: `chore(directus): remove redundant legacy string fields from submissions collection`
+- `8c8c48f`: `chore(directus): organize Likha ERP collections into feature folders`
+- `20db08d`: `chore(cleanup): prune obsolete thesis docx, session dumps, and intermediate task reports`
+
+---
+
+## 6. Likha ERP Backend Cleanup, Feature Folders & Workspace Pruning
+
+In subsequent refinement passes requested by the user, comprehensive cleaning and structural optimization were executed across both the remote Likha ERP backend and the local Gabay repository:
+
+### 6.1 Transactional Test Data Purge
+- **Safety Script:** [`scripts/purge-likha-test-data.ts`](file:///d:/4thesis/GabaySystem/Gabay-Prototype/scripts/purge-likha-test-data.ts)
+- **Purged Collections:**
+  - `submissions`: 24 test records purged.
+  - `submission_answers`: 11 test records purged.
+  - `enrollment_requests`: 21 test records purged.
+  - `spr_cells`: 8 test records purged.
+  - `course_grades`: 2 test records purged.
+  - Verified 0 remaining transactional artifacts across `announcements`, `discussions`, and `Course_Enrollments`.
+- **Preserved Entities:** User identity accounts in `directus_users` and core master course template records were strictly preserved.
+
+### 6.2 Redundant Schema Fields Removal via Directus Admin UI
+- **Zero-Downtime Execution:** In strict compliance with `AGENTS.md`, redundant fields were removed via interactive `browser_subagent` sessions in Directus Data Studio (`/admin/settings/data-model/submissions`), avoiding REST API DDL calls that trigger Directus host process crashes.
+- **Removed Fields:** Plain text string fields `submissions.file_url` and `submissions.file_name` superseded by native `submissions.file` (`directus_files` File interface).
+- **Visual Evidence:** [`docs/superpowers/plans/likha_fields_cleaned.png`](file:///d:/4thesis/GabaySystem/Gabay-Prototype/docs/superpowers/plans/likha_fields_cleaned.png)
+
+### 6.3 Directus Feature Folders Organization
+- **Data Model Folders Created:**
+  - 📁 `Academics & Courses` (`academics_courses`)
+  - 📁 `Assessments & Grading` (`assessments_grading`)
+  - 📁 `Communications` (`communications`)
+  - 📁 `Enrollments & Access` (`enrollments_access`)
+- **Visual Evidence:** [`docs/superpowers/plans/likha_folders_verified.png`](file:///d:/4thesis/GabaySystem/Gabay-Prototype/docs/superpowers/plans/likha_folders_verified.png)
+
+### 6.4 Local Workspace Pruning & Footprint Reduction
+- **Pruned Files:** 37 obsolete files deleted, freeing **over 120MB+** of repository disk space (20,861 lines of dead text and binary docs eliminated):
+  - Outdated docx thesis drafts: `Results-and-discussions.docx`, `Results-and-discussions.pre-2026-09-25.docx`, `THESIS-GABAY-Original.docx`, `THESIS-GABAY-v5.docx`.
+  - Raw session/prompt logs: `main-session.md`, `notif-and-quiz.md`.
+  - Intermediate report fragments: `task-1-report.md` through `task-6-report.md`, `task-likha-backend-report.md`, `task-normalization-report.md` (all consolidated into this canonical report).
+  - Unused scratch directories & stylesheets: `sibling-recovery/`, `docs-other-outputs/`, `test_style.css`.
+- **Preserved Fixtures:** Intentionally preserved `file-samples/` (`CSPC103-IKM-SYL-1stSemAY2026-2027.docx`, `CMSC131_Course_Orientation.pdf`) needed by syllabus parser tests.
+
+### 6.5 Platform Regression Test Suite
+- **Server Test Suite:** 51 / 51 test files passed, 400 / 400 tests passed (100%).
+- **Client Test Suite:** 62 / 62 test files passed, 331 / 331 tests passed (100%).
+- **Total Combined Tests:** **731 / 731 passed (100% pass rate)**.
+

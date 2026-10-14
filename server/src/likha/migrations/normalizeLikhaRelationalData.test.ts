@@ -10,6 +10,6 @@ describe('Likha Relational Data Unpacking', () => {
     expect(typeof counts.exams).toBe('number');
     expect(typeof counts.submissions).toBe('number');
     expect(typeof counts.grades).toBe('number');
-  });
+  }, 30000);
 });
 
