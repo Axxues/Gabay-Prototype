@@ -4,7 +4,7 @@ export const LIKHA_URL =
   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_LIKHA_URL) ||
   (typeof window !== 'undefined' &&
   window.location?.hostname === 'localhost' &&
-  !(typeof process !== 'undefined' && (process.env as any)?.VITEST)
+  !((globalThis as any).process?.env?.VITEST)
     ? '/likha'
     : 'https://gabay.zyberlab.com');
 

@@ -5,26 +5,27 @@ import { GabayChatProvider } from './shared/context/GabayChatContext';
 import { AppRail } from './shared/components/layout/AppRail';
 import { LMSContextPanel } from './shared/components/layout/LMSContextPanel';
 import { Topbar } from './shared/components/layout/Topbar';
-import { DashboardPage } from './features/dashboard/DashboardPage';
-import { CoursesPage } from './features/courses/CoursesPage';
-import { CalendarPage } from './features/calendar/CalendarPage';
-import { InboxPage } from './features/inbox/InboxPage';
 import { LoginPage } from './features/auth/LoginPage';
-import { ProfilePage } from './features/auth/ProfilePage';
-import { HistoryPage } from './features/system/HistoryPage';
-import { HelpPage } from './features/system/HelpPage';
-import { EmptyPage } from './features/system/EmptyPage';
-import { CreateCoursePage } from './features/courses/CreateCoursePage';
-import { ManageAccountsPage } from './features/accounts/ManageAccountsPage';
-import { CreateAccountPage } from './features/accounts/CreateAccountPage';
-import { EditAccountPage } from './features/accounts/EditAccountPage';
-import { GabayRAGPage } from './features/rag/GabayRAGPage';
-import { SpeedGraderModal } from './features/assessments/components/grading/SpeedGraderModal';
 import { RoleSwitcherModal } from './shared/components/common/RoleSwitcherModal';
 import { GlobalSearchDialog } from './shared/components/common/GlobalSearchDialog';
 import { PageTransition } from './shared/components/common/PageTransition';
 import { AppSkeleton, ProfileSkeleton } from './shared/components/common/AppSkeleton';
 import { tabToPath, courseToPath, pathToTab } from './shared/config/routes';
+
+const DashboardPage = React.lazy(() => import('./features/dashboard/DashboardPage').then(m => ({ default: m.DashboardPage })));
+const CoursesPage = React.lazy(() => import('./features/courses/CoursesPage').then(m => ({ default: m.CoursesPage })));
+const CreateCoursePage = React.lazy(() => import('./features/courses/CreateCoursePage').then(m => ({ default: m.CreateCoursePage })));
+const CalendarPage = React.lazy(() => import('./features/calendar/CalendarPage').then(m => ({ default: m.CalendarPage })));
+const InboxPage = React.lazy(() => import('./features/inbox/InboxPage').then(m => ({ default: m.InboxPage })));
+const ProfilePage = React.lazy(() => import('./features/auth/ProfilePage').then(m => ({ default: m.ProfilePage })));
+const HistoryPage = React.lazy(() => import('./features/system/HistoryPage').then(m => ({ default: m.HistoryPage })));
+const HelpPage = React.lazy(() => import('./features/system/HelpPage').then(m => ({ default: m.HelpPage })));
+const EmptyPage = React.lazy(() => import('./features/system/EmptyPage').then(m => ({ default: m.EmptyPage })));
+const ManageAccountsPage = React.lazy(() => import('./features/accounts/ManageAccountsPage').then(m => ({ default: m.ManageAccountsPage })));
+const CreateAccountPage = React.lazy(() => import('./features/accounts/CreateAccountPage').then(m => ({ default: m.CreateAccountPage })));
+const EditAccountPage = React.lazy(() => import('./features/accounts/EditAccountPage').then(m => ({ default: m.EditAccountPage })));
+const GabayRAGPage = React.lazy(() => import('./features/rag/GabayRAGPage').then(m => ({ default: m.GabayRAGPage })));
+const SpeedGraderModal = React.lazy(() => import('./features/assessments/components/grading/SpeedGraderModal').then(m => ({ default: m.SpeedGraderModal })));
 
 function useAppNavigation() {
   const navigate = useNavigate();
@@ -203,7 +204,9 @@ export const AppShell: React.FC = () => {
         <main className={`relative min-h-0 min-w-0 w-full flex-1 ${currentTab === 'courses' || currentTab === 'inbox' || currentTab === 'gabay-rag' ? 'overflow-hidden flex flex-col' : 'overflow-y-auto custom-scrollbar'}`}>
           <div className={currentTab === 'courses' || currentTab === 'inbox' || currentTab === 'gabay-rag' ? "flex h-full min-h-0 w-full min-w-0 flex-1 flex-col" : "mx-auto flex min-h-full w-full max-w-[1600px] flex-col p-5 sm:p-8 lg:p-10"}>
             <PageTransition pageKey={location.pathname} className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
-              <Outlet context={nav} />
+              <React.Suspense fallback={<AppSkeleton />}>
+                <Outlet context={nav} />
+              </React.Suspense>
             </PageTransition>
           </div>
         </main>
@@ -216,7 +219,9 @@ export const AppShell: React.FC = () => {
         onNavigateTab={(t) => { nav.handleNavigateTab(t); setSearchOpen(false); }}
       />
       <RoleSwitcherModal />
-      <SpeedGraderModal />
+      <React.Suspense fallback={null}>
+        <SpeedGraderModal />
+      </React.Suspense>
     </div>
   );
 };

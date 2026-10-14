@@ -80,6 +80,28 @@ function fileUploadPlugin(): Plugin {
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), fileUploadPlugin()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id: string) {
+          if (id.includes('node_modules')) {
+            if (id.includes('react-router-dom') || id.includes('react-dom') || id.includes('/react/') || id.endsWith('/react')) {
+              return 'vendor-react';
+            }
+            if (id.includes('lucide-react')) {
+              return 'vendor-icons';
+            }
+            if (id.includes('pdfjs-dist') || id.includes('xlsx') || id.includes('mammoth')) {
+              return 'vendor-parsers';
+            }
+            if (id.includes('recharts')) {
+              return 'vendor-charts';
+            }
+          }
+        },
+      },
+    },
+  },
   server: {
     proxy: {
       '/api': 'http://localhost:4001',
