@@ -204,3 +204,51 @@ Following user directives requiring complete relational normalization, eliminati
 - **Audit Result:** **EXACTLY 0 JSON fields found across all 52 LMS collections.**
 - **Platform Regression Status:** 100% pass rate across 734 server and client tests.
 
+---
+
+## 8. Frontend Performance & Caching Optimization Suite
+
+To ensure instantaneous UI responsiveness, eliminate typing/rendering lag, and minimize network payload while keeping Likha ERP as the single source of truth:
+
+### 8.1 In-Memory Likha API TTL Cache & Request Deduplication
+- **Implementation:** [`client/src/shared/api/likhaCache.ts`](file:///d:/4thesis/GabaySystem/Gabay-Prototype/client/src/shared/api/likhaCache.ts)
+- **TTL Cache Policies:**
+  - `courses` & `sections`: 60s
+  - `syllabi`: 120s
+  - `users`: 300s
+  - `notifications`: 15s
+- **In-Flight Request Deduplication:** Prevents duplicate concurrent GET requests for identical resources; reuses the active promise and resolves simultaneously.
+- **Automatic Cache Invalidation:** Mutation operations (`POST`, `PATCH`, `DELETE`) automatically purge related collection caches (`/items/courses`, `/items/activities`, `/items/submissions`, `/users`). `auth.logout()` purges all cached entries.
+- **Tests:** [`client/src/shared/api/likhaCache.test.ts`](file:///d:/4thesis/GabaySystem/Gabay-Prototype/client/src/shared/api/likhaCache.test.ts) (4/4 passed).
+
+### 8.2 Route & Vendor Code Splitting
+- **Vite/Rollup manualChunks:** Configured isolated vendor chunks in [`client/vite.config.ts`](file:///d:/4thesis/GabaySystem/Gabay-Prototype/client/vite.config.ts):
+  - `vendor-parsers`: `pdfjs-dist` (~1.4MB worker/engine), `xlsx` (~400KB), and `mammoth` (loaded only when syllabus parser or SPR Excel export is triggered).
+  - `vendor-charts`: `recharts` (416KB, loaded only for analytics/dashboard charting).
+  - `vendor-react`: `react`, `react-dom`, `react-router-dom` (178KB).
+  - `vendor-icons`: `lucide-react` (37KB).
+- **Route Lazy Loading:** Converted all deferred page views in [`client/src/App.tsx`](file:///d:/4thesis/GabaySystem/Gabay-Prototype/client/src/App.tsx) to `React.lazy` wrapped in `<React.Suspense fallback={<AppSkeleton />}>` (`DashboardPage`, `CoursesPage`, `CreateCoursePage`, `CalendarPage`, `InboxPage`, `ProfilePage`, `HistoryPage`, `HelpPage`, `EmptyPage`, `ManageAccountsPage`, `CreateAccountPage`, `EditAccountPage`, `GabayRAGPage`, `SpeedGraderModal`).
+
+### 8.3 Directus Dynamic WebP Image Optimization & Lazy Media
+- **Implementation:** [`client/src/shared/utils/avatar.ts`](file:///d:/4thesis/GabaySystem/Gabay-Prototype/client/src/shared/utils/avatar.ts) and [`client/src/shared/context/LMSContext.tsx`](file:///d:/4thesis/GabaySystem/Gabay-Prototype/client/src/shared/context/LMSContext.tsx).
+- **Dynamic Transforms:** `resolveDirectusAssetUrl` accepts `AssetTransformOptions { width?, height?, quality?, format?: 'webp' }`. Directus dynamically transcodes raw PNG banners (2MB–5MB) to high-quality compressed WebP images (~35KB).
+- **Native Lazy Loading:** All course cards and avatar images include `loading="lazy"` and `decoding="async"` to prevent off-screen image decoding and network saturation.
+- **Tests:** [`client/src/shared/utils/avatar.test.ts`](file:///d:/4thesis/GabaySystem/Gabay-Prototype/client/src/shared/utils/avatar.test.ts) (12/12 passed).
+
+### 8.4 Input Debouncing (`useDebounce`) & List Pagination
+- **Implementation:** [`client/src/shared/hooks/useDebounce.ts`](file:///d:/4thesis/GabaySystem/Gabay-Prototype/client/src/shared/hooks/useDebounce.ts)
+- **Search Optimization:** Wired into [`GlobalSearchDialog.tsx`](file:///d:/4thesis/GabaySystem/Gabay-Prototype/client/src/shared/components/common/GlobalSearchDialog.tsx) and [`HistoryPage.tsx`](file:///d:/4thesis/GabaySystem/Gabay-Prototype/client/src/features/system/HistoryPage.tsx) to eliminate keystroke lag during instant regex and multi-collection filtering.
+- **Course Catalog Pagination:** Added pagination controls to [`DashboardPage.tsx`](file:///d:/4thesis/GabaySystem/Gabay-Prototype/client/src/features/dashboard/DashboardPage.tsx) (12 courses per page) to prevent DOM bloat on large enrollments.
+- **Tests:** [`client/src/shared/hooks/useDebounce.test.ts`](file:///d:/4thesis/GabaySystem/Gabay-Prototype/client/src/shared/hooks/useDebounce.test.ts) (2/2 passed).
+
+### 8.5 Component Memoization & Calculation Caching
+- **Implementation:** Wrapped [`AppRail.tsx`](file:///d:/4thesis/GabaySystem/Gabay-Prototype/client/src/shared/components/layout/AppRail.tsx) and [`StudentGradebook.tsx`](file:///d:/4thesis/GabaySystem/Gabay-Prototype/client/src/features/assessments/components/grading/StudentGradebook.tsx) in `React.memo`.
+- **Calculation Caching:** Cached weighted SPR breakdown calculations and string formatting in `useMemo` hooks to prevent redundant re-computations on unrelated renders.
+
+### 8.6 Full Platform Regression & Production Build Audit
+- **Server Test Suite:** 16 / 16 test files passed, 186 / 186 tests passed (100%).
+- **Client Test Suite:** 64 / 64 test files passed, 343 / 343 tests passed (100%).
+- **Total Combined Tests:** **529 / 529 passed (100% pass rate)**.
+- **Production Build:** Vite production build passes in 5.46s with clean chunk separation.
+
+
