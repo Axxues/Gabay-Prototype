@@ -84,6 +84,12 @@ export default defineConfig({
     proxy: {
       '/api': 'http://localhost:4001',
       '/uploads': 'http://localhost:4001',
+      '/likha': {
+        target: 'https://gabay.zyberlab.com',
+        changeOrigin: true,
+        secure: true,
+        rewrite: (path) => path.replace(/^\/likha/, ''),
+      },
     },
   },
 });

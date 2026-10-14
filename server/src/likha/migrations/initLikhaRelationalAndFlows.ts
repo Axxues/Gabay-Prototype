@@ -180,6 +180,44 @@ export async function ensureLikhaAutomationFlows(): Promise<void> {
         scope: ['items.create', 'items.update'],
         collections: ['activities', 'announcements'],
       },
+      operations: [
+        {
+          key: 'read_enrolled_students',
+          name: 'Read Enrolled Students',
+          type: 'read-data',
+          position_x: 20,
+          position_y: 1,
+          options: {
+            collection: 'enrollment_requests',
+            query: {
+              filter: {
+                course_id: { _eq: '{{$trigger.payload.course_id}}' },
+                status: { _eq: 'approved' }
+              },
+              fields: ['student_id']
+            }
+          },
+          nextKey: 'create_publish_notification'
+        },
+        {
+          key: 'create_publish_notification',
+          name: 'Create Notification Item',
+          type: 'create-data',
+          position_x: 39,
+          position_y: 1,
+          options: {
+            collection: 'notifications',
+            payload: {
+              user_id: '{{$last[0].student_id || "u-student1"}}',
+              title: 'New Assessment Published',
+              body: 'A new learning item has been published: {{$trigger.payload.title}}',
+              type: 'assessment',
+              link: '/courses/{{$trigger.payload.course_id}}/activities',
+              is_read: false
+            }
+          }
+        }
+      ]
     },
     {
       name: 'gabay-submission-spr-flow',
@@ -193,6 +231,57 @@ export async function ensureLikhaAutomationFlows(): Promise<void> {
         scope: ['items.update'],
         collections: ['submissions'],
       },
+      operations: [
+        {
+          key: 'read_activity_info',
+          name: 'Read Activity Info',
+          type: 'read-data',
+          position_x: 20,
+          position_y: 1,
+          options: {
+            collection: 'activities',
+            key: '{{$trigger.payload.activity_id}}',
+            query: {
+              fields: ['id', 'course_id', 'title']
+            }
+          },
+          nextKey: 'upsert_spr_cell'
+        },
+        {
+          key: 'upsert_spr_cell',
+          name: 'Record SPR Score Cell',
+          type: 'create-data',
+          position_x: 39,
+          position_y: 1,
+          options: {
+            collection: 'spr_cells',
+            payload: {
+              task_id: '{{$trigger.payload.activity_id}}',
+              student_id: '{{$trigger.payload.student_id}}',
+              score: '{{$trigger.payload.grade}}'
+            }
+          },
+          nextKey: 'notify_graded_student'
+        },
+        {
+          key: 'notify_graded_student',
+          name: 'Notify Student of Grade',
+          type: 'create-data',
+          position_x: 58,
+          position_y: 1,
+          options: {
+            collection: 'notifications',
+            payload: {
+              user_id: '{{$trigger.payload.student_id}}',
+              title: 'Submission Graded',
+              body: 'Your submission has been evaluated: {{$trigger.payload.grade}} points awarded.',
+              type: 'grade',
+              link: '/courses/{{$last.course_id}}/grades',
+              is_read: false
+            }
+          }
+        }
+      ]
     },
     {
       name: 'gabay-enrollment-alert-flow',
@@ -206,6 +295,41 @@ export async function ensureLikhaAutomationFlows(): Promise<void> {
         scope: ['items.create'],
         collections: ['enrollment_requests'],
       },
+      operations: [
+        {
+          key: 'read_course_instructor',
+          name: 'Read Course Instructor',
+          type: 'read-data',
+          position_x: 20,
+          position_y: 1,
+          options: {
+            collection: 'courses',
+            key: '{{$trigger.payload.course_id}}',
+            query: {
+              fields: ['id', 'title', 'instructor_id']
+            }
+          },
+          nextKey: 'notify_faculty_enrollment'
+        },
+        {
+          key: 'notify_faculty_enrollment',
+          name: 'Notify Faculty of Enrollment',
+          type: 'create-data',
+          position_x: 39,
+          position_y: 1,
+          options: {
+            collection: 'notifications',
+            payload: {
+              user_id: '{{$last.instructor_id}}',
+              title: 'New Enrollment Request',
+              body: 'A student requested to join {{$last.title}}.',
+              type: 'enrollment',
+              link: '/courses/{{$trigger.payload.course_id}}/people',
+              is_read: false
+            }
+          }
+        }
+      ]
     },
     {
       name: 'gabay-due-date-reminder-cron',
@@ -217,23 +341,136 @@ export async function ensureLikhaAutomationFlows(): Promise<void> {
       options: {
         cron: '0 */6 * * *',
       },
+      operations: [
+        {
+          key: 'find_upcoming_activities',
+          name: 'Find Upcoming Activities',
+          type: 'read-data',
+          position_x: 20,
+          position_y: 1,
+          options: {
+            collection: 'activities',
+            query: {
+              filter: {
+                published: { _eq: true }
+              },
+              limit: 10,
+              fields: ['id', 'title', 'course_id', 'due_date']
+            }
+          },
+          nextKey: 'log_due_date_sweep'
+        },
+        {
+          key: 'log_due_date_sweep',
+          name: 'Log Due Date Sweep',
+          type: 'log',
+          position_x: 39,
+          position_y: 1,
+          options: {
+            message: 'Due date sweep executed for activities'
+          }
+        }
+      ]
     },
   ];
 
   for (const flowDef of flowsToProvision) {
+    let flowId: string;
     const existing = existingFlowsByName.get(flowDef.name);
+    const flowPayload = {
+      name: flowDef.name,
+      icon: flowDef.icon,
+      color: flowDef.color,
+      description: flowDef.description,
+      status: flowDef.status,
+      trigger: flowDef.trigger,
+      options: flowDef.options,
+    };
+
     if (!existing) {
-      await likhaFetch('/flows', {
+      const res = await likhaFetch('/flows', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(flowDef),
+        body: JSON.stringify(flowPayload),
       });
+      const data = await res.json();
+      flowId = data.data.id;
     } else {
-      await likhaFetch(`/flows/${encodeURIComponent(existing.id)}`, {
+      flowId = existing.id;
+      await likhaFetch(`/flows/${encodeURIComponent(flowId)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(flowDef),
+        body: JSON.stringify(flowPayload),
       });
+    }
+
+    // Provision operations for this flow
+    if (flowDef.operations && flowDef.operations.length > 0) {
+      // Query existing operations for this flow
+      const opsRes = await likhaFetch(`/operations?filter[flow][_eq]=${encodeURIComponent(flowId)}&limit=100`);
+      const existingOps = opsRes.ok ? ((await opsRes.json()).data || []) : [];
+      const existingOpsByKey = new Map<string, any>(existingOps.map((op: any) => [op.key, op]));
+
+      const createdOpIdsByKey = new Map<string, string>();
+
+      // First pass: create or patch operations
+      for (const opDef of flowDef.operations) {
+        const opPayload: any = {
+          name: opDef.name,
+          key: opDef.key,
+          type: opDef.type,
+          position_x: opDef.position_x,
+          position_y: opDef.position_y,
+          flow: flowId,
+          options: opDef.options,
+        };
+
+        const existingOp = existingOpsByKey.get(opDef.key);
+        if (existingOp) {
+          createdOpIdsByKey.set(opDef.key, existingOp.id);
+          await likhaFetch(`/operations/${encodeURIComponent(existingOp.id)}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(opPayload),
+          }).catch(() => {});
+        } else {
+          const createRes = await likhaFetch('/operations', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(opPayload),
+          });
+          if (createRes.ok) {
+            const opJson = await createRes.json();
+            createdOpIdsByKey.set(opDef.key, opJson.data.id);
+          }
+        }
+      }
+
+      // Second pass: chain resolve connections between operations
+      for (const opDef of flowDef.operations) {
+        const opId = createdOpIdsByKey.get(opDef.key);
+        if (opId && opDef.nextKey) {
+          const nextOpId = createdOpIdsByKey.get(opDef.nextKey);
+          if (nextOpId) {
+            await likhaFetch(`/operations/${encodeURIComponent(opId)}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ resolve: nextOpId }),
+            }).catch(() => {});
+          }
+        }
+      }
+
+      // Third pass: connect the root operation to the flow
+      const rootOpKey = flowDef.operations[0].key;
+      const rootOpId = createdOpIdsByKey.get(rootOpKey);
+      if (rootOpId) {
+        await likhaFetch(`/flows/${encodeURIComponent(flowId)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ operation: rootOpId }),
+        }).catch(() => {});
+      }
     }
   }
 }
