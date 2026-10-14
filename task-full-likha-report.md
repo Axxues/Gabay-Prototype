@@ -159,6 +159,48 @@ In subsequent refinement passes requested by the user, comprehensive cleaning an
 
 ### 6.5 Platform Regression Test Suite
 - **Server Test Suite:** 51 / 51 test files passed, 400 / 400 tests passed (100%).
-- **Client Test Suite:** 62 / 62 test files passed, 331 / 331 tests passed (100%).
-- **Total Combined Tests:** **731 / 731 passed (100% pass rate)**.
+- **Client Test Suite:** 62 / 62 test files passed, 334 / 334 tests passed (100%).
+- **Total Combined Tests:** **734 / 734 passed (100% pass rate)**.
+
+---
+
+## 7. Complete Likha ERP Relational Normalization & Zero-JSON Architecture
+
+Following user directives requiring complete relational normalization, elimination of all raw JSON fields, and organized feature folder grouping:
+
+### 7.1 Directus Schema & Collections Setup
+- **New Feature Folder Created:** 📁 `Syllabus Management` (`syllabus_management`) in Directus Data Studio.
+- **Created Missing Operational Collections:**
+  - `announcement_replies`: Relational O2M discussion replies to announcements (`announcement_id`, `author_id`, `content`, `created_at`).
+  - `discussion_replies`: Relational O2M thread replies (`discussion_id`, `author_id`, `content`, `created_at`).
+  - `notifications`: Relational user alert queue (`user_id`, `title`, `message`, `type`, `link`, `is_read`, `created_at`).
+  - `submission_rubric_scores`: Relational rubric criterion grade breakdown (`submission_id`, `criterion_id`, `points_awarded`, `feedback`).
+  - `submission_comments`: Relational submission conversation thread (`submission_id`, `author_id`, `content`, `created_at`).
+  - `chat_groups_directus_users`: Relational M2M junction for multi-user chat room memberships (`chat_group_id`, `directus_user_id`).
+- **Visual Evidence:** [`docs/superpowers/plans/likha_schema_setup_verified.png`](file:///d:/4thesis/GabaySystem/Gabay-Prototype/docs/superpowers/plans/likha_schema_setup_verified.png)
+
+### 7.2 Relational Data Unpacking Pipeline
+- **Execution Script:** [`scripts/unpack-likha-json-data.ts`](file:///d:/4thesis/GabaySystem/Gabay-Prototype/scripts/unpack-likha-json-data.ts)
+- **Course Syllabus Unpacking:** Successfully unpacked monolithic course JSON into the canonical `syllabi` header table and 13 relational child tables (`syllabus_course_info`, `syllabus_course_outcomes`, `syllabus_learning_plans`, `syllabus_policies`, `syllabus_institution`, etc.) with 0 errors.
+
+### 7.3 Client LMS Adapters & Context Harmonization
+- **API Client:** Added `syllabus` controller (`getSyllabus`, `createSyllabus`, `updateSyllabus`) and assessment sub-resources in [`client/src/shared/api/likhaLmsApi.ts`](file:///d:/4thesis/GabaySystem/Gabay-Prototype/client/src/shared/api/likhaLmsApi.ts).
+- **LMSContext:** Harmonized `normalizeCourse` in [`client/src/shared/context/LMSContext.tsx`](file:///d:/4thesis/GabaySystem/Gabay-Prototype/client/src/shared/context/LMSContext.tsx) to synthesize course syllabus AST from relational child records if present.
+
+### 7.4 Permanent Elimination of Legacy JSON Fields
+- In strict adherence to `AGENTS.md` (zero REST DDL calls to prevent Directus nodemon crashes), all legacy JSON fields were permanently deleted interactively via `browser_subagent` in the Directus Data Model UI:
+  - `courses`: `syllabus`, `spr_config`, `grading_terms`, `grades_released` (all 4 deleted).
+  - `announcements`: `likes`, `replies` (both deleted).
+  - `discussions`: `replies` (deleted).
+  - `chat_groups`: `member_ids` (deleted).
+  - `module_comments`: `likes` (deleted).
+  - `submissions`: `rubric_scores`, `comments` (both deleted).
+  - `syllabi`: `content` (deleted).
+- **Visual Evidence:** [`docs/superpowers/plans/likha_zero_json_verified.png`](file:///d:/4thesis/GabaySystem/Gabay-Prototype/docs/superpowers/plans/likha_zero_json_verified.png)
+
+### 7.5 Automated Zero-JSON Verification
+- **Verification Script:** [`scripts/verify-zero-json.ts`](file:///d:/4thesis/GabaySystem/Gabay-Prototype/scripts/verify-zero-json.ts)
+- **Audit Target:** All 52 Gabay LMS application collections across `academics_courses`, `assessments_grading`, `communications`, `enrollments_access`, and `syllabus_management`.
+- **Audit Result:** **EXACTLY 0 JSON fields found across all 52 LMS collections.**
+- **Platform Regression Status:** 100% pass rate across 734 server and client tests.
 
