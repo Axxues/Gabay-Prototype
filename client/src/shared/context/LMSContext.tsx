@@ -1263,6 +1263,28 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }));
 
       setActiveCourseId(course.id);
+
+      // Sync directly to Likha ERP backend
+      try {
+        if (likhaLmsApi?.courses?.createCourse) {
+          void likhaLmsApi.courses.createCourse({
+            id: course.id,
+            code: course.code,
+            title: course.title,
+            section: course.section,
+            term: course.term,
+            instructor_name: activeUser.name,
+            instructor_id: activeUser.id,
+            published: course.published,
+            color: course.color,
+            image: course.image,
+            credits: course.credits,
+            ched_compliance_code: course.chedComplianceCode,
+            join_code: course.joinCode,
+          }).catch(err => console.warn('[likhaLmsApi] createCourse sync:', err));
+        }
+      } catch {}
+
       return course;
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to create course.';
@@ -1289,6 +1311,20 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...prev,
         modules: [...prev.modules, merged]
       }));
+
+      // Sync directly to Likha ERP backend
+      try {
+        if (likhaLmsApi?.modules?.createModule) {
+          void likhaLmsApi.modules.createModule({
+            id: merged.id,
+            course_id: courseId,
+            title: merged.title,
+            order: merged.order,
+            published: merged.published,
+          }).catch(err => console.warn('[likhaLmsApi] createModule sync:', err));
+        }
+      } catch {}
+
       return merged;
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to create module.';
@@ -1318,6 +1354,15 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             : m
         )
       }));
+
+      // Sync directly to Likha ERP backend
+      try {
+        if (likhaLmsApi?.modules?.updateModule) {
+          void likhaLmsApi.modules.updateModule(moduleId, body).catch(err =>
+            console.warn('[likhaLmsApi] updateModule sync:', err)
+          );
+        }
+      } catch {}
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to update module.';
       setLastError(message);
@@ -1336,6 +1381,15 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...prev,
         modules: (prev.modules || []).filter(m => m.id !== moduleId)
       }));
+
+      // Sync directly to Likha ERP backend
+      try {
+        if (likhaLmsApi?.modules?.deleteModule) {
+          void likhaLmsApi.modules.deleteModule(moduleId).catch(err =>
+            console.warn('[likhaLmsApi] deleteModule sync:', err)
+          );
+        }
+      } catch {}
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to delete module.';
       setLastError(message);
@@ -1370,6 +1424,19 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           mod.id === moduleId ? { ...mod, items: [...mod.items, item as ModuleItem] } : mod
         )
       }));
+
+      // Sync directly to Likha ERP backend
+      try {
+        if (likhaLmsApi?.modules?.createModuleItem) {
+          void likhaLmsApi.modules.createModuleItem({
+            id: (item as ModuleItem).id,
+            module_id: moduleId,
+            title: (item as ModuleItem).title,
+            type: (item as ModuleItem).type,
+            content: (item as ModuleItem).content,
+          }).catch(err => console.warn('[likhaLmsApi] addModuleItem sync:', err));
+        }
+      } catch {}
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to add module item.';
       setLastError(message);
@@ -1419,6 +1486,17 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             )
           };
         });
+
+        // Sync directly to Likha ERP backend
+        try {
+          if (likhaLmsApi?.modules?.updateModuleItem) {
+            void likhaLmsApi.modules.updateModuleItem(itemId, {
+              ...body,
+              module_id: destModuleId,
+            }).catch(err => console.warn('[likhaLmsApi] updateModuleItem move sync:', err));
+          }
+        } catch {}
+
         return;
       }
       const { item } = await apiFetch<{ item: ModuleItem }>(
@@ -1433,6 +1511,15 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             : mod
         )
       }));
+
+      // Sync directly to Likha ERP backend
+      try {
+        if (likhaLmsApi?.modules?.updateModuleItem) {
+          void likhaLmsApi.modules.updateModuleItem(itemId, body).catch(err =>
+            console.warn('[likhaLmsApi] updateModuleItem sync:', err)
+          );
+        }
+      } catch {}
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to update module item.';
       setLastError(message);
@@ -1498,6 +1585,24 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...prev,
         quizzes: [merged, ...prev.quizzes]
       }));
+
+      // Sync directly to Likha ERP backend
+      try {
+        if (likhaLmsApi?.assessments?.saveQuiz) {
+          void likhaLmsApi.assessments.saveQuiz({
+            id: merged.id,
+            course_id: courseId,
+            title: merged.title,
+            term: merged.term,
+            instructions: merged.instructions,
+            published: merged.published,
+            time_limit_minutes: merged.timeLimitMinutes,
+            due_date: merged.dueDate,
+            questions: merged.questions || [],
+          }).catch(err => console.warn('[likhaLmsApi] saveQuiz sync:', err));
+        }
+      } catch {}
+
       return merged;
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to create quiz.';
@@ -1575,6 +1680,24 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...prev,
         exams: [merged, ...(prev.exams || [])]
       }));
+
+      // Sync directly to Likha ERP backend
+      try {
+        if (likhaLmsApi?.assessments?.saveExam) {
+          void likhaLmsApi.assessments.saveExam({
+            id: merged.id,
+            course_id: courseId,
+            title: merged.title,
+            term: merged.term,
+            instructions: merged.instructions,
+            published: merged.published,
+            time_limit_minutes: merged.timeLimitMinutes,
+            due_date: merged.dueDate,
+            questions: merged.questions || [],
+          }).catch(err => console.warn('[likhaLmsApi] saveExam sync:', err));
+        }
+      } catch {}
+
       return merged;
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to create exam.';
@@ -2675,6 +2798,20 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...(attachmentSize !== undefined ? { attachmentSize } : {}),
       };
       setDb(prev => ({ ...prev, messages: [merged, ...(prev.messages || [])] }));
+
+      // Sync directly to Likha ERP backend
+      try {
+        if (likhaLmsApi?.communications?.sendMessage) {
+          void likhaLmsApi.communications.sendMessage({
+            id: merged.id,
+            sender_id: activeUser.id,
+            receiver_id: recipientId,
+            course_id: courseId || null,
+            subject,
+            body,
+          }).catch(err => console.warn('[likhaLmsApi] sendMessage sync:', err));
+        }
+      } catch {}
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to send message.';
       setLastError(message);
@@ -2855,6 +2992,22 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...prev,
         calendarEvents: [...prev.calendarEvents, created]
       }));
+
+      // Sync directly to Likha ERP backend
+      try {
+        if (likhaLmsApi?.communications?.createCalendarEvent) {
+          void likhaLmsApi.communications.createCalendarEvent({
+            id: created.id,
+            title: created.title,
+            date: created.date,
+            time: created.time,
+            course_id: created.courseId,
+            type: created.type,
+            description: created.description,
+          }).catch(err => console.warn('[likhaLmsApi] createCalendarEvent sync:', err));
+        }
+      } catch {}
+
       return created;
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to create event.';
@@ -2966,6 +3119,21 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...prev,
         announcements: [merged, ...(prev.announcements || [])]
       }));
+
+      // Sync directly to Likha ERP backend
+      try {
+        if (likhaLmsApi?.communications?.createAnnouncement) {
+          void likhaLmsApi.communications.createAnnouncement({
+            id: merged.id,
+            course_id: courseId,
+            title: merged.title,
+            content: merged.content,
+            author_id: activeUser.id,
+            date: merged.date,
+          }).catch(err => console.warn('[likhaLmsApi] createAnnouncement sync:', err));
+        }
+      } catch {}
+
       return merged;
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to create announcement.';
@@ -3053,6 +3221,18 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             : a
         )
       }));
+
+      // Sync directly to Likha ERP backend
+      try {
+        if (likhaLmsApi?.communications?.addAnnouncementReply) {
+          void likhaLmsApi.communications.addAnnouncementReply(announcementId, {
+            author_id: activeUser.id,
+            author_name: activeUser.name,
+            content,
+            date: (reply as any).date || new Date().toISOString(),
+          }).catch(err => console.warn('[likhaLmsApi] addAnnouncementReply sync:', err));
+        }
+      } catch {}
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to post reply.';
       setLastError(message);
@@ -3109,6 +3289,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Read path: stay silent (no modal) on failure; cache already updated.
     try {
+      if (likhaLmsApi?.communications?.markNotificationRead) {
+        void likhaLmsApi.communications.markNotificationRead(id).catch(() => {});
+      }
       await apiFetch<{ notification: Notification }>(
         `/api/notifications/${encodeURIComponent(id)}/read`,
         { method: 'POST' }
@@ -3241,6 +3424,21 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...prev,
         discussions: [merged, ...(prev.discussions || [])]
       }));
+
+      // Sync directly to Likha ERP backend
+      try {
+        if (likhaLmsApi?.communications?.createDiscussion) {
+          void likhaLmsApi.communications.createDiscussion({
+            id: merged.id,
+            course_id: courseId,
+            title: merged.title,
+            content: data.prompt || '',
+            author_id: activeUser.id,
+            date: new Date().toISOString(),
+          }).catch(err => console.warn('[likhaLmsApi] createDiscussion sync:', err));
+        }
+      } catch {}
+
       return merged;
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to create discussion.';
@@ -3339,6 +3537,18 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             : d
         )
       }));
+
+      // Sync directly to Likha ERP backend
+      try {
+        if (likhaLmsApi?.communications?.addDiscussionReply) {
+          void likhaLmsApi.communications.addDiscussionReply(discussionId, {
+            author_id: activeUser.id,
+            author_name: activeUser.name,
+            content,
+            date: new Date().toISOString(),
+          }).catch(err => console.warn('[likhaLmsApi] addDiscussionReply sync:', err));
+        }
+      } catch {}
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to post reply.';
       setLastError(message);
@@ -3831,6 +4041,15 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...prev,
         sprConfigs: { ...(prev.sprConfigs ?? {}), [courseId]: saved },
       }));
+
+      // Sync directly to Likha ERP backend
+      try {
+        if (likhaLmsApi?.grades?.saveSPRConfig) {
+          void likhaLmsApi.grades.saveSPRConfig(courseId, config).catch(err =>
+            console.warn('[likhaLmsApi] saveSPRConfig sync:', err)
+          );
+        }
+      } catch {}
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to save SPR config.';
       setLastError(message);
@@ -3939,6 +4158,15 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...prev,
       sprScores: mergeSPRCourseMaps(prev.sprScores, { [courseId]: { [studentId]: nextCell } }),
     }));
+
+    // Sync directly to Likha ERP backend
+    try {
+      if (likhaLmsApi?.grades?.saveGradeWithCells && value !== null) {
+        void likhaLmsApi.grades.saveGradeWithCells(courseId, studentId, [
+          { task_id: key, score: value }
+        ]).catch(err => console.warn('[likhaLmsApi] setSPRCell sync:', err));
+      }
+    } catch {}
     await recomputeAndSyncSPR(nextDb, courseId, studentId);
   };
 
@@ -4036,6 +4264,19 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             : c
         )
       }));
+
+      // Sync directly to Likha ERP backend
+      try {
+        if (likhaLmsApi?.sections?.createSection) {
+          void likhaLmsApi.sections.createSection({
+            id: merged.id,
+            course_id: courseId,
+            name: merged.name,
+            schedule: merged.schedule,
+            room: merged.location,
+          }).catch(err => console.warn('[likhaLmsApi] createSection sync:', err));
+        }
+      } catch {}
 
       return merged;
     } catch (err) {
@@ -4137,6 +4378,20 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           body: { code: course.joinCode }
         });
         setDb(prev => mergeEnrollmentRequest(prev, request));
+
+        // Sync directly to Likha ERP backend (triggers gabay-enrollment-alert-flow)
+        try {
+          if (likhaLmsApi?.requests?.createRequest) {
+            void likhaLmsApi.requests.createRequest({
+              id: request.id,
+              course_id: courseId,
+              student_id: activeUser.id,
+              type,
+              status: 'pending',
+            }).catch(err => console.warn('[likhaLmsApi] createEnrollmentRequest sync:', err));
+          }
+        } catch {}
+
         return request;
       }
       const { request } = await apiFetch<{ request: EnrollmentRequest }>(
@@ -4144,6 +4399,20 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         { method: 'POST', body: { studentId: activeUser.id } }
       );
       setDb(prev => mergeEnrollmentRequest(prev, request));
+
+      // Sync directly to Likha ERP backend (triggers gabay-enrollment-alert-flow)
+      try {
+        if (likhaLmsApi?.requests?.createRequest) {
+          void likhaLmsApi.requests.createRequest({
+            id: request.id,
+            course_id: courseId,
+            student_id: activeUser.id,
+            type,
+            status: 'pending',
+          }).catch(err => console.warn('[likhaLmsApi] createEnrollmentRequest sync:', err));
+        }
+      } catch {}
+
       return request;
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to create enrollment request.';
@@ -4172,6 +4441,16 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (succeeded.length === 0) return false;
     }
     const effectiveIds = succeeded.length > 0 ? succeeded : requestIds;
+
+    // Sync directly to Likha ERP backend
+    try {
+      if (likhaLmsApi?.requests?.updateRequest) {
+        for (const reqId of effectiveIds) {
+          void likhaLmsApi.requests.updateRequest(reqId, { status: 'approved' }).catch(() => {});
+        }
+      }
+    } catch {}
+
     setDb(prev => {
       const now = new Date().toISOString();
       const existingRequests = prev.enrollmentRequests || [];
@@ -4282,6 +4561,16 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (succeeded.length === 0) return false;
     }
     const effective = new Set(succeeded.length > 0 ? succeeded : requestIds);
+
+    // Sync directly to Likha ERP backend
+    try {
+      if (likhaLmsApi?.requests?.updateRequest) {
+        for (const reqId of effective) {
+          void likhaLmsApi.requests.updateRequest(reqId, { status: 'rejected' }).catch(() => {});
+        }
+      }
+    } catch {}
+
     setDb(prev => ({
       ...prev,
       enrollmentRequests: (prev.enrollmentRequests || []).map((r: EnrollmentRequest) =>
