@@ -29,7 +29,7 @@ const TERM_DESC: Record<TermId, string> = {
   finals: 'Quizzes, projects, final practical outputs and final examination',
 };
 
-export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) => {
+const StudentGradebookComponent: React.FC<StudentGradebookProps> = ({ courseId }) => {
   const { db, activeUser, markTabVisited, effectiveTermsForCourse } = useLMS();
 
   React.useEffect(() => {
@@ -102,6 +102,39 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
 
   const isReleased = (t: TermId): boolean => course?.gradesReleased?.[t] === true;
   const allReleased = terms.length > 0 && terms.every(isReleased);
+
+  const breakdownSummary = useMemo(() => {
+    const released = terms.filter(isReleased);
+    const posted = released
+      .map(t => ({ t, g: officialFor(t) }))
+      .filter((x): x is { t: TermId; g: number } => x.g !== null);
+    const unreleasedSuffix = terms.some(t => !isReleased(t))
+      ? ` ${terms.filter(t => !isReleased(t)).map(t => TERM_LABELS[t]).join(' · ')} evaluation in progress.`
+      : '';
+    if (allReleased && posted.length === terms.length && terms.length > 0) {
+      return (
+        <span>
+          {posted.map((p, i) => (
+            <React.Fragment key={p.t}>
+              {i > 0 ? ' · ' : null}
+              {TERM_LABELS[p.t]}: <strong className="text-foreground">{p.g}%</strong> ({(p.g * termWeightOf(p.t)).toFixed(1)}%)
+            </React.Fragment>
+          ))}
+        </span>
+      );
+    }
+    if (posted.length === 1) {
+      return (
+        <span>{TERM_LABELS[posted[0].t]} posted ({posted[0].g}%).{unreleasedSuffix}</span>
+      );
+    }
+    if (posted.length > 1) {
+      return (
+        <span>{posted.map(p => `${TERM_LABELS[p.t]} (${p.g}%)`).join(' · ')} posted.{unreleasedSuffix}</span>
+      );
+    }
+    return <span>Scores are pending instructor grading submission.</span>;
+  }, [terms, termOfficial, allReleased, termWeights, course?.gradesReleased]);
 
   // No syllabus → gated empty state (same student copy as CoursesPage gate)
   if (!course?.syllabus) {
@@ -195,38 +228,7 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
             )}
           </div>
           <div className="text-[12px] text-muted-foreground pt-1 border-t border-border/60">
-            {(() => {
-              const released = terms.filter(isReleased);
-              const posted = released
-                .map(t => ({ t, g: officialFor(t) }))
-                .filter((x): x is { t: TermId; g: number } => x.g !== null);
-              const unreleasedSuffix = terms.some(t => !isReleased(t))
-                ? ` ${terms.filter(t => !isReleased(t)).map(t => TERM_LABELS[t]).join(' · ')} evaluation in progress.`
-                : '';
-              if (allReleased && posted.length === terms.length && terms.length > 0) {
-                return (
-                  <span>
-                    {posted.map((p, i) => (
-                      <React.Fragment key={p.t}>
-                        {i > 0 ? ' · ' : null}
-                        {TERM_LABELS[p.t]}: <strong className="text-foreground">{p.g}%</strong> ({(p.g * termWeightOf(p.t)).toFixed(1)}%)
-                      </React.Fragment>
-                    ))}
-                  </span>
-                );
-              }
-              if (posted.length === 1) {
-                return (
-                  <span>{TERM_LABELS[posted[0].t]} posted ({posted[0].g}%).{unreleasedSuffix}</span>
-                );
-              }
-              if (posted.length > 1) {
-                return (
-                  <span>{posted.map(p => `${TERM_LABELS[p.t]} (${p.g}%)`).join(' · ')} posted.{unreleasedSuffix}</span>
-                );
-              }
-              return <span>Scores are pending instructor grading submission.</span>;
-            })()}
+            {breakdownSummary}
           </div>
           </div>
 
@@ -321,3 +323,6 @@ export const StudentGradebook: React.FC<StudentGradebookProps> = ({ courseId }) 
     </div>
   );
 };
+
+export const StudentGradebook = React.memo(StudentGradebookComponent);
+

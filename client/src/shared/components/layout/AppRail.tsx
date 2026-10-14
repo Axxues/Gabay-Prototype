@@ -22,7 +22,7 @@ const ICONS: Record<NavIcon, React.ReactNode> = {
   page2: <BarChart3 className="h-5 w-5" />, page3: <FileCheck2 className="h-5 w-5" />,
 };
 
-export const AppRail: React.FC<{ currentTab: string; onNavigateTab: (t: string) => void }> = ({ currentTab, onNavigateTab }) => {
+const AppRailComponent: React.FC<{ currentTab: string; onNavigateTab: (t: string) => void }> = ({ currentTab, onNavigateTab }) => {
   const { activeRole, activeUser, logout, showConfirm, db } = useLMS();
   const chatCtx = useContext(GabayChatContext);
   const hasOngoingProcess = (chatCtx?.executingSessionIds.length ?? 0) > 0;
@@ -78,3 +78,6 @@ export const AppRail: React.FC<{ currentTab: string; onNavigateTab: (t: string) 
     </aside>
   );
 };
+
+export const AppRail = React.memo(AppRailComponent);
+
