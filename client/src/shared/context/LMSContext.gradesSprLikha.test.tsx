@@ -300,8 +300,14 @@ describe('grades and SPR via Likha (Task 7)', () => {
       await ctx.setSPRCell('c1', 'u-stud-1', 'midterm', 'col-mt-1', null);
     });
     // A reset has no Likha delete path in grades.* — no cell payload goes
-    // out; the cache drops the entry.
-    expect(saveGradeWithCellsMock.mock.calls.some((c: any[]) => (c[2] ?? []).length > 0)).toBe(false);
+    // out; the cache drops the entry. The only Likha calls are the two
+    // recomputeAndSyncSPR row-ensures (midterm + final via
+    // setCourseStudentGrade), pinning the staleness contract: the stale
+    // spr_cells row persists server-side and reappears on reload.
+    expect(saveGradeWithCellsMock.mock.calls).toEqual([
+      ['c1', 'u-stud-1', []],
+      ['c1', 'u-stud-1', []],
+    ]);
     expect(gradesSprExpressCalls()).toEqual([]);
     expect(seenDb.sprScores?.c1?.['u-stud-1']?.midterm?.['col-mt-1']).toBeUndefined();
   });

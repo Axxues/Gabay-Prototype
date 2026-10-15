@@ -4922,6 +4922,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // path) — the changed cell upserts with the column/exam key as its
       // task_id. A reset (null) has no delete path in grades.*, so it
       // applies to the local cache only.
+      // likha-gap: spr cell reset needs a cell-delete in likhaLmsApi.grades (browser_subagent follow-up — no delete exposed today)
       if (value !== null) {
         await likhaLmsApi.grades.saveGradeWithCells(courseId, studentId, [
           { task_id: key, score: value },
