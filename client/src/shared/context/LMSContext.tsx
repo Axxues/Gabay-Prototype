@@ -876,43 +876,6 @@ type SPRStudentCells = {
   ftExam: number | null;
 };
 
-const stripNullMap = (value: unknown): Record<string, number> => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-  const out: Record<string, number> = {};
-  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-    if (typeof v === 'number' && !Number.isNaN(v)) out[k] = v;
-  }
-  return out;
-};
-
-const asExamOrNull = (value: unknown): number | null =>
-  typeof value === 'number' && !Number.isNaN(value) ? value : null;
-
-/** Server sprCells shape { midtermScores, mtExam, finalScores, ftExam }
- *  (JSON string or object) -> client manual-cell model. Returns null when
- *  the row carries no manual cells. */
-const parseSPRCells = (raw: unknown): SPRStudentCells | null => {
-  if (raw === null || raw === undefined) return null;
-  let parsed: any = raw;
-  if (typeof raw === 'string') {
-    if (!raw) return null;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      return null;
-    }
-  }
-  if (!parsed || typeof parsed !== 'object') return null;
-  const midterm = stripNullMap(parsed.midtermScores);
-  const final = stripNullMap(parsed.finalScores);
-  const mtExam = asExamOrNull(parsed.mtExam);
-  const ftExam = asExamOrNull(parsed.ftExam);
-  if (Object.keys(midterm).length === 0 && Object.keys(final).length === 0 && mtExam === null && ftExam === null) {
-    return null;
-  }
-  return { midterm, mtExam, final, ftExam };
-};
-
 /** Union-merge per-course manual-cell maps (incoming student rows win). */
 const mergeSPRCourseMaps = (
   prev: Record<string, Record<string, SPRStudentCells>> | undefined,
@@ -944,6 +907,71 @@ const mergeSPRGrades = (
     }
   }
   return merged;
+};
+
+/** Task 7: Likha course_grades rows arrive Directus-shaped (snake_case);
+ *  client-shaped camelCase still maps. Term scalars stay null when the row
+ *  carries neither casing (cells remain the source of truth). */
+const mapLikhaGradeRow = (row: any, courseId: string): any => ({
+  ...row,
+  courseId: String(row.course_id ?? row.courseId ?? courseId),
+  studentId: String(row.student_id ?? row.studentId ?? ''),
+  midtermGrade: toFiniteNumber(row.midterm_grade) ?? toFiniteNumber(row.midtermGrade) ?? null,
+  finalGrade: toFiniteNumber(row.final_grade) ?? toFiniteNumber(row.finalGrade) ?? null,
+  updatedAt: row.updated_at ?? row.updatedAt ?? undefined,
+});
+
+/** Task 7: Likha spr_cells child rows [{ task_id, score }] (expanded via
+ *  fields=*,spr_cells.*) -> the client manual-cell model. Exam keys
+ *  (__mtExam/__ftExam, written by setSPRCell) fill the exam slots; column
+ *  ids bucket by the course SPR config, defaulting to midterm when the id
+ *  is in neither term list (recompute only reads ids the config knows). */
+const parseLikhaSprCellRows = (rows: unknown, config?: SPRConfig | null): SPRStudentCells | null => {
+  if (!Array.isArray(rows)) return null;
+  const midterm: Record<string, number> = {};
+  const final: Record<string, number> = {};
+  let mtExam: number | null = null;
+  let ftExam: number | null = null;
+  let seen = false;
+  const midIds = new Set((config?.midtermColumns ?? []).map(c => c.id));
+  const finIds = new Set((config?.finalColumns ?? []).map(c => c.id));
+  for (const r of rows) {
+    const taskId = (r as any)?.task_id ?? (r as any)?.taskId;
+    const score = toFiniteNumber((r as any)?.score);
+    if (typeof taskId !== 'string' || !taskId || score === undefined) continue;
+    seen = true;
+    if (taskId === '__mtExam') mtExam = score;
+    else if (taskId === '__ftExam') ftExam = score;
+    else if (finIds.has(taskId) && !midIds.has(taskId)) final[taskId] = score;
+    else midterm[taskId] = score;
+  }
+  if (!seen) return null;
+  return { midterm, mtExam, final, ftExam };
+};
+
+/** Task 7: Likha spr_configs rows arrive Directus-shaped (snake_case);
+ *  client-shaped camelCase still maps. Absent columns default to [] / 100
+ *  so the gradebook renders an empty config instead of crashing. */
+const mapLikhaSPRConfigRow = (row: any, courseId: string): SPRConfig | null => {
+  if (!row || typeof row !== 'object') return null;
+  const asColumns = (value: unknown): SPRColumn[] =>
+    (Array.isArray(value) ? value : [])
+      .map((c: any): SPRColumn => ({
+        id: String(c?.id ?? ''),
+        title: c?.title ?? '',
+        perfectScore: toFiniteNumber(c?.perfect_score ?? c?.perfectScore) ?? 0,
+        ...(c?.linkedSource !== undefined || c?.linked_source !== undefined
+          ? { linkedSource: c.linkedSource ?? c.linked_source }
+          : {}),
+      }))
+      .filter(c => c.id !== '');
+  return {
+    courseId: String(row.course_id ?? row.courseId ?? courseId),
+    midtermColumns: asColumns(row.midterm_columns ?? row.midtermColumns),
+    finalColumns: asColumns(row.final_columns ?? row.finalColumns),
+    mtExamPerfect: toFiniteNumber(row.mt_exam_perfect ?? row.mtExamPerfect) ?? 100,
+    ftExamPerfect: toFiniteNumber(row.ft_exam_perfect ?? row.ftExamPerfect) ?? 100,
+  };
 };
 
 /** Task 5: the server stores Course.gradingTerms as a JSON string (nullable);
@@ -1518,8 +1546,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       fresh.announcements = allAnnouncements;
       fresh.discussions = allDiscussions;
       // Task 6 assessment bootstrap: quizzes, exams, and activities come
-      // from Likha ERP (no Express fallback on this path). Grades + SPR
-      // config still read Express (Task 7 owns them). Per-course failures are
+      // from Likha ERP (no Express fallback on this path). Task 7: grades
+      // + SPR config ride the same Likha path. Per-course failures are
       // tolerated (403-tolerant); sync getters read the cache.
       const assessmentResults = await Promise.all(
         coursesRes.courses.map(course =>
@@ -1551,9 +1579,34 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                       normalizeActivity(mapLikhaActivityRow(r))
                     ),
                   })),
-                apiFetch<{ grades: CourseStudentGrade[] }>(`/api/courses/${encodeURIComponent(course.id)}/grades`),
+                // Task 7: course grades come from Likha ERP (no Express
+                // fallback on this path). Promise.resolve().then(...) turns
+                // missing mocks into rejections tolerated by allSettled
+                // instead of sync TypeErrors.
+                Promise.resolve()
+                  .then(() => likhaLmsApi?.grades?.getCourseGrades?.(course.id) ?? [])
+                  .then((rows: any): { grades: CourseStudentGrade[]; gradeCellRows: Array<{ studentId: string; cellRows: unknown }> } => {
+                    const list = (Array.isArray(rows) ? rows : []) as any[];
+                    return {
+                      grades: list.map((r: any) => normalizeCourseGrade(mapLikhaGradeRow(r, course.id))),
+                      // Raw spr_cells ride along for the config-aware split
+                      // below (SPR configs load in the next pass).
+                      gradeCellRows: list.map((r: any) => ({
+                        studentId: String(r.student_id ?? r.studentId ?? ''),
+                        cellRows: r.spr_cells ?? r.sprCells ?? [],
+                      })),
+                    };
+                  }),
               ]);
-            return { courseId: course.id, quizzesSettled, examsSettled, activitiesSettled, gradesSettled };
+            return {
+              courseId: course.id,
+              quizzesSettled,
+              examsSettled,
+              activitiesSettled,
+              gradesSettled,
+              gradeCellRows:
+                gradesSettled.status === 'fulfilled' ? gradesSettled.value.gradeCellRows : [],
+            };
           })()
         )
       );
@@ -1574,29 +1627,21 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         if (r.gradesSettled.status === 'fulfilled') {
           for (const g of r.gradesSettled.value.grades) {
-            allGrades.push(normalizeCourseGrade(g));
-            // Grade rows carry the server-side sprCells payload — hydrate the
-            // manual-cell map from it so cells survive reload with no extra
-            // endpoint round-trip.
-            const cells = parseSPRCells((g as any).sprCells);
-            if (cells && typeof (g as any).studentId === 'string') {
-              if (!allSPRScores[r.courseId]) allSPRScores[r.courseId] = {};
-              allSPRScores[r.courseId][(g as any).studentId] = cells;
-            }
+            allGrades.push(g);
           }
         }
       }
-      // SPR config hydration: GET /api/courses/:id/spr per visible course
+      // SPR config hydration: one Likha getSPRConfig per visible course
       // after grades load. Per-course failures are tolerated; sync getters
       // read whatever the cache holds and ensureSPRCourse retries lazily.
+      // spr_cells split per course here so column ids bucket against the
+      // freshly loaded config (cells survive reload with no extra round-trip).
       const sprConfigResults = await Promise.all(
         coursesRes.courses.map(course =>
           (async () => {
             try {
-              const { config } = await apiFetch<{ config: SPRConfig | null }>(
-                `/api/courses/${encodeURIComponent(course.id)}/spr`
-              );
-              return { courseId: course.id, config: config ?? null };
+              const row = await likhaLmsApi?.grades?.getSPRConfig?.(course.id);
+              return { courseId: course.id, config: mapLikhaSPRConfigRow(row ?? null, course.id) };
             } catch {
               return { courseId: course.id, config: null };
             }
@@ -1607,6 +1652,17 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       for (const r of sprConfigResults) {
         sprHydratedRef.current.add(r.courseId);
         if (r.config) allSPRConfigs[r.courseId] = r.config;
+      }
+      for (const r of assessmentResults) {
+        const config = allSPRConfigs[r.courseId] ?? null;
+        for (const { studentId, cellRows } of r.gradeCellRows) {
+          if (!studentId) continue;
+          const cells = parseLikhaSprCellRows(cellRows, config);
+          if (cells) {
+            if (!allSPRScores[r.courseId]) allSPRScores[r.courseId] = {};
+            allSPRScores[r.courseId][studentId] = cells;
+          }
+        }
       }
       // Submissions ride per quiz / exam / activity from Likha ERP (no
       // Express fallback on this path). Per-list failures are tolerated
@@ -4696,16 +4752,22 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     score: number | null
   ): Promise<void> => {
     try {
-      const { grade } = await apiFetch<{ grade: CourseStudentGrade }>(
-        `/api/courses/${encodeURIComponent(courseId)}/grades/${encodeURIComponent(studentId)}`,
-        { method: 'PUT', body: type === 'midterm' ? { midtermGrade: score } : { finalGrade: score } }
-      );
-      const merged = normalizeCourseGrade(grade);
+      // Likha holds the grade on its course_grades row (the cells carry the
+      // scores; grades.* exposes no term-scalar write), so persist by
+      // ensuring the row, then merge the derived scalar into the cache.
+      await likhaLmsApi.grades.saveGradeWithCells(courseId, studentId, []);
+      const patch = type === 'midterm' ? { midtermGrade: score } : { finalGrade: score };
       setDb(prev => {
         const existingGrades = prev.courseGrades || [];
         const index = existingGrades.findIndex(
           g => g.courseId === courseId && g.studentId === studentId
         );
+        // Merge the derived scalar over the cached row so the untouched
+        // term survives (the server no longer echoes the full row back).
+        const merged = normalizeCourseGrade({
+          ...(index >= 0 ? existingGrades[index] : { courseId, studentId }),
+          ...patch,
+        });
         if (index >= 0) {
           const updatedList = [...existingGrades];
           updatedList[index] = merged;
@@ -4725,23 +4787,25 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // SPR GRADEBOOK STORE
   // ==========================================
 
-  // Lazy per-course fill: config + manual cells (parsed from the course
-  // grade rows' sprCells payload — no dedicated cells endpoint exists).
+  // Lazy per-course fill: config + manual cells from the Likha course_grades
+  // rows' spr_cells relation (no dedicated cells endpoint exists).
   // Ref-guarded so first-access triggers never refetch in a loop.
   const ensureSPRCourse = async (courseId: string): Promise<void> => {
     if (sprHydratedRef.current.has(courseId)) return;
     sprHydratedRef.current.add(courseId);
     try {
-      const [{ config }, gradesRes] = await Promise.all([
-        apiFetch<{ config: SPRConfig | null }>(`/api/courses/${encodeURIComponent(courseId)}/spr`),
-        apiFetch<{ grades: any[] }>(`/api/courses/${encodeURIComponent(courseId)}/grades`),
+      const [configRow, gradeRows] = await Promise.all([
+        likhaLmsApi?.grades?.getSPRConfig?.(courseId) ?? null,
+        likhaLmsApi?.grades?.getCourseGrades?.(courseId) ?? [],
       ]);
+      const config = mapLikhaSPRConfigRow(configRow, courseId);
       const cells: Record<string, SPRStudentCells> = {};
       const grades: CourseStudentGrade[] = [];
-      for (const g of gradesRes.grades || []) {
-        grades.push(normalizeCourseGrade(g));
-        const parsed = parseSPRCells((g as any).sprCells);
-        if (parsed && typeof (g as any).studentId === 'string') cells[(g as any).studentId] = parsed;
+      for (const r of (Array.isArray(gradeRows) ? gradeRows : []) as any[]) {
+        const mapped = mapLikhaGradeRow(r, courseId);
+        grades.push(normalizeCourseGrade(mapped));
+        const parsed = parseLikhaSprCellRows(r.spr_cells ?? r.sprCells ?? [], config);
+        if (parsed && mapped.studentId) cells[mapped.studentId] = parsed;
       }
       setDb(prev => ({
         ...prev,
@@ -4764,23 +4828,14 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const saveSPRConfig = async (courseId: string, config: Omit<SPRConfig, 'courseId'>): Promise<void> => {
     try {
-      const { config: saved } = await apiFetch<{ config: SPRConfig }>(
-        `/api/courses/${encodeURIComponent(courseId)}/spr`,
-        { method: 'PUT', body: { config: { ...config, courseId } } }
-      );
+      // Likha ERP is the gradebook store (no Express fallback on this
+      // path) — the saved spr_configs row maps back into the cache.
+      const saved = await likhaLmsApi.grades.saveSPRConfig(courseId, config);
+      const mapped = mapLikhaSPRConfigRow(saved, courseId) ?? { ...config, courseId };
       setDb(prev => ({
         ...prev,
-        sprConfigs: { ...(prev.sprConfigs ?? {}), [courseId]: saved },
+        sprConfigs: { ...(prev.sprConfigs ?? {}), [courseId]: mapped },
       }));
-
-      // Sync directly to Likha ERP backend
-      try {
-        if (likhaLmsApi?.grades?.saveSPRConfig) {
-          void likhaLmsApi.grades.saveSPRConfig(courseId, config).catch(err =>
-            console.warn('[likhaLmsApi] saveSPRConfig sync:', err)
-          );
-        }
-      } catch {}
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to save SPR config.';
       setLastError(message);
@@ -4863,18 +4918,15 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       else map[key] = value;
     }
     try {
-      await apiFetch(
-        `/api/courses/${encodeURIComponent(courseId)}/spr/${encodeURIComponent(studentId)}`,
-        {
-          method: 'PUT',
-          body: {
-            midtermScores: { ...nextCell.midterm },
-            mtExam: nextCell.mtExam,
-            finalScores: { ...nextCell.final },
-            ftExam: nextCell.ftExam,
-          },
-        }
-      );
+      // Likha ERP is the gradebook store (no Express fallback on this
+      // path) — the changed cell upserts with the column/exam key as its
+      // task_id. A reset (null) has no delete path in grades.*, so it
+      // applies to the local cache only.
+      if (value !== null) {
+        await likhaLmsApi.grades.saveGradeWithCells(courseId, studentId, [
+          { task_id: key, score: value },
+        ]);
+      }
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to save SPR cell.';
       setLastError(message);
@@ -4890,14 +4942,6 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       sprScores: mergeSPRCourseMaps(prev.sprScores, { [courseId]: { [studentId]: nextCell } }),
     }));
 
-    // Sync directly to Likha ERP backend
-    try {
-      if (likhaLmsApi?.grades?.saveGradeWithCells && value !== null) {
-        void likhaLmsApi.grades.saveGradeWithCells(courseId, studentId, [
-          { task_id: key, score: value }
-        ]).catch(err => console.warn('[likhaLmsApi] setSPRCell sync:', err));
-      }
-    } catch {}
     await recomputeAndSyncSPR(nextDb, courseId, studentId);
   };
 
