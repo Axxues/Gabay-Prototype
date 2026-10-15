@@ -35,6 +35,12 @@ const loginLikhaMock = vi.fn(async () => ({
 const getCoursesMock = vi.fn(async () => []);
 const getNotifsMock = vi.fn(async () => []);
 const getUsersMock = vi.fn(async () => directoryRows);
+const getMessagesMock = vi.fn(async () => []);
+const getCalendarMock = vi.fn(async () => []);
+const getGroupsMock = vi.fn(async () => []);
+const getSlotsMock = vi.fn(async () => []);
+const getSectionsMock = vi.fn(async () => []);
+const getRequestsMock = vi.fn(async () => []);
 
 vi.mock('../api/client', () => ({
   ApiError: class ApiError extends Error {
@@ -51,6 +57,18 @@ vi.mock('../api/client', () => ({
     getNotifications: (...args: any[]) => (getNotifsMock as any)(...args),
     users: {
       getUsers: (...args: any[]) => (getUsersMock as any)(...args),
+    },
+    communications: {
+      getMessages: (...args: any[]) => (getMessagesMock as any)(...args),
+      getCalendarEvents: (...args: any[]) => (getCalendarMock as any)(...args),
+      getChatGroups: (...args: any[]) => (getGroupsMock as any)(...args),
+      getAdvisingSlots: (...args: any[]) => (getSlotsMock as any)(...args),
+    },
+    requests: {
+      getRequests: (...args: any[]) => (getRequestsMock as any)(...args),
+    },
+    sections: {
+      getSections: (...args: any[]) => (getSectionsMock as any)(...args),
     },
   },
   LIKHA_URL: 'https://gabay.zyberlab.com',
@@ -95,5 +113,23 @@ describe('user directory role mapping (Likha ERP)', () => {
     expect(byId['u-staff']).toBe('staff');
     expect(byId['u-admin']).toBe('admin');
     expect(byId['u-stud']).toBe('student');
+  });
+
+  test('bootstrap performs zero Express /api calls when Likha answers', async () => {
+    render(
+      <LMSProvider>
+        <Probe />
+      </LMSProvider>
+    );
+    await act(async () => {
+      await doLogin!();
+    });
+    await waitFor(() => {
+      expect((seenUsers || []).length).toBe(4);
+    });
+    const expressCalls = (apiFetchMock.mock.calls as any[][]).filter(([p]) =>
+      String(p).startsWith('/api/') && !String(p).startsWith('/api/rag'),
+    );
+    expect(expressCalls).toEqual([]);
   });
 });
