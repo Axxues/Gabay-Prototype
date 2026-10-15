@@ -536,6 +536,168 @@ const normalizeExam = (raw: any): Exam => ({
   term: normalizeTermId(raw.term) ?? 'midterm',
 });
 
+/** Task 6: Directus assessment / submission rows (snake_case) arrive from
+ *  read/write calls — map them to the client shapes (same mapping as the
+ *  bootstrap scope in refreshDeferred). Tolerant both ways: rows already in
+ *  client shape pass through unchanged. */
+const parseLikhaOptions = (value: unknown): string[] | undefined => {
+  if (Array.isArray(value)) return value.map(String);
+  if (typeof value === 'string' && value) {
+    try {
+      const parsed: unknown = JSON.parse(value);
+      if (Array.isArray(parsed)) return parsed.map(String);
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+};
+
+const mapLikhaQuestionRow = (q: any): any => ({
+  ...q,
+  id: String(q.id ?? `q-${Date.now()}`),
+  text: q.text ?? q.question_text ?? '',
+  type: q.type ?? q.question_type ?? 'multiple_choice',
+  options: parseLikhaOptions(q.options ?? q.options_json) ?? q.options,
+  correctAnswer: q.correctAnswer ?? q.correct_answer ?? undefined,
+  points: q.points === undefined || q.points === null ? 10 : Number(q.points) || 0,
+});
+
+const mapLikhaQuestions = (row: any): any[] => {
+  const list = Array.isArray(row.questions)
+    ? row.questions
+    : Array.isArray(row.assessment_questions)
+      ? row.assessment_questions
+      : [];
+  return list
+    .map(mapLikhaQuestionRow)
+    .sort((a: any, b: any) => (a.order ?? 0) - (b.order ?? 0));
+};
+
+const mapLikhaQuizRow = (row: any): any => ({
+  ...row,
+  id: String(row.id),
+  courseId: String(row.course_id ?? row.courseId ?? ''),
+  title: row.title ?? 'Untitled quiz',
+  timeLimitMinutes:
+    typeof row.time_limit_minutes === 'number' ? row.time_limit_minutes : row.timeLimitMinutes,
+  delayedUntil: row.delayed_until ?? row.delayedUntil ?? undefined,
+  dueDate: row.due_date ?? row.dueDate ?? undefined,
+  fileName: row.file_name ?? row.fileName ?? undefined,
+  fileUrl: row.file_url ?? row.fileUrl ?? undefined,
+  fileSize: row.file_size ?? row.fileSize ?? undefined,
+  questions: mapLikhaQuestions(row),
+});
+
+const mapLikhaExamRow = (row: any): any => ({
+  ...row,
+  id: String(row.id),
+  courseId: String(row.course_id ?? row.courseId ?? ''),
+  title: row.title ?? 'Untitled exam',
+  timeLimitMinutes:
+    typeof row.time_limit_minutes === 'number' ? row.time_limit_minutes : row.timeLimitMinutes,
+  dueDate: row.due_date ?? row.dueDate ?? undefined,
+  questions: mapLikhaQuestions(row),
+});
+
+const mapLikhaActivityRow = (row: any): any => ({
+  ...row,
+  id: String(row.id),
+  courseId: String(row.course_id ?? row.courseId ?? ''),
+  title: row.title ?? 'Untitled activity',
+  pointsPossible:
+    typeof row.points_possible === 'number' ? row.points_possible : row.pointsPossible,
+  dueDate: row.due_date ?? row.dueDate ?? undefined,
+  submissionTypes: Array.isArray(row.submission_types)
+    ? row.submission_types
+    : row.submissionTypes,
+  category: row.category ?? undefined,
+  weight: typeof row.weight === 'number' ? row.weight : undefined,
+  rubric: Array.isArray(row.rubric)
+    ? row.rubric
+    : Array.isArray(row.rubric_criteria)
+      ? row.rubric_criteria.map((r: any) => ({
+        ...r,
+        id: String(r.id),
+        title: r.title ?? r.criterion ?? '',
+        description: r.description ?? '',
+        points: Number(r.max_points ?? r.points) || 0,
+        ratings: Array.isArray(r.ratings) ? r.ratings : [],
+      }))
+      : undefined,
+  fileName: row.file_name ?? row.fileName ?? undefined,
+  fileUrl: row.file_url ?? row.fileUrl ?? undefined,
+  fileSize: row.file_size ?? row.fileSize ?? undefined,
+  availableFrom: row.available_from ?? row.availableFrom ?? undefined,
+  availableUntil: row.available_until ?? row.availableUntil ?? undefined,
+  sectionRestriction: row.section_restriction ?? row.sectionRestriction ?? undefined,
+  questions: mapLikhaQuestions(row),
+});
+
+const mapLikhaSubmissionCommentRow = (c: any, fallbackAuthor: { id: string; name: string; role: UserRole }): SubmissionComment => ({
+  id: String(c.id ?? `sc-${Date.now()}`),
+  authorId: String(c.author_id ?? c.authorId ?? fallbackAuthor.id),
+  authorName: c.author_name ?? c.authorName ?? fallbackAuthor.name,
+  authorRole: (c.author_role ?? c.authorRole ?? fallbackAuthor.role) as UserRole,
+  createdAt: c.created_at ?? c.createdAt ?? new Date().toISOString(),
+  text: c.content ?? c.text ?? '',
+});
+
+const mapLikhaSubmissionRow = (row: any, courseId?: string): any => {
+  const quizId = row.quiz_id ?? row.quizId ?? undefined;
+  const activityId = row.activity_id ?? row.activityId ?? undefined;
+  const examId = row.exam_id ?? row.examId ?? undefined;
+  const rubricScores =
+    row.rubricScores && typeof row.rubricScores === 'object' && !Array.isArray(row.rubricScores)
+      ? row.rubricScores
+      : Array.isArray(row.rubric_scores)
+        ? Object.fromEntries(
+          row.rubric_scores
+            .filter((r: any) => r && r.criterion_id !== undefined)
+            .map((r: any) => [String(r.criterion_id), Number(r.points_awarded) || 0]),
+        )
+        : undefined;
+  return {
+    ...row,
+    id: String(row.id),
+    // SpeedGrader/gradebook/dashboard resolve submissions by these synthetic
+    // keys (`asg-quiz-<id>` / `asg-activity-<id>` / `asg-exam-<id>`).
+    activityKey:
+      row.activityKey ??
+      (quizId !== undefined
+        ? `asg-quiz-${quizId}`
+        : activityId !== undefined
+          ? `asg-activity-${activityId}`
+          : examId !== undefined
+            ? `asg-exam-${examId}`
+            : undefined),
+    quizId,
+    activityId,
+    examId,
+    courseId: row.course_id ?? row.courseId ?? courseId ?? '',
+    studentId: String(row.student_id ?? row.studentId ?? ''),
+    submittedAt: row.submitted_at ?? row.created_at ?? row.submittedAt ?? undefined,
+    submissionType: row.submission_type ?? row.submissionType ?? undefined,
+    content: row.content ?? undefined,
+    fileName: row.file_name ?? row.fileName ?? undefined,
+    fileUrl: row.file_url ?? row.fileUrl ?? undefined,
+    grade: row.score ?? row.grade ?? undefined,
+    gradedAt: row.graded_at ?? row.gradedAt ?? undefined,
+    gradedBy: row.graded_by ?? row.gradedBy ?? undefined,
+    status: row.status ?? undefined,
+    ...(rubricScores !== undefined ? { rubricScores } : {}),
+    comments: (
+      Array.isArray(row.comments)
+        ? row.comments
+        : Array.isArray(row.submission_comments)
+          ? row.submission_comments
+          : []
+    ).map((c: any) =>
+      mapLikhaSubmissionCommentRow(c, { id: '', name: 'Someone', role: 'student' }),
+    ),
+  };
+};
+
 const normalizeSubmissionComment = (raw: any): SubmissionComment => ({
   ...raw,
   createdAt: raw.createdAt ? toIsoString(raw.createdAt) : new Date().toISOString(),
@@ -858,7 +1020,7 @@ export const normalizeCourse = (raw: any): Course => {
     image: coverImageUrl ?? raw?.image,
     syllabus: parsedSyllabus,
     gradingTerms: normalizeCourseGradingTerms(raw?.gradingTerms),
-    gradesReleased: normalizeGradesReleased(raw?.gradesReleased),
+    gradesReleased: normalizeGradesReleased(raw?.gradesReleased ?? raw?.grades_released),
   };
 };
 
@@ -1061,34 +1223,16 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       let notificationsRes = { notifications: [] as Notification[] };
       let messagesRes = { messages: [] as Message[] };
       let calendarRes = { events: [] as CalendarEvent[] };
-      if (coursesSettled.status === 'fulfilled' && typeof likhaLmsApi?.getCoursesWithRelations === 'function') {
+      // Likha ERP is the source of truth for the essential bootstrap (no
+      // Express fallback — removed once every suite mocked likhaLmsApi).
+      // A rejected Likha bootstrap surfaces as a load failure below.
+      if (coursesSettled.status === 'fulfilled') {
         resolvedCourses = coursesSettled.value.courses;
         notificationsRes = settledValue(notificationsSettled, { notifications: [] as Notification[] });
         messagesRes = settledValue(messagesSettled, { messages: [] as Message[] });
         calendarRes = settledValue(calendarSettled, { events: [] as CalendarEvent[] });
       } else {
-        // ponytail: transitional Express fallback — only when Likha ERP is
-        // unreachable (rejected) or unmocked (not-yet-migrated suites still
-        // stub Express). Fulfilled-but-empty Likha answers do NOT fall back.
-        // Remove once every suite mocks likhaLmsApi.
-        const coursesPath =
-          user.role === 'student'
-            ? `/api/courses?enrolled=${encodeURIComponent(user.id)}`
-            : '/api/courses';
-        const [coursesSx, notificationsSx, messagesSx, calendarSx] = await Promise.allSettled([
-          apiFetch<{ courses: Course[] }>(coursesPath),
-          apiFetch<{ notifications: Notification[] }>('/api/notifications?limit=200'),
-          apiFetch<{ messages: Message[] }>('/api/messages'),
-          apiFetch<{ events: CalendarEvent[] }>('/api/calendar'),
-        ]);
-        if (coursesSx.status === 'fulfilled') {
-          resolvedCourses = coursesSx.value.courses;
-        } else if (coursesSx.status === 'rejected') {
-          throw coursesSx.reason;
-        }
-        notificationsRes = settledValue(notificationsSx, { notifications: [] as Notification[] });
-        messagesRes = settledValue(messagesSx, { messages: [] as Message[] });
-        calendarRes = settledValue(calendarSx, { events: [] as CalendarEvent[] });
+        throw coursesSettled.reason;
       }
 
       const coursesRes = { courses: resolvedCourses };
@@ -1365,22 +1509,40 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       fresh.modules = allModules;
       fresh.announcements = allAnnouncements;
       fresh.discussions = allDiscussions;
-      // Task 4 assessment bootstrap: activities (both formats — classic
-      // rows carry parsed submissionTypes/rubric arrays — plus
-      // per-activity submissions; the server scopes rows by role, so
-      // faculty see all course submissions while students see their own),
-      // quizzes (+questions; the server strips answer keys for students),
-      // and course grades (faculty all rows /
-      // student own row). Per-course failures are tolerated
-      // (403-tolerant); sync getters read the cache.
+      // Task 6 assessment bootstrap: quizzes, exams, and activities come
+      // from Likha ERP (no Express fallback on this path). Grades + SPR
+      // config still read Express (Task 7 owns them). Per-course failures are
+      // tolerated (403-tolerant); sync getters read the cache.
       const assessmentResults = await Promise.all(
         coursesRes.courses.map(course =>
           (async () => {
             const [quizzesSettled, examsSettled, activitiesSettled, gradesSettled] =
               await Promise.allSettled([
-                apiFetch<{ quizzes: Quiz[] }>(`/api/quizzes?courseId=${encodeURIComponent(course.id)}`),
-                apiFetch<{ exams: Exam[] }>(`/api/exams?courseId=${encodeURIComponent(course.id)}`),
-                apiFetch<{ activities: Activity[] }>(`/api/activities?courseId=${encodeURIComponent(course.id)}`),
+                // Task 6: quizzes (+questions) come from Likha ERP (no
+                // Express fallback on this path). Promise.resolve().then(...)
+                // turns missing mocks into rejections tolerated by allSettled
+                // instead of sync TypeErrors.
+                Promise.resolve()
+                  .then(() => likhaLmsApi?.assessments?.getQuizzes?.(course.id) ?? [])
+                  .then((rows: any): { quizzes: Quiz[] } => ({
+                    quizzes: ((Array.isArray(rows) ? rows : []) as any[]).map((r: any) =>
+                      normalizeQuiz(mapLikhaQuizRow(r))
+                    ),
+                  })),
+                Promise.resolve()
+                  .then(() => likhaLmsApi?.assessments?.getExams?.(course.id) ?? [])
+                  .then((rows: any): { exams: Exam[] } => ({
+                    exams: ((Array.isArray(rows) ? rows : []) as any[]).map((r: any) =>
+                      normalizeExam(mapLikhaExamRow(r))
+                    ),
+                  })),
+                Promise.resolve()
+                  .then(() => likhaLmsApi?.assessments?.getActivities?.(course.id) ?? [])
+                  .then((rows: any): { activities: Activity[] } => ({
+                    activities: ((Array.isArray(rows) ? rows : []) as any[]).map((r: any) =>
+                      normalizeActivity(mapLikhaActivityRow(r))
+                    ),
+                  })),
                 apiFetch<{ grades: CourseStudentGrade[] }>(`/api/courses/${encodeURIComponent(course.id)}/grades`),
               ]);
             return { courseId: course.id, quizzesSettled, examsSettled, activitiesSettled, gradesSettled };
@@ -1394,13 +1556,13 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const allSPRScores: Record<string, Record<string, SPRStudentCells>> = {};
       for (const r of assessmentResults) {
         if (r.quizzesSettled.status === 'fulfilled') {
-          for (const q of r.quizzesSettled.value.quizzes) allQuizzes.push(normalizeQuiz(q));
+          for (const q of r.quizzesSettled.value.quizzes) allQuizzes.push(q);
         }
         if (r.examsSettled.status === 'fulfilled') {
-          for (const e of r.examsSettled.value.exams) allExams.push(normalizeExam(e));
+          for (const e of r.examsSettled.value.exams) allExams.push(e);
         }
         if (r.activitiesSettled.status === 'fulfilled') {
-          for (const a of r.activitiesSettled.value.activities) allActivities.push(normalizeActivity(a));
+          for (const a of r.activitiesSettled.value.activities) allActivities.push(a);
         }
         if (r.gradesSettled.status === 'fulfilled') {
           for (const g of r.gradesSettled.value.grades) {
@@ -1438,31 +1600,44 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         sprHydratedRef.current.add(r.courseId);
         if (r.config) allSPRConfigs[r.courseId] = r.config;
       }
-      // Submissions ride per quiz / exam / activity (role-scoped
-      // server-side; classic + question-set activities both list via
-      // GET /api/activities/:id/submissions). Per-list failures are
-      // tolerated (403-tolerant); sync getters read the cache.
+      // Submissions ride per quiz / exam / activity from Likha ERP (no
+      // Express fallback on this path). Per-list failures are tolerated
+      // (403-tolerant); sync getters read the cache.
+      const courseByAssessment = new Map<string, string>();
+      for (const q of allQuizzes) courseByAssessment.set(q.id, q.courseId);
+      for (const e of allExams) courseByAssessment.set(e.id, e.courseId);
+      for (const a of allActivities) courseByAssessment.set(a.id, a.courseId);
+      const mapLikhaSubmissionList = (assessmentId: string) => (rows: any): { submissions: any[] } => ({
+        submissions: ((Array.isArray(rows) ? rows : []) as any[]).map((s: any) =>
+          normalizeSubmission(mapLikhaSubmissionRow(s, courseByAssessment.get(assessmentId)))
+        ),
+      });
       const allSubmissions: Submission[] = [];
       const seenSubmissionIds = new Set<string>();
       const quizSubmissionResults = await Promise.allSettled(
         allQuizzes.map(q =>
-          apiFetch<{ submissions: any[] }>(`/api/quizzes/${encodeURIComponent(q.id)}/submissions`)
+          Promise.resolve()
+            .then(() => likhaLmsApi?.submissions?.getSubmissions?.(q.id, 'quiz') ?? [])
+            .then(mapLikhaSubmissionList(q.id))
         )
       );
       const activitySubmissionResults = await Promise.allSettled(
         allActivities.map(a =>
-          apiFetch<{ submissions: any[] }>(`/api/activities/${encodeURIComponent(a.id)}/submissions`)
+          Promise.resolve()
+            .then(() => likhaLmsApi?.submissions?.getSubmissions?.(a.id, 'activity') ?? [])
+            .then(mapLikhaSubmissionList(a.id))
         )
       );
       const examSubmissionResults = await Promise.allSettled(
         allExams.map(e =>
-          apiFetch<{ submissions: any[] }>(`/api/exams/${encodeURIComponent(e.id)}/submissions`)
+          Promise.resolve()
+            .then(() => likhaLmsApi?.submissions?.getSubmissions?.(e.id, 'exam') ?? [])
+            .then(mapLikhaSubmissionList(e.id))
         )
       );
       for (const r of [...quizSubmissionResults, ...examSubmissionResults, ...activitySubmissionResults]) {
         if (r.status === 'fulfilled') {
-          for (const s of r.value.submissions) {
-            const merged = normalizeSubmission(s);
+          for (const merged of r.value.submissions) {
             if (seenSubmissionIds.has(merged.id)) continue;
             seenSubmissionIds.add(merged.id);
             allSubmissions.push(merged);
@@ -2040,57 +2215,38 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const createQuiz = async (quizData: Partial<Quiz>): Promise<Quiz> => {
     const courseId = quizData.courseId || activeCourseId || 'crs-cmsc131';
     const term = quizData.term ?? defaultTermForCourse(courseId);
-    // Questions pass through (server parses option blobs; students get the
-    // key stripped on read while faculty keep it).
+    // Questions pass through (Likha persists option blobs + answer keys in
+    // assessment_questions child rows).
     try {
-      const { quiz } = await apiFetch<{ quiz: Quiz }>('/api/quizzes', {
-        method: 'POST',
-        body: {
-          courseId,
-          title: quizData.title || 'New Assessment Quiz',
-          term,
-          instructions: quizData.instructions || 'Answer all questions carefully. Time limit strictly enforced.',
-          published: quizData.published ?? true,
-          questions: quizData.questions || [
-            {
-              id: `q-${Date.now()}-1`,
-              text: 'Which architectural pattern is recommended for modern web applications?',
-              type: 'multiple_choice',
-              options: ['Component-based (e.g. React)', 'Monolithic CGI', 'FTP Server', 'Telnet Terminal'],
-              correctAnswer: 'Component-based (e.g. React)',
-              points: 10
-            }
-          ],
-          ...(quizData.timeLimitMinutes !== undefined ? { timeLimitMinutes: quizData.timeLimitMinutes } : {}),
-          ...(quizData.delayedUntil !== undefined ? { delayedUntil: quizData.delayedUntil } : {}),
-          ...(quizData.dueDate !== undefined ? { dueDate: quizData.dueDate } : {}),
-          ...(quizData.fileName !== undefined ? { fileName: quizData.fileName } : {}),
-          ...(quizData.fileUrl !== undefined ? { fileUrl: quizData.fileUrl } : {}),
-          ...(quizData.fileSize !== undefined ? { fileSize: quizData.fileSize } : {})
-        }
+      // Likha ERP is the source of truth for quizzes.
+      const saved = await likhaLmsApi.assessments.saveQuiz({
+        course_id: courseId,
+        title: quizData.title || 'New Assessment Quiz',
+        term,
+        instructions: quizData.instructions || 'Answer all questions carefully. Time limit strictly enforced.',
+        published: quizData.published ?? true,
+        questions: quizData.questions || [
+          {
+            id: `q-${Date.now()}-1`,
+            text: 'Which architectural pattern is recommended for modern web applications?',
+            type: 'multiple_choice',
+            options: ['Component-based (e.g. React)', 'Monolithic CGI', 'FTP Server', 'Telnet Terminal'],
+            correctAnswer: 'Component-based (e.g. React)',
+            points: 10
+          }
+        ],
+        ...(quizData.timeLimitMinutes !== undefined ? { time_limit_minutes: quizData.timeLimitMinutes } : {}),
+        ...(quizData.delayedUntil !== undefined ? { delayed_until: quizData.delayedUntil } : {}),
+        ...(quizData.dueDate !== undefined ? { due_date: quizData.dueDate } : {}),
+        ...(quizData.fileName !== undefined ? { file_name: quizData.fileName } : {}),
+        ...(quizData.fileUrl !== undefined ? { file_url: quizData.fileUrl } : {}),
+        ...(quizData.fileSize !== undefined ? { file_size: quizData.fileSize } : {})
       });
-      const merged = normalizeQuiz(quiz);
+      const merged = normalizeQuiz(mapLikhaQuizRow(saved));
       setDb(prev => ({
         ...prev,
         quizzes: [merged, ...prev.quizzes]
       }));
-
-      // Sync directly to Likha ERP backend
-      try {
-        if (likhaLmsApi?.assessments?.saveQuiz) {
-          void likhaLmsApi.assessments.saveQuiz({
-            id: merged.id,
-            course_id: courseId,
-            title: merged.title,
-            term: merged.term,
-            instructions: merged.instructions,
-            published: merged.published,
-            time_limit_minutes: merged.timeLimitMinutes,
-            due_date: merged.dueDate,
-            questions: merged.questions || [],
-          }).catch(err => console.warn('[likhaLmsApi] saveQuiz sync:', err));
-        }
-      } catch {}
 
       return merged;
     } catch (err) {
@@ -2106,15 +2262,20 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     studentId: string,
     answers: Record<string, string>
   ): Promise<Submission> => {
-    // Client computes nothing new: POST the answers, cache the server row.
+    // Client computes nothing new: POST the answers, cache the Likha row.
     // Instant-feedback scoring stays in QuizzesView's client scorer; the
-    // gradebook reads the server row.
+    // gradebook reads the Likha row.
     try {
-      const { submission } = await apiFetch<{ submission: any }>(
-        `/api/quizzes/${encodeURIComponent(quizId)}/submit`,
-        { method: 'POST', body: { answers } }
-      );
-      const merged = normalizeSubmission(submission);
+      // Likha ERP is the source of truth for submissions.
+      const saved = await likhaLmsApi.submissions.submitAssessment({
+        quiz_id: quizId,
+        student_id: studentId,
+        answers,
+        status: 'submitted',
+        submitted_at: new Date().toISOString(),
+      });
+      const courseId = dbRef.current.quizzes?.find(q => q.id === quizId)?.courseId;
+      const merged = normalizeSubmission(mapLikhaSubmissionRow(saved, courseId));
       setDb(prev => {
         const idx = prev.submissions.findIndex(
           s => merged.activityKey !== undefined && s.activityKey === merged.activityKey && s.studentId === studentId
@@ -2139,53 +2300,34 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const courseId = examData.courseId || activeCourseId || 'crs-cmsc131';
     const term = examData.term ?? defaultTermForCourse(courseId);
     try {
-      const { exam } = await apiFetch<{ exam: Exam }>('/api/exams', {
-        method: 'POST',
-        body: {
-          courseId,
-          title: examData.title || 'New Exam',
-          term,
-          instructions: examData.instructions || 'Answer all questions carefully. Time limit strictly enforced.',
-          published: examData.published ?? true,
-          questions: examData.questions || [
-            {
-              id: `q-${Date.now()}-1`,
-              text: 'Which architectural pattern is recommended for modern web applications?',
-              type: 'multiple_choice',
-              options: ['Component-based (e.g. React)', 'Monolithic CGI', 'FTP Server', 'Telnet Terminal'],
-              correctAnswer: 'Component-based (e.g. React)',
-              points: 10
-            }
-          ],
-          ...(examData.timeLimitMinutes !== undefined ? { timeLimitMinutes: examData.timeLimitMinutes } : {}),
-          ...(examData.dueDate !== undefined ? { dueDate: examData.dueDate } : {}),
-          ...((examData as { fileName?: unknown }).fileName !== undefined ? { fileName: (examData as { fileName?: unknown }).fileName } : {}),
-          ...((examData as { fileUrl?: unknown }).fileUrl !== undefined ? { fileUrl: (examData as { fileUrl?: unknown }).fileUrl } : {}),
-          ...((examData as { fileSize?: unknown }).fileSize !== undefined ? { fileSize: (examData as { fileSize?: unknown }).fileSize } : {})
-        }
+      // Likha ERP is the source of truth for exams.
+      const saved = await likhaLmsApi.assessments.saveExam({
+        course_id: courseId,
+        title: examData.title || 'New Exam',
+        term,
+        instructions: examData.instructions || 'Answer all questions carefully. Time limit strictly enforced.',
+        published: examData.published ?? true,
+        questions: examData.questions || [
+          {
+            id: `q-${Date.now()}-1`,
+            text: 'Which architectural pattern is recommended for modern web applications?',
+            type: 'multiple_choice',
+            options: ['Component-based (e.g. React)', 'Monolithic CGI', 'FTP Server', 'Telnet Terminal'],
+            correctAnswer: 'Component-based (e.g. React)',
+            points: 10
+          }
+        ],
+        ...(examData.timeLimitMinutes !== undefined ? { time_limit_minutes: examData.timeLimitMinutes } : {}),
+        ...(examData.dueDate !== undefined ? { due_date: examData.dueDate } : {}),
+        ...((examData as { fileName?: unknown }).fileName !== undefined ? { file_name: (examData as { fileName?: unknown }).fileName } : {}),
+        ...((examData as { fileUrl?: unknown }).fileUrl !== undefined ? { file_url: (examData as { fileUrl?: unknown }).fileUrl } : {}),
+        ...((examData as { fileSize?: unknown }).fileSize !== undefined ? { file_size: (examData as { fileSize?: unknown }).fileSize } : {})
       });
-      const merged = normalizeExam(exam);
+      const merged = normalizeExam(mapLikhaExamRow(saved));
       setDb(prev => ({
         ...prev,
         exams: [merged, ...(prev.exams || [])]
       }));
-
-      // Sync directly to Likha ERP backend
-      try {
-        if (likhaLmsApi?.assessments?.saveExam) {
-          void likhaLmsApi.assessments.saveExam({
-            id: merged.id,
-            course_id: courseId,
-            title: merged.title,
-            term: merged.term,
-            instructions: merged.instructions,
-            published: merged.published,
-            time_limit_minutes: merged.timeLimitMinutes,
-            due_date: merged.dueDate,
-            questions: merged.questions || [],
-          }).catch(err => console.warn('[likhaLmsApi] saveExam sync:', err));
-        }
-      } catch {}
 
       return merged;
     } catch (err) {
@@ -2201,15 +2343,20 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     studentId: string,
     answers: Record<string, string>
   ): Promise<Submission> => {
-    // Client computes nothing new: POST the answers, cache the server row.
+    // Client computes nothing new: POST the answers, cache the Likha row.
     // Instant-feedback scoring stays in ExamsView's client scorer; the
-    // gradebook reads the server row.
+    // gradebook reads the Likha row.
     try {
-      const { submission } = await apiFetch<{ submission: any }>(
-        `/api/exams/${encodeURIComponent(examId)}/submit`,
-        { method: 'POST', body: { answers } }
-      );
-      const merged = normalizeSubmission(submission);
+      // Likha ERP is the source of truth for submissions.
+      const saved = await likhaLmsApi.submissions.submitAssessment({
+        exam_id: examId,
+        student_id: studentId,
+        answers,
+        status: 'submitted',
+        submitted_at: new Date().toISOString(),
+      });
+      const courseId = dbRef.current.exams?.find(e => e.id === examId)?.courseId;
+      const merged = normalizeSubmission(mapLikhaSubmissionRow(saved, courseId));
       setDb(prev => {
         const idx = (prev.submissions || []).findIndex(
           s => merged.activityKey !== undefined && s.activityKey === merged.activityKey && s.studentId === studentId
@@ -2239,14 +2386,14 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const body: Record<string, unknown> =
         format === 'classic'
           ? {
-              courseId,
+              course_id: courseId,
               title: data.title?.trim() || 'New Course Activity',
               instructions:
                 data.instructions || 'Please review the guidelines and submit your work before the deadline.',
-              pointsPossible: data.pointsPossible ?? 100,
-              dueDate: data.dueDate || new Date(Date.now() + 7 * 86400000).toISOString(),
+              points_possible: data.pointsPossible ?? 100,
+              due_date: data.dueDate || new Date(Date.now() + 7 * 86400000).toISOString(),
               ...(data.term !== undefined ? { term: data.term } : { term }),
-              submissionTypes: data.submissionTypes || ['file', 'online_text'],
+              submission_types: data.submissionTypes || ['file', 'online_text'],
               published: data.published ?? true,
               category: data.category || 'Laboratory',
               weight: data.weight ?? 20,
@@ -2255,30 +2402,28 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               // unchecked the payload carries `rubric: []` and SpeedGrader
               // falls back to plain score entry.
               rubric: Array.isArray(data.rubric) ? data.rubric : [],
-              ...(data.fileName !== undefined ? { fileName: data.fileName } : {}),
-              ...(data.fileUrl !== undefined ? { fileUrl: data.fileUrl } : {}),
-              ...(data.fileSize !== undefined ? { fileSize: data.fileSize } : {}),
-              ...(data.availableFrom !== undefined ? { availableFrom: data.availableFrom } : {}),
-              ...(data.availableUntil !== undefined ? { availableUntil: data.availableUntil } : {}),
-              ...(data.sectionRestriction !== undefined ? { sectionRestriction: data.sectionRestriction } : {}),
+              ...(data.fileName !== undefined ? { file_name: data.fileName } : {}),
+              ...(data.fileUrl !== undefined ? { file_url: data.fileUrl } : {}),
+              ...(data.fileSize !== undefined ? { file_size: data.fileSize } : {}),
+              ...(data.availableFrom !== undefined ? { available_from: data.availableFrom } : {}),
+              ...(data.availableUntil !== undefined ? { available_until: data.availableUntil } : {}),
+              ...(data.sectionRestriction !== undefined ? { section_restriction: data.sectionRestriction } : {}),
               format: 'classic',
             }
           : {
-              courseId,
+              course_id: courseId,
               title: data.title?.trim() || 'New Question-Set Activity',
               term,
               instructions: data.instructions || 'Answer all questions carefully.',
-              pointsPossible: data.pointsPossible ?? activityPointsPossible(questions),
-              ...(data.dueDate !== undefined ? { dueDate: data.dueDate } : {}),
+              points_possible: data.pointsPossible ?? activityPointsPossible(questions),
+              ...(data.dueDate !== undefined ? { due_date: data.dueDate } : {}),
               published: data.published ?? true,
               questions,
               format: 'questionset',
             };
-      const { activity } = await apiFetch<{ activity: Activity }>('/api/activities', {
-        method: 'POST',
-        body,
-      });
-      const merged = normalizeActivity(activity);
+      // Likha ERP is the source of truth for activities.
+      const saved = await likhaLmsApi.assessments.saveActivity(body);
+      const merged = normalizeActivity(mapLikhaActivityRow(saved));
       setDb(prev => ({
         ...prev,
         activities: [merged, ...(prev.activities || [])]
@@ -2302,21 +2447,6 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }));
       }
 
-      // Sync to Likha ERP backend (triggers native Directus automation Flows)
-      try {
-        void likhaLmsApi.saveActivity({
-          id: merged.id,
-          course_id: merged.courseId,
-          title: merged.title,
-          instructions: merged.instructions,
-          term: merged.term || 'midterm',
-          points_possible: merged.pointsPossible,
-          due_date: merged.dueDate,
-          published: merged.published,
-          format: merged.format || 'classic',
-        }).catch(err => console.warn('[likhaLmsApi] saveActivity background sync:', err));
-      } catch {}
-
       return merged;
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to create activity.';
@@ -2327,7 +2457,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateActivity = async (activityId: string, updates: Partial<Activity>): Promise<Activity> => {
-    // Mirrors PATCH /api/activities/:id (union of classic + question-set
+    // Likha ERP is the source of truth (union of classic + question-set
     // fields — all classic fields supported). Questions are write-once, so
     // the cached question set is preserved here.
     try {
@@ -2336,23 +2466,20 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (updates.term !== undefined) body.term = updates.term;
       if (updates.instructions !== undefined) body.instructions = updates.instructions;
       if (updates.published !== undefined) body.published = updates.published;
-      if (updates.dueDate !== undefined) body.dueDate = updates.dueDate;
-      if (updates.pointsPossible !== undefined) body.pointsPossible = updates.pointsPossible;
-      if (updates.submissionTypes !== undefined) body.submissionTypes = updates.submissionTypes;
+      if (updates.dueDate !== undefined) body.due_date = updates.dueDate;
+      if (updates.pointsPossible !== undefined) body.points_possible = updates.pointsPossible;
+      if (updates.submissionTypes !== undefined) body.submission_types = updates.submissionTypes;
       if (updates.category !== undefined) body.category = updates.category;
       if (updates.weight !== undefined) body.weight = updates.weight;
       if (updates.rubric !== undefined) body.rubric = updates.rubric;
-      if (updates.fileName !== undefined) body.fileName = updates.fileName;
-      if (updates.fileUrl !== undefined) body.fileUrl = updates.fileUrl;
-      if (updates.fileSize !== undefined) body.fileSize = updates.fileSize;
-      if (updates.availableFrom !== undefined) body.availableFrom = updates.availableFrom;
-      if (updates.availableUntil !== undefined) body.availableUntil = updates.availableUntil;
-      if (updates.sectionRestriction !== undefined) body.sectionRestriction = updates.sectionRestriction;
-      const { activity } = await apiFetch<{ activity: Activity }>(
-        `/api/activities/${encodeURIComponent(activityId)}`,
-        { method: 'PATCH', body }
-      );
-      const normalized = normalizeActivity(activity);
+      if (updates.fileName !== undefined) body.file_name = updates.fileName;
+      if (updates.fileUrl !== undefined) body.file_url = updates.fileUrl;
+      if (updates.fileSize !== undefined) body.file_size = updates.fileSize;
+      if (updates.availableFrom !== undefined) body.available_from = updates.availableFrom;
+      if (updates.availableUntil !== undefined) body.available_until = updates.availableUntil;
+      if (updates.sectionRestriction !== undefined) body.section_restriction = updates.sectionRestriction;
+      const saved = await likhaLmsApi.assessments.saveActivity({ id: activityId, ...body });
+      const normalized = normalizeActivity(mapLikhaActivityRow(saved));
       let merged: Activity = normalized;
       setDb(prev => {
         const existing = (prev.activities || []).find(a => a.id === activityId);
@@ -2369,14 +2496,6 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         };
       });
 
-      // Sync to Likha ERP backend (triggers native Directus automation Flows)
-      try {
-        void likhaLmsApi.saveActivity({
-          id: activityId,
-          ...body,
-        }).catch(err => console.warn('[likhaLmsApi] updateActivity background sync:', err));
-      } catch {}
-
       return merged;
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to update activity.';
@@ -2391,15 +2510,20 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     studentId: string,
     answers: Record<string, string>
   ): Promise<Submission> => {
-    // Same pattern as quizzes: POST the answers, cache the server row.
-    // Essay-pending status comes from the server row (status stays
+    // Same pattern as quizzes: POST the answers, cache the Likha row.
+    // Essay-pending status comes from the Likha row (status stays
     // 'submitted' until faculty grades in SpeedGrader).
     try {
-      const { submission } = await apiFetch<{ submission: any }>(
-        `/api/activities/${encodeURIComponent(activityId)}/submit`,
-        { method: 'POST', body: { answers } }
-      );
-      const merged = normalizeSubmission(submission);
+      // Likha ERP is the source of truth for submissions.
+      const saved = await likhaLmsApi.submissions.submitAssessment({
+        activity_id: activityId,
+        student_id: studentId,
+        answers,
+        status: 'submitted',
+        submitted_at: new Date().toISOString(),
+      });
+      const courseId = dbRef.current.activities?.find(a => a.id === activityId)?.courseId;
+      const merged = normalizeSubmission(mapLikhaSubmissionRow(saved, courseId));
       setDb(prev => {
         const updatedSubs = [...prev.submissions];
         const idx = updatedSubs.findIndex(
@@ -2423,9 +2547,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteActivity = async (activityId: string): Promise<void> => {
     try {
-      await apiFetch<{ ok: true }>(`/api/activities/${encodeURIComponent(activityId)}`, {
-        method: 'DELETE'
-      });
+      // Likha ERP is the source of truth for activities.
+      await likhaLmsApi.assessments.deleteActivity(activityId);
       setDb(prev => ({
         ...prev,
         activities: (prev.activities || []).filter(a => a.id !== activityId),
@@ -2946,14 +3069,18 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       courses: prevDb.courses.map(c => (c.id === courseId ? { ...c, gradesReleased: optimistic } : c))
     }));
     try {
-      const { course } = await apiFetch<{ course: Course }>(
-        `/api/courses/${encodeURIComponent(courseId)}/grades-release`,
-        { method: 'PATCH', body: { term, released } }
+      // The Likha course row already carries `gradesReleased` (see
+      // normalizeCourse), so the release flag flips via courses.updateCourse
+      // with that same field name — no invented schema. Mirrors
+      // updateCourseGradingTerms: the object is sent verbatim and the
+      // response row is re-normalized.
+      const row = await likhaLmsApi.courses.updateCourse(courseId, { gradesReleased: optimistic });
+      const released = normalizeGradesReleased(
+        (row as any)?.gradesReleased ?? (row as any)?.grades_released ?? optimistic
       );
-      const normalized = normalizeCourseSyllabus(course);
       setDb(prevDb => ({
         ...prevDb,
-        courses: prevDb.courses.map(c => (c.id === courseId ? normalized : c))
+        courses: prevDb.courses.map(c => (c.id === courseId ? { ...c, gradesReleased: released } : c))
       }));
       showAlert({
         title: released ? 'Grades Released' : 'Grades Un-released',
@@ -3010,32 +3137,47 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     rubricScores: Record<string, number>,
     commentText?: string
   ): Promise<void> => {
-    // Grade + rubricScores persist via the grade endpoint; feedback text
-    // rides the comments endpoint (the grade endpoint would duplicate it).
+    // Grade persists via submissions.gradeSubmission; each rubric criterion
+    // persists via submissions.addRubricScore; feedback text rides
+    // submissions.addSubmissionComment (the grade call would duplicate it).
     try {
       if (!Number.isFinite(grade)) {
         throw new Error('Grade must be a number.');
       }
-      const { submission } = await apiFetch<{ submission: any }>(
-        `/api/submissions/${encodeURIComponent(submissionId)}/grade`,
-        { method: 'POST', body: { grade, rubricScores } }
-      );
+      // Likha ERP is the source of truth for submissions.
+      const saved = await likhaLmsApi.submissions.gradeSubmission(submissionId, grade, commentText);
+      const criteria = Object.entries(rubricScores || {});
+      if (criteria.length > 0) {
+        await Promise.all(
+          criteria.map(([criterionId, points]) =>
+            likhaLmsApi.submissions.addRubricScore(submissionId, criterionId, points)
+          )
+        );
+      }
       let appended: SubmissionComment | null = null;
       if (commentText && commentText.trim()) {
-        const { comment } = await apiFetch<{ comment: SubmissionComment }>(
-          `/api/submissions/${encodeURIComponent(submissionId)}/comments`,
-          { method: 'POST', body: { text: commentText.trim() } }
+        const comment = await likhaLmsApi.submissions.addSubmissionComment(
+          submissionId,
+          activeUser.id,
+          commentText.trim()
         );
-        appended = normalizeSubmissionComment(comment);
+        appended = normalizeSubmissionComment(
+          mapLikhaSubmissionCommentRow(comment, {
+            id: activeUser.id,
+            name: activeUser.name,
+            role: activeUser.role,
+          })
+        );
       }
-      const graded = normalizeSubmission(submission);
+      const courseId = dbRef.current.submissions?.find(s => s.id === submissionId)?.courseId;
+      const graded = normalizeSubmission(mapLikhaSubmissionRow(saved, courseId));
       setDb(prev => ({
         ...prev,
         submissions: prev.submissions.map(sub =>
           sub.id === submissionId
             ? {
                 ...graded,
-                // Server now echoes persisted rubricScores; fall back to the
+                // Likha echoes the patched row; fall back to the
                 // just-submitted values if the row predates the column.
                 rubricScores:
                   graded.rubricScores && Object.keys(graded.rubricScores).length > 0
@@ -3046,13 +3188,6 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             : sub
         )
       }));
-
-      // Sync to Likha ERP backend (triggers gabay-submission-spr-flow)
-      try {
-        void likhaLmsApi.gradeSubmission(submissionId, grade, commentText).catch(err =>
-          console.warn('[likhaLmsApi] gradeSubmission background sync:', err)
-        );
-      } catch {}
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to grade submission.';
       setLastError(message);
@@ -3066,11 +3201,29 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (!Number.isFinite(grade) || grade < 0) {
         throw new Error('Grade must be a non-negative number.');
       }
-      const { submission } = await apiFetch<{ submission: unknown }>(
-        `/api/exams/${encodeURIComponent(examId)}/manual-grade`,
-        { method: 'POST', body: { studentId, grade } }
+      // Likha ERP is the source of truth: grade the cached submission row,
+      // creating it first when the student has not submitted yet.
+      const cached = (dbRef.current.submissions || []).find(
+        s => (s.examId === examId || s.activityKey === `asg-exam-${examId}`) && s.studentId === studentId
       );
-      const merged = normalizeSubmission(submission);
+      let targetId = cached?.id;
+      let courseId = cached?.courseId;
+      if (!targetId) {
+        courseId = dbRef.current.exams?.find(e => e.id === examId)?.courseId;
+        const created = await likhaLmsApi.submissions.submitAssessment({
+          exam_id: examId,
+          student_id: studentId,
+          answers: {},
+          status: 'submitted',
+          submitted_at: new Date().toISOString(),
+        });
+        targetId = (created as any)?.id;
+        if (!targetId) throw new Error('Failed to save manual exam grade.');
+        const seeded = normalizeSubmission(mapLikhaSubmissionRow(created, courseId));
+        setDb(prev => ({ ...prev, submissions: [seeded, ...(prev.submissions || [])] }));
+      }
+      const saved = await likhaLmsApi.submissions.gradeSubmission(targetId, grade);
+      const merged = normalizeSubmission(mapLikhaSubmissionRow(saved, courseId));
       setDb(prev => {
         const idx = (prev.submissions || []).findIndex(
           s => s.activityKey === merged.activityKey && s.studentId === merged.studentId
@@ -3093,10 +3246,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Contract for the 5th param: `answers` is for question-set activities
   // only. When `answers` is provided the question-set submit path is used;
   // otherwise the cached `format` decides — a cache MISS (unknown format)
-  // takes the question-set `/:id/submit` path, never the classic path, so a
+  // takes the question-set path, never the classic path, so a
   // not-yet-hydrated question-set activity can never be mis-submitted as a
   // classic file/text row. Only a positively-known `classic` format uses
-  // `POST /api/activities/:id/submissions`.
+  // the classic file/text payload. Both persist via Likha ERP.
   const submitActivity = async (
     activityId: string,
     submissionType: 'file' | 'online_text',
@@ -3107,23 +3260,26 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const cached = dbRef.current.activities?.find(a => a.id === activityId);
     const useQuestionSetPath = answers !== undefined || cached?.format !== 'classic';
     try {
-      const { submission } = useQuestionSetPath
-        ? await apiFetch<{ submission: any }>(
-            `/api/activities/${encodeURIComponent(activityId)}/submit`,
-            { method: 'POST', body: { answers: answers ?? {} } }
-          )
-        : await apiFetch<{ submission: any }>(
-            `/api/activities/${encodeURIComponent(activityId)}/submissions`,
-            {
-              method: 'POST',
-              body: {
-                submissionType,
-                ...(content !== undefined ? { content } : {}),
-                ...(fileName !== undefined ? { fileName } : {})
-              }
-            }
-          );
-      const merged = normalizeSubmission(submission);
+      // Likha ERP is the source of truth for submissions.
+      const saved = useQuestionSetPath
+        ? await likhaLmsApi.submissions.submitAssessment({
+            activity_id: activityId,
+            student_id: activeUser.id,
+            answers: answers ?? {},
+            status: 'submitted',
+            submitted_at: new Date().toISOString(),
+          })
+        : await likhaLmsApi.submissions.submitAssessment({
+            activity_id: activityId,
+            student_id: activeUser.id,
+            submission_type: submissionType,
+            ...(content !== undefined ? { content } : {}),
+            ...(fileName !== undefined ? { file_name: fileName } : {}),
+            status: 'submitted',
+            submitted_at: new Date().toISOString(),
+          });
+      const courseId = dbRef.current.activities?.find(a => a.id === activityId)?.courseId;
+      const merged = normalizeSubmission(mapLikhaSubmissionRow(saved, courseId));
       setDb(prev => {
         const idx = prev.submissions.findIndex(
           s => merged.activityKey !== undefined && s.activityKey === merged.activityKey && s.studentId === merged.studentId
@@ -3135,19 +3291,6 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         return { ...prev, submissions: [merged, ...prev.submissions] };
       });
-
-      // Sync to Likha ERP backend
-      try {
-        void likhaLmsApi.submitActivity({
-          activity_id: activityId,
-          student_id: activeUser.id,
-          submission_type: submissionType,
-          content: content || JSON.stringify(answers || {}),
-          file_name: fileName || '',
-          status: 'submitted',
-          submitted_at: new Date().toISOString(),
-        }).catch(err => console.warn('[likhaLmsApi] submitActivity background sync:', err));
-      } catch {}
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to submit activity.';
       setLastError(message);

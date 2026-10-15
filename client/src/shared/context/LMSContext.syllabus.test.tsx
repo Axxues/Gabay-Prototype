@@ -15,18 +15,6 @@ const baseUser = {
   title: 'Instructor',
 } as any;
 
-const seededCourse = {
-  id: 'c1',
-  code: 'C1',
-  title: 'T',
-  section: 'S',
-  term: 'T',
-  instructorId: 'u1',
-  instructorName: 'N',
-  published: true,
-  enrolledCount: 0,
-};
-
 const draftDoc = (courseId: string): OfficialSyllabusData => ({
   courseId,
   institution: { university: 'U', college: 'C', formCode: 'F', revision: 'R' },
@@ -79,16 +67,81 @@ type Route = { match: (url: string, init: any) => boolean; handle: (url: string,
 let routes: Route[] = [];
 let fetchCalls: Array<{ url: string; init: any }> = [];
 
+// Task 6: Directus-shaped assessment rows, exactly like the live Likha ERP
+// stores them (snake_case; questions ride the `questions.*` expansion).
+const likhaQuizRow = {
+  id: 'q1',
+  course_id: 'c1',
+  title: 'Quiz 1',
+  term: 'midterm',
+  instructions: 'Answer all questions.',
+  published: true,
+  time_limit_minutes: 30,
+  questions: [
+    {
+      id: 'qq1',
+      quiz_id: 'q1',
+      question_text: 'What is 2 + 2?',
+      question_type: 'multiple_choice',
+      points: 10,
+      correct_answer: '4',
+      options_json: JSON.stringify(['3', '4']),
+      order: 1,
+    },
+  ],
+};
+const likhaExamRow = {
+  id: 'e1',
+  course_id: 'c1',
+  title: 'Exam 1',
+  term: 'midterm',
+  instructions: 'Answer all questions.',
+  published: true,
+  time_limit_minutes: 60,
+  questions: [],
+};
+const likhaActivityRow = {
+  id: 'a1',
+  course_id: 'c1',
+  title: 'Activity 1',
+  term: 'midterm',
+  instructions: 'Do the work.',
+  published: true,
+  format: 'questionset',
+  points_possible: 100,
+  questions: [],
+};
+const likhaQuizSubmissionRow = {
+  id: 'sub1',
+  quiz_id: 'q1',
+  student_id: 'u1',
+  status: 'submitted',
+  score: null,
+  submitted_at: '2026-10-01T00:00:00.000Z',
+  submission_type: 'online_text',
+  content: '{}',
+};
+
 const defaultRoutes = (): Route[] => [
   // Likha-only auth (Task 2): login reads the real Likha /auth/login +
   // /users/me over stubbed fetch. Express /api/auth/login stays unmocked
   // so any fallback regression throws loudly.
   { match: (u, init) => u.endsWith('/auth/login') && init?.method === 'POST', handle: () => okRes({ data: { access_token: 't-likha-syllabus' } }) },
   { match: u => u.includes('/users/me'), handle: () => okRes({ data: { id: 'u1', first_name: 'Test', last_name: 'User', email: 'test@example.com', role: { name: 'Faculty' } } }) },
-  { match: u => u === '/api/courses', handle: () => okRes({ courses: [{ ...seededCourse }] }) },
-  { match: u => u === '/api/notifications?limit=200', handle: () => okRes({ notifications: [] }) },
-  { match: u => u === '/api/messages', handle: () => okRes({ messages: [] }) },
-  { match: u => u === '/api/calendar', handle: () => okRes({ events: [] }) },
+  // Task 6: the transitional Express fallback quad is gone — the essential
+  // bootstrap reads Likha ERP only. No /api/courses, /api/notifications,
+  // /api/messages, or /api/calendar route exists on purpose: any fallback
+  // regression throws loudly via the unmocked-fetch error below.
+  { match: u => u.includes('/items/courses?'), handle: () => okRes({ data: [{ id: 'c1', code: 'C1', title: 'T', published: true, enrolled_count: 0 }] }) },
+  { match: u => u.includes('/items/notifications'), handle: () => okRes({ data: [] }) },
+  { match: u => u.includes('/items/chat_messages'), handle: () => okRes({ data: [] }) },
+  { match: u => u.includes('/items/calendar_events'), handle: () => okRes({ data: [] }) },
+  { match: u => u.includes('/users?fields'), handle: () => okRes({ data: [] }) },
+  { match: u => u.includes('/items/chat_groups'), handle: () => okRes({ data: [] }) },
+  { match: u => u.includes('/items/advising_slots'), handle: () => okRes({ data: [] }) },
+  { match: u => u.includes('/items/course_sections'), handle: () => okRes({ data: [] }) },
+  { match: u => u.includes('/items/enrollment_requests'), handle: () => okRes({ data: [] }) },
+  { match: u => u.includes('/items/modules?'), handle: () => okRes({ data: [] }) },
   { match: u => u === '/api/users', handle: () => okRes({ users: [{ ...baseUser }] }) },
   { match: u => u === '/api/groups', handle: () => okRes({ groups: [] }) },
   { match: u => u === '/api/advising', handle: () => okRes({ slots: [] }) },
@@ -98,9 +151,16 @@ const defaultRoutes = (): Route[] => [
   { match: u => u.endsWith('/modules'), handle: () => okRes({ modules: [] }) },
   { match: u => u.endsWith('/announcements'), handle: () => okRes({ announcements: [] }) },
   { match: u => u.endsWith('/discussions'), handle: () => okRes({ discussions: [] }) },
-  { match: u => u.startsWith('/api/quizzes?'), handle: () => okRes({ quizzes: [] }) },
-  { match: u => u.startsWith('/api/exams?'), handle: () => okRes({ exams: [] }) },
-  { match: u => u.startsWith('/api/activities?'), handle: () => okRes({ activities: [] }) },
+  // Task 6: assessment reads go through Likha ERP. The Express paths stay
+  // unmocked on purpose — any surviving /api/quizzes|exams|activities call
+  // throws loudly (RED while the impl still uses apiFetch).
+  { match: u => u.startsWith('/api/quizzes'), handle: () => { throw new Error('express-quiz-read-removed'); } },
+  { match: u => u.startsWith('/api/exams'), handle: () => { throw new Error('express-exam-read-removed'); } },
+  { match: u => u.startsWith('/api/activities'), handle: () => { throw new Error('express-activity-read-removed'); } },
+  { match: u => u.includes('/items/quizzes'), handle: () => okRes({ data: [{ ...likhaQuizRow }] }) },
+  { match: u => u.includes('/items/exams'), handle: () => okRes({ data: [{ ...likhaExamRow }] }) },
+  { match: u => u.includes('/items/activities'), handle: () => okRes({ data: [{ ...likhaActivityRow }] }) },
+  { match: u => u.includes('/items/submissions'), handle: () => okRes({ data: [{ ...likhaQuizSubmissionRow }] }) },
   { match: u => u.endsWith('/grades'), handle: () => okRes({ grades: [] }) },
   { match: u => u.endsWith('/spr'), handle: () => okRes({ config: null }) },
   { match: u => u.endsWith('/folders'), handle: () => okRes({ folders: [] }) },
@@ -217,12 +277,12 @@ const syllabusFake = (fullDoc: OfficialSyllabusData) => {
 
 import { LMSProvider, useLMS } from './LMSContext';
 
-let snap: { courses: any[]; revisions: any; lastError: string | null } = { courses: [], revisions: {}, lastError: null };
+let snap: { courses: any[]; revisions: any; lastError: string | null; quizzes: any[]; exams: any[]; activities: any[]; submissions: any[] } = { courses: [], revisions: {}, lastError: null, quizzes: [], exams: [], activities: [], submissions: [] };
 const api: any = {};
 
 const Probe: React.FC = () => {
   const ctx = useLMS() as any;
-  snap = { courses: ctx.db.courses, revisions: ctx.syllabusRevisions, lastError: ctx.lastError };
+  snap = { courses: ctx.db.courses, revisions: ctx.syllabusRevisions, lastError: ctx.lastError, quizzes: ctx.db.quizzes, exams: ctx.db.exams, activities: ctx.db.activities, submissions: ctx.db.submissions };
   api.login = (...a: any[]) => ctx.login(...a);
   api.updateCourseSyllabus = (...a: any[]) => ctx.updateCourseSyllabus(...a);
   api.removeCourseSyllabus = (...a: any[]) => ctx.removeCourseSyllabus(...a);
@@ -247,6 +307,42 @@ const login = async () => {
 };
 
 const courseOf = () => snap.courses.find(c => c.id === 'c1');
+
+describe('assessment bootstrap via Likha (Task 6)', () => {
+  test('assessment bootstrap reads through Likha, never Express', async () => {
+    renderProvider();
+    await login();
+    await waitFor(() => {
+      expect(fetchCalls.some(c => c.url.includes('/items/quizzes'))).toBe(true);
+    });
+    expect(fetchCalls.some(c => c.url.includes('/items/exams'))).toBe(true);
+    expect(fetchCalls.some(c => c.url.includes('/items/activities'))).toBe(true);
+    const expressCalls = fetchCalls.filter(
+      c => /\/api\/(quizzes|exams|activities)/.test(c.url) || /\/api\/.*submissions/.test(c.url),
+    );
+    expect(expressCalls).toEqual([]);
+    await waitFor(() => {
+      expect(
+        (snap.quizzes || []).some(
+          (q: any) => q.id === 'q1' && q.courseId === 'c1' && q.title === 'Quiz 1',
+        ),
+      ).toBe(true);
+    });
+    const quiz = (snap.quizzes || []).find((q: any) => q.id === 'q1');
+    expect(quiz.timeLimitMinutes).toBe(30);
+    expect(quiz.questions).toHaveLength(1);
+    expect(quiz.questions[0]).toMatchObject({ id: 'qq1', text: 'What is 2 + 2?', points: 10 });
+    expect((snap.exams || []).some((e: any) => e.id === 'e1' && e.courseId === 'c1')).toBe(true);
+    expect((snap.activities || []).some((a: any) => a.id === 'a1' && a.courseId === 'c1')).toBe(true);
+    await waitFor(() => {
+      expect(
+        (snap.submissions || []).some(
+          (s: any) => s.id === 'sub1' && s.activityKey === 'asg-quiz-q1' && s.studentId === 'u1',
+        ),
+      ).toBe(true);
+    });
+  });
+});
 
 describe('syllabus revision state', () => {
   test('updateCourseSyllabus replaces the draft and stores revision metadata', async () => {

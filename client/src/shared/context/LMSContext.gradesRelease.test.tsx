@@ -15,13 +15,46 @@ const seededCourse = {
   enrolledCount: 0,
 };
 
-// Login is Likha-only (Task 2): only the grades-release feature path still
-// reads Express here. Any other Express call throws loudly.
+// Task 6: assessments + submissions bootstrap read through Likha ERP.
+// Scoped Express assertion: only assessment/submission paths must be silent
+// (grades/SPR/folders/files/announcements/discussions belong to later tasks
+// and still read Express here).
 const apiFetchMock = vi.fn(async (path: string, _options?: any) => {
-  if (path === '/api/courses/c1/grades-release')
-    return { course: { id: 'c1', gradesReleased: JSON.stringify({ midterm: true }) } };
   throw new Error(`unmocked: ${path}`);
 });
+
+// Directus-shaped rows, exactly like the live Likha ERP stores them.
+const quizRow = {
+  id: 'q1',
+  course_id: 'c1',
+  title: 'Quiz 1',
+  term: 'midterm',
+  instructions: 'Answer all questions.',
+  published: true,
+  time_limit_minutes: 30,
+  questions: [],
+};
+const examRow = {
+  id: 'e1',
+  course_id: 'c1',
+  title: 'Exam 1',
+  term: 'midterm',
+  instructions: 'Answer all questions.',
+  published: true,
+  time_limit_minutes: 60,
+  questions: [],
+};
+const activityRow = {
+  id: 'a1',
+  course_id: 'c1',
+  title: 'Activity 1',
+  term: 'midterm',
+  instructions: 'Do the work.',
+  published: true,
+  format: 'questionset',
+  points_possible: 100,
+  questions: [],
+};
 
 const loginLikhaMock = vi.fn(async () => ({
   token: 't-likha',
@@ -42,6 +75,20 @@ const getGroupsMock = vi.fn(async () => []);
 const getSlotsMock = vi.fn(async () => []);
 const getSectionsMock = vi.fn(async () => []);
 const getRequestsMock = vi.fn(async () => []);
+const getQuizzesMock = vi.fn(async (courseId: string) =>
+  courseId === 'c1' ? [{ ...quizRow }] : []
+);
+const getExamsMock = vi.fn(async (courseId: string) =>
+  courseId === 'c1' ? [{ ...examRow }] : []
+);
+const getActivitiesMock = vi.fn(async (courseId: string) =>
+  courseId === 'c1' ? [{ ...activityRow }] : []
+);
+const getSubmissionsMock = vi.fn(async () => []);
+const updateCourseMock = vi.fn(async (id: string, updates: any) => ({
+  id,
+  ...updates,
+}));
 
 vi.mock('../api/client', () => ({
   ApiError: class ApiError extends Error {
@@ -71,6 +118,17 @@ vi.mock('../api/client', () => ({
     sections: {
       getSections: (...args: any[]) => (getSectionsMock as any)(...args),
     },
+    assessments: {
+      getQuizzes: (...args: any[]) => (getQuizzesMock as any)(...args),
+      getExams: (...args: any[]) => (getExamsMock as any)(...args),
+      getActivities: (...args: any[]) => (getActivitiesMock as any)(...args),
+    },
+    submissions: {
+      getSubmissions: (...args: any[]) => (getSubmissionsMock as any)(...args),
+    },
+    courses: {
+      updateCourse: (...args: any[]) => (updateCourseMock as any)(...args),
+    },
   },
   LIKHA_URL: 'https://gabay.zyberlab.com',
 }));
@@ -78,26 +136,57 @@ vi.mock('../api/client', () => ({
 import { LMSProvider, useLMS } from './LMSContext';
 
 let latestCourses: any[] = [];
+let latestQuizzes: any[] = [];
 let doLogin: (() => Promise<any>) | null = null;
 let doRelease: (() => Promise<void>) | null = null;
 
 const Probe: React.FC = () => {
   const ctx = useLMS() as any;
   latestCourses = ctx.db.courses;
+  latestQuizzes = ctx.db.quizzes;
   doLogin = () => ctx.login('test@example.com', 'pw');
   doRelease = () => ctx.setGradesReleased('c1', 'midterm', true);
   return <div data-testid="probe">{String(latestCourses?.length ?? 0)}</div>;
 };
 
-describe('setGradesReleased releases midterm grades', () => {
+const assessmentExpressCalls = () =>
+  (apiFetchMock.mock.calls as any[][]).filter(([p]) =>
+    /\/api\/(quizzes|exams|activities)/.test(String(p)) ||
+    /\/submissions/.test(String(p)) ||
+    /grades-release/.test(String(p)),
+  );
+
+describe('assessments via Likha (Task 6)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     latestCourses = [];
+    latestQuizzes = [];
     doLogin = null;
     doRelease = null;
     try {
       localStorage.clear();
     } catch {}
+  });
+
+  test('assessment bootstrap reads through Likha, never Express', async () => {
+    render(
+      <LMSProvider>
+        <Probe />
+      </LMSProvider>
+    );
+    await act(async () => {
+      await doLogin!();
+    });
+    await waitFor(() => {
+      expect(getQuizzesMock).toHaveBeenCalled();
+    });
+    expect(getExamsMock).toHaveBeenCalledWith('c1');
+    expect(getActivitiesMock).toHaveBeenCalledWith('c1');
+    const expressCalls = assessmentExpressCalls();
+    expect(expressCalls).toEqual([]);
+    await waitFor(() => {
+      expect((latestQuizzes || []).some((q: any) => q.id === 'q1' && q.courseId === 'c1')).toBe(true);
+    });
   });
 
   test('course gradesReleased reflects the release after setGradesReleased', async () => {
@@ -116,6 +205,10 @@ describe('setGradesReleased releases midterm grades', () => {
     await act(async () => {
       await doRelease!();
     });
+    expect(updateCourseMock).toHaveBeenCalledWith('c1', { gradesReleased: { midterm: true } });
+    expect(
+      (apiFetchMock.mock.calls as any[][]).filter(([p]) => /grades-release/.test(String(p))),
+    ).toEqual([]);
     await waitFor(() => {
       expect(latestCourses.find(c => c.id === 'c1')?.gradesReleased).toEqual({ midterm: true });
     });
