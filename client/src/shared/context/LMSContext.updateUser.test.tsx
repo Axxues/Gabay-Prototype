@@ -90,19 +90,23 @@ import { LMSProvider, useLMS } from './LMSContext';
 
 let latestAvatar: string | null | undefined;
 let latestName: string | null | undefined;
+let latestRole: string | null | undefined;
 let doLogin: (() => Promise<any>) | null = null;
 let doUpdateAvatar: (() => Promise<boolean>) | null = null;
 let doUpdateName: (() => Promise<boolean>) | null = null;
 let doUpdateRole: (() => Promise<boolean>) | null = null;
+let doUpdateNameAndRole: (() => Promise<boolean>) | null = null;
 
 const Probe: React.FC = () => {
   const { activeUser, login, updateUser } = useLMS();
   latestAvatar = (activeUser as any)?.avatar;
   latestName = (activeUser as any)?.name;
+  latestRole = (activeUser as any)?.role;
   doLogin = () => login('test@example.com', 'pw');
   doUpdateAvatar = () => updateUser(likhaUser.id, { avatar: NEW_AVATAR });
   doUpdateName = () => updateUser(likhaUser.id, { name: 'Renamed User' });
   doUpdateRole = () => updateUser(likhaUser.id, { role: 'faculty' as any });
+  doUpdateNameAndRole = () => updateUser(likhaUser.id, { name: 'Renamed User', role: 'faculty' as any });
   return <div data-testid="avatar">{String(latestAvatar)}</div>;
 };
 
@@ -111,10 +115,12 @@ describe('updateUser syncs the active session user', () => {
     vi.clearAllMocks();
     latestAvatar = undefined;
     latestName = undefined;
+    latestRole = undefined;
     doLogin = null;
     doUpdateAvatar = null;
     doUpdateName = null;
     doUpdateRole = null;
+    doUpdateNameAndRole = null;
     try {
       localStorage.clear();
     } catch {}
@@ -195,5 +201,39 @@ describe('updateUser syncs the active session user', () => {
       likhaUser.id,
       expect.objectContaining({ role: 'role-uuid-faculty' })
     );
+  });
+
+  test('update still succeeds with a local-only role when the /roles lookup rejects', async () => {
+    render(
+      <LMSProvider>
+        <Probe />
+      </LMSProvider>
+    );
+
+    await act(async () => {
+      await doLogin!();
+    });
+    resolveRoleMock.mockRejectedValueOnce(new Error('roles unreachable'));
+
+    let ok = false;
+    await act(async () => {
+      ok = await doUpdateNameAndRole!();
+    });
+
+    // Identity write proceeds without the role UUID; role stays local-only.
+    expect(ok).toBe(true);
+    expect(resolveRoleMock).toHaveBeenCalledWith('faculty');
+    expect(updateUserMock).toHaveBeenCalledWith(
+      likhaUser.id,
+      expect.objectContaining({ first_name: 'Renamed', last_name: 'User' })
+    );
+    expect(updateUserMock).toHaveBeenCalledWith(
+      likhaUser.id,
+      expect.not.objectContaining({ role: expect.anything() })
+    );
+    await waitFor(() => {
+      expect(latestName).toBe('Renamed User');
+      expect(latestRole).toBe('faculty');
+    });
   });
 });

@@ -213,5 +213,34 @@ describe('Likha LMS Direct API Client', () => {
     expect(second).toBeNull();
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
+
+  it('caches a known role id and issues no second fetch', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: [{ id: 'role-uuid-faculty', name: 'Faculty' }] }),
+    } as any);
+    const first = await likhaLmsApi.users.resolveRoleId('Faculty');
+    const second = await likhaLmsApi.users.resolveRoleId('Faculty');
+    expect(first).toBe('role-uuid-faculty');
+    expect(second).toBe('role-uuid-faculty');
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('resolves null when the /roles lookup rejects, without caching the failure', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch')
+      .mockRejectedValueOnce(new Error('roles unreachable'))
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ data: [{ id: 'role-uuid-flaky', name: 'FlakyRole' }] }),
+      } as any);
+    const failed = await likhaLmsApi.users.resolveRoleId('FlakyRole');
+    expect(failed).toBeNull();
+    // Failure is not cached: the next call retries and succeeds.
+    const retried = await likhaLmsApi.users.resolveRoleId('FlakyRole');
+    expect(retried).toBe('role-uuid-flaky');
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
 });
 

@@ -2497,7 +2497,13 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         department: userData.department || 'College of Computer Science',
       };
       if (userData.role !== undefined) {
-        const roleId = await (likhaLmsApi.users as any).resolveRoleId?.(role).catch(() => null);
+        // /roles unreachable → null → role stays local-only, write proceeds.
+        let roleId: string | null = null;
+        try {
+          roleId = await likhaLmsApi.users.resolveRoleId(role);
+        } catch {
+          roleId = null;
+        }
         if (roleId) payload.role = roleId;
       }
       const row = await likhaLmsApi.users.createUser(payload);
@@ -2541,7 +2547,13 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (updates.password !== undefined) patchBody.password = updates.password;
     if (updates.department !== undefined) patchBody.department = updates.department;
     if (updates.role !== undefined) {
-      const roleId = await (likhaLmsApi.users as any).resolveRoleId?.(updates.role).catch(() => null);
+      // /roles unreachable → null → role stays local-only, write proceeds.
+      let roleId: string | null = null;
+      try {
+        roleId = await likhaLmsApi.users.resolveRoleId(updates.role);
+      } catch {
+        roleId = null;
+      }
       if (roleId) patchBody.role = roleId;
     }
     const localUpdates = Object.fromEntries(
@@ -2553,7 +2565,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const row = await likhaLmsApi.users.updateUser(id, patchBody);
         const mapped = mapLikhaUserRowToUser(row);
         // Name/email/department echo back from the server; every other field
-        // keeps its local value unless explicitly updated.
+        // keeps its local value unless explicitly updated. NOTE: `role` is
+        // deliberately absent here, so a server-side role rejection is
+        // invisible — the requested role still applies locally below.
         const serverEcho = { name: mapped.name, email: mapped.email, department: mapped.department };
         setDb(prev => ({
           ...prev,

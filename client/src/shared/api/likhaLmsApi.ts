@@ -115,18 +115,20 @@ async function likhaRequest<T = any>(
   return result;
 }
 
-// In-module name↔UUID map so one /roles lookup serves the session
+// In-module name→UUID map so one /roles lookup serves the session
 // (likhaRequest GET caching also applies, but this avoids repeat lookups
 // entirely, including cache misses keyed by token).
+// NOTE: this map lives outside likhaCache, so only invalidateCache() below
+// clears it — direct likhaCache.invalidate() calls (e.g. the post-mutation
+// hook in likhaRequest) do not. Safe because role id↔name mappings are
+// effectively static for a session.
 const roleIdByName = new Map<string, string | null>();
-const roleNameById = new Map<string, string>();
 
 export const likhaLmsApi = {
   cache: likhaCache,
   invalidateCache(pattern?: string): void {
     if (!pattern || pattern.includes('role')) {
       roleIdByName.clear();
-      roleNameById.clear();
     }
     if (pattern) {
       likhaCache.invalidate(pattern);
@@ -194,14 +196,21 @@ export const likhaLmsApi = {
     async resolveRoleId(name: string): Promise<string | null> {
       const key = String(name);
       if (roleIdByName.has(key)) return roleIdByName.get(key) ?? null;
-      const rows = await likhaRequest<any[]>(
-        `/roles?filter[name][_eq]=${encodeURIComponent(key)}&fields=id,name`
-      );
+      // Best-effort lookup: a /roles outage rejects, but callers treat a
+      // missing role as local-only, so degrade to null here. Failures are
+      // NOT cached, so a transient outage can recover on the next call.
+      let rows: any[];
+      try {
+        rows = await likhaRequest<any[]>(
+          `/roles?filter[name][_eq]=${encodeURIComponent(key)}&fields=id,name`
+        );
+      } catch {
+        return null;
+      }
       const list = Array.isArray(rows) ? rows : rows ? [rows] : [];
       const found = list[0];
       const id = found?.id != null ? String(found.id) : null;
       roleIdByName.set(key, id);
-      if (id && found?.name != null) roleNameById.set(id, String(found.name));
       return id;
     },
   },
