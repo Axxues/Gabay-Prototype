@@ -818,33 +818,7 @@ export const likhaLmsApi = {
   },
 
   // =========================================================================
-  // 8. SYLLABUS MANAGEMENT
-  // =========================================================================
-  syllabus: {
-    async getSyllabus(courseId: string): Promise<any | null> {
-      const list = await likhaRequest<any[]>(
-        `/items/syllabi?filter[course_id][_eq]=${encodeURIComponent(courseId)}&fields=*,course_info.*,course_outcomes.*,learning_plans.*,policies.*,institution.*&limit=1`
-      );
-      return list?.[0] || null;
-    },
-
-    async createSyllabus(data: any): Promise<any> {
-      return likhaRequest('/items/syllabi', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      });
-    },
-
-    async updateSyllabus(syllabusId: string, data: any): Promise<any> {
-      return likhaRequest(`/items/syllabi/${encodeURIComponent(syllabusId)}`, {
-        method: 'PATCH',
-        body: JSON.stringify(data),
-      });
-    },
-  },
-
-  // =========================================================================
-  // 9. FILE STORAGE
+  // 8. FILE STORAGE
   // =========================================================================
   files: {
     async uploadFile(file: File): Promise<LikhaUploadedFile> {
@@ -900,12 +874,29 @@ export const likhaLmsApi = {
     },
   },
 
+  // =========================================================================
+  // 9. SYLLABUS REVISION PROTOCOL & MANAGEMENT
+  // =========================================================================
   syllabus: {
     async getSyllabus(courseId: string): Promise<any> {
       const items = await likhaRequest<any[]>(
-        `/items/syllabi?filter[course_id][_eq]=${encodeURIComponent(courseId)}&fields=*,course_info.*,course_outcomes.*`
+        `/items/syllabi?filter[course_id][_eq]=${encodeURIComponent(courseId)}&fields=*,course_info.*,course_outcomes.*,learning_plans.*,policies.*,institution.*&limit=1`
       );
       return items?.[0] || null;
+    },
+
+    async createSyllabus(data: any): Promise<any> {
+      return likhaRequest('/items/syllabi', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+    },
+
+    async updateSyllabus(syllabusId: string, data: any): Promise<any> {
+      return likhaRequest(`/items/syllabi/${encodeURIComponent(syllabusId)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      });
     },
 
     async getPublished(courseId: string): Promise<SyllabusRevisionResponse | null> {
@@ -1035,7 +1026,7 @@ export const likhaLmsApi = {
       return mapLikhaSyllabusRow(published, courseId);
     },
 
-    async deleteDraft(courseId: string, revisionId: string): Promise<void> {
+    async deleteDraft(_courseId: string, revisionId: string): Promise<void> {
       await likhaRequest(`/items/syllabi/${encodeURIComponent(revisionId)}`, {
         method: 'DELETE',
       });
