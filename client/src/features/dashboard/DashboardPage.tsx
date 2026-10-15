@@ -105,7 +105,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
   // Dynamic Instructor Name Resolution
   const getCourseInstructorName = (course: (typeof db.courses)[0]) => {
-    if (activeRole === 'faculty' && (course.instructorId === activeUser.id || !course.instructorId)) {
+    if ((activeRole === 'faculty' || activeRole === 'admin') && (course.instructorId === activeUser.id || !course.instructorId)) {
       return activeUser.name;
     }
     const instructor = db.users.find(u => u.id === course.instructorId);
@@ -204,7 +204,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                     <span>Join course</span>
                   </button>
                 )}
-                {activeRole === 'faculty' && (
+                {(activeRole === 'faculty' || activeRole === 'admin') && (
                   <button
                     type="button"
                     onClick={() => onNavigateTab('create-course')}
@@ -377,7 +377,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                     >
                       <Folder className="w-3.5 h-3.5" />
                     </button>
-                    {activeRole === 'faculty' && (
+                    {(activeRole === 'faculty' || activeRole === 'admin') && (
                       <button
                         type="button"
                         title={deleting ? 'Deleting course…' : 'Delete Course'}
@@ -591,8 +591,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             </>
           )}
 
-          {/* FACULTY WIDGETS */}
-          {activeRole === 'faculty' && (
+          {/* FACULTY & ADMIN GRADING WIDGETS */}
+          {(activeRole === 'faculty' || activeRole === 'admin') && (
             <div className="bg-card border border-border rounded-2xl p-5 space-y-4">
               <div className="flex items-center justify-between border-b border-border/70 pb-3">
                 <h3 className="font-bold text-sm text-foreground flex items-center space-x-2">
@@ -650,7 +650,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   <span>College system overview</span>
                 </h3>
                 <span className="px-2.5 py-0.5 text-[11px] font-sans font-semibold bg-muted text-muted-foreground rounded-full border border-border">
-                  Read-only audit
+                  Administration
                 </span>
               </div>
 

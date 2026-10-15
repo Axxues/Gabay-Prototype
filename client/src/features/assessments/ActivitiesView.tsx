@@ -226,7 +226,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
           title="Activities"
           description="Course activities and laboratory tasks."
           actions={
-            activeRole === 'faculty' && (
+            (activeRole === 'faculty' || activeRole === 'admin') && (
               <button
                 onClick={() => setIsCreatingActivity(true)}
                 className="px-3.5 py-2 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all shadow-subtle flex items-center space-x-1.5 cursor-pointer"
@@ -443,7 +443,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                         </span>
                       )
                     )}
-                    {activeRole === 'faculty' && (
+                    {(activeRole === 'faculty' || activeRole === 'admin') && (
                       <button
                         type="button"
                         title="Delete Question Set"
@@ -488,7 +488,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
           <span>{onBackToModules ? 'Back to modules' : 'Back to activities'}</span>
         </button>
 
-        {activeRole === 'faculty' && (
+        {(activeRole === 'faculty' || activeRole === 'admin') && (
           <div className="flex items-center gap-2">
             <button
               onClick={() => {

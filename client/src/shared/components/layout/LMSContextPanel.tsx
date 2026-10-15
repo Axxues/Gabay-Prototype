@@ -158,7 +158,7 @@ export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: strin
         );
       }
       if (tabId === 'quizzes') {
-        if (activeRole === 'faculty') {
+        if (activeRole === 'faculty' || activeRole === 'admin') {
           const ids = (db.quizzes || []).filter(q => q.courseId === cid).map(q => `asg-quiz-${q.id}`);
           return countFacultyGradingBadge(db.submissions.filter(s => s.courseId === cid), ids);
         }
@@ -168,7 +168,7 @@ export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: strin
         return pub.filter(id => !submitted.has(id)).length;
       }
       if (tabId === 'exams') {
-        if (activeRole === 'faculty') {
+        if (activeRole === 'faculty' || activeRole === 'admin') {
           const ids = (db.exams || []).filter(e => e.courseId === cid).map(e => `asg-exam-${e.id}`);
           return countFacultyGradingBadge(db.submissions.filter(s => s.courseId === cid), ids);
         }

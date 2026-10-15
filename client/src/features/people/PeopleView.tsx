@@ -80,7 +80,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
       return false;
     }
   });
-  const instructors = db.users.filter(u => u.role === 'faculty' || u.id === course?.instructorId);
+  const instructors = db.users.filter(u => u.role === 'faculty' || u.role === 'admin' || u.id === course?.instructorId);
 
   const allPeople = [...instructors, ...students].filter(u => {
     const matchesSearch = u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -156,7 +156,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
         title="People"
         description={course?.section ? `Section ${course.section}` : 'Course roster and enrollment requests'}
         actions={
-          activeRole === 'faculty' && (
+          (activeRole === 'faculty' || activeRole === 'admin') && (
             <button
               onClick={() => {
                 setSelectedStudentIds([]);
@@ -205,7 +205,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
               {copiedCode ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
               <span>{copiedCode ? 'Copied' : 'Copy Code'}</span>
             </button>
-            {activeRole === 'faculty' && (
+            {(activeRole === 'faculty' || activeRole === 'admin') && (
               <button
                 type="button"
                 onClick={() => {
@@ -345,7 +345,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
                               <Shield className="w-3 h-3" />
                               <span>{u.role === 'faculty' ? 'Faculty' : u.role === 'admin' ? 'Admin' : 'Student'}</span>
                             </span>
-                            {activeRole === 'faculty' && u.role === 'student' && u.id !== activeUser.id && (
+                            {(activeRole === 'faculty' || activeRole === 'admin') && u.role === 'student' && u.id !== activeUser.id && (
                               <button
                                 type="button"
                                 title={`Remove ${u.name} from course`}

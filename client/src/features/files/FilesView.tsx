@@ -80,7 +80,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const upload = useSimulatedUpload();
 
-  const canManage = isPersonal || activeRole === 'faculty';
+  const canManage = isPersonal || activeRole === 'faculty' || activeRole === 'admin';
 
   const { allFiles, virtualFolders } = useCourseFiles(courseId);
 

@@ -229,7 +229,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
   const revision = syllabusRevisions[courseId] ?? null;
   const isPublishedRevision = revision?.status === 'published';
   const isCustomSyllabus = Boolean(currentCourse?.syllabus);
-  const canManageSyllabus = activeRole === 'faculty';
+  const canManageSyllabus = activeRole === 'faculty' || activeRole === 'admin';
 
   // All faculty members in the college
   const facultyUsers = useMemo(() => {
@@ -246,11 +246,12 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
   const activeTerms = useMemo(() => effectiveTerms(currentCourse ?? null, data), [currentCourse, data]);
   const isTermsOverridden = Boolean(currentCourse?.gradingTerms && currentCourse.gradingTerms.length > 0);
 
-  // Check if current user is the faculty member that created/instructs this course
-  const isFacultyCreator = activeRole === 'faculty' && (
+  // Check if current user is the faculty member or admin that created/instructs this course
+  const isFacultyCreator = (activeRole === 'faculty' || activeRole === 'admin') && (
     (currentCourse && currentCourse.instructorId === activeUser.id) ||
     (currentCourse && currentCourse.instructorName?.toLowerCase() === activeUser.name?.toLowerCase()) ||
-    activeUser.id === 'usr-fac-1'
+    activeUser.id === 'usr-fac-1' ||
+    activeRole === 'admin'
   );
 
   // Deletion Modal State

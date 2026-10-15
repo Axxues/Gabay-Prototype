@@ -179,11 +179,11 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
         ...courseActivities.filter(a => a.format !== 'classic').map(a => `asg-activity-${a.id}`),
       ];
       const courseSubs = db.submissions.filter(s => s.courseId === cid);
-      badgeCount = activeRole === 'faculty'
+      badgeCount = (activeRole === 'faculty' || activeRole === 'admin')
         ? countFacultyGradingBadge(courseSubs, allIds)
         : countStudentAssessmentBadge(publishedIds, courseSubs.filter(s => s.studentId === activeUser.id).map(s => s.activityKey ?? ''));
     } else if (tab.id === 'quizzes') {
-      badgeCount = activeRole === 'faculty'
+      badgeCount = (activeRole === 'faculty' || activeRole === 'admin')
         ? countFacultyGradingBadge(db.submissions.filter(s => s.courseId === cid), (db.quizzes || []).filter(q => q.courseId === cid).map(q => `asg-quiz-${q.id}`))
         : (db.quizzes || []).filter(q => q.courseId === cid && q.published && !db.submissions.some(s => s.activityKey === `asg-quiz-${q.id}` && s.studentId === activeUser.id)).length;
     } else if (tab.id === 'files') {
@@ -364,8 +364,8 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
         {subTab === 'grades' && activeCourse && !isCourseGradeReady(activeCourse.id) && (
           <div className="bg-card border border-border rounded-2xl p-8 text-center" data-testid="grades-syllabus-gate">
             <h3 className="text-sm font-bold text-foreground">Syllabus required for grades</h3>
-            <p className="text-xs text-muted-foreground mt-1">The grading formula lives in the syllabus under Course Requirements &amp; Official Grading Formula. {activeRole === 'faculty' ? 'Upload a syllabus to enable the gradebook.' : 'Waiting for your instructor to upload the syllabus.'}</p>
-            {activeRole === 'faculty' && (
+            <p className="text-xs text-muted-foreground mt-1">The grading formula lives in the syllabus under Course Requirements &amp; Official Grading Formula. {(activeRole === 'faculty' || activeRole === 'admin') ? 'Upload a syllabus to enable the gradebook.' : 'Waiting for your instructor to upload the syllabus.'}</p>
+            {(activeRole === 'faculty' || activeRole === 'admin') && (
               <button type="button" onClick={() => setSubTab('syllabus')} className="mt-3 px-4 py-2 text-xs font-bold bg-primary text-primary-foreground rounded-xl cursor-pointer">Go to Syllabus</button>
             )}
           </div>

@@ -112,17 +112,17 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
     setExpandedItems(prev => ({ ...prev, [itemId]: !prev[itemId] }));
   };
 
-  // Permission helpers (Only faculty can author and edit course modules)
+  // Permission helpers (Faculty and admin can author and edit course modules)
   const canEditModule = (mod: Module) => {
-    if (activeRole === 'faculty') {
-      return !mod.authorId || mod.authorId === activeUser.id || activeUser.role === 'faculty';
+    if (activeRole === 'faculty' || activeRole === 'admin') {
+      return !mod.authorId || mod.authorId === activeUser.id || activeUser.role === 'faculty' || activeUser.role === 'admin';
     }
     return false;
   };
 
   const canEditItem = (mod: Module, item: ModuleItem) => {
-    if (activeRole === 'faculty') {
-      return !item.authorId || item.authorId === activeUser.id || !mod.authorId || mod.authorId === activeUser.id || activeUser.role === 'faculty';
+    if (activeRole === 'faculty' || activeRole === 'admin') {
+      return !item.authorId || item.authorId === activeUser.id || !mod.authorId || mod.authorId === activeUser.id || activeUser.role === 'faculty' || activeUser.role === 'admin';
     }
     return false;
   };
@@ -373,7 +373,7 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
         title="Modules"
         description="Course learning units, syllabus readings, and downloadable laboratory materials."
         actions={
-          activeRole === 'faculty' && (
+          (activeRole === 'faculty' || activeRole === 'admin') && (
             <button
               type="button"
               onClick={() => {
@@ -392,7 +392,7 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
       />
 
       {/* Inline Add Module Input Form at the Top Part */}
-      {isAddModuleOpen && activeRole === 'faculty' && (
+      {isAddModuleOpen && (activeRole === 'faculty' || activeRole === 'admin') && (
         <form
           onSubmit={handleCreateModule}
           className="p-4 bg-card border border-primary/40 rounded-2xl shadow-subtle animate-fade-in space-y-3"

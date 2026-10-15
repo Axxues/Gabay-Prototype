@@ -622,7 +622,7 @@ export const QuizzesView: React.FC<QuizzesViewProps> = ({
         title="Quizzes & Assessments"
         description="Standardized evaluation modules, Google Forms-style quizzes, and timed knowledge checks."
         actions={
-          activeRole === 'faculty' && (
+          (activeRole === 'faculty' || activeRole === 'admin') && (
             <button
               onClick={() => setIsCreatingQuiz(true)}
               className="px-4 py-2 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all shadow-primary-sm flex items-center space-x-1.5 cursor-pointer self-start sm:self-auto"
@@ -666,8 +666,8 @@ export const QuizzesView: React.FC<QuizzesViewProps> = ({
         ) : courseQuizzes.length === 0 ? (
           <EmptyState
             title="No quizzes published for this course yet."
-            actionLabel={activeRole === 'faculty' ? 'Create your first quiz now' : undefined}
-            onAction={activeRole === 'faculty' ? () => setIsCreatingQuiz(true) : undefined}
+            actionLabel={activeRole === 'faculty' || activeRole === 'admin' ? 'Create your first quiz now' : undefined}
+            onAction={activeRole === 'faculty' || activeRole === 'admin' ? () => setIsCreatingQuiz(true) : undefined}
           />
         ) : visibleQuizzes.length === 0 ? (
           <p className="text-[12.5px] text-muted-foreground text-center py-6">
@@ -773,7 +773,7 @@ export const QuizzesView: React.FC<QuizzesViewProps> = ({
                       }`}
                     >
                       <Play className="w-3.5 h-3.5" />
-                      <span>{activeRole === 'admin' ? 'Preview Quiz' : isScheduled ? 'Preview (Scheduled)' : existingSub ? 'Retake Quiz' : 'Take Quiz'}</span>
+                      <span>{activeRole === 'admin' || activeRole === 'faculty' ? 'Preview Quiz' : isScheduled ? 'Preview (Scheduled)' : existingSub ? 'Retake Quiz' : 'Take Quiz'}</span>
                     </button>
                   )}
                 </div>

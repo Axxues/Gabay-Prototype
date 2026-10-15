@@ -534,10 +534,10 @@ export const SpeedGraderModal: React.FC = () => {
     openSpeedGrader,
     db,
     gradeSubmission,
-    activeRole,
   } = useLMS();
 
-  const isAdmin = activeRole === 'admin';
+  // Admins (Dean, Chairperson) have full faculty grading access to evaluate advisees and courses
+  const isReadOnly = false;
   const { isClosing, startClose } = useModalAnimate(closeSpeedGrader, 200);
 
   useEffect(() => {
@@ -565,7 +565,7 @@ export const SpeedGraderModal: React.FC = () => {
       key={currentSubmission.id}
       currentSubmission={currentSubmission}
       db={db}
-      isAdmin={isAdmin}
+      isAdmin={isReadOnly}
       isClosing={isClosing}
       startClose={startClose}
       openSpeedGrader={openSpeedGrader}

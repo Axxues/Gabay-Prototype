@@ -169,7 +169,7 @@ export const ActivityRunnerView: React.FC<ActivityRunnerViewProps> = ({
           <span>Back to Activities List</span>
         </button>
 
-        {activeRole === 'faculty' && (
+        {(activeRole === 'faculty' || activeRole === 'admin') && (
           <div className="flex items-center space-x-2">
             <button
               onClick={() => {
@@ -220,7 +220,7 @@ export const ActivityRunnerView: React.FC<ActivityRunnerViewProps> = ({
       </div>
 
       {/* ---------- Faculty detail: per-student submissions ---------- */}
-      {activeRole === 'faculty' && (
+      {(activeRole === 'faculty' || activeRole === 'admin') && (
         <div className="bg-card border border-border rounded-2xl p-6 shadow-subtle space-y-4">
           <h3 className="font-bold text-base text-foreground flex items-center space-x-2">
             <Users className="w-4 h-4 text-primary" />

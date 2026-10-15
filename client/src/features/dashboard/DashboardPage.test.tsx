@@ -112,3 +112,43 @@ describe('DashboardPage pending requests', () => {
     expect(screen.getByText('Pending course request')).toBeInTheDocument();
   });
 });
+
+describe('DashboardPage admin access', () => {
+  beforeEach(() => {
+    mocks.isLoading = false;
+    mocks.activeRole = 'admin';
+    mocks.activeUser = { id: 'u-admin-1', name: 'Dean Admin', role: 'admin' } as any;
+    mocks.db = {
+      courses: [{ id: 'c1', code: 'CMSC 131', title: 'Data Structures' }],
+      enrollmentRequests: [],
+      users: [
+        { id: 'u-admin-1', name: 'Dean Admin', role: 'admin' },
+        { id: 'u-fac-1', name: 'Prof', role: 'faculty' },
+        { id: 'u-stu-1', name: 'Student', role: 'student' },
+      ],
+      submissions: [
+        { id: 'sub-1', studentName: 'Alice', activityKey: 'act-1', status: 'submitted', submittedAt: new Date().toISOString() },
+      ],
+      activities: [
+        { id: 'act-1', title: 'Lab 1' },
+      ],
+      quizzes: [],
+      modules: [],
+    } as any;
+  });
+
+  test('admin sees create course button, to-grade queue, and system overview widget', () => {
+    renderPage();
+
+    // Admin can create courses like faculty
+    expect(screen.getByRole('button', { name: /create course/i })).toBeInTheDocument();
+
+    // Admin sees faculty "To grade" widget
+    expect(screen.getByText('To grade')).toBeInTheDocument();
+    expect(screen.getByText('Alice')).toBeInTheDocument();
+
+    // Admin also sees College system overview widget
+    expect(screen.getByText('College system overview')).toBeInTheDocument();
+    expect(screen.getByText('Administration')).toBeInTheDocument();
+  });
+});

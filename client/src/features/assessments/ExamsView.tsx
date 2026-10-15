@@ -606,7 +606,7 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
         title="Exams & Assessments"
         description="Standardized evaluation modules, Google Forms-style exams, and timed knowledge checks."
         actions={
-          activeRole === 'faculty' && (
+          (activeRole === 'faculty' || activeRole === 'admin') && (
             <button
               onClick={() => setIsCreatingExam(true)}
               className="px-4 py-2 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all shadow-primary-sm flex items-center space-x-1.5 cursor-pointer self-start sm:self-auto"
@@ -634,8 +634,8 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
         ) : courseExams.length === 0 ? (
           <EmptyState
             title="No exams published for this course yet."
-            actionLabel={activeRole === 'faculty' ? 'Create your first exam now' : undefined}
-            onAction={activeRole === 'faculty' ? () => setIsCreatingExam(true) : undefined}
+            actionLabel={activeRole === 'faculty' || activeRole === 'admin' ? 'Create your first exam now' : undefined}
+            onAction={activeRole === 'faculty' || activeRole === 'admin' ? () => setIsCreatingExam(true) : undefined}
           />
         ) : (
           <>
@@ -728,7 +728,7 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
                       className="px-4 py-2 text-xs font-bold rounded-xl transition-all shadow-primary-sm flex items-center space-x-1.5 cursor-pointer active:scale-98 bg-primary hover:bg-primary/90 text-primary-foreground"
                     >
                       <Play className="w-3.5 h-3.5" />
-                      <span>{activeRole === 'admin' ? 'Preview Exam' : existingSub ? 'Retake Exam' : 'Take Exam'}</span>
+                      <span>{activeRole === 'admin' || activeRole === 'faculty' ? 'Preview Exam' : existingSub ? 'Retake Exam' : 'Take Exam'}</span>
                     </button>
                 </div>
               </div>

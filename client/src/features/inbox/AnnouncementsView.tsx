@@ -127,7 +127,7 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
     }
   };
 
-  const canCreate = activeRole === 'faculty';
+  const canCreate = activeRole === 'faculty' || activeRole === 'admin';
 
   if (isCreating) {
     return (
