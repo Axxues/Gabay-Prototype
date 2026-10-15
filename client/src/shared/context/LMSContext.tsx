@@ -412,6 +412,81 @@ const mapLikhaSectionRow = (s: any): CourseSection => ({
   location: s.room ?? s.location,
 });
 
+/** Task 5: Directus modules / module_items / module_comments rows
+ *  (snake_case) arrive from read/write calls — map them to the client
+ *  shapes (same mapping as the bootstrap scope in refreshDeferred).
+ *  Multi-word item keys convert camelCase->snake_case on write. */
+const likhaItemKey = (key: string): string => {
+  const snake: Record<string, string> = {
+    completionCondition: 'completion_condition',
+    activityId: 'activity_id',
+    quizId: 'quiz_id',
+    fileUrl: 'file_url',
+    fileName: 'file_name',
+    fileSize: 'file_size',
+    fileType: 'file_type',
+    minScore: 'min_score',
+  };
+  return snake[key] ?? key;
+};
+
+const toLikhaItemPatch = (body: Record<string, string | boolean | number>): Record<string, string | boolean | number> => {
+  const patch: Record<string, string | boolean | number> = {};
+  for (const [key, value] of Object.entries(body)) patch[likhaItemKey(key)] = value;
+  return patch;
+};
+
+const mapLikhaModuleItemRow = (it: any): ModuleItem => ({
+  id: String(it.id),
+  title: it.title ?? 'Untitled item',
+  type: (it.type as ModuleItem['type']) ?? 'page',
+  published: it.published ?? true,
+  required: Boolean(it.required ?? false),
+  completionCondition: it.completion_condition ?? it.completionCondition ?? undefined,
+  minScore: typeof it.min_score === 'number' ? it.min_score : (it.minScore ?? undefined),
+  content: it.content ?? undefined,
+  activityId: it.activity_id ?? it.activityId ?? undefined,
+  quizId: it.quiz_id ?? it.quizId ?? undefined,
+  fileUrl: it.file_url ?? it.fileUrl ?? undefined,
+  fileName: it.file_name ?? it.fileName ?? undefined,
+  fileSize: it.file_size ?? it.fileSize ?? undefined,
+  fileType: it.file_type ?? it.fileType ?? undefined,
+  completed: it.completed ?? undefined,
+  authorId: it.author_id ?? it.authorId ?? undefined,
+  authorName: it.author_name ?? it.authorName ?? undefined,
+});
+
+const mapLikhaModuleCommentRow = (c: any, moduleId: string): ModuleComment => ({
+  id: String(c.id),
+  moduleId: String(c.module_id ?? c.moduleId ?? moduleId),
+  parentId: c.parent_id ?? c.parentId ?? null,
+  authorId: String(c.author_id ?? c.authorId ?? ''),
+  authorName: c.author_name ?? c.authorName ?? 'Someone',
+  authorAvatar: c.author_avatar ?? c.authorAvatar ?? '',
+  authorRole: (c.author_role ?? c.authorRole ?? 'student') as ModuleComment['authorRole'],
+  content: c.content ?? '',
+  createdAt: c.created_at ?? c.createdAt ?? new Date().toISOString(),
+  likes: typeof c.likes === 'number' ? c.likes : 0,
+  likedBy: Array.isArray(c.liked_by) ? c.liked_by : (c.likedBy ?? []),
+  isEdited: c.is_edited ?? c.isEdited ?? undefined,
+  editedAt: c.edited_at ?? c.editedAt ?? undefined,
+});
+
+const mapLikhaModuleRow = (m: any): Module => ({
+  id: String(m.id),
+  courseId: String(m.course_id ?? m.courseId ?? ''),
+  title: m.title ?? 'Untitled module',
+  order: typeof m.order === 'number' ? m.order : Number(m.order) || 0,
+  published: m.published ?? true,
+  prerequisiteModuleId: m.prerequisite_module_id ?? m.prerequisiteModuleId ?? undefined,
+  authorId: m.author_id ?? m.authorId ?? undefined,
+  authorName: m.author_name ?? m.authorName ?? undefined,
+  items: Array.isArray(m.items) ? m.items.map(mapLikhaModuleItemRow) : [],
+  comments: Array.isArray(m.comments)
+    ? m.comments.map((c: any) => mapLikhaModuleCommentRow(c, String(m.id)))
+    : [],
+});
+
 /** Task 4: server rows arrive with Dates serialized as ISO strings and
  *  null-able optionals — normalize them to the client shapes. */
 const toIsoString = (value: unknown): string => {
@@ -1258,7 +1333,16 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         coursesRes.courses.map(course =>
           (async () => {
             const [modulesSettled, announcementsSettled, discussionsSettled] = await Promise.allSettled([
-              apiFetch<{ modules: Module[] }>(`/api/courses/${encodeURIComponent(course.id)}/modules`),
+              // Task 5: modules (+ embedded items; row-embedded comments when
+              // present) come from Likha ERP (no Express fallback on this
+              // path). likha-gap: module_comments is item-scoped in Likha, so
+              // there is no batched module-level comment read to fan out here
+              // (browser_subagent follow-up).
+              Promise.resolve()
+                .then(() => likhaLmsApi?.modules?.getModulesWithItems?.(course.id) ?? [])
+                .then((rows: any): { modules: Module[] } => ({
+                  modules: ((Array.isArray(rows) ? rows : []) as any[]).map(mapLikhaModuleRow),
+                })),
               apiFetch<{ announcements: Announcement[] }>(`/api/courses/${encodeURIComponent(course.id)}/announcements`),
               apiFetch<{ discussions: Discussion[] }>(`/api/courses/${encodeURIComponent(course.id)}/discussions`),
             ]);
@@ -1769,35 +1853,23 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const createModule = async (courseId: string, title: string): Promise<Module> => {
     try {
-      const { module } = await apiFetch<{ module: Module }>(
-        `/api/courses/${encodeURIComponent(courseId)}/modules`,
-        { method: 'POST', body: { title } }
-      );
+      // Likha ERP is the source of truth for modules.
+      const row = await likhaLmsApi.modules.createModule({
+        course_id: courseId,
+        title,
+        order: db.modules.filter(m => m.courseId === courseId).length + 1,
+        published: true,
+      });
       // Server defaults order to 0 — keep the client's append-at-end ordering.
+      const mapped = mapLikhaModuleRow({ course_id: courseId, ...(row as any) });
       const merged: Module = {
-        ...module,
-        order: module.order || db.modules.filter(m => m.courseId === courseId).length + 1,
-        items: module.items || [],
-        comments: (module as Module).comments || []
+        ...mapped,
+        order: mapped.order || db.modules.filter(m => m.courseId === courseId).length + 1,
       };
       setDb(prev => ({
         ...prev,
         modules: [...prev.modules, merged]
       }));
-
-      // Sync directly to Likha ERP backend
-      try {
-        if (likhaLmsApi?.modules?.createModule) {
-          void likhaLmsApi.modules.createModule({
-            id: merged.id,
-            course_id: courseId,
-            title: merged.title,
-            order: merged.order,
-            published: merged.published,
-          }).catch(err => console.warn('[likhaLmsApi] createModule sync:', err));
-        }
-      } catch {}
-
       return merged;
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to create module.';
@@ -1815,27 +1887,16 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (updates.published !== undefined) body.published = updates.published;
     if (updates.order !== undefined) body.order = updates.order;
     try {
-      const { module } = await apiFetch<{ module: Module }>(
-        `/api/modules/${encodeURIComponent(moduleId)}`,
-        { method: 'PATCH', body }
-      );
+      // Likha ERP is the source of truth for modules.
+      const row = await likhaLmsApi.modules.updateModule(moduleId, body);
       setDb(prev => ({
         ...prev,
         modules: (prev.modules || []).map(m =>
           m.id === moduleId
-            ? { ...m, ...module, items: m.items, comments: m.comments }
+            ? mapLikhaModuleRow({ ...m, ...(row as any), items: m.items, comments: m.comments })
             : m
         )
       }));
-
-      // Sync directly to Likha ERP backend
-      try {
-        if (likhaLmsApi?.modules?.updateModule) {
-          void likhaLmsApi.modules.updateModule(moduleId, body).catch(err =>
-            console.warn('[likhaLmsApi] updateModule sync:', err)
-          );
-        }
-      } catch {}
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to update module.';
       setLastError(message);
@@ -1847,22 +1908,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteModule = async (moduleId: string): Promise<void> => {
     // No-cascade semantics live server-side (filed CourseFile rows stay).
     try {
-      await apiFetch<{ ok: true }>(`/api/modules/${encodeURIComponent(moduleId)}`, {
-        method: 'DELETE'
-      });
+      // Likha ERP is the source of truth for modules.
+      await likhaLmsApi.modules.deleteModule(moduleId);
       setDb(prev => ({
         ...prev,
         modules: (prev.modules || []).filter(m => m.id !== moduleId)
       }));
-
-      // Sync directly to Likha ERP backend
-      try {
-        if (likhaLmsApi?.modules?.deleteModule) {
-          void likhaLmsApi.modules.deleteModule(moduleId).catch(err =>
-            console.warn('[likhaLmsApi] deleteModule sync:', err)
-          );
-        }
-      } catch {}
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to delete module.';
       setLastError(message);
@@ -1873,6 +1924,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const addModuleItem = async (moduleId: string, itemData: Partial<ModuleItem>): Promise<void> => {
     // File fields pass through; the server files them (area/modules folders).
+    // Likha ERP is the source of truth for module items (snake_case patch).
     const body: Record<string, string | boolean> = {};
     if (itemData.title !== undefined) body.title = itemData.title;
     if (itemData.type !== undefined) body.type = itemData.type;
@@ -1887,29 +1939,15 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (itemData.fileSize !== undefined && itemData.fileSize !== null) body.fileSize = itemData.fileSize;
     if (itemData.fileType !== undefined && itemData.fileType !== null) body.fileType = itemData.fileType;
     try {
-      const { item } = await apiFetch<{ item: ModuleItem }>(
-        `/api/modules/${encodeURIComponent(moduleId)}/items`,
-        { method: 'POST', body }
-      );
+      const patch = toLikhaItemPatch(body);
+      const row = await likhaLmsApi.modules.createModuleItem({ module_id: moduleId, ...patch });
+      const item = mapLikhaModuleItemRow({ module_id: moduleId, ...patch, ...(row as any) });
       setDb(prev => ({
         ...prev,
         modules: prev.modules.map(mod =>
-          mod.id === moduleId ? { ...mod, items: [...mod.items, item as ModuleItem] } : mod
+          mod.id === moduleId ? { ...mod, items: [...mod.items, item] } : mod
         )
       }));
-
-      // Sync directly to Likha ERP backend
-      try {
-        if (likhaLmsApi?.modules?.createModuleItem) {
-          void likhaLmsApi.modules.createModuleItem({
-            id: (item as ModuleItem).id,
-            module_id: moduleId,
-            title: (item as ModuleItem).title,
-            type: (item as ModuleItem).type,
-            content: (item as ModuleItem).content,
-          }).catch(err => console.warn('[likhaLmsApi] addModuleItem sync:', err));
-        }
-      } catch {}
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to add module item.';
       setLastError(message);
@@ -1941,12 +1979,15 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (destModuleId !== currentModuleId) {
         // Cross-module move: single PATCH carrying the target FK — the item
         // id is PRESERVED server-side.
-        const { item } = await apiFetch<{ item: ModuleItem }>(
-          `/api/modules/${encodeURIComponent(currentModuleId)}/items/${encodeURIComponent(itemId)}`,
-          { method: 'PATCH', body: { ...body, targetModuleId: destModuleId } }
-        );
+        const row = await likhaLmsApi.modules.updateModuleItem(itemId, {
+          ...toLikhaItemPatch(body),
+          module_id: destModuleId,
+        });
         setDb(prev => {
-          const moved = item as ModuleItem;
+          const src = (prev.modules || [])
+            .find(mod => mod.id === currentModuleId)?.items
+            .find(it => it.id === itemId);
+          const moved = mapLikhaModuleItemRow({ ...(src ?? {}), ...(row as any) });
           const withoutSource = (prev.modules || []).map(mod =>
             mod.id === currentModuleId
               ? { ...mod, items: mod.items.filter(it => it.id !== itemId) }
@@ -1959,40 +2000,17 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             )
           };
         });
-
-        // Sync directly to Likha ERP backend
-        try {
-          if (likhaLmsApi?.modules?.updateModuleItem) {
-            void likhaLmsApi.modules.updateModuleItem(itemId, {
-              ...body,
-              module_id: destModuleId,
-            }).catch(err => console.warn('[likhaLmsApi] updateModuleItem move sync:', err));
-          }
-        } catch {}
-
         return;
       }
-      const { item } = await apiFetch<{ item: ModuleItem }>(
-        `/api/modules/${encodeURIComponent(currentModuleId)}/items/${encodeURIComponent(itemId)}`,
-        { method: 'PATCH', body }
-      );
+      const row = await likhaLmsApi.modules.updateModuleItem(itemId, toLikhaItemPatch(body));
       setDb(prev => ({
         ...prev,
         modules: (prev.modules || []).map(mod =>
           mod.id === currentModuleId
-            ? { ...mod, items: mod.items.map(it => (it.id === itemId ? { ...it, ...(item as ModuleItem) } : it)) }
+            ? { ...mod, items: mod.items.map(it => (it.id === itemId ? mapLikhaModuleItemRow({ ...it, ...(row as any) }) : it)) }
             : mod
         )
       }));
-
-      // Sync directly to Likha ERP backend
-      try {
-        if (likhaLmsApi?.modules?.updateModuleItem) {
-          void likhaLmsApi.modules.updateModuleItem(itemId, body).catch(err =>
-            console.warn('[likhaLmsApi] updateModuleItem sync:', err)
-          );
-        }
-      } catch {}
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to update module item.';
       setLastError(message);
@@ -2003,10 +2021,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteModuleItem = async (moduleId: string, itemId: string): Promise<void> => {
     try {
-      await apiFetch<{ ok: true }>(
-        `/api/modules/${encodeURIComponent(moduleId)}/items/${encodeURIComponent(itemId)}`,
-        { method: 'DELETE' }
-      );
+      // Likha ERP is the source of truth for module items.
+      await likhaLmsApi.modules.deleteModuleItem(itemId);
       setDb(prev => ({
         ...prev,
         modules: (prev.modules || []).map(mod =>
@@ -3143,15 +3159,15 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const toggleModulePublish = async (moduleId: string): Promise<void> => {
     const current = (db.modules || []).find(m => m.id === moduleId);
     try {
-      const { module } = await apiFetch<{ module: Module }>(
-        `/api/modules/${encodeURIComponent(moduleId)}`,
-        { method: 'PATCH', body: { published: !(current?.published ?? false) } }
-      );
+      // Likha ERP is the source of truth for modules.
+      const row = await likhaLmsApi.modules.updateModule(moduleId, {
+        published: !(current?.published ?? false),
+      });
       setDb(prev => ({
         ...prev,
         modules: (prev.modules || []).map(m =>
           m.id === moduleId
-            ? { ...m, ...module, items: m.items, comments: m.comments }
+            ? mapLikhaModuleRow({ ...m, ...(row as any), items: m.items, comments: m.comments })
             : m
         )
       }));
@@ -3166,15 +3182,15 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const toggleItemCompletion = async (moduleId: string, itemId: string): Promise<void> => {
     const current = (db.modules || []).find(m => m.id === moduleId)?.items.find(i => i.id === itemId);
     try {
-      const { item } = await apiFetch<{ item: ModuleItem }>(
-        `/api/modules/${encodeURIComponent(moduleId)}/items/${encodeURIComponent(itemId)}`,
-        { method: 'PATCH', body: { completed: !(current?.completed ?? false) } }
-      );
+      // Likha ERP is the source of truth for module items.
+      const row = await likhaLmsApi.modules.updateModuleItem(itemId, {
+        completed: !(current?.completed ?? false),
+      });
       setDb(prev => ({
         ...prev,
         modules: (prev.modules || []).map(mod =>
           mod.id === moduleId
-            ? { ...mod, items: mod.items.map(it => (it.id === itemId ? { ...it, ...(item as ModuleItem) } : it)) }
+            ? { ...mod, items: mod.items.map(it => (it.id === itemId ? mapLikhaModuleItemRow({ ...it, ...(row as any) }) : it)) }
             : mod
         )
       }));
@@ -3189,10 +3205,29 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addModuleComment = async (moduleId: string, content: string, parentId?: string): Promise<void> => {
     if (!content.trim()) return;
     // Server creates the reply notification inline (no client call needed).
+    // Likha ERP is the source of truth for module comments; the cached row
+    // falls back to request/active-user values for author fields the write
+    // response may omit.
     try {
-      const { comment } = await apiFetch<{ comment: ModuleComment }>(
-        `/api/modules/${encodeURIComponent(moduleId)}/comments`,
-        { method: 'POST', body: parentId ? { content: content.trim(), parentId } : { content: content.trim() } }
+      const trimmed = content.trim();
+      const row = await likhaLmsApi.modules.addComment({
+        module_id: moduleId,
+        author_id: activeUser.id,
+        content: trimmed,
+        ...(parentId ? { parent_id: parentId } : {}),
+      });
+      const comment = mapLikhaModuleCommentRow(
+        {
+          module_id: moduleId,
+          author_id: activeUser.id,
+          author_name: activeUser.name,
+          author_avatar: activeUser.avatar,
+          author_role: activeUser.role,
+          content: trimmed,
+          parent_id: parentId ?? null,
+          ...(row as any),
+        },
+        moduleId
       );
       setDb(prev => ({
         ...prev,
@@ -3212,6 +3247,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const editModuleComment = async (moduleId: string, commentId: string, newContent: string): Promise<void> => {
     if (!newContent.trim()) return;
+    // likha-gap: module comment edit has no Likha equivalent
+    // (likhaLmsApi.modules exposes getComments/addComment only; no
+    // updateComment/patch path exists) (browser_subagent follow-up).
     try {
       const { comment } = await apiFetch<{ comment: ModuleComment }>(
         `/api/modules/${encodeURIComponent(moduleId)}/comments/${encodeURIComponent(commentId)}`,
@@ -3236,6 +3274,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteModuleComment = async (moduleId: string, commentId: string): Promise<void> => {
     // Server hard-deletes the row, so the cache drops it (replacing the old
     // client soft-delete placeholder).
+    // likha-gap: module comment delete has no Likha equivalent
+    // (likhaLmsApi.modules exposes getComments/addComment only; no
+    // deleteComment path exists) (browser_subagent follow-up).
     try {
       await apiFetch<{ ok: true }>(
         `/api/modules/${encodeURIComponent(moduleId)}/comments/${encodeURIComponent(commentId)}`,
@@ -3258,6 +3299,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const toggleLikeModuleComment = async (moduleId: string, commentId: string): Promise<void> => {
+    // likha-gap: module comment likes have no Likha equivalent
+    // (likhaLmsApi.modules exposes getComments/addComment only; no like
+    // endpoint or likes/liked_by write path exists) (browser_subagent follow-up).
     try {
       const { likes, liked } = await apiFetch<{ likes: number; liked: boolean }>(
         `/api/modules/${encodeURIComponent(moduleId)}/comments/${encodeURIComponent(commentId)}/like`,
