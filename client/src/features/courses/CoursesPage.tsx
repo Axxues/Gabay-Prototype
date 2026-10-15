@@ -1,21 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BookOpen } from 'lucide-react';
 import { useLMS } from '../../shared/context/LMSContext';
-import { ModulesView } from '../modules/ModulesView';
-import { SyllabusView } from '../syllabus/SyllabusView';
-import { AssessmentsOverviewView } from '../assessments/AssessmentsOverviewView';
-import { ActivitiesView } from '../assessments/ActivitiesView';
-import { AssignmentsView } from '../assessments/AssignmentsView';
-import { ProjectsView } from '../assessments/ProjectsView';
-import { PresentationsView } from '../assessments/PresentationsView';
-import { QuizzesView } from '../assessments/QuizzesView';
-import { ExamsView } from '../assessments/ExamsView';
-import { PeopleView } from '../people/PeopleView';
-import { AnnouncementsView } from '../inbox/AnnouncementsView';
-import { FilesView } from '../files/FilesView';
-import { FacultyGradebook } from '../assessments/components/grading/FacultyGradebook';
-import { StudentGradebook } from '../assessments/components/grading/StudentGradebook';
-
 import { JoinCourseModal } from '../../shared/components/common/JoinCourseModal';
 import { EmptyState } from '../../shared/components/common/EmptyState';
 import { PageTransition } from '../../shared/components/common/PageTransition';
@@ -31,6 +16,33 @@ import {
   countUnreadAnnouncements,
   countUnreadMessages,
 } from '../../shared/utils/notifiers';
+
+const CourseSubTabSkeleton: React.FC = () => (
+  <div className="flex-1 p-6 space-y-5 animate-pulse" data-testid="course-subtab-skeleton">
+    <div className="h-8 w-48 bg-muted rounded-xl" />
+    <div className="h-32 bg-card border border-border rounded-2xl" />
+    <div className="space-y-3 pt-2">
+      <div className="h-16 bg-card border border-border rounded-2xl" />
+      <div className="h-16 bg-card border border-border rounded-2xl" />
+      <div className="h-16 bg-card border border-border rounded-2xl" />
+    </div>
+  </div>
+);
+
+const ModulesView = React.lazy(() => import('../modules/ModulesView').then(m => ({ default: m.ModulesView })));
+const SyllabusView = React.lazy(() => import('../syllabus/SyllabusView').then(m => ({ default: m.SyllabusView })));
+const AssessmentsOverviewView = React.lazy(() => import('../assessments/AssessmentsOverviewView').then(m => ({ default: m.AssessmentsOverviewView })));
+const ActivitiesView = React.lazy(() => import('../assessments/ActivitiesView').then(m => ({ default: m.ActivitiesView })));
+const AssignmentsView = React.lazy(() => import('../assessments/AssignmentsView').then(m => ({ default: m.AssignmentsView })));
+const ProjectsView = React.lazy(() => import('../assessments/ProjectsView').then(m => ({ default: m.ProjectsView })));
+const PresentationsView = React.lazy(() => import('../assessments/PresentationsView').then(m => ({ default: m.PresentationsView })));
+const QuizzesView = React.lazy(() => import('../assessments/QuizzesView').then(m => ({ default: m.QuizzesView })));
+const ExamsView = React.lazy(() => import('../assessments/ExamsView').then(m => ({ default: m.ExamsView })));
+const PeopleView = React.lazy(() => import('../people/PeopleView').then(m => ({ default: m.PeopleView })));
+const AnnouncementsView = React.lazy(() => import('../inbox/AnnouncementsView').then(m => ({ default: m.AnnouncementsView })));
+const FilesView = React.lazy(() => import('../files/FilesView').then(m => ({ default: m.FilesView })));
+const FacultyGradebook = React.lazy(() => import('../assessments/components/grading/FacultyGradebook').then(m => ({ default: m.FacultyGradebook })));
+const StudentGradebook = React.lazy(() => import('../assessments/components/grading/StudentGradebook').then(m => ({ default: m.StudentGradebook })));
 
 interface CoursesPageProps {
   initialSubTab?: string;
@@ -209,6 +221,7 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
   })}
         </div>
         <PageTransition pageKey={`${subTab}:${activeCourse.id}`} className="w-full min-w-0">
+        <React.Suspense fallback={<CourseSubTabSkeleton />}>
         {subTab === 'modules' && (
           <ModulesView
             courseId={activeCourse.id}
@@ -367,6 +380,7 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
 
         {subTab === 'people' && <PeopleView courseId={activeCourse.id} />}
 
+        </React.Suspense>
         </PageTransition>
 
       </main>
