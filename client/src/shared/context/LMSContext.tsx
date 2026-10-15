@@ -2260,19 +2260,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteCourse = async (courseId: string): Promise<void> => {
     try {
-      // Likha ERP is the source of truth (Express /api/courses is RAG-only now).
-      let remoteOk = false;
-      try {
-        await likhaLmsApi.courses.deleteCourse(courseId);
-        remoteOk = true;
-      } catch {
-        // Fall through to the Express fallback below.
-      }
-      if (!remoteOk) {
-        await apiFetch<{ ok: true }>(`/api/courses/${encodeURIComponent(courseId)}`, {
-          method: 'DELETE'
-        });
-      }
+      await likhaLmsApi.courses.deleteCourse(courseId);
       setDb(prev => ({
         ...prev,
         courses: (prev.courses || []).filter(c => c.id !== courseId)
@@ -5705,25 +5693,6 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const getApprovedRequestsForCourse = async (courseId: string): Promise<EnrollmentRequest[]> => {
-    // ponytail: cache-first read; best-effort refresh, never throws (callers
-    // fall back to the strong-confirm path on stale counts).
-    try {
-      const { requests } = await apiFetch<{ requests: EnrollmentRequest[] }>(
-        `/api/courses/${encodeURIComponent(courseId)}/requests?status=approved`
-      );
-      setDb(prev => ({
-        ...prev,
-        enrollmentRequests: [
-          ...(prev.enrollmentRequests || []).filter(
-            (r: EnrollmentRequest) => !(r.courseId === courseId && r.status === 'approved')
-          ),
-          ...requests,
-        ],
-      }));
-      return requests;
-    } catch {
-      // Express is RAG-only now — try Likha ERP, then serve the cache.
-    }
     try {
       const rows = await likhaLmsApi.requests.getRequests(courseId, 'approved');
       if (Array.isArray(rows)) {
