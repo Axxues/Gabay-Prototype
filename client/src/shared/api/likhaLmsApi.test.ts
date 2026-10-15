@@ -101,6 +101,10 @@ describe('Likha LMS Direct API Client', () => {
     const notifs = await likhaLmsApi.communications.getNotifications('u-1');
     expect(notifs[0].id).toBe('notif-1');
     expect(fetchSpy).toHaveBeenCalledTimes(3);
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining('fields=id,user_id,title,message,type,is_read,created_at,link'),
+      expect.any(Object)
+    );
   });
 
   it('queries normalized relational syllabus with child tables', async () => {

@@ -568,7 +568,7 @@ export const likhaLmsApi = {
 
     async getNotifications(userId: string): Promise<any[]> {
       return likhaRequest(
-        `/items/notifications?filter[user_id][_eq]=${encodeURIComponent(userId)}&sort=-created_at&limit=50`
+        `/items/notifications?filter[user_id][_eq]=${encodeURIComponent(userId)}&fields=id,user_id,title,message,type,is_read,created_at,link&sort=-created_at&limit=50`
       );
     },
 
