@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, test, vi, beforeEach } from 'vitest';
-import { act, render, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 const seededCourse = {
@@ -17,9 +17,17 @@ const seededCourse = {
 
 // Task 6: assessments + submissions bootstrap read through Likha ERP.
 // Scoped Express assertion: only assessment/submission paths must be silent
-// (grades/SPR/folders/files/announcements/discussions belong to later tasks
-// and still read Express here).
-const apiFetchMock = vi.fn(async (path: string, _options?: any) => {
+// (grades-release stays on Express per the likha-gap pin below; grades/SPR/
+// folders/files/announcements/discussions belong to later tasks and still
+// read Express here).
+// Login + assessment/submission bootstrap read Likha; grades-release stays on
+// Express (likha-gap: no backend field — courses.grades_released was deleted).
+// Any other Express call throws loudly.
+const apiFetchMock = vi.fn(async (path: string, options?: any) => {
+  if (path === '/api/courses/c1/grades-release') {
+    const body = (options as any)?.body ?? {};
+    return { course: { id: 'c1', gradesReleased: JSON.stringify({ [body.term]: body.released }) } };
+  }
   throw new Error(`unmocked: ${path}`);
 });
 
@@ -139,6 +147,7 @@ let latestCourses: any[] = [];
 let latestQuizzes: any[] = [];
 let doLogin: (() => Promise<any>) | null = null;
 let doRelease: (() => Promise<void>) | null = null;
+let doUnrelease: (() => Promise<void>) | null = null;
 
 const Probe: React.FC = () => {
   const ctx = useLMS() as any;
@@ -146,6 +155,7 @@ const Probe: React.FC = () => {
   latestQuizzes = ctx.db.quizzes;
   doLogin = () => ctx.login('test@example.com', 'pw');
   doRelease = () => ctx.setGradesReleased('c1', 'midterm', true);
+  doUnrelease = () => ctx.setGradesReleased('c1', 'midterm', false);
   return <div data-testid="probe">{String(latestCourses?.length ?? 0)}</div>;
 };
 
@@ -163,6 +173,7 @@ describe('assessments via Likha (Task 6)', () => {
     latestQuizzes = [];
     doLogin = null;
     doRelease = null;
+    doUnrelease = null;
     try {
       localStorage.clear();
     } catch {}
@@ -205,12 +216,42 @@ describe('assessments via Likha (Task 6)', () => {
     await act(async () => {
       await doRelease!();
     });
-    expect(updateCourseMock).toHaveBeenCalledWith('c1', { gradesReleased: { midterm: true } });
-    expect(
-      (apiFetchMock.mock.calls as any[][]).filter(([p]) => /grades-release/.test(String(p))),
-    ).toEqual([]);
+    // likha-gap pin: release stays on Express, never PATCHes /items/courses.
+    expect(apiFetchMock).toHaveBeenCalledWith('/api/courses/c1/grades-release', {
+      method: 'PATCH',
+      body: { term: 'midterm', released: true },
+    });
+    expect(updateCourseMock).not.toHaveBeenCalled();
     await waitFor(() => {
       expect(latestCourses.find(c => c.id === 'c1')?.gradesReleased).toEqual({ midterm: true });
     });
+    await screen.findByText('Grades Released');
+    await screen.findByText(/visible to students/);
+  });
+
+  test('un-release (false) shows the hidden-grades alert', async () => {
+    render(
+      <LMSProvider>
+        <Probe />
+      </LMSProvider>
+    );
+
+    await act(async () => {
+      await doLogin!();
+    });
+
+    await act(async () => {
+      await doUnrelease!();
+    });
+    expect(apiFetchMock).toHaveBeenCalledWith('/api/courses/c1/grades-release', {
+      method: 'PATCH',
+      body: { term: 'midterm', released: false },
+    });
+    expect(updateCourseMock).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(latestCourses.find(c => c.id === 'c1')?.gradesReleased).toEqual({ midterm: false });
+    });
+    await screen.findByText('Grades Un-released');
+    await screen.findByText(/hidden from students/);
   });
 });

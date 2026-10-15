@@ -540,8 +540,7 @@ const normalizeExam = (raw: any): Exam => ({
  *  read/write calls — map them to the client shapes (same mapping as the
  *  bootstrap scope in refreshDeferred). Tolerant both ways: rows already in
  *  client shape pass through unchanged. */
-const parseLikhaOptions = (value: unknown): string[] | undefined => {
-  if (Array.isArray(value)) return value.map(String);
+const parseLikhaOptions = (value: unknown): string[] | undefined => {  if (Array.isArray(value)) return value.map(String);
   if (typeof value === 'string' && value) {
     try {
       const parsed: unknown = JSON.parse(value);
@@ -551,6 +550,15 @@ const parseLikhaOptions = (value: unknown): string[] | undefined => {
     }
   }
   return undefined;
+};
+
+// Coerce numeric strings (Directus may echo numbers as text); non-finite falls through to undefined.
+const toFiniteNumber = (value: unknown): number | undefined => {
+  const n =
+    typeof value === 'number' ? value
+    : typeof value === 'string' && value.trim() !== '' ? Number(value)
+    : NaN;
+  return Number.isFinite(n) ? n : undefined;
 };
 
 const mapLikhaQuestionRow = (q: any): any => ({
@@ -580,7 +588,7 @@ const mapLikhaQuizRow = (row: any): any => ({
   courseId: String(row.course_id ?? row.courseId ?? ''),
   title: row.title ?? 'Untitled quiz',
   timeLimitMinutes:
-    typeof row.time_limit_minutes === 'number' ? row.time_limit_minutes : row.timeLimitMinutes,
+    toFiniteNumber(row.time_limit_minutes) ?? toFiniteNumber(row.timeLimitMinutes),
   delayedUntil: row.delayed_until ?? row.delayedUntil ?? undefined,
   dueDate: row.due_date ?? row.dueDate ?? undefined,
   fileName: row.file_name ?? row.fileName ?? undefined,
@@ -595,7 +603,7 @@ const mapLikhaExamRow = (row: any): any => ({
   courseId: String(row.course_id ?? row.courseId ?? ''),
   title: row.title ?? 'Untitled exam',
   timeLimitMinutes:
-    typeof row.time_limit_minutes === 'number' ? row.time_limit_minutes : row.timeLimitMinutes,
+    toFiniteNumber(row.time_limit_minutes) ?? toFiniteNumber(row.timeLimitMinutes),
   dueDate: row.due_date ?? row.dueDate ?? undefined,
   questions: mapLikhaQuestions(row),
 });
@@ -3069,18 +3077,19 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       courses: prevDb.courses.map(c => (c.id === courseId ? { ...c, gradesReleased: optimistic } : c))
     }));
     try {
-      // The Likha course row already carries `gradesReleased` (see
-      // normalizeCourse), so the release flag flips via courses.updateCourse
-      // with that same field name — no invented schema. Mirrors
-      // updateCourseGradingTerms: the object is sent verbatim and the
-      // response row is re-normalized.
-      const row = await likhaLmsApi.courses.updateCourse(courseId, { gradesReleased: optimistic });
-      const released = normalizeGradesReleased(
-        (row as any)?.gradesReleased ?? (row as any)?.grades_released ?? optimistic
+      // likha-gap: grades-release needs backend field (browser_subagent follow-up).
+      // In-repo evidence shows `courses.grades_released` was deleted from the live
+      // Likha schema (task-full-likha-report.md §7.4), so neither `gradesReleased`
+      // nor `grades_released` PATCHes /items/courses — this single call site stays
+      // on Express until the backend field lands.
+      const { course } = await apiFetch<{ course: Course }>(
+        `/api/courses/${encodeURIComponent(courseId)}/grades-release`,
+        { method: 'PATCH', body: { term, released } }
       );
+      const normalized = normalizeCourseSyllabus(course);
       setDb(prevDb => ({
         ...prevDb,
-        courses: prevDb.courses.map(c => (c.id === courseId ? { ...c, gradesReleased: released } : c))
+        courses: prevDb.courses.map(c => (c.id === courseId ? normalized : c))
       }));
       showAlert({
         title: released ? 'Grades Released' : 'Grades Un-released',
@@ -3137,22 +3146,33 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     rubricScores: Record<string, number>,
     commentText?: string
   ): Promise<void> => {
-    // Grade persists via submissions.gradeSubmission; each rubric criterion
-    // persists via submissions.addRubricScore; feedback text rides
-    // submissions.addSubmissionComment (the grade call would duplicate it).
+    // Grade persists via submissions.gradeSubmission (score only — passing the
+    // feedback text there too would store it twice: the submissions.feedback
+    // column AND the submission_comments row). Feedback rides
+    // submissions.addSubmissionComment exactly once (see likhaLmsApi.ts
+    // gradeSubmission PATCHes { score, feedback, status, graded_at }).
     try {
       if (!Number.isFinite(grade)) {
         throw new Error('Grade must be a number.');
       }
       // Likha ERP is the source of truth for submissions.
-      const saved = await likhaLmsApi.submissions.gradeSubmission(submissionId, grade, commentText);
+      const saved = await likhaLmsApi.submissions.gradeSubmission(submissionId, grade);
       const criteria = Object.entries(rubricScores || {});
       if (criteria.length > 0) {
-        await Promise.all(
+        // Grade is already persisted above, so a criterion failure must not
+        // roll it back — surface partial success instead of throwing.
+        const results = await Promise.allSettled(
           criteria.map(([criterionId, points]) =>
             likhaLmsApi.submissions.addRubricScore(submissionId, criterionId, points)
           )
         );
+        if (results.some(r => r.status === 'rejected')) {
+          showAlert({
+            title: 'Partial Rubric Save',
+            message: 'Grade saved; some rubric scores failed to persist.',
+            type: 'warning',
+          });
+        }
       }
       let appended: SubmissionComment | null = null;
       if (commentText && commentText.trim()) {
