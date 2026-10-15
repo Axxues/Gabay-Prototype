@@ -35,12 +35,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   onNavigateCourse,
   onNavigateTab
 }) => {
-  const { activeRole, activeUser, db, isLoading, openSpeedGrader, getPendingRequestsForStudent, studentApproveInvitation, studentDeclineInvitation, deleteCourse, showConfirm, showAlert, getApprovedRequestsForCourse } = useLMS() as ReturnType<typeof useLMS> & {
-    // Sibling-WIP course-deletion helpers: typed here until the course
-    // surface provides them on the context.
-    deleteCourse: (courseId: string) => Promise<void>;
-    getApprovedRequestsForCourse: (courseId: string) => Promise<{ courseId: string }[]>;
-  };
+  const { activeRole, activeUser, db, isLoading, openSpeedGrader, getPendingRequestsForStudent, studentApproveInvitation, studentDeclineInvitation, deleteCourse, showConfirm, showAlert, getApprovedRequestsForCourse } = useLMS();
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
   const [copiedCodeCourseId, setCopiedCodeCourseId] = useState<string | null>(null);
   const { isProcessing, run } = useProcessing();

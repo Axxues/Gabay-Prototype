@@ -102,6 +102,7 @@ interface LMSContextType {
 
   // Real CRUD & Interactive Actions
   createCourse: (course: Partial<Course>) => Promise<Course>;
+  deleteCourse: (courseId: string) => Promise<void>;
   createModule: (courseId: string, title: string) => Promise<Module>;
   updateModule: (moduleId: string, updates: Partial<Module>) => Promise<void>;
   deleteModule: (moduleId: string) => Promise<void>;
@@ -243,6 +244,7 @@ interface LMSContextType {
   selectSection: (courseId: string, sectionId: string) => Promise<boolean>;
   requestSectionSwitch: (courseId: string, targetSectionId: string) => Promise<boolean>;
   getPendingRequestsForCourse: (courseId: string) => Promise<EnrollmentRequest[]>;
+  getApprovedRequestsForCourse: (courseId: string) => Promise<EnrollmentRequest[]>;
   getPendingRequestsForStudent: () => EnrollmentRequest[];
   requestJoinCourse: (courseId: string) => Promise<boolean>;
   getMyRequest: (courseId: string) => EnrollmentRequest | null;
@@ -846,7 +848,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     syllabusRevisionsRef.current = syllabusRevisions;
   }, [syllabusRevisions]);
 
-  const refreshAll = async (user: User): Promise<void> => {
+  // ponytail: two-phase bootstrap — essential paints the shell fast,
+  // deferred fills per-course details in the background without blocking authReady.
+  // bootstrapRef invalidates stale background fills on logout / re-login.
+  const bootstrapRef = useRef(0);
+  const refreshEssential = async (user: User): Promise<{ fresh: LMSDatabase; courses: Course[]; run: number }> => {
+    const run = ++bootstrapRef.current;
     setIsLoading(true);
     setLastError(null);
     sprHydratedRef.current.clear();
@@ -1033,6 +1040,21 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           fresh.advisingSlots = groupAdvisingResults[1].value.slots || [];
         }
       }
+      setDb(fresh);
+      setIsLoading(false);
+      return { fresh, courses: coursesRes.courses, run };
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to load data.';
+      setLastError(message);
+      setIsLoading(false);
+      showAlert(message, 'Load Failed');
+      throw err;
+    }
+  };
+
+  const refreshDeferred = async (fresh: LMSDatabase, courses: Course[], run: number): Promise<void> => {
+    const coursesRes = { courses };
+    try {
       // Task 2: fill the course/request cache scope — sections plus pending
       // requests for each course. Per-course failures are tolerated (e.g.
       // students get 403 on the faculty-only requests endpoint); the sync
@@ -1284,13 +1306,15 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       fresh.courseFolders = allFolders;
       fresh.courseFiles = allFiles;
-      setDb(fresh);
+      if (bootstrapRef.current !== run) return; // ponytail: logout/re-login mid-fill — don't resurrect stale db
+      const done = fresh;
+      setDb(prev => ({
+        ...done,
+        historyLogs: prev.historyLogs,
+        courses: [...done.courses, ...prev.courses.filter(c => !done.courses.some(d => d.id === c.id))],
+      }));
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Failed to load data.';
-      setLastError(message);
-      showAlert(message, 'Load Failed');
-    } finally {
-      setIsLoading(false);
+      console.warn('[refreshDeferred] background fill failed:', err);
     }
   };
 
@@ -1362,7 +1386,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         if (cancelled) return;
         setCurrentUser(user);
-        await refreshAll(user);
+        const { fresh, courses, run } = await refreshEssential(user);
+        if (cancelled) return;
+        setAuthReady(true);
+        await refreshDeferred(fresh, courses, run);
       } catch (err: any) {
         if (cancelled) return;
         const isAuthError =
@@ -1414,7 +1441,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           };
           setToken(likhaAuth.token);
           setCurrentUser(mappedUser);
-          await refreshAll(mappedUser);
+          const essentialLikha = await refreshEssential(mappedUser);
+          void refreshDeferred(essentialLikha.fresh, essentialLikha.courses, essentialLikha.run);
           return { success: true };
         }
       } catch (likhaErr: any) {
@@ -1433,7 +1461,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       setToken(token);
       setCurrentUser(user);
-      await refreshAll(user);
+      const essential = await refreshEssential(user);
+      void refreshDeferred(essential.fresh, essential.courses, essential.run);
       return { success: true };
     } catch (err) {
       if (err instanceof ApiError) return { success: false, message: err.message };
@@ -1443,6 +1472,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const logout = () => {
     clearToken();
+    bootstrapRef.current++;
     sprHydratedRef.current.clear();
     setSyllabusRevisions({});
     setCurrentUser(null);
@@ -1620,6 +1650,34 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const message = err instanceof ApiError ? err.message : 'Failed to create course.';
       setLastError(message);
       showAlert(message, 'Create Course Failed');
+      throw err;
+    }
+  };
+
+  const deleteCourse = async (courseId: string): Promise<void> => {
+    try {
+      // Likha ERP is the source of truth (Express /api/courses is RAG-only now).
+      let remoteOk = false;
+      try {
+        await likhaLmsApi.courses.deleteCourse(courseId);
+        remoteOk = true;
+      } catch {
+        // Fall through to the Express fallback below.
+      }
+      if (!remoteOk) {
+        await apiFetch<{ ok: true }>(`/api/courses/${encodeURIComponent(courseId)}`, {
+          method: 'DELETE'
+        });
+      }
+      setDb(prev => ({
+        ...prev,
+        courses: (prev.courses || []).filter(c => c.id !== courseId)
+      }));
+      likhaLmsApi.invalidateCache('/items/courses');
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to delete course.';
+      setLastError(message);
+      showAlert(message, 'Delete Course Failed');
       throw err;
     }
   };
@@ -5181,6 +5239,56 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
+  const getApprovedRequestsForCourse = async (courseId: string): Promise<EnrollmentRequest[]> => {
+    // ponytail: cache-first read; best-effort refresh, never throws (callers
+    // fall back to the strong-confirm path on stale counts).
+    try {
+      const { requests } = await apiFetch<{ requests: EnrollmentRequest[] }>(
+        `/api/courses/${encodeURIComponent(courseId)}/requests?status=approved`
+      );
+      setDb(prev => ({
+        ...prev,
+        enrollmentRequests: [
+          ...(prev.enrollmentRequests || []).filter(
+            (r: EnrollmentRequest) => !(r.courseId === courseId && r.status === 'approved')
+          ),
+          ...requests,
+        ],
+      }));
+      return requests;
+    } catch {
+      // Express is RAG-only now — try Likha ERP, then serve the cache.
+    }
+    try {
+      const rows = await likhaLmsApi.requests.getRequests(courseId, 'approved');
+      if (Array.isArray(rows)) {
+        const mapped = rows.map((r: any) => ({
+          id: String(r.id),
+          courseId: String(r.course_id ?? r.courseId ?? courseId),
+          studentId: String(r.student_id ?? r.studentId ?? ''),
+          status: 'approved',
+          type: r.type ?? 'self_join',
+          requestedAt: r.requested_at ?? r.requestedAt,
+        })) as EnrollmentRequest[];
+        setDb(prev => ({
+          ...prev,
+          enrollmentRequests: [
+            ...(prev.enrollmentRequests || []).filter(
+              (rr: EnrollmentRequest) => !(rr.courseId === courseId && rr.status === 'approved')
+            ),
+            ...mapped,
+          ],
+        }));
+        return mapped;
+      }
+    } catch {
+      // Fall through to cache.
+    }
+    return (db.enrollmentRequests || []).filter(
+      (r: EnrollmentRequest) => r.courseId === courseId && r.status === 'approved'
+    );
+  };
+
   const requestJoinCourse = async (courseId: string): Promise<boolean> => {
     if (activeRole === 'faculty' || activeRole === 'admin') return false;
     const mine = (db.enrollmentRequests || []).filter(
@@ -5250,6 +5358,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         showConfirm,
         closeAlert,
         createCourse,
+        deleteCourse,
         createModule,
         updateModule,
         deleteModule,
@@ -5345,6 +5454,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         selectSection,
         requestSectionSwitch,
         getPendingRequestsForCourse,
+        getApprovedRequestsForCourse,
         getPendingRequestsForStudent,
         requestJoinCourse,
         getMyRequest,
