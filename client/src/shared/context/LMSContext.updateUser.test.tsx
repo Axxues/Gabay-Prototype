@@ -48,6 +48,7 @@ const updateUserMock = vi.fn(async (id: string, patch: any) => ({
 }));
 const createUserMock = vi.fn(async (payload: any) => ({ id: 'u-new', role: { name: 'Student' }, ...payload }));
 const deleteUserMock = vi.fn(async () => {});
+const resolveRoleMock = vi.fn(async (_name: string) => 'role-uuid-faculty');
 
 vi.mock('../api/client', () => ({
   ApiError: class ApiError extends Error {
@@ -67,6 +68,7 @@ vi.mock('../api/client', () => ({
       createUser: (...args: any[]) => (createUserMock as any)(...args),
       updateUser: (...args: any[]) => (updateUserMock as any)(...args),
       deleteUser: (...args: any[]) => (deleteUserMock as any)(...args),
+      resolveRoleId: (...args: any[]) => (resolveRoleMock as any)(...args),
     },
     communications: {
       getMessages: (...args: any[]) => (getMessagesMock as any)(...args),
@@ -91,6 +93,7 @@ let latestName: string | null | undefined;
 let doLogin: (() => Promise<any>) | null = null;
 let doUpdateAvatar: (() => Promise<boolean>) | null = null;
 let doUpdateName: (() => Promise<boolean>) | null = null;
+let doUpdateRole: (() => Promise<boolean>) | null = null;
 
 const Probe: React.FC = () => {
   const { activeUser, login, updateUser } = useLMS();
@@ -99,6 +102,7 @@ const Probe: React.FC = () => {
   doLogin = () => login('test@example.com', 'pw');
   doUpdateAvatar = () => updateUser(likhaUser.id, { avatar: NEW_AVATAR });
   doUpdateName = () => updateUser(likhaUser.id, { name: 'Renamed User' });
+  doUpdateRole = () => updateUser(likhaUser.id, { role: 'faculty' as any });
   return <div data-testid="avatar">{String(latestAvatar)}</div>;
 };
 
@@ -110,6 +114,7 @@ describe('updateUser syncs the active session user', () => {
     doLogin = null;
     doUpdateAvatar = null;
     doUpdateName = null;
+    doUpdateRole = null;
     try {
       localStorage.clear();
     } catch {}
@@ -168,5 +173,27 @@ describe('updateUser syncs the active session user', () => {
       String(p).startsWith('/api/') && !String(p).startsWith('/api/rag'),
     );
     expect(expressCalls).toEqual([]);
+  });
+
+  test('role edits resolve the name to UUID in the PATCH body', async () => {
+    render(
+      <LMSProvider>
+        <Probe />
+      </LMSProvider>
+    );
+
+    await act(async () => {
+      await doLogin!();
+    });
+
+    await act(async () => {
+      await doUpdateRole!();
+    });
+
+    expect(resolveRoleMock).toHaveBeenCalledWith('faculty');
+    expect(updateUserMock).toHaveBeenCalledWith(
+      likhaUser.id,
+      expect.objectContaining({ role: 'role-uuid-faculty' })
+    );
   });
 });

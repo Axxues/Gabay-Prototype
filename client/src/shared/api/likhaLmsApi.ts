@@ -115,9 +115,19 @@ async function likhaRequest<T = any>(
   return result;
 }
 
+// In-module name↔UUID map so one /roles lookup serves the session
+// (likhaRequest GET caching also applies, but this avoids repeat lookups
+// entirely, including cache misses keyed by token).
+const roleIdByName = new Map<string, string | null>();
+const roleNameById = new Map<string, string>();
+
 export const likhaLmsApi = {
   cache: likhaCache,
   invalidateCache(pattern?: string): void {
+    if (!pattern || pattern.includes('role')) {
+      roleIdByName.clear();
+      roleNameById.clear();
+    }
     if (pattern) {
       likhaCache.invalidate(pattern);
     } else {
@@ -179,6 +189,20 @@ export const likhaLmsApi = {
 
     async deleteUser(id: string): Promise<void> {
       await likhaRequest(`/users/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    },
+
+    async resolveRoleId(name: string): Promise<string | null> {
+      const key = String(name);
+      if (roleIdByName.has(key)) return roleIdByName.get(key) ?? null;
+      const rows = await likhaRequest<any[]>(
+        `/roles?filter[name][_eq]=${encodeURIComponent(key)}&fields=id,name`
+      );
+      const list = Array.isArray(rows) ? rows : rows ? [rows] : [];
+      const found = list[0];
+      const id = found?.id != null ? String(found.id) : null;
+      roleIdByName.set(key, id);
+      if (id && found?.name != null) roleNameById.set(id, String(found.name));
+      return id;
     },
   },
 

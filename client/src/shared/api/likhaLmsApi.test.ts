@@ -182,5 +182,36 @@ describe('Likha LMS Direct API Client', () => {
       expect.objectContaining({ method: 'DELETE' })
     );
   });
+
+  it('resolves a role name to its Directus UUID via /roles', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: [{ id: 'role-uuid-admin', name: 'Administrator' }] }),
+    } as any);
+    const id = await likhaLmsApi.users.resolveRoleId('Administrator');
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining('/roles?filter[name][_eq]=Administrator'),
+      expect.any(Object)
+    );
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining('fields=id,name'),
+      expect.any(Object)
+    );
+    expect(id).toBe('role-uuid-admin');
+  });
+
+  it('returns null for unknown role names and caches the miss', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: [] }),
+    } as any);
+    const first = await likhaLmsApi.users.resolveRoleId('NoSuchRole');
+    const second = await likhaLmsApi.users.resolveRoleId('NoSuchRole');
+    expect(first).toBeNull();
+    expect(second).toBeNull();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
 });
 

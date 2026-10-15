@@ -2486,16 +2486,21 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const displayName = userData.name?.trim() || userData.email?.trim() || 'New User';
     const { first_name, last_name } = splitDisplayName(displayName);
     try {
-      // Directus owns identity fields only. Avatar URLs, titles, and role
-      // names are not valid Directus values (avatar/role are UUID foreign
-      // keys), so they stay client-side in the merged extras below.
-      const row = await likhaLmsApi.users.createUser({
+      // Directus owns identity fields plus the role UUID FK. Avatar URLs and
+      // titles stay client-side (no known writable field / upload UX yet).
+      // Unknown role names resolve to null and stay local-only as before.
+      const payload: Record<string, string> = {
         first_name,
         last_name,
         email: userData.email?.trim() || '',
         password: userData.password || 'password123',
         department: userData.department || 'College of Computer Science',
-      });
+      };
+      if (userData.role !== undefined) {
+        const roleId = await (likhaLmsApi.users as any).resolveRoleId?.(role).catch(() => null);
+        if (roleId) payload.role = roleId;
+      }
+      const row = await likhaLmsApi.users.createUser(payload);
       const mapped = mapLikhaUserRowToUser(row);
       const merged: User = {
         ...mapped,
@@ -2523,9 +2528,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateUser = async (id: string, updates: Partial<User> & { banner?: string }): Promise<boolean> => {
-    // Directus PATCH accepts core identity fields only (avatar URLs, titles,
-    // and role names are UUID foreign keys server-side) — those apply
-    // locally only via localUpdates below.
+    // Directus PATCH accepts core identity fields plus the role UUID FK
+    // (avatar URLs/titles stay local-only: no known writable field / upload
+    // UX yet). Unknown role names resolve to null and stay local-only.
     const patchBody: Record<string, string> = {};
     if (updates.name !== undefined) {
       const { first_name, last_name } = splitDisplayName(updates.name);
@@ -2535,6 +2540,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (updates.email !== undefined) patchBody.email = updates.email;
     if (updates.password !== undefined) patchBody.password = updates.password;
     if (updates.department !== undefined) patchBody.department = updates.department;
+    if (updates.role !== undefined) {
+      const roleId = await (likhaLmsApi.users as any).resolveRoleId?.(updates.role).catch(() => null);
+      if (roleId) patchBody.role = roleId;
+    }
     const localUpdates = Object.fromEntries(
       Object.entries(updates).filter(([, v]) => v !== undefined)
     ) as Partial<User>;
