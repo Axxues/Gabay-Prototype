@@ -4,6 +4,7 @@ import { authenticateToken } from '../middleware/auth.js';
 import { extractExecutionTelemetry } from '../utils/n8nTelemetry.js';
 import { extractExecutionArtifacts } from '../utils/n8nExecutionArtifacts.js';
 import { createRequesterToken } from '../utils/requesterToken.js';
+import { ragCache } from '../utils/ragCache.js';
 
 export const ragRouter = Router();
 
@@ -461,6 +462,19 @@ ragRouter.post(
       throw new ApiError(400, 'bad_request', 'Field message is too long (max 4000 chars).');
     }
 
+    const userId = req.auth?.sub;
+    const role = req.auth?.role;
+
+    const cached = ragCache.get(userId, role, message);
+    if (cached) {
+      res.setHeader('X-Cache', 'HIT');
+      res.json({
+        ...cached,
+        sessionId,
+      });
+      return;
+    }
+
     const requestId = `req-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 8)}`;
     const url = webhookUrl();
 
@@ -563,14 +577,18 @@ ragRouter.post(
       );
       const reply = canonicalReply ?? redactRequesterTokens(normalizedReply);
 
-      res.json({
+      const responsePayload = {
         reply,
         chart: chart ?? null,
         sources,
         sessionId,
         execution,
         structured,
-      });
+      };
+
+      ragCache.set(userId, role, message, responsePayload);
+      res.setHeader('X-Cache', 'MISS');
+      res.json(responsePayload);
     } catch (err) {
       if (err instanceof ApiError) throw err;
       const msg = err instanceof Error ? err.message : String(err);

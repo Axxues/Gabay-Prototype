@@ -18,6 +18,7 @@ process.env.JWT_SECRET ??= 'test-secret';
 import jwt from 'jsonwebtoken';
 import express from 'express';
 import { ragRouter } from './rag.js';
+import { ragCache } from '../utils/ragCache.js';
 import { errorMiddleware } from '../utils/errors.js';
 
 function app() {
@@ -33,6 +34,7 @@ describe('rag router', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    ragCache.clear();
     extractExecutionArtifactsMock.mockReturnValue({ execution: null, structured: null });
     (jwt.verify as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
       sub: 'student-1',
@@ -702,5 +704,44 @@ Summary of findings.`;
     expect(res.status).toBe(200);
     expect(res.body.reply).toContain('```chart');
     expect(res.body.chart?.type).toBe('bar');
+  });
+
+  it('caches successful RAG responses per user and returns X-Cache HIT on duplicate query', async () => {
+    let callCount = 0;
+    const fetchMock = vi.fn(async () => {
+      callCount++;
+      return new Response(JSON.stringify({ output: 'Hello from n8n!' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+    (globalThis as { fetch?: unknown }).fetch = fetchMock;
+
+    const query = { message: 'What is the grading policy?', sessionId: 's-cache-1' };
+
+    // First request -> MISS
+    const res1 = await (await import('supertest'))
+      .default(app())
+      .post('/api/rag/chat')
+      .set('Authorization', 'Bearer x')
+      .send(query);
+
+    expect(res1.status).toBe(200);
+    expect(res1.headers['x-cache']).toBe('MISS');
+    expect(res1.body.reply).toBe('Hello from n8n!');
+    expect(callCount).toBe(1);
+
+    // Second request with same query (and varied whitespace/case) -> HIT without extra upstream call
+    const res2 = await (await import('supertest'))
+      .default(app())
+      .post('/api/rag/chat')
+      .set('Authorization', 'Bearer x')
+      .send({ message: '  WHAT IS THE GRADING POLICY?  ', sessionId: 's-cache-2' });
+
+    expect(res2.status).toBe(200);
+    expect(res2.headers['x-cache']).toBe('HIT');
+    expect(res2.body.reply).toBe('Hello from n8n!');
+    expect(res2.body.sessionId).toBe('s-cache-2');
+    expect(callCount).toBe(1); // No new fetch called!
   });
 });
