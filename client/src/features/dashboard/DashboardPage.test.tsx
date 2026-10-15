@@ -119,7 +119,10 @@ describe('DashboardPage admin access', () => {
     mocks.activeRole = 'admin';
     mocks.activeUser = { id: 'u-admin-1', name: 'Dean Admin', role: 'admin' } as any;
     mocks.db = {
-      courses: [{ id: 'c1', code: 'CMSC 131', title: 'Data Structures' }],
+      courses: [
+        { id: 'c1', code: 'CMSC 131', title: 'Data Structures', instructorId: 'u-admin-1' },
+        { id: 'c2', code: 'CMSC 142', title: 'Algorithms & Complexity', instructorId: 'u-fac-other' },
+      ],
       enrollmentRequests: [],
       users: [
         { id: 'u-admin-1', name: 'Dean Admin', role: 'admin' },
@@ -127,10 +130,12 @@ describe('DashboardPage admin access', () => {
         { id: 'u-stu-1', name: 'Student', role: 'student' },
       ],
       submissions: [
-        { id: 'sub-1', studentName: 'Alice', activityKey: 'act-1', status: 'submitted', submittedAt: new Date().toISOString() },
+        { id: 'sub-1', courseId: 'c1', studentName: 'Alice', activityKey: 'act-1', status: 'submitted', submittedAt: new Date().toISOString() },
+        { id: 'sub-2', courseId: 'c2', studentName: 'Bob', activityKey: 'act-2', status: 'submitted', submittedAt: new Date().toISOString() },
       ],
       activities: [
-        { id: 'act-1', title: 'Lab 1' },
+        { id: 'act-1', courseId: 'c1', title: 'Lab 1' },
+        { id: 'act-2', courseId: 'c2', title: 'Lab 2' },
       ],
       quizzes: [],
       modules: [],
@@ -143,9 +148,14 @@ describe('DashboardPage admin access', () => {
     // Admin can create courses like faculty
     expect(screen.getByRole('button', { name: /create course/i })).toBeInTheDocument();
 
-    // Admin sees faculty "To grade" widget
+    // Admin only sees courses they created
+    expect(screen.getByText('Data Structures')).toBeInTheDocument();
+    expect(screen.queryByText('Algorithms & Complexity')).not.toBeInTheDocument();
+
+    // Admin sees faculty "To grade" widget for their course submissions only
     expect(screen.getByText('To grade')).toBeInTheDocument();
     expect(screen.getByText('Alice')).toBeInTheDocument();
+    expect(screen.queryByText('Bob')).not.toBeInTheDocument();
 
     // Admin also sees College system overview widget
     expect(screen.getByText('College system overview')).toBeInTheDocument();

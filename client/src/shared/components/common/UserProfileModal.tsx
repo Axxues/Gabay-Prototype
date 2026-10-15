@@ -71,8 +71,8 @@ export const UserProfileModal: React.FC = () => {
 
   const userCourses = db.courses.filter(c => {
     if (activeRole === 'student') return (currentUser.enrolledCourseIds || []).includes(c.id);
-    if (activeRole === 'faculty') return c.instructorId === currentUser.id;
-    return true;
+    if (activeRole === 'faculty' || activeRole === 'admin') return c.instructorId === currentUser.id;
+    return false;
   });
 
   return (

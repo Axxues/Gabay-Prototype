@@ -17,7 +17,7 @@ export const GlobalSearchDialog: React.FC<GlobalSearchDialogProps> = ({
   onNavigateTab,
   onNavigateCourse
 }) => {
-  const { db } = useLMS();
+  const { db, activeRole, activeUser } = useLMS();
   const [searchTerm, setSearchTerm] = useState('');
   const debouncedSearchTerm = useDebounce(searchTerm, 150);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -48,21 +48,30 @@ export const GlobalSearchDialog: React.FC<GlobalSearchDialogProps> = ({
     if (!q) return { pages: [], courses: [], activities: [], quizzes: [] };
 
     const pages = navItems.filter(i => i.label.toLowerCase().includes(q));
-    const courses = db.courses.filter(c =>
+    const userCourses = db.courses.filter(c => {
+      if (activeRole === 'student') return (activeUser?.enrolledCourseIds || []).includes(c.id);
+      if (activeRole === 'faculty' || activeRole === 'admin') return c.instructorId === activeUser?.id;
+      return true;
+    });
+    const userCourseIds = new Set(userCourses.map(c => c.id));
+    const courses = userCourses.filter(c =>
       c.code.toLowerCase().includes(q) ||
       c.title.toLowerCase().includes(q) ||
       c.section.toLowerCase().includes(q)
     );
     const activities = (db.activities || []).filter(a =>
-      a.title.toLowerCase().includes(q) ||
-      (a.category ?? '').toLowerCase().includes(q)
+      userCourseIds.has(a.courseId) && (
+        a.title.toLowerCase().includes(q) ||
+        (a.category ?? '').toLowerCase().includes(q)
+      )
     );
     const quizzes = db.quizzes.filter(qz =>
+      userCourseIds.has(qz.courseId) &&
       qz.title.toLowerCase().includes(q)
     );
 
     return { pages, courses, activities, quizzes };
-  }, [debouncedSearchTerm, db.courses, db.activities, db.quizzes]);
+  }, [debouncedSearchTerm, db.courses, db.activities, db.quizzes, activeRole, activeUser]);
 
   const hasResults =
     filteredResults.pages?.length > 0 ||

@@ -71,11 +71,11 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
   );
   const availableCourses = activeRole === 'student'
     ? db.courses.filter(c => (activeUser.enrolledCourseIds || []).includes(c.id) || approvedCourseIds.has(c.id))
-    : db.courses;
+    : (activeRole === 'faculty' || activeRole === 'admin')
+      ? db.courses.filter(c => c.instructorId === activeUser.id)
+      : db.courses;
 
-  const activeCourse = activeRole === 'student'
-    ? availableCourses.find(c => c.id === activeCourseId) || availableCourses[0]
-    : availableCourses.find(c => c.id === activeCourseId) || availableCourses[0] || db.courses[0];
+  const activeCourse = availableCourses.find(c => c.id === activeCourseId) || availableCourses[0];
 
   // Student explicitly navigated to a course they are not enrolled in
   // (stale activeCourseId from history/search), or has no enrollments at
@@ -112,11 +112,15 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
         <main className="min-h-0 flex-1 p-6 overflow-y-auto bg-background custom-scrollbar">
           <EmptyState
             icon={<BookOpen className="h-6 w-6" />}
-            title="You are not enrolled in this course yet."
+            title={
+              activeRole === 'student'
+                ? 'You are not enrolled in this course yet.'
+                : 'No courses created yet.'
+            }
             body={
               showJoinAction
                 ? 'You still haven\u2019t been enrolled in a course. Please ask your instructor for the course join code, then click below to join.'
-                : 'There is no course available to display right now.'
+                : 'You have not created any courses yet. Please create a course from the Dashboard.'
             }
             actionLabel={showJoinAction ? 'Enter Course Join Code' : undefined}
             onAction={showJoinAction ? () => setIsJoinModalOpen(true) : undefined}

@@ -60,8 +60,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     if (activeRole === 'student') {
       return (activeUser.enrolledCourseIds || []).includes(c.id) || approvedCourseIds.has(c.id);
     }
-    if (activeRole === 'faculty') return c.instructorId === activeUser.id;
-    return true;
+    if (activeRole === 'faculty' || activeRole === 'admin') return c.instructorId === activeUser.id;
+    return false;
   });
 
   const [coursePage, setCoursePage] = useState(1);
@@ -69,7 +69,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const totalCoursePages = Math.max(1, Math.ceil(userCourses.length / COURSES_PER_PAGE));
   const paginatedCourses = userCourses.slice((coursePage - 1) * COURSES_PER_PAGE, coursePage * COURSES_PER_PAGE);
 
-  const unsubmittedList = db.submissions.filter(s => s.status === 'submitted');
+  const userCourseIds = new Set(userCourses.map(c => c.id));
+  const unsubmittedList = db.submissions.filter(
+    s => s.status === 'submitted' && (userCourseIds.has(s.courseId) || (!s.courseId && userCourses.length > 0))
+  );
 
   // Pending rows can reference courses outside the cached (enrolled-only)
   // list — prefer the live cache, fall back to the server snapshot, and
