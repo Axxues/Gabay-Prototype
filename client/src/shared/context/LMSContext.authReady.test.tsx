@@ -42,6 +42,7 @@ vi.mock('../api/client', () => ({
     tokenInStore = null;
   }),
   apiFetch: (...args: any[]) => (apiFetchMock as any)(...args),
+  likhaLmsApi: undefined,
 }));
 
 import { LMSProvider, useLMS } from './LMSContext';

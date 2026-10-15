@@ -74,7 +74,11 @@ async function rawLikhaFetch<T = any>(
   }
 
   if (!res.ok) {
-    throw new Error(`Likha request failed (${res.status}): ${await res.text().catch(() => '')}`);
+    const errorText = await res.text().catch(() => '');
+    const error: any = new Error(`Likha request failed (${res.status}): ${errorText}`);
+    error.status = res.status;
+    error.code = res.status === 401 ? 'unauthorized' : res.status === 403 ? 'forbidden' : 'request_failed';
+    throw error;
   }
 
   const json = await res.json().catch(() => ({}));

@@ -1291,7 +1291,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Session restore: token -> GET /api/auth/me -> user + bootstrap
+  // Session restore: token -> check Likha ERP -> fallback to /api/auth/me -> user + bootstrap
   useEffect(() => {
     const token = getToken();
     if (!token) {
@@ -1302,42 +1302,72 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     (async () => {
       try {
         let user: User | null = null;
-        try {
-          const res = await apiFetch<{ user: User }>('/api/auth/me');
-          user = res.user;
-        } catch {
-          // Fall back to direct Likha ERP me check
-          if (likhaLmsApi?.auth?.getMe) {
-            try {
-              const me = await likhaLmsApi.auth.getMe();
-              if (me?.id) {
-                const roleName = (me.role?.name || '').toLowerCase();
-                const mappedRole: UserRole =
-                  roleName.includes('faculty') || roleName.includes('instructor')
-                    ? 'faculty'
-                    : roleName.includes('admin')
-                      ? 'admin'
-                      : 'student';
-                user = {
-                  id: me.id,
-                  name: `${me.first_name || ''} ${me.last_name || ''}`.trim() || me.email,
-                  email: me.email,
-                  role: mappedRole,
-                  avatar: me.avatar ? `https://gabay.zyberlab.com/assets/${me.avatar}` : undefined,
-                  department: me.department || 'College of Computer Science',
-                  title: me.title || (mappedRole === 'student' ? 'Undergraduate Student' : 'Instructor'),
-                };
-              }
-            } catch {}
+
+        // 1. Try Likha ERP true backend first
+        if (likhaLmsApi?.auth?.getMe) {
+          try {
+            const me = await likhaLmsApi.auth.getMe();
+            if (me?.id) {
+              const roleName = (me.role?.name || '').toLowerCase();
+              const mappedRole: UserRole =
+                roleName.includes('faculty') || roleName.includes('instructor')
+                  ? 'faculty'
+                  : roleName.includes('admin')
+                    ? 'admin'
+                    : 'student';
+              user = {
+                id: me.id,
+                name: `${me.first_name || ''} ${me.last_name || ''}`.trim() || me.email,
+                email: me.email,
+                role: mappedRole,
+                avatar: me.avatar ? `https://gabay.zyberlab.com/assets/${me.avatar}` : undefined,
+                department: me.department || 'College of Computer Science',
+                title: me.title || (mappedRole === 'student' ? 'Undergraduate Student' : 'Instructor'),
+              };
+            }
+          } catch (likhaErr: any) {
+            // If Likha explicitly returns 401 Unauthorized, the stored token is expired/invalid.
+            if (likhaErr?.status === 401 || String(likhaErr?.message).includes('401')) {
+              clearToken();
+              return;
+            }
+            // For other network/connection failures, fall through to try apiFetch fallback
           }
         }
-        if (!user) throw new Error('Failed to restore session');
+
+        // 2. Fall back to apiFetch('/api/auth/me') for mock tests or legacy express
+        if (!user) {
+          try {
+            const res = await apiFetch<{ user: User }>('/api/auth/me');
+            user = res.user;
+          } catch (apiErr: any) {
+            if (
+              (apiErr instanceof ApiError && apiErr.status === 401) ||
+              apiErr?.status === 401 ||
+              String(apiErr?.message).includes('401')
+            ) {
+              clearToken();
+              return;
+            }
+          }
+        }
+
+        if (!user) {
+          clearToken();
+          return;
+        }
+
         if (cancelled) return;
         setCurrentUser(user);
         await refreshAll(user);
-      } catch (err) {
+      } catch (err: any) {
         if (cancelled) return;
-        if (err instanceof ApiError && err.status === 401) {
+        const isAuthError =
+          (err instanceof ApiError && err.status === 401) ||
+          err?.status === 401 ||
+          String(err?.message).includes('401');
+
+        if (isAuthError) {
           clearToken();
         } else {
           const message = err instanceof ApiError ? err.message : 'Failed to restore session.';
@@ -1384,8 +1414,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           await refreshAll(mappedUser);
           return { success: true };
         }
-      } catch (_likhaErr) {
-        // Fall back to standard Express auth router
+      } catch (likhaErr: any) {
+        const msg = String(likhaErr?.message || '');
+        if (msg.includes('401') || msg.includes('authentication failed')) {
+          return { success: false, message: 'Invalid email or password.' };
+        }
+        // Fall back to standard Express auth router if Likha ERP offline
       }
     }
 
