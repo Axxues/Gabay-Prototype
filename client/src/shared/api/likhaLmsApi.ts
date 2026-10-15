@@ -276,6 +276,17 @@ export const likhaLmsApi = {
         body: JSON.stringify(section),
       });
     },
+
+    async updateSection(id: string, updates: any): Promise<any> {
+      return likhaRequest(`/items/course_sections/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(updates),
+      });
+    },
+
+    async deleteSection(id: string): Promise<void> {
+      await likhaRequest(`/items/course_sections/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    },
   },
 
   requests: {
@@ -298,6 +309,10 @@ export const likhaLmsApi = {
         method: 'PATCH',
         body: JSON.stringify(updates),
       });
+    },
+
+    async deleteRequest(id: string): Promise<void> {
+      await likhaRequest(`/items/enrollment_requests/${encodeURIComponent(id)}`, { method: 'DELETE' });
     },
   },
 

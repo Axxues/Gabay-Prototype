@@ -381,6 +381,37 @@ export const mergeEnrollmentRequest = (prev: LMSDatabase, request: EnrollmentReq
   return { ...prev, enrollmentRequests: [...existing, request] };
 };
 
+/** Task 4: Directus enrollment_requests / course_sections rows (snake_case)
+ *  arrive from write calls — map them to the client shapes (same mapping as
+ *  the bootstrap scope in refreshDeferred). */
+const mapLikhaRequestRow = (r: any): EnrollmentRequest => ({
+  id: String(r.id),
+  courseId: String(r.course_id ?? r.courseId ?? ''),
+  studentId: String(r.student_id ?? r.studentId ?? ''),
+  studentName:
+    r.student_name ||
+    `${r.first_name || ''} ${r.last_name || ''}`.trim() ||
+    r.student_email ||
+    String(r.student_id ?? r.studentId ?? 'Student'),
+  type: (r.type as EnrollmentRequest['type']) || 'self_join',
+  status: r.status as EnrollmentRequest['status'],
+  requestedAt: r.requested_at || r.requestedAt || new Date().toISOString(),
+  resolvedAt: r.resolved_at ?? r.resolvedAt ?? undefined,
+  resolvedBy: r.resolved_by ?? r.resolvedBy ?? undefined,
+  sectionId: r.section_id ?? r.sectionId ?? undefined,
+  targetSectionId: r.target_section_id ?? r.targetSectionId ?? undefined,
+});
+
+const mapLikhaSectionRow = (s: any): CourseSection => ({
+  id: String(s.id),
+  courseId: String(s.course_id ?? s.courseId ?? ''),
+  name: s.name || s.title || 'Section',
+  capacity: s.capacity !== undefined ? Number(s.capacity) : undefined,
+  enrolledCount: Number(s.enrolled_count ?? s.enrolledCount) || 0,
+  schedule: s.schedule,
+  location: s.room ?? s.location,
+});
+
 /** Task 4: server rows arrive with Dates serialized as ISO strings and
  *  null-able optionals — normalize them to the client shapes. */
 const toIsoString = (value: unknown): string => {
@@ -1659,22 +1690,38 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       generateCourseJoinCode(db.courses, courseData.code);
 
     try {
-      const { course } = await apiFetch<{ course: Course }>('/api/courses', {
-        method: 'POST',
-        body: {
-          code: courseData.code || 'CMSC 199',
-          title: courseData.title || 'Advanced Computer Science Topics',
-          section: courseData.section || 'BSCS 4-1',
-          term: courseData.term || '1st Sem AY 2026-2027',
-          instructorName: activeUser.name,
-          published: courseData.published ?? true,
-          color: courseData.color !== undefined ? courseData.color : '',
-          image: courseData.image || '',
-          credits: courseData.credits || 3,
-          chedComplianceCode: courseData.chedComplianceCode || 'CMO-25-2015',
-          joinCode: uniqueJoinCode
-        }
+      // Likha ERP is the source of truth (Express /api/courses is RAG-only now).
+      const row = await likhaLmsApi.courses.createCourse({
+        code: courseData.code || 'CMSC 199',
+        title: courseData.title || 'Advanced Computer Science Topics',
+        section: courseData.section || 'BSCS 4-1',
+        term: courseData.term || '1st Sem AY 2026-2027',
+        instructor_name: activeUser.name,
+        instructor_id: activeUser.id,
+        published: courseData.published ?? true,
+        color: courseData.color !== undefined ? courseData.color : '',
+        image: courseData.image || '',
+        credits: courseData.credits || 3,
+        ched_compliance_code: courseData.chedComplianceCode || 'CMO-25-2015',
+        join_code: uniqueJoinCode
       });
+
+      const course: Course = {
+        id: String((row as any)?.id ?? `crs-${Date.now().toString(36)}`),
+        code: (row as any)?.code || courseData.code || 'CMSC 199',
+        title: (row as any)?.title || courseData.title || 'Advanced Computer Science Topics',
+        section: (row as any)?.section || courseData.section || 'BSCS 4-1',
+        term: (row as any)?.term || courseData.term || '1st Sem AY 2026-2027',
+        instructorId: activeUser.id,
+        instructorName: activeUser.name,
+        published: (row as any)?.published ?? courseData.published ?? true,
+        color: (row as any)?.color ?? (courseData.color !== undefined ? courseData.color : ''),
+        image: (row as any)?.image || courseData.image || '',
+        enrolledCount: 0,
+        credits: (row as any)?.credits || courseData.credits || 3,
+        chedComplianceCode: (row as any)?.ched_compliance_code || courseData.chedComplianceCode || 'CMO-25-2015',
+        joinCode: (row as any)?.join_code || uniqueJoinCode
+      };
 
       setDb(prev => ({
         ...prev,
@@ -1682,27 +1729,6 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }));
 
       setActiveCourseId(course.id);
-
-      // Sync directly to Likha ERP backend
-      try {
-        if (likhaLmsApi?.courses?.createCourse) {
-          void likhaLmsApi.courses.createCourse({
-            id: course.id,
-            code: course.code,
-            title: course.title,
-            section: course.section,
-            term: course.term,
-            instructor_name: activeUser.name,
-            instructor_id: activeUser.id,
-            published: course.published,
-            color: course.color,
-            image: course.image,
-            credits: course.credits,
-            ched_compliance_code: course.chedComplianceCode,
-            join_code: course.joinCode,
-          }).catch(err => console.warn('[likhaLmsApi] createCourse sync:', err));
-        }
-      } catch {}
 
       return course;
     } catch (err) {
@@ -2428,15 +2454,17 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     });
 
-    // Mirror the invite server-side when the person references an existing
+    // Mirror the invite in Likha ERP when the person references an existing
     // account id. When the invite fails, roll back the created user.
     if (targetCourseId && person.id) {
       try {
-        const { request } = await apiFetch<{ request: EnrollmentRequest }>(
-          `/api/courses/${encodeURIComponent(targetCourseId)}/invites`,
-          { method: 'POST', body: { studentId: person.id } }
-        );
-        setDb(prev => mergeEnrollmentRequest(prev, request));
+        const row = await likhaLmsApi.requests.createRequest({
+          course_id: targetCourseId,
+          student_id: person.id,
+          type: 'faculty_enroll',
+          status: 'pending'
+        });
+        setDb(prev => mergeEnrollmentRequest(prev, mapLikhaRequestRow(row)));
       } catch (err) {
         const createdId = newPerson.id;
         setDb(prev => ({
@@ -2457,18 +2485,20 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!targetCourseId || studentIds.length === 0) return false;
 
     try {
-      const results = await Promise.all(
+      const rows = await Promise.all(
         studentIds.map(studentId =>
-          apiFetch<{ request: EnrollmentRequest }>(
-            `/api/courses/${encodeURIComponent(targetCourseId)}/invites`,
-            { method: 'POST', body: { studentId } }
-          )
+          likhaLmsApi.requests.createRequest({
+            course_id: targetCourseId,
+            student_id: studentId,
+            type: 'faculty_enroll',
+            status: 'pending'
+          })
         )
       );
       setDb(prev => {
         let merged = prev;
-        for (const { request } of results) {
-          merged = mergeEnrollmentRequest(merged, request);
+        for (const row of rows) {
+          merged = mergeEnrollmentRequest(merged, mapLikhaRequestRow(row));
         }
         return merged;
       });
@@ -2627,7 +2657,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const joinCourseByCode = async (code: string): Promise<{ success: boolean; message: string; course?: Course }> => {
     const cleanCode = code.trim().toUpperCase();
-    const targetCourse = db.courses.find(c => (c.joinCode || '').toUpperCase() === cleanCode);
+    // Likha rows carry join_code (cached courses may predate the joinCode
+    // mapping), so match both spellings.
+    const targetCourse = db.courses.find(
+      c => (((c.joinCode || (c as unknown as { join_code?: string }).join_code) || '').toUpperCase() === cleanCode)
+    );
 
     const currentEnrolled = activeUser.enrolledCourseIds || [];
     if (targetCourse && currentEnrolled.includes(targetCourse.id)) {
@@ -2651,12 +2685,36 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }
 
-    // Server is the source of truth for the code (the course may not be in
+    // Likha ERP is the source of truth for the code (the course may not be in
     // the local cache); the success shape stays { success, message, course? }.
     try {
-      const { request } = await apiFetch<{ request: EnrollmentRequest }>('/api/courses/join', {
-        method: 'POST',
-        body: { code: cleanCode }
+      let courseId = targetCourse?.id;
+      if (!courseId) {
+        // Not cached locally — resolve the code through Likha ERP.
+        const courses = await likhaLmsApi.courses.getCourses();
+        const match = (courses || []).find(
+          (c: any) => (((c.join_code || c.joinCode) || '').toUpperCase() === cleanCode)
+        );
+        if (!match) {
+          return { success: false, message: `No course found matching code "${cleanCode}". Please verify with your instructor.` };
+        }
+        courseId = String(match.id);
+      }
+      const row = await likhaLmsApi.requests.createRequest({
+        course_id: courseId,
+        student_id: activeUser.id,
+        student_name: activeUser.name,
+        type: 'self_join',
+        status: 'pending'
+      });
+      const request = mapLikhaRequestRow({
+        course_id: courseId,
+        student_id: activeUser.id,
+        student_name: activeUser.name,
+        type: 'self_join',
+        status: 'pending',
+        requested_at: new Date().toISOString(),
+        ...(row as any)
       });
       setDb(prev => mergeEnrollmentRequest(prev, request));
 
@@ -2668,9 +2726,6 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         course: targetCourse
       };
     } catch (err) {
-      if (err instanceof ApiError && (err.code === 'course_not_found' || err.status === 404)) {
-        return { success: false, message: `No course found matching code "${cleanCode}". Please verify with your instructor.` };
-      }
       const message = err instanceof ApiError ? err.message : 'Failed to send join request.';
       setLastError(message);
       return { success: false, message };
@@ -2680,13 +2735,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const regenerateCourseJoinCode = async (courseId: string): Promise<string> => {
     const targetCourse = db.courses.find(c => c.id === courseId);
     const newCode = generateCourseJoinCode(db.courses, targetCourse?.code);
-    // Client generates the code string; the server only persists it via PATCH.
+    // Client generates the code string; Likha ERP persists it via PATCH.
     try {
-      const { course } = await apiFetch<{ course: Course }>(
-        `/api/courses/${encodeURIComponent(courseId)}`,
-        { method: 'PATCH', body: { joinCode: newCode } }
-      );
-      const resolved = course.joinCode || newCode;
+      const row = await likhaLmsApi.courses.updateCourse(courseId, { join_code: newCode });
+      const resolved = (row as any)?.join_code || newCode;
       setDb(prev => ({
         ...prev,
         courses: prev.courses.map(c => (c.id === courseId ? { ...c, joinCode: resolved } : c))
@@ -2856,14 +2908,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Server stores the override as a JSON string (null clears to auto-detect);
     // the array/null is sent verbatim and the response row is re-normalized.
     try {
-      const { course } = await apiFetch<{ course: Course }>(
-        `/api/courses/${encodeURIComponent(courseId)}`,
-        { method: 'PATCH', body: { gradingTerms } }
-      );
-      const normalized = normalizeCourseSyllabus(course);
+      const row = await likhaLmsApi.courses.updateCourse(courseId, { gradingTerms });
+      const terms = normalizeCourseGradingTerms((row as any)?.gradingTerms ?? gradingTerms);
       setDb(prev => ({
         ...prev,
-        courses: prev.courses.map(c => (c.id === courseId ? normalized : c))
+        courses: prev.courses.map(c => (c.id === courseId ? { ...c, gradingTerms: terms } : c))
       }));
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to update grading terms.';
@@ -4712,48 +4761,34 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const createSection = async (courseId: string, data: Partial<CourseSection>): Promise<CourseSection> => {
     try {
-      const { section } = await apiFetch<{ section: CourseSection }>(
-        `/api/courses/${encodeURIComponent(courseId)}/sections`,
-        {
-          method: 'POST',
-          body: {
-            name: data.name || 'New Section',
-            ...(data.capacity !== undefined ? { capacity: data.capacity } : {})
-          }
-        }
-      );
+      // Likha ERP is the source of truth (Express /api/courses is RAG-only now).
+      const row = await likhaLmsApi.sections.createSection({
+        course_id: courseId,
+        name: data.name || 'New Section',
+        ...(data.capacity !== undefined ? { capacity: data.capacity } : {}),
+        ...(data.schedule ? { schedule: data.schedule } : {}),
+        ...(data.location ? { room: data.location } : {})
+      });
 
       // Server stores name/capacity only — schedule/location ride along in cache.
-      const merged: CourseSection = {
-        ...section,
+      const section: CourseSection = {
+        ...mapLikhaSectionRow({ course_id: courseId, ...(row as any) }),
+        id: String((row as any)?.id ?? `sec-${Date.now().toString(36)}`),
         schedule: data.schedule || '',
         location: data.location || ''
       };
 
       setDb(prev => ({
         ...prev,
-        courseSections: [...(prev.courseSections || []), merged],
+        courseSections: [...(prev.courseSections || []), section],
         courses: prev.courses.map(c =>
           c.id === courseId
-            ? { ...c, sectionIds: [...(c.sectionIds || []), merged.id] }
+            ? { ...c, sectionIds: [...(c.sectionIds || []), section.id] }
             : c
         )
       }));
 
-      // Sync directly to Likha ERP backend
-      try {
-        if (likhaLmsApi?.sections?.createSection) {
-          void likhaLmsApi.sections.createSection({
-            id: merged.id,
-            course_id: courseId,
-            name: merged.name,
-            schedule: merged.schedule,
-            room: merged.location,
-          }).catch(err => console.warn('[likhaLmsApi] createSection sync:', err));
-        }
-      } catch {}
-
-      return merged;
+      return section;
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to create section.';
       setLastError(message);
@@ -4769,14 +4804,21 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (updates.schedule !== undefined) patchBody.schedule = updates.schedule;
     if (updates.location !== undefined) patchBody.location = updates.location;
     try {
-      const { section } = await apiFetch<{ section: CourseSection }>(
-        `/api/sections/${encodeURIComponent(sectionId)}`,
-        { method: 'PATCH', body: patchBody }
-      );
+      // Likha ERP is the source of truth (Express /api/sections is RAG-only now).
+      // location maps to the Directus `room` field (same mapping as createSection).
+      const row = await likhaLmsApi.sections.updateSection(sectionId, patchBody);
       setDb(prev => ({
         ...prev,
         courseSections: (prev.courseSections || []).map((s: CourseSection) =>
-          s.id === sectionId ? { ...s, ...section } : s
+          s.id === sectionId
+            ? {
+                ...s,
+                name: (row as any)?.name ?? s.name,
+                capacity: (row as any)?.capacity ?? s.capacity,
+                schedule: (row as any)?.schedule ?? s.schedule,
+                location: (row as any)?.room ?? (row as any)?.location ?? s.location
+              }
+            : s
         )
       }));
       return true;
@@ -4806,9 +4848,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return false;
     }
     try {
-      await apiFetch<{ ok: true }>(`/api/sections/${encodeURIComponent(sectionId)}`, {
-        method: 'DELETE'
-      });
+      // Likha ERP is the source of truth (Express /api/sections is RAG-only now).
+      await likhaLmsApi.sections.deleteSection(sectionId);
       setDb(prev => ({
         ...prev,
         courseSections: (prev.courseSections || []).filter((s: CourseSection) => s.id !== sectionId),
@@ -4843,50 +4884,50 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const createEnrollmentRequest = async (courseId: string, type: 'self_join' | 'faculty_enroll'): Promise<EnrollmentRequest> => {
     try {
       if (type === 'self_join') {
-        // Join endpoint takes the course code — resolve it from cache.
+        // Likha ERP resolves nothing by code — the join code comes from cache.
         const course = db.courses.find(c => c.id === courseId);
-        if (!course?.joinCode) {
+        const joinCode =
+          course?.joinCode ?? (course as unknown as { join_code?: string })?.join_code;
+        if (!course || !joinCode) {
           throw new ApiError(400, 'bad_request', 'Join code for this course is not available.');
         }
-        const { request } = await apiFetch<{ request: EnrollmentRequest }>('/api/courses/join', {
-          method: 'POST',
-          body: { code: course.joinCode }
+        const row = await likhaLmsApi.requests.createRequest({
+          course_id: courseId,
+          student_id: activeUser.id,
+          student_name: activeUser.name,
+          type,
+          status: 'pending'
+        });
+        const request = mapLikhaRequestRow({
+          course_id: courseId,
+          student_id: activeUser.id,
+          student_name: activeUser.name,
+          type,
+          status: 'pending',
+          requested_at: new Date().toISOString(),
+          ...(row as any)
         });
         setDb(prev => mergeEnrollmentRequest(prev, request));
 
-        // Sync directly to Likha ERP backend (triggers gabay-enrollment-alert-flow)
-        try {
-          if (likhaLmsApi?.requests?.createRequest) {
-            void likhaLmsApi.requests.createRequest({
-              id: request.id,
-              course_id: courseId,
-              student_id: activeUser.id,
-              type,
-              status: 'pending',
-            }).catch(err => console.warn('[likhaLmsApi] createEnrollmentRequest sync:', err));
-          }
-        } catch {}
-
         return request;
       }
-      const { request } = await apiFetch<{ request: EnrollmentRequest }>(
-        `/api/courses/${encodeURIComponent(courseId)}/invites`,
-        { method: 'POST', body: { studentId: activeUser.id } }
-      );
+      const row = await likhaLmsApi.requests.createRequest({
+        course_id: courseId,
+        student_id: activeUser.id,
+        student_name: activeUser.name,
+        type,
+        status: 'pending'
+      });
+      const request = mapLikhaRequestRow({
+        course_id: courseId,
+        student_id: activeUser.id,
+        student_name: activeUser.name,
+        type,
+        status: 'pending',
+        requested_at: new Date().toISOString(),
+        ...(row as any)
+      });
       setDb(prev => mergeEnrollmentRequest(prev, request));
-
-      // Sync directly to Likha ERP backend (triggers gabay-enrollment-alert-flow)
-      try {
-        if (likhaLmsApi?.requests?.createRequest) {
-          void likhaLmsApi.requests.createRequest({
-            id: request.id,
-            course_id: courseId,
-            student_id: activeUser.id,
-            type,
-            status: 'pending',
-          }).catch(err => console.warn('[likhaLmsApi] createEnrollmentRequest sync:', err));
-        }
-      } catch {}
 
       return request;
     } catch (err) {
@@ -4901,12 +4942,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (activeRole !== 'faculty' && activeRole !== 'admin') return false;
     const succeeded: string[] = [];
     try {
-      // Per-id approve endpoints, in sequence per the endpoint map.
+      // Likha ERP is the source of truth — per-id status PATCH, in sequence.
       for (const requestId of requestIds) {
-        await apiFetch<{ request: EnrollmentRequest }>(
-          `/api/requests/${encodeURIComponent(requestId)}/approve`,
-          { method: 'POST' }
-        );
+        await likhaLmsApi.requests.updateRequest(requestId, { status: 'approved' });
         succeeded.push(requestId);
       }
     } catch (err) {
@@ -4916,15 +4954,6 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (succeeded.length === 0) return false;
     }
     const effectiveIds = succeeded.length > 0 ? succeeded : requestIds;
-
-    // Sync directly to Likha ERP backend
-    try {
-      if (likhaLmsApi?.requests?.updateRequest) {
-        for (const reqId of effectiveIds) {
-          void likhaLmsApi.requests.updateRequest(reqId, { status: 'approved' }).catch(() => {});
-        }
-      }
-    } catch {}
 
     setDb(prev => {
       const now = new Date().toISOString();
@@ -5022,11 +5051,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (activeRole !== 'faculty' && activeRole !== 'admin') return false;
     const succeeded: string[] = [];
     try {
+      // Likha ERP is the source of truth — per-id status PATCH, in sequence.
       for (const requestId of requestIds) {
-        await apiFetch<{ request: EnrollmentRequest }>(
-          `/api/requests/${encodeURIComponent(requestId)}/reject`,
-          { method: 'POST' }
-        );
+        await likhaLmsApi.requests.updateRequest(requestId, { status: 'rejected' });
         succeeded.push(requestId);
       }
     } catch (err) {
@@ -5036,15 +5063,6 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (succeeded.length === 0) return false;
     }
     const effective = new Set(succeeded.length > 0 ? succeeded : requestIds);
-
-    // Sync directly to Likha ERP backend
-    try {
-      if (likhaLmsApi?.requests?.updateRequest) {
-        for (const reqId of effective) {
-          void likhaLmsApi.requests.updateRequest(reqId, { status: 'rejected' }).catch(() => {});
-        }
-      }
-    } catch {}
 
     setDb(prev => ({
       ...prev,
@@ -5059,11 +5077,19 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const removeStudentFromCourse = async (courseId: string, studentId: string): Promise<boolean> => {
     if (activeRole !== 'faculty' && activeRole !== 'admin') return false;
+    // Likha ERP is the source of truth: delete the approved request rows.
+    // Synthetic `enr-` ids come from the Course_Enrollments read model and
+    // have no deletable request row, so only real ids are deleted remotely.
+    const approvedIds = (db.enrollmentRequests || [])
+      .filter(
+        (r: EnrollmentRequest) =>
+          r.courseId === courseId && r.studentId === studentId && r.status === 'approved' && !r.id.startsWith('enr-')
+      )
+      .map((r: EnrollmentRequest) => r.id);
     try {
-      await apiFetch<{ removed: number }>(
-        `/api/courses/${encodeURIComponent(courseId)}/remove-student`,
-        { method: 'POST', body: { studentId } }
-      );
+      for (const id of approvedIds) {
+        await likhaLmsApi.requests.deleteRequest(id);
+      }
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to remove student.';
       setLastError(message);
@@ -5112,10 +5138,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const studentApproveInvitation = async (requestId: string): Promise<boolean> => {
     try {
-      const { request } = await apiFetch<{ request: EnrollmentRequest }>(
-        `/api/requests/${encodeURIComponent(requestId)}/accept`,
-        { method: 'POST' }
-      );
+      // Likha ERP is the source of truth (Express /api/requests is RAG-only now).
+      const row = await likhaLmsApi.requests.updateRequest(requestId, { status: 'approved' });
+      const request = mapLikhaRequestRow(row);
       if (request.studentId !== activeUser.id) return false;
 
       const updatedUser = {
@@ -5129,10 +5154,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // map-only update would be a no-op when the course isn't cached yet.
       let freshCourse: Course | null = null;
       try {
-        const res = await apiFetch<{ course: Course }>(
-          `/api/courses/${encodeURIComponent(request.courseId)}`
-        );
-        freshCourse = res.course ? normalizeCourseSyllabus(res.course) : null;
+        const courseRow = await likhaLmsApi.courses.getCourse(request.courseId);
+        freshCourse = courseRow ? normalizeCourseSyllabus(courseRow) : null;
       } catch {
         freshCourse = null;
       }
@@ -5175,11 +5198,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const studentDeclineInvitation = async (requestId: string): Promise<boolean> => {
     try {
-      await apiFetch<{ ok: true }>(
-        `/api/requests/${encodeURIComponent(requestId)}/decline`,
-        { method: 'POST' }
-      );
-      // Server deletes declined invites — mirror by dropping the row from cache.
+      // Likha ERP is the source of truth — declined invites are deleted.
+      await likhaLmsApi.requests.deleteRequest(requestId);
+      // Mirror by dropping the row from cache.
       setDb(prev => ({
         ...prev,
         enrollmentRequests: (prev.enrollmentRequests || []).filter(
@@ -5219,17 +5240,32 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     try {
-      const { request } = await apiFetch<{ request: EnrollmentRequest }>(
-        `/api/courses/${encodeURIComponent(courseId)}/choose-section`,
-        { method: 'POST', body: { sectionId } }
-      );
+      // Likha ERP is the source of truth: record the section choice as an
+      // effective-immediately request, then refresh the authoritative counts.
+      const row = await likhaLmsApi.requests.createRequest({
+        course_id: courseId,
+        student_id: activeUser.id,
+        student_name: activeUser.name,
+        type: 'section_switch',
+        target_section_id: sectionId,
+        status: 'approved'
+      });
+      const request = mapLikhaRequestRow({
+        course_id: courseId,
+        student_id: activeUser.id,
+        student_name: activeUser.name,
+        type: 'section_switch',
+        target_section_id: sectionId,
+        status: 'approved',
+        requested_at: new Date().toISOString(),
+        ...(row as any)
+      });
 
-      // Section counts are authoritative server-side — refresh them, keeping
+      // Section counts are authoritative in Likha — refresh them, keeping
       // the client-only schedule/location overlay.
       try {
-        const { sections } = await apiFetch<{ sections: CourseSection[] }>(
-          `/api/courses/${encodeURIComponent(courseId)}/sections`
-        );
+        const rows = await likhaLmsApi.sections.getSections(courseId);
+        const sections = (rows || []).map(mapLikhaSectionRow);
         setDb(prev => {
           const prevById = new Map((prev.courseSections || []).map(s => [s.id, s]));
           const refreshed = sections.map(s => ({
@@ -5250,7 +5286,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       // User.courseSections stays a client-side cache, maintained from the
-      // choose-section response (current logic, API-fed).
+      // section-choice response.
       const chosenId = request.targetSectionId || sectionId;
       const updatedSections = { ...(activeUser.courseSections || {}), [courseId]: chosenId };
       const updatedUser = { ...activeUser, courseSections: updatedSections };
@@ -5283,10 +5319,25 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
     if (duplicate) return false;
     try {
-      const { request } = await apiFetch<{ request: EnrollmentRequest }>(
-        `/api/courses/${encodeURIComponent(courseId)}/switch-section`,
-        { method: 'POST', body: { sectionId: targetSectionId } }
-      );
+      // Likha ERP is the source of truth — a pending section_switch request.
+      const row = await likhaLmsApi.requests.createRequest({
+        course_id: courseId,
+        student_id: activeUser.id,
+        student_name: activeUser.name,
+        type: 'section_switch',
+        target_section_id: targetSectionId,
+        status: 'pending'
+      });
+      const request = mapLikhaRequestRow({
+        course_id: courseId,
+        student_id: activeUser.id,
+        student_name: activeUser.name,
+        type: 'section_switch',
+        target_section_id: targetSectionId,
+        status: 'pending',
+        requested_at: new Date().toISOString(),
+        ...(row as any)
+      });
       setDb(prev => mergeEnrollmentRequest(prev, request));
       return true;
     } catch (err) {
@@ -5299,9 +5350,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const getPendingRequestsForCourse = async (courseId: string): Promise<EnrollmentRequest[]> => {
     try {
-      const { requests } = await apiFetch<{ requests: EnrollmentRequest[] }>(
-        `/api/courses/${encodeURIComponent(courseId)}/requests?status=pending`
-      );
+      // Likha ERP is the source of truth (Express /api/courses is RAG-only now).
+      const rows = await likhaLmsApi.requests.getRequests(courseId, 'pending');
+      const requests = (rows || []).map(mapLikhaRequestRow);
       setDb(prev => ({
         ...prev,
         // REPLACE (not merge) this course's cached pendings with server truth.
