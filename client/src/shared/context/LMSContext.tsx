@@ -4802,7 +4802,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (updates.name !== undefined) patchBody.name = updates.name;
     if (updates.capacity !== undefined) patchBody.capacity = updates.capacity;
     if (updates.schedule !== undefined) patchBody.schedule = updates.schedule;
-    if (updates.location !== undefined) patchBody.location = updates.location;
+    if (updates.location !== undefined) patchBody.room = updates.location;
     try {
       // Likha ERP is the source of truth (Express /api/sections is RAG-only now).
       // location maps to the Directus `room` field (same mapping as createSection).
@@ -4884,11 +4884,18 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const createEnrollmentRequest = async (courseId: string, type: 'self_join' | 'faculty_enroll'): Promise<EnrollmentRequest> => {
     try {
       if (type === 'self_join') {
-        // Likha ERP resolves nothing by code — the join code comes from cache.
+        // The join code comes from cache, but bootstrap rows predate the
+        // joinCode mapping — a codeless cached course resolves via the same
+        // getCourses() fallback joinCourseByCode uses.
         const course = db.courses.find(c => c.id === courseId);
-        const joinCode =
+        let joinCode =
           course?.joinCode ?? (course as unknown as { join_code?: string })?.join_code;
-        if (!course || !joinCode) {
+        if (!joinCode) {
+          const courses = await likhaLmsApi.courses.getCourses().catch(() => []);
+          const match = (courses || []).find((c: any) => String(c.id) === courseId);
+          joinCode = match?.join_code ?? match?.joinCode;
+        }
+        if (!joinCode) {
           throw new ApiError(400, 'bad_request', 'Join code for this course is not available.');
         }
         const row = await likhaLmsApi.requests.createRequest({
@@ -5080,11 +5087,16 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Likha ERP is the source of truth: delete the approved request rows.
     // Synthetic `enr-` ids come from the Course_Enrollments read model and
     // have no deletable request row, so only real ids are deleted remotely.
-    const approvedIds = (db.enrollmentRequests || [])
-      .filter(
-        (r: EnrollmentRequest) =>
-          r.courseId === courseId && r.studentId === studentId && r.status === 'approved' && !r.id.startsWith('enr-')
-      )
+    // No-op when nothing is actually approved for the pair: previously this
+    // decremented the course count and reported success with zero remote
+    // calls (success-with-nothing), so bail out before touching any counts.
+    const approvedForPair = (db.enrollmentRequests || []).filter(
+      (r: EnrollmentRequest) =>
+        r.courseId === courseId && r.studentId === studentId && r.status === 'approved'
+    );
+    if (approvedForPair.length === 0) return false;
+    const approvedIds = approvedForPair
+      .filter((r: EnrollmentRequest) => !r.id.startsWith('enr-'))
       .map((r: EnrollmentRequest) => r.id);
     try {
       for (const id of approvedIds) {
@@ -5139,8 +5151,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const studentApproveInvitation = async (requestId: string): Promise<boolean> => {
     try {
       // Likha ERP is the source of truth (Express /api/requests is RAG-only now).
+      // PATCH may return a partial row — merge over the cached request so the
+      // ids the mapping needs survive a thin response.
       const row = await likhaLmsApi.requests.updateRequest(requestId, { status: 'approved' });
-      const request = mapLikhaRequestRow(row);
+      const cached = (db.enrollmentRequests || []).find((r: EnrollmentRequest) => r.id === requestId);
+      const request = mapLikhaRequestRow({ ...(cached ?? {}), ...(row as any) });
       if (request.studentId !== activeUser.id) return false;
 
       const updatedUser = {
@@ -5240,6 +5255,13 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     try {
+      // likha-gap: client-created approved section_switch with no server
+      // capacity enforcement and no enrolled_count increment. The old
+      // choose-section endpoint is gone (server/routes is RAG-only) and
+      // Likha has no atomic check-and-increment, so faithful parity would be
+      // a racy read-modify-write PATCH of enrolled_count. The client-side
+      // canPickSection gate + authoritative section refresh below is the
+      // minimum — revisit if Likha gains a transactional section-pick op.
       // Likha ERP is the source of truth: record the section choice as an
       // effective-immediately request, then refresh the authoritative counts.
       const row = await likhaLmsApi.requests.createRequest({

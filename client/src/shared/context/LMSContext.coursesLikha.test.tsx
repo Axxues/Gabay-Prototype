@@ -432,6 +432,61 @@ describe('courses, sections, requests via Likha (Task 4)', () => {
     expect(task4ExpressCalls()).toEqual([]);
   });
 
+  test('updateSection maps location to room, never Express', async () => {
+    await renderLoggedInAs('Faculty', 'u-fac-1', 'faculty1@dmmmsu.edu.ph');
+    let ok = false;
+    await act(async () => {
+      ok = await ctx.updateSection('sec-1', { location: 'Room 202' });
+    });
+    expect(updateSectionMock).toHaveBeenCalledWith('sec-1', expect.objectContaining({ room: 'Room 202' }));
+    const [, body] = updateSectionMock.mock.calls.at(-1) as any[];
+    expect(body).not.toHaveProperty('location');
+    expect(task4ExpressCalls()).toEqual([]);
+    expect(ok).toBe(true);
+    expect((seenDb.courseSections || []).find((s: any) => s.id === 'sec-1')?.location).toBe('Room 202');
+  });
+
+  test('createEnrollmentRequest (self_join) resolves a codeless cached course via getCourses', async () => {
+    await renderLoggedInAs('Student', 'u-stud-1', 'stud1@dmmmsu.edu.ph');
+    // Bootstrap drops join_code, so the cached c1 carries no code.
+    expect((seenDb.courses || []).find((c: any) => c.id === 'c1')?.joinCode).toBeUndefined();
+    let request: any = null;
+    await act(async () => {
+      request = await ctx.createEnrollmentRequest('c1', 'self_join');
+    });
+    expect(getCoursesMock).toHaveBeenCalled();
+    expect(createRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({ course_id: 'c1', student_id: 'u-stud-1', type: 'self_join' })
+    );
+    expect(task4ExpressCalls()).toEqual([]);
+    expect((seenDb.enrollmentRequests || []).some((r: any) => r.id === request.id)).toBe(true);
+  });
+
+  test('removeStudentFromCourse with nothing approved is a no-op, never Express', async () => {
+    await renderLoggedInAs('Faculty', 'u-fac-1', 'faculty1@dmmmsu.edu.ph');
+    const countBefore = (seenDb.courses || []).find((c: any) => c.id === 'c1')?.enrolledCount;
+    let ok = true;
+    await act(async () => {
+      ok = await ctx.removeStudentFromCourse('c1', 'u-nobody');
+    });
+    expect(ok).toBe(false);
+    expect(deleteRequestMock).not.toHaveBeenCalled();
+    expect(task4ExpressCalls()).toEqual([]);
+    expect((seenDb.courses || []).find((c: any) => c.id === 'c1')?.enrolledCount).toBe(countBefore);
+  });
+
+  test('studentApproveInvitation survives a partial PATCH row via the cached request', async () => {
+    await renderLoggedInAs('Student', 'u-stud-1', 'stud1@dmmmsu.edu.ph');
+    updateRequestMock.mockResolvedValueOnce({ id: 'req-invite-1', status: 'approved' });
+    let ok = false;
+    await act(async () => {
+      ok = await ctx.studentApproveInvitation('req-invite-1');
+    });
+    expect(ok).toBe(true);
+    expect(getCourseMock).toHaveBeenCalledWith('c1');
+    expect(task4ExpressCalls()).toEqual([]);
+  });
+
   test('student requests a section switch via createRequest, never Express', async () => {
     await renderLoggedInAs('Student', 'u-stud-1', 'stud1@dmmmsu.edu.ph');
     let ok = false;
