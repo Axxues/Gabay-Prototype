@@ -604,6 +604,19 @@ export const likhaLmsApi = {
       });
     },
 
+    async updateAnnouncement(id: string, patch: any): Promise<any> {
+      return likhaRequest(`/items/announcements/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      });
+    },
+
+    async deleteAnnouncement(id: string): Promise<void> {
+      await likhaRequest(`/items/announcements/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+    },
+
     async addAnnouncementReply(announcementId: string, reply: any): Promise<any> {
       return likhaRequest('/items/announcement_replies', {
         method: 'POST',
@@ -619,6 +632,19 @@ export const likhaLmsApi = {
       return likhaRequest('/items/discussions', {
         method: 'POST',
         body: JSON.stringify(data),
+      });
+    },
+
+    async updateDiscussion(id: string, patch: any): Promise<any> {
+      return likhaRequest(`/items/discussions/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      });
+    },
+
+    async deleteDiscussion(id: string): Promise<void> {
+      await likhaRequest(`/items/discussions/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
       });
     },
 
@@ -640,6 +666,21 @@ export const likhaLmsApi = {
         method: 'PATCH',
         body: JSON.stringify({ is_read: true }),
       });
+    },
+
+    async markAllNotificationsRead(ids: string[]): Promise<void> {
+      await Promise.allSettled(ids.map(id => likhaLmsApi.communications.markNotificationRead(id)));
+    },
+
+    async markThreadRead(messageIds: string[]): Promise<void> {
+      await Promise.allSettled(
+        messageIds.map(id =>
+          likhaRequest(`/items/chat_messages/${encodeURIComponent(id)}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ is_read: true }),
+          })
+        )
+      );
     },
 
     async getMessages(): Promise<any[]> {
@@ -675,6 +716,19 @@ export const likhaLmsApi = {
       });
     },
 
+    async updateCalendarEvent(id: string, patch: any): Promise<any> {
+      return likhaRequest(`/items/calendar_events/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      });
+    },
+
+    async deleteCalendarEvent(id: string): Promise<void> {
+      await likhaRequest(`/items/calendar_events/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+    },
+
     async getAdvisingSlots(): Promise<any[]> {
       return likhaRequest('/items/advising_slots?limit=100&sort=date');
     },
@@ -683,6 +737,13 @@ export const likhaLmsApi = {
       return likhaRequest(`/items/advising_slots/${encodeURIComponent(id)}`, {
         method: 'PATCH',
         body: JSON.stringify({ student_id: studentId, status: 'booked' }),
+      });
+    },
+
+    async createAdvisingSlot(data: any): Promise<any> {
+      return likhaRequest('/items/advising_slots', {
+        method: 'POST',
+        body: JSON.stringify(data),
       });
     },
   },

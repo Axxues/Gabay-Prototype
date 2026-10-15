@@ -487,6 +487,156 @@ const mapLikhaModuleRow = (m: any): Module => ({
     : [],
 });
 
+/** Task 8: Directus chat_messages / chat_groups / calendar_events /
+ *  advising_slots / announcements / discussions rows (snake_case) arrive
+ *  from read/write calls — map them to the client shapes (same mapping as
+ *  the bootstrap scopes in refreshEssential/refreshDeferred). Mappers are
+ *  idempotent: already-mapped (camelCase) rows map back to themselves, so
+ *  `{ ...cached, ...row }` merges are safe. */
+const mapLikhaMessageRow = (m: any): Message => ({
+  id: String(m.id),
+  senderId: String(m.sender_id ?? m.senderId ?? ''),
+  senderName: m.sender_name ?? m.senderName ?? '',
+  senderRole: (m.sender_role ?? m.senderRole ?? 'student') as UserRole,
+  recipientId: String(m.receiver_id ?? m.recipient_id ?? m.recipientId ?? ''),
+  recipientName: m.recipient_name ?? m.recipientName ?? '',
+  recipientRole: (m.recipient_role ?? m.recipientRole ?? 'student') as UserRole,
+  courseId: m.course_id ?? m.courseId ?? undefined,
+  subject: m.subject ?? '',
+  body: m.body ?? m.message ?? '',
+  timestamp: m.created_at ?? m.timestamp ?? new Date().toISOString(),
+  read: Boolean(m.is_read ?? m.read ?? false),
+  ...(m.reaction !== undefined ? { reaction: m.reaction } : {}),
+  groupId: m.group_id ?? m.groupId ?? undefined,
+});
+
+const mapLikhaChatGroupRow = (g: any, fallbackMemberId?: string): ChatGroup => ({
+  id: String(g.id),
+  name: g.name || 'Chat Group',
+  memberIds: Array.isArray(g.member_ids)
+    ? g.member_ids.map((id: any) => String(id))
+    : Array.isArray(g.members)
+      ? g.members.map((m: any) => (typeof m === 'string' ? m : m.userId || m.id))
+      : fallbackMemberId
+        ? [fallbackMemberId]
+        : [],
+  courseId: g.course_id ?? g.courseId ?? undefined,
+  createdAt: g.created_at ?? g.createdAt ?? new Date().toISOString(),
+  createdBy: String(g.created_by ?? g.createdBy ?? fallbackMemberId ?? ''),
+});
+
+const mapLikhaCalendarEventRow = (e: any): CalendarEvent => ({
+  id: String(e.id),
+  title: e.title ?? 'Untitled event',
+  date: e.date ?? new Date().toISOString().slice(0, 10),
+  time: e.time ?? e.start_time ?? e.startTime ?? '',
+  courseId: e.course_id ?? e.courseId ?? undefined,
+  courseCode: e.course_code ?? e.courseCode ?? undefined,
+  type: (e.type as CalendarEvent['type']) ?? 'event',
+  description: e.description ?? '',
+  startAt: e.start_at ?? e.startAt ?? undefined,
+  endAt: e.end_at ?? e.endAt ?? undefined,
+  isAllDay: e.all_day ?? e.isAllDay ?? undefined,
+  colorHex: e.color_hex ?? e.colorHex ?? undefined,
+  location: e.location ?? undefined,
+  meetingPlatform: e.meeting_platform ?? e.meetingPlatform ?? undefined,
+  meetingId: e.meeting_id ?? e.meetingId ?? undefined,
+  meetingPasscode: e.meeting_passcode ?? e.meetingPasscode ?? undefined,
+  meetingJoinUrl: e.meeting_join_url ?? e.meetingJoinUrl ?? undefined,
+});
+
+const mapLikhaAdvisingSlotRow = (s: any): AdvisingSlot => ({
+  id: String(s.id),
+  instructorId: String(s.instructor_id ?? s.instructorId ?? ''),
+  instructorName: s.instructor_name ?? s.instructorName ?? '',
+  date: s.date ?? '',
+  timeSlot: s.time_slot ?? s.timeSlot ?? '',
+  location: s.location ?? '',
+  status: (s.status as AdvisingSlot['status']) ?? 'available',
+  bookedByStudentId: s.student_id ?? s.bookedByStudentId ?? undefined,
+  bookedByStudentName: s.student_name ?? s.bookedByStudentName ?? undefined,
+  notes: s.notes ?? undefined,
+});
+
+const mapLikhaAnnouncementReplyRow = (r: any, announcementId: string): AnnouncementReply => ({
+  id: String(r.id),
+  announcementId: String(r.announcement_id ?? r.announcementId ?? announcementId),
+  parentId: r.parent_id ?? r.parentId ?? null,
+  authorId: String(r.author_id ?? r.authorId ?? ''),
+  authorName: r.author_name ?? r.authorName ?? 'Someone',
+  authorAvatar: r.author_avatar ?? r.authorAvatar ?? '',
+  authorRole: (r.author_role ?? r.authorRole ?? 'student') as UserRole,
+  content: r.content ?? '',
+  createdAt: r.created_at ?? r.date ?? r.createdAt ?? new Date().toISOString(),
+  likes: typeof r.likes === 'number' ? r.likes : (Array.isArray(r.likes) ? r.likes.length : 0),
+  likedBy: Array.isArray(r.liked_by) ? r.liked_by : (r.likedBy ?? []),
+});
+
+const mapLikhaAnnouncementRow = (a: any, courseId?: string): Announcement => {
+  const createdAt = a.created_at ?? a.date ?? a.createdAt ?? new Date().toISOString();
+  return {
+    id: String(a.id),
+    courseId: String(a.course_id ?? a.courseId ?? courseId ?? ''),
+    title: a.title ?? 'Untitled Announcement',
+    content: a.content ?? '',
+    authorId: String(a.author_id ?? a.authorId ?? ''),
+    authorName: a.author_name ?? a.authorName ?? 'Someone',
+    authorAvatar: a.author_avatar ?? a.authorAvatar ?? '',
+    authorRole: (a.author_role ?? a.authorRole ?? 'faculty') as UserRole,
+    createdAt,
+    date: a.date ?? createdAt,
+    sectionId: a.section_id ?? a.sectionId ?? 'all',
+    sectionRestriction: a.sectionRestriction || 'All Sections',
+    allowComments: a.allowComments ?? true,
+    usersMustPostBeforeReplies: a.usersMustPostBeforeReplies ?? false,
+    allowLiking: a.allowLiking ?? true,
+    likes: typeof a.likes === 'number' ? a.likes : (Array.isArray(a.likes) ? a.likes.length : 0),
+    likedBy: Array.isArray(a.liked_by) ? a.liked_by : (a.likedBy ?? []),
+    pinned: Boolean(a.pinned ?? false),
+    attachments: Array.isArray(a.attachments) ? a.attachments : [],
+    replies: Array.isArray(a.replies) ? a.replies.map((r: any) => mapLikhaAnnouncementReplyRow(r, String(a.id))) : [],
+    readBy: Array.isArray(a.read_by) ? a.read_by : (a.readBy ?? []),
+  } as Announcement;
+};
+
+const mapLikhaDiscussionReplyRow = (r: any, discussionId: string): DiscussionReply => ({
+  id: String(r.id),
+  discussionId: String(r.discussion_id ?? r.discussionId ?? discussionId),
+  parentId: r.parent_id ?? r.parentId ?? undefined,
+  authorId: String(r.author_id ?? r.authorId ?? ''),
+  authorName: r.author_name ?? r.authorName ?? 'Someone',
+  authorAvatar: r.author_avatar ?? r.authorAvatar ?? '',
+  authorRole: (r.author_role ?? r.authorRole ?? 'student') as UserRole,
+  content: r.content ?? '',
+  createdAt: r.created_at ?? r.date ?? r.createdAt ?? new Date().toISOString(),
+  likes: typeof r.likes === 'number' ? r.likes : (Array.isArray(r.likes) ? r.likes.length : 0),
+  likedBy: Array.isArray(r.liked_by) ? r.liked_by : (r.likedBy ?? []),
+});
+
+const mapLikhaDiscussionRow = (d: any, courseId?: string): Discussion => {
+  const createdAt = d.created_at ?? d.date ?? d.createdAt ?? new Date().toISOString();
+  return {
+    id: String(d.id),
+    courseId: String(d.course_id ?? d.courseId ?? courseId ?? ''),
+    title: d.title ?? 'Untitled Discussion Topic',
+    prompt: d.content ?? d.prompt ?? '',
+    authorId: String(d.author_id ?? d.authorId ?? ''),
+    authorName: d.author_name ?? d.authorName ?? 'Someone',
+    authorAvatar: d.author_avatar ?? d.authorAvatar ?? '',
+    authorRole: (d.author_role ?? d.authorRole ?? 'faculty') as UserRole,
+    createdAt,
+    date: d.date ?? createdAt,
+    isGraded: d.isGraded ?? false,
+    pointsPossible: d.pointsPossible ?? undefined,
+    dueDate: d.dueDate ?? undefined,
+    pinned: Boolean(d.pinned ?? false),
+    locked: Boolean(d.locked ?? false),
+    usersMustPostBeforeReplies: d.usersMustPostBeforeReplies ?? false,
+    groupActivity: d.groupActivity || 'All Students',
+    replies: Array.isArray(d.replies) ? d.replies.map((r: any) => mapLikhaDiscussionReplyRow(r, String(d.id))) : [],
+  } as Discussion;
+};
+
 /** Task 4: server rows arrive with Dates serialized as ISO strings and
  *  null-able optionals — normalize them to the client shapes. */
 const toIsoString = (value: unknown): string => {
@@ -1523,8 +1673,20 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 .then((rows: any): { modules: Module[] } => ({
                   modules: ((Array.isArray(rows) ? rows : []) as any[]).map(mapLikhaModuleRow),
                 })),
-              apiFetch<{ announcements: Announcement[] }>(`/api/courses/${encodeURIComponent(course.id)}/announcements`),
-              apiFetch<{ discussions: Discussion[] }>(`/api/courses/${encodeURIComponent(course.id)}/discussions`),
+              Promise.resolve()
+                .then(() => likhaLmsApi?.communications?.getAnnouncements?.(course.id) ?? [])
+                .then((rows: any): { announcements: Announcement[] } => ({
+                  announcements: ((Array.isArray(rows) ? rows : []) as any[]).map(r =>
+                    mapLikhaAnnouncementRow(r, course.id)
+                  ),
+                })),
+              Promise.resolve()
+                .then(() => likhaLmsApi?.communications?.getDiscussions?.(course.id) ?? [])
+                .then((rows: any): { discussions: Discussion[] } => ({
+                  discussions: ((Array.isArray(rows) ? rows : []) as any[]).map(r =>
+                    mapLikhaDiscussionRow(r, course.id)
+                  ),
+                })),
             ]);
             return { modulesSettled, announcementsSettled, discussionsSettled };
           })()
@@ -3566,39 +3728,22 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ): Promise<void> => {
     const matchedGroup = (db.chatGroups || []).find(g => g.id === (groupIdParam || recipientId));
     const isGroup = isGroupParam !== undefined ? isGroupParam : !!matchedGroup;
-    // Server persists recipient/subject/body/courseId (+ groupId for group
-    // rows); attachment metadata rides in the cache only (no server field).
     try {
-      const { message } = await apiFetch<{ message: Message }>('/api/messages', {
-        method: 'POST',
-        body: {
-          recipientId,
-          subject,
-          body,
-          ...(courseId !== undefined ? { courseId } : {}),
-          ...(isGroup && matchedGroup ? { groupId: matchedGroup.id } : {}),
-        },
+      const targetGroupId = isGroup && matchedGroup ? matchedGroup.id : (isGroupParam && groupIdParam ? groupIdParam : undefined);
+      const row = await likhaLmsApi.communications.sendMessage({
+        sender_id: activeUser?.id,
+        ...(targetGroupId ? { group_id: targetGroupId } : { receiver_id: recipientId }),
+        subject,
+        body,
+        ...(courseId !== undefined ? { course_id: courseId } : {}),
       });
+      const mapped = mapLikhaMessageRow(row);
       const merged: Message = {
-        ...message,
+        ...mapped,
         ...(attachmentName !== undefined ? { attachmentName } : {}),
         ...(attachmentSize !== undefined ? { attachmentSize } : {}),
       };
       setDb(prev => ({ ...prev, messages: [merged, ...(prev.messages || [])] }));
-
-      // Sync directly to Likha ERP backend
-      try {
-        if (likhaLmsApi?.communications?.sendMessage) {
-          void likhaLmsApi.communications.sendMessage({
-            id: merged.id,
-            sender_id: activeUser.id,
-            receiver_id: recipientId,
-            course_id: courseId || null,
-            subject,
-            body,
-          }).catch(err => console.warn('[likhaLmsApi] sendMessage sync:', err));
-        }
-      } catch {}
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to send message.';
       setLastError(message);
@@ -3609,40 +3754,31 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const createChatGroup = async (name: string, memberIds: string[], courseId?: string): Promise<ChatGroup> => {
     try {
-      const { group } = await apiFetch<{ group: any }>('/api/groups', {
-        method: 'POST',
-        body: {
-          name: name.trim() || 'New Study Group',
-          memberIds,
-          ...(courseId !== undefined ? { courseId } : {}),
-        },
+      const groupRow = await likhaLmsApi.communications.createChatGroup({
+        name: name.trim() || 'New Study Group',
+        member_ids: Array.from(new Set([activeUser.id, ...memberIds])),
+        created_by: activeUser.id,
+        ...(courseId !== undefined ? { course_id: courseId } : {}),
       });
-      // Server returns { ...group, members } — rehydrate the memberIds array.
-      const merged: ChatGroup = {
-        ...(group as ChatGroup),
-        memberIds: Array.isArray((group as any).memberIds)
-          ? (group as any).memberIds
-          : Array.isArray((group as any).members)
-            ? (group as any).members.map((m: any) => m.userId)
-            : Array.from(new Set([activeUser.id, ...memberIds])),
-      };
-      // Welcome message rides the group-messages endpoint (client single-row
-      // group convention); best-effort so group creation still succeeds.
+      const merged: ChatGroup = mapLikhaChatGroupRow(groupRow, activeUser.id);
+      if (!merged.memberIds.includes(activeUser.id)) {
+        merged.memberIds = Array.from(new Set([activeUser.id, ...memberIds]));
+      }
+
+      // Welcome message rides the communications.sendMessage endpoint; best-effort
       try {
-        const { message } = await apiFetch<{ message: Message }>(
-          `/api/groups/${encodeURIComponent(merged.id)}/messages`,
-          {
-            method: 'POST',
-            body: {
-              subject: `Welcome to ${merged.name}`,
-              body: `Group created by ${activeUser.name}. Welcome everyone!`,
-            },
-          }
-        );
+        const welcomeRow = await likhaLmsApi.communications.sendMessage({
+          group_id: merged.id,
+          sender_id: activeUser.id,
+          subject: `Welcome to ${merged.name}`,
+          body: `Group created by ${activeUser.name}. Welcome everyone!`,
+          ...(courseId !== undefined ? { course_id: courseId } : {}),
+        });
+        const welcomeMsg = mapLikhaMessageRow(welcomeRow);
         setDb(prev => ({
           ...prev,
           chatGroups: [merged, ...(prev.chatGroups || [])],
-          messages: [message, ...(prev.messages || [])]
+          messages: [welcomeMsg, ...(prev.messages || [])]
         }));
       } catch {
         setDb(prev => ({
@@ -3661,32 +3797,32 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const markThreadAsRead = async (partnerId: string): Promise<void> => {
     const isGroup = (db.chatGroups || []).some(g => g.id === partnerId);
+    const unreadTargetIds = (db.messages || [])
+      .filter(m => {
+        if (isGroup) {
+          return (m.groupId === partnerId || m.recipientId === partnerId) && m.senderId !== activeUser.id && !m.read;
+        }
+        return m.senderId === partnerId && m.recipientId === activeUser.id && !m.read;
+      })
+      .map(m => m.id);
+
     setDb(prev => ({
       ...prev,
-      messages: (prev.messages || []).map(m => {
-        if (isGroup) {
-          if ((m.groupId === partnerId || m.recipientId === partnerId) && m.senderId !== activeUser.id && !m.read) {
-            return { ...m, read: true };
-          }
-          return m;
-        }
-        if (m.senderId === partnerId && m.recipientId === activeUser.id && !m.read) {
-          return { ...m, read: true };
-        }
-        return m;
-      })
+      messages: (prev.messages || []).map(m =>
+        unreadTargetIds.includes(m.id) ? { ...m, read: true } : m
+      )
     }));
     // Read path: stay silent (no modal) on failure; cache already updated.
     try {
-      await apiFetch<{ updated: number }>('/api/messages/thread/read', {
-        method: 'POST',
-        body: isGroup ? { groupId: partnerId } : { partnerId },
-      });
+      if (unreadTargetIds.length > 0 && likhaLmsApi?.communications?.markThreadRead) {
+        await likhaLmsApi.communications.markThreadRead(unreadTargetIds);
+      }
     } catch (err) {
       setLastError(err instanceof ApiError ? err.message : 'Failed to mark thread read.');
     }
   };
 
+  // likha-gap: message reactions need backend support (browser_subagent follow-up)
   const toggleMessageReaction = async (messageId: string, reaction: string): Promise<void> => {
     // Toggle-off: clicking the active emoji DELETEs the reaction, otherwise
     // POST sets it. The cache follows the returned row (server truth wins).
@@ -3718,13 +3854,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const bookAdvisingSlot = async (slotId: string): Promise<void> => {
     try {
-      const { slot } = await apiFetch<{ slot: AdvisingSlot }>(
-        `/api/advising/${encodeURIComponent(slotId)}/book`,
-        { method: 'POST' }
-      );
+      const slot = await likhaLmsApi.communications.bookAdvisingSlot(slotId, activeUser.id);
+      const mapped = mapLikhaAdvisingSlotRow(slot);
       setDb(prev => ({
         ...prev,
-        advisingSlots: prev.advisingSlots.map(s => (s.id === slotId ? { ...s, ...(slot as AdvisingSlot) } : s))
+        advisingSlots: prev.advisingSlots.map(s => (s.id === slotId ? { ...s, ...mapped } : s))
       }));
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to book advising slot.';
@@ -3736,10 +3870,15 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const createAdvisingSlot = async (date: string, timeSlot: string, location: string): Promise<void> => {
     try {
-      const { slot } = await apiFetch<{ slot: AdvisingSlot }>('/api/advising', {
-        method: 'POST',
-        body: { date, timeSlot, location }
+      const row = await likhaLmsApi.communications.createAdvisingSlot({
+        instructor_id: activeUser.id,
+        instructor_name: activeUser.name,
+        date,
+        time_slot: timeSlot,
+        location,
+        status: 'available',
       });
+      const slot = mapLikhaAdvisingSlotRow(row);
       setDb(prev => ({
         ...prev,
         advisingSlots: [...prev.advisingSlots, slot]
@@ -3754,47 +3893,29 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const addCalendarEvent = async (event: Omit<CalendarEvent, 'id'>): Promise<CalendarEvent> => {
     try {
-      const { event: created } = await apiFetch<{ event: CalendarEvent }>('/api/calendar', {
-        method: 'POST',
-        body: {
-          title: event.title,
-          date: event.date,
-          ...(event.time !== undefined ? { time: event.time } : {}),
-          ...(event.courseId !== undefined ? { courseId: event.courseId } : {}),
-          ...(event.courseCode !== undefined ? { courseCode: event.courseCode } : {}),
-          ...(event.type !== undefined ? { type: event.type } : {}),
-          ...(event.description !== undefined ? { description: event.description } : {}),
-          ...(event.startAt !== undefined ? { startAt: event.startAt } : {}),
-          ...(event.endAt !== undefined ? { endAt: event.endAt } : {}),
-          ...(event.isAllDay !== undefined ? { isAllDay: event.isAllDay } : {}),
-          ...(event.colorHex !== undefined ? { colorHex: event.colorHex } : {}),
-          ...(event.location !== undefined ? { location: event.location } : {}),
-          ...(event.meetingPlatform !== undefined ? { meetingPlatform: event.meetingPlatform } : {}),
-          ...(event.meetingId !== undefined ? { meetingId: event.meetingId } : {}),
-          ...(event.meetingPasscode !== undefined ? { meetingPasscode: event.meetingPasscode } : {}),
-          ...(event.meetingJoinUrl !== undefined ? { meetingJoinUrl: event.meetingJoinUrl } : {}),
-        }
+      const row = await likhaLmsApi.communications.createCalendarEvent({
+        title: event.title,
+        date: event.date,
+        time: event.time,
+        course_id: event.courseId,
+        type: event.type,
+        description: event.description,
+        ...(event.courseCode !== undefined ? { course_code: event.courseCode } : {}),
+        ...(event.startAt !== undefined ? { start_at: event.startAt } : {}),
+        ...(event.endAt !== undefined ? { end_at: event.endAt } : {}),
+        ...(event.isAllDay !== undefined ? { all_day: event.isAllDay } : {}),
+        ...(event.colorHex !== undefined ? { color_hex: event.colorHex } : {}),
+        ...(event.location !== undefined ? { location: event.location } : {}),
       });
+      const created: CalendarEvent = {
+        ...mapLikhaCalendarEventRow(row),
+        ...(event as any),
+        id: String(row?.id || (row as any)?.event?.id || `ev-${Date.now()}`),
+      };
       setDb(prev => ({
         ...prev,
         calendarEvents: [...prev.calendarEvents, created]
       }));
-
-      // Sync directly to Likha ERP backend
-      try {
-        if (likhaLmsApi?.communications?.createCalendarEvent) {
-          void likhaLmsApi.communications.createCalendarEvent({
-            id: created.id,
-            title: created.title,
-            date: created.date,
-            time: created.time,
-            course_id: created.courseId,
-            type: created.type,
-            description: created.description,
-          }).catch(err => console.warn('[likhaLmsApi] createCalendarEvent sync:', err));
-        }
-      } catch {}
-
       return created;
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to create event.';
@@ -3805,26 +3926,20 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateCalendarEvent = async (id: string, updates: Partial<CalendarEvent>): Promise<void> => {
-    const body: Record<string, string | boolean> = {};
-    const stringFields = [
-      'title', 'date', 'time', 'courseId', 'courseCode', 'type', 'description',
-      'startAt', 'endAt', 'colorHex', 'location', 'meetingPlatform',
-      'meetingId', 'meetingPasscode', 'meetingJoinUrl'
-    ] as const;
-    for (const key of stringFields) {
-      const value = updates[key];
-      if (value !== undefined && value !== null) body[key] = value;
-    }
-    if (updates.isAllDay !== undefined) body.isAllDay = updates.isAllDay;
+    const patch: any = { ...updates };
+    if (updates.courseId !== undefined) patch.course_id = updates.courseId;
+    if (updates.courseCode !== undefined) patch.course_code = updates.courseCode;
+    if (updates.startAt !== undefined) patch.start_at = updates.startAt;
+    if (updates.endAt !== undefined) patch.end_at = updates.endAt;
+    if (updates.isAllDay !== undefined) patch.all_day = updates.isAllDay;
+    if (updates.colorHex !== undefined) patch.color_hex = updates.colorHex;
     try {
-      const { event } = await apiFetch<{ event: CalendarEvent }>(
-        `/api/calendar/${encodeURIComponent(id)}`,
-        { method: 'PATCH', body }
-      );
+      const row = await likhaLmsApi.communications.updateCalendarEvent(id, patch);
+      const mapped = row && typeof row === 'object' ? mapLikhaCalendarEventRow(row) : {};
       setDb(prev => ({
         ...prev,
         calendarEvents: prev.calendarEvents.map(evt =>
-          evt.id === id ? { ...evt, ...(event as CalendarEvent) } : evt
+          evt.id === id ? { ...evt, ...mapped, ...updates } : evt
         )
       }));
     } catch (err) {
@@ -3837,9 +3952,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteCalendarEvent = async (id: string): Promise<void> => {
     try {
-      await apiFetch<{ ok: true }>(`/api/calendar/${encodeURIComponent(id)}`, {
-        method: 'DELETE'
-      });
+      await likhaLmsApi.communications.deleteCalendarEvent(id);
       setDb(prev => ({
         ...prev,
         calendarEvents: prev.calendarEvents.filter(evt => evt.id !== id)
@@ -3858,69 +3971,38 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const createAnnouncement = async (data: Partial<Announcement>): Promise<Announcement> => {
     const courseId = data.courseId || activeCourseId || 'crs-cmsc131';
-    // Server persists title/content/sectionId/attachments (+ files them);
-    // client-only flags (pinned, allowComments, allowLiking, delayedUntil,
-    // usersMustPostBeforeReplies) ride along in the cache.
     try {
-      const { announcement } = await apiFetch<{ announcement: Announcement }>(
-        `/api/courses/${encodeURIComponent(courseId)}/announcements`,
-        {
-          method: 'POST',
-          body: {
-            title: data.title || 'Untitled Announcement',
-            content: data.content || '',
-            ...(data.sectionId !== undefined ? { sectionId: data.sectionId } : {}),
-            ...((data.attachments || []).length > 0
-              ? {
-                attachments: (data.attachments || []).map(a => ({
-                  name: a.name,
-                  size: a.size,
-                  ...(a.url !== undefined ? { url: a.url } : {})
-                }))
-              }
-              : {})
-          }
-        }
-      );
+      const row = await likhaLmsApi.communications.createAnnouncement({
+        course_id: courseId,
+        title: data.title || 'Untitled Announcement',
+        content: data.content || '',
+        author_id: activeUser.id,
+        author_name: activeUser.name,
+        date: new Date().toISOString(),
+        pinned: data.pinned ?? false,
+        section_id: data.sectionId || 'all',
+      });
+      const mapped = mapLikhaAnnouncementRow(row, courseId);
       const merged: Announcement = {
-        ...announcement,
+        ...mapped,
         courseId,
-        sectionId: data.sectionId || (announcement as Announcement).sectionId || 'all',
+        sectionId: data.sectionId || mapped.sectionId || 'all',
         sectionRestriction: data.sectionRestriction || 'All Sections',
         delayedUntil: data.delayedUntil,
         allowComments: data.allowComments ?? true,
         usersMustPostBeforeReplies: data.usersMustPostBeforeReplies ?? false,
         allowLiking: data.allowLiking ?? true,
-        likes: announcement.likes ?? 0,
-        likedBy: (announcement as Announcement).likedBy || [],
-        pinned: data.pinned ?? false,
-        attachments: ((announcement as Announcement).attachments || []).map(a => ({
-          name: a.name,
-          size: a.size,
-          ...(a.url !== undefined && a.url !== null ? { url: a.url } : {})
-        })),
-        replies: [],
-        readBy: [activeUser.id]
+        likes: mapped.likes ?? 0,
+        likedBy: mapped.likedBy || [],
+        pinned: data.pinned ?? mapped.pinned ?? false,
+        attachments: data.attachments || mapped.attachments || [],
+        replies: mapped.replies || [],
+        readBy: mapped.readBy?.length ? mapped.readBy : [activeUser.id]
       };
       setDb(prev => ({
         ...prev,
         announcements: [merged, ...(prev.announcements || [])]
       }));
-
-      // Sync directly to Likha ERP backend
-      try {
-        if (likhaLmsApi?.communications?.createAnnouncement) {
-          void likhaLmsApi.communications.createAnnouncement({
-            id: merged.id,
-            course_id: courseId,
-            title: merged.title,
-            content: merged.content,
-            author_id: activeUser.id,
-            date: merged.date,
-          }).catch(err => console.warn('[likhaLmsApi] createAnnouncement sync:', err));
-        }
-      } catch {}
-
       return merged;
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to create announcement.';
@@ -3931,11 +4013,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteAnnouncement = async (id: string): Promise<void> => {
-    // No-cascade semantics live server-side (filed CourseFile copies stay).
     try {
-      await apiFetch<{ ok: true }>(`/api/announcements/${encodeURIComponent(id)}`, {
-        method: 'DELETE'
-      });
+      await likhaLmsApi.communications.deleteAnnouncement(id);
       setDb(prev => ({
         ...prev,
         announcements: (prev.announcements || []).filter(a => a.id !== id)
@@ -3950,15 +4029,13 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const togglePinAnnouncement = async (id: string): Promise<void> => {
     const current = (db.announcements || []).find(a => a.id === id);
+    const newPinned = !(current?.pinned ?? false);
     try {
-      const { announcement } = await apiFetch<{ announcement: Announcement }>(
-        `/api/announcements/${encodeURIComponent(id)}`,
-        { method: 'PATCH', body: { pinned: !(current?.pinned ?? false) } }
-      );
+      const row = await likhaLmsApi.communications.updateAnnouncement(id, { pinned: newPinned });
       setDb(prev => ({
         ...prev,
         announcements: (prev.announcements || []).map(a =>
-          a.id === id ? { ...a, ...(announcement as Announcement), replies: a.replies } : a
+          a.id === id ? { ...a, pinned: newPinned, ...(row && typeof row === 'object' ? mapLikhaAnnouncementRow(row, a.courseId) : {}) } : a
         )
       }));
     } catch (err) {
@@ -3969,6 +4046,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // likha-gap: announcement liking needs backend support (browser_subagent follow-up)
   const toggleLikeAnnouncement = async (id: string): Promise<void> => {
     try {
       const { likes, liked } = await apiFetch<{ likes: number; liked: boolean }>(
@@ -3994,12 +4072,17 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addAnnouncementReply = async (announcementId: string, content: string, parentId?: string): Promise<void> => {
-    // Server notifies the announcement author inline (no client call needed).
     try {
-      const { reply } = await apiFetch<{ reply: AnnouncementReply }>(
-        `/api/announcements/${encodeURIComponent(announcementId)}/replies`,
-        { method: 'POST', body: parentId ? { content, parentId } : { content } }
-      );
+      const row = await likhaLmsApi.communications.addAnnouncementReply(announcementId, {
+        author_id: activeUser.id,
+        author_name: activeUser.name,
+        author_avatar: activeUser.avatar || '',
+        author_role: activeUser.role,
+        content,
+        created_at: new Date().toISOString(),
+        ...(parentId ? { parent_id: parentId } : {}),
+      });
+      const reply = mapLikhaAnnouncementReplyRow(row, announcementId);
       setDb(prev => ({
         ...prev,
         announcements: (prev.announcements || []).map(a =>
@@ -4008,18 +4091,6 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             : a
         )
       }));
-
-      // Sync directly to Likha ERP backend
-      try {
-        if (likhaLmsApi?.communications?.addAnnouncementReply) {
-          void likhaLmsApi.communications.addAnnouncementReply(announcementId, {
-            author_id: activeUser.id,
-            author_name: activeUser.name,
-            content,
-            date: (reply as any).date || new Date().toISOString(),
-          }).catch(err => console.warn('[likhaLmsApi] addAnnouncementReply sync:', err));
-        }
-      } catch {}
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to post reply.';
       setLastError(message);
@@ -4028,6 +4099,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // likha-gap: announcement read tracking needs backend support (browser_subagent follow-up)
   const markAnnouncementRead = async (id: string): Promise<void> => {
     try {
       await apiFetch<{ ok: true }>(`/api/announcements/${encodeURIComponent(id)}/read`, {
@@ -4077,12 +4149,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Read path: stay silent (no modal) on failure; cache already updated.
     try {
       if (likhaLmsApi?.communications?.markNotificationRead) {
-        void likhaLmsApi.communications.markNotificationRead(id).catch(() => {});
+        await likhaLmsApi.communications.markNotificationRead(id);
       }
-      await apiFetch<{ notification: Notification }>(
-        `/api/notifications/${encodeURIComponent(id)}/read`,
-        { method: 'POST' }
-      );
     } catch (err) {
       setLastError(err instanceof ApiError ? err.message : 'Failed to mark notification read.');
     }
@@ -4105,10 +4173,13 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Read path: stay silent (no modal) on failure; cache already updated.
     // The server marks the caller's own rows (userId is a client-side filter).
     try {
-      await apiFetch<{ updated: number }>('/api/notifications/read-all', {
-        method: 'POST',
-        body: type ? { type } : {}
-      });
+      const targets = Array.from(new Set([
+        ...(db.notifications || []).filter(n => n.recipientId === userId && (!type || n.type === type)).map(n => n.id),
+        ...(notifications || []).filter(n => n.recipientId === userId && (!type || n.type === type)).map(n => n.id),
+      ]));
+      if (targets.length > 0 && likhaLmsApi?.communications?.markAllNotificationsRead) {
+        await likhaLmsApi.communications.markAllNotificationsRead(targets);
+      }
     } catch (err) {
       setLastError(err instanceof ApiError ? err.message : 'Failed to mark notifications read.');
     }
@@ -4155,14 +4226,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           : n
       )
     }));
-    await Promise.allSettled(
-      targets.map(n =>
-        apiFetch<{ notification: Notification }>(
-          `/api/notifications/${encodeURIComponent(n.id)}/read`,
-          { method: 'POST' }
-        )
-      )
-    );
+    if (likhaLmsApi?.communications?.markNotificationRead) {
+      await Promise.allSettled(
+        targets.map(n => likhaLmsApi.communications.markNotificationRead(n.id))
+      );
+    }
   };
 
   const getNotifications = (userId: string, type?: string, limit?: number): Notification[] => {
@@ -4183,49 +4251,35 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const createDiscussion = async (data: Partial<Discussion>): Promise<Discussion> => {
     const courseId = data.courseId || activeCourseId || 'crs-cmsc131';
-    // Server persists title/prompt; client-only flags ride along in cache.
     try {
-      const { discussion } = await apiFetch<{ discussion: Discussion }>(
-        `/api/courses/${encodeURIComponent(courseId)}/discussions`,
-        {
-          method: 'POST',
-          body: {
-            title: data.title || 'Untitled Discussion Topic',
-            prompt: data.prompt || ''
-          }
-        }
-      );
+      const row = await likhaLmsApi.communications.createDiscussion({
+        course_id: courseId,
+        title: data.title || 'Untitled Discussion Topic',
+        content: data.prompt || '',
+        author_id: activeUser.id,
+        author_name: activeUser.name,
+        date: new Date().toISOString(),
+        pinned: data.pinned ?? false,
+        locked: data.locked ?? false,
+      });
+      const mapped = mapLikhaDiscussionRow(row, courseId);
       const merged: Discussion = {
-        ...discussion,
+        ...mapped,
         courseId,
-        isGraded: data.isGraded ?? false,
-        pointsPossible: data.pointsPossible,
-        dueDate: data.dueDate,
-        pinned: (discussion as Discussion).pinned ?? data.pinned ?? false,
-        locked: (discussion as Discussion).locked ?? data.locked ?? false,
-        usersMustPostBeforeReplies: data.usersMustPostBeforeReplies ?? false,
-        groupActivity: data.groupActivity || 'All Students',
-        replies: []
+        prompt: data.prompt || mapped.prompt || '',
+        isGraded: data.isGraded ?? mapped.isGraded ?? false,
+        pointsPossible: data.pointsPossible ?? mapped.pointsPossible,
+        dueDate: data.dueDate ?? mapped.dueDate,
+        pinned: data.pinned ?? mapped.pinned ?? false,
+        locked: data.locked ?? mapped.locked ?? false,
+        usersMustPostBeforeReplies: data.usersMustPostBeforeReplies ?? mapped.usersMustPostBeforeReplies ?? false,
+        groupActivity: data.groupActivity || mapped.groupActivity || 'All Students',
+        replies: mapped.replies || [],
       };
       setDb(prev => ({
         ...prev,
         discussions: [merged, ...(prev.discussions || [])]
       }));
-
-      // Sync directly to Likha ERP backend
-      try {
-        if (likhaLmsApi?.communications?.createDiscussion) {
-          void likhaLmsApi.communications.createDiscussion({
-            id: merged.id,
-            course_id: courseId,
-            title: merged.title,
-            content: data.prompt || '',
-            author_id: activeUser.id,
-            date: new Date().toISOString(),
-          }).catch(err => console.warn('[likhaLmsApi] createDiscussion sync:', err));
-        }
-      } catch {}
-
       return merged;
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to create discussion.';
@@ -4237,9 +4291,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteDiscussion = async (id: string): Promise<void> => {
     try {
-      await apiFetch<{ ok: true }>(`/api/discussions/${encodeURIComponent(id)}`, {
-        method: 'DELETE'
-      });
+      await likhaLmsApi.communications.deleteDiscussion(id);
       setDb(prev => ({
         ...prev,
         discussions: (prev.discussions || []).filter(d => d.id !== id)
@@ -4254,15 +4306,13 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const togglePinDiscussion = async (id: string): Promise<void> => {
     const current = (db.discussions || []).find(d => d.id === id);
+    const newPinned = !(current?.pinned ?? false);
     try {
-      const { discussion } = await apiFetch<{ discussion: Discussion }>(
-        `/api/discussions/${encodeURIComponent(id)}`,
-        { method: 'PATCH', body: { pinned: !(current?.pinned ?? false) } }
-      );
+      const row = await likhaLmsApi.communications.updateDiscussion(id, { pinned: newPinned });
       setDb(prev => ({
         ...prev,
         discussions: (prev.discussions || []).map(d =>
-          d.id === id ? { ...d, ...(discussion as Discussion), replies: d.replies } : d
+          d.id === id ? { ...d, pinned: newPinned, ...(row && typeof row === 'object' ? mapLikhaDiscussionRow(row, d.courseId) : {}) } : d
         )
       }));
     } catch (err) {
@@ -4275,15 +4325,13 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const toggleLockDiscussion = async (id: string): Promise<void> => {
     const current = (db.discussions || []).find(d => d.id === id);
+    const newLocked = !(current?.locked ?? false);
     try {
-      const { discussion } = await apiFetch<{ discussion: Discussion }>(
-        `/api/discussions/${encodeURIComponent(id)}`,
-        { method: 'PATCH', body: { locked: !(current?.locked ?? false) } }
-      );
+      const row = await likhaLmsApi.communications.updateDiscussion(id, { locked: newLocked });
       setDb(prev => ({
         ...prev,
         discussions: (prev.discussions || []).map(d =>
-          d.id === id ? { ...d, ...(discussion as Discussion), replies: d.replies } : d
+          d.id === id ? { ...d, locked: newLocked, ...(row && typeof row === 'object' ? mapLikhaDiscussionRow(row, d.courseId) : {}) } : d
         )
       }));
     } catch (err) {
@@ -4300,19 +4348,17 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     parentId?: string,
     attachment?: { name: string; url?: string }
   ): Promise<void> => {
-    // Server has no reply-attachment field — the attachment rides in cache only.
-    // Server notifies the discussion author inline (no client call needed).
     try {
-      const { reply } = await apiFetch<{ reply: DiscussionReply }>(
-        `/api/discussions/${encodeURIComponent(discussionId)}/replies`,
-        {
-          method: 'POST',
-          body: {
-            content,
-            ...(parentId !== undefined ? { parentId } : {})
-          }
-        }
-      );
+      const row = await likhaLmsApi.communications.addDiscussionReply(discussionId, {
+        author_id: activeUser.id,
+        author_name: activeUser.name,
+        author_avatar: activeUser.avatar || '',
+        author_role: activeUser.role,
+        content,
+        created_at: new Date().toISOString(),
+        ...(parentId ? { parent_id: parentId } : {}),
+      });
+      const reply = mapLikhaDiscussionReplyRow(row, discussionId);
       const merged: DiscussionReply = attachment
         ? { ...reply, attachments: [attachment] }
         : reply;
@@ -4324,18 +4370,6 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             : d
         )
       }));
-
-      // Sync directly to Likha ERP backend
-      try {
-        if (likhaLmsApi?.communications?.addDiscussionReply) {
-          void likhaLmsApi.communications.addDiscussionReply(discussionId, {
-            author_id: activeUser.id,
-            author_name: activeUser.name,
-            content,
-            date: new Date().toISOString(),
-          }).catch(err => console.warn('[likhaLmsApi] addDiscussionReply sync:', err));
-        }
-      } catch {}
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to post reply.';
       setLastError(message);
@@ -4344,6 +4378,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // likha-gap: discussion-reply liking needs backend support (browser_subagent follow-up)
   const toggleLikeDiscussionReply = async (discussionId: string, replyId: string): Promise<void> => {
     try {
       const { likes, liked } = await apiFetch<{ likes: number; liked: boolean }>(
