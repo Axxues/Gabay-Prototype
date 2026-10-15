@@ -3,16 +3,6 @@ import { describe, expect, test, vi, beforeEach } from 'vitest';
 import { act, render, waitFor } from '@testing-library/react';
 import React from 'react';
 
-const baseUser = {
-  id: 'u1',
-  name: 'Test User',
-  email: 'test@example.com',
-  role: 'faculty',
-  avatar: 'OLD_AVATAR',
-  department: 'CS',
-  title: 'Instructor',
-} as any;
-
 const seededCourse = {
   id: 'c1',
   code: 'C1',
@@ -25,20 +15,33 @@ const seededCourse = {
   enrolledCount: 0,
 };
 
+// Login is Likha-only (Task 2): only the grades-release feature path still
+// reads Express here. Any other Express call throws loudly.
 const apiFetchMock = vi.fn(async (path: string, _options?: any) => {
-  if (path === '/api/auth/login') return { token: 't', user: { ...baseUser } };
-  if (path === '/api/courses') return { courses: [{ ...seededCourse }] };
   if (path === '/api/courses/c1/grades-release')
     return { course: { id: 'c1', gradesReleased: JSON.stringify({ midterm: true }) } };
-  if (path === '/api/notifications?limit=200') return { notifications: [] };
-  if (path === '/api/messages') return { messages: [] };
-  if (path === '/api/calendar') return { events: [] };
-  if (path === '/api/users') return { users: [{ ...baseUser }] };
-  if (path === '/api/groups') return { groups: [] };
-  if (path === '/api/advising') return { slots: [] };
-  if (path === '/api/requests/mine') return { requests: [] };
   throw new Error(`unmocked: ${path}`);
 });
+
+const loginLikhaMock = vi.fn(async () => ({
+  token: 't-likha',
+  user: {
+    id: 'u1',
+    first_name: 'Test',
+    last_name: 'User',
+    email: 'test@example.com',
+    role: { name: 'Faculty' },
+  },
+}));
+const getCoursesMock = vi.fn(async () => [{ ...seededCourse }]);
+const getNotifsMock = vi.fn(async () => []);
+const getUsersMock = vi.fn(async () => []);
+const getMessagesMock = vi.fn(async () => []);
+const getCalendarMock = vi.fn(async () => []);
+const getGroupsMock = vi.fn(async () => []);
+const getSlotsMock = vi.fn(async () => []);
+const getSectionsMock = vi.fn(async () => []);
+const getRequestsMock = vi.fn(async () => []);
 
 vi.mock('../api/client', () => ({
   ApiError: class ApiError extends Error {
@@ -49,6 +52,27 @@ vi.mock('../api/client', () => ({
   setToken: vi.fn(),
   clearToken: vi.fn(),
   apiFetch: (...args: any[]) => (apiFetchMock as any)(...args),
+  likhaLmsApi: {
+    loginLikhaUser: (...args: any[]) => (loginLikhaMock as any)(...args),
+    getCoursesWithRelations: (...args: any[]) => (getCoursesMock as any)(...args),
+    getNotifications: (...args: any[]) => (getNotifsMock as any)(...args),
+    users: {
+      getUsers: (...args: any[]) => (getUsersMock as any)(...args),
+    },
+    communications: {
+      getMessages: (...args: any[]) => (getMessagesMock as any)(...args),
+      getCalendarEvents: (...args: any[]) => (getCalendarMock as any)(...args),
+      getChatGroups: (...args: any[]) => (getGroupsMock as any)(...args),
+      getAdvisingSlots: (...args: any[]) => (getSlotsMock as any)(...args),
+    },
+    requests: {
+      getRequests: (...args: any[]) => (getRequestsMock as any)(...args),
+    },
+    sections: {
+      getSections: (...args: any[]) => (getSectionsMock as any)(...args),
+    },
+  },
+  LIKHA_URL: 'https://gabay.zyberlab.com',
 }));
 
 import { LMSProvider, useLMS } from './LMSContext';
@@ -86,6 +110,8 @@ describe('setGradesReleased releases midterm grades', () => {
     await act(async () => {
       await doLogin!();
     });
+    expect(loginLikhaMock).toHaveBeenCalledWith('test@example.com', 'pw');
+    expect(apiFetchMock).not.toHaveBeenCalledWith('/api/auth/login', expect.anything());
 
     await act(async () => {
       await doRelease!();

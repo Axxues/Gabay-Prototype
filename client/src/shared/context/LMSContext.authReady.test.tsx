@@ -6,26 +6,37 @@ import { describe, expect, test, vi, beforeEach } from 'vitest';
 import { act, render, waitFor } from '@testing-library/react';
 import React from 'react';
 
-const sessionUser = {
+// Directus-shaped session user: role comes back as an expanded object,
+// exactly like the live Likha ERP stores it.
+const likhaSessionUser = {
   id: 'u9',
-  name: 'Session User',
+  first_name: 'Session',
+  last_name: 'User',
   email: 'session@example.com',
-  role: 'faculty',
-  avatar: 'a',
-  department: 'CS',
-  title: 'Instructor',
-} as any;
+  role: { name: 'Faculty' },
+};
 
 let tokenInStore: string | null = null;
 
 const fetchedPaths: string[] = [];
 
+// Auth is Likha-only: any Express call recorded here is a regression.
 const apiFetchMock = vi.fn(async (path: string, _options?: any) => {
   fetchedPaths.push(path);
-  if (path === '/api/auth/me') return { user: { ...sessionUser } };
   throw new Error(`unmocked: ${path}`);
 });
 
+const loginLikhaMock = vi.fn(async () => ({
+  token: 't',
+  user: {
+    id: 'u1',
+    first_name: 'F',
+    last_name: 'L',
+    email: 'f@x',
+    role: { name: 'Instructor' },
+  },
+}));
+const getMeMock = vi.fn(async () => ({ ...likhaSessionUser }));
 const getCoursesMock = vi.fn(async () => []);
 const getNotifsMock = vi.fn(async () => []);
 const getUsersMock = vi.fn(async () => []);
@@ -47,9 +58,13 @@ vi.mock('../api/client', () => ({
     tokenInStore = null;
   }),
   apiFetch: (...args: any[]) => (apiFetchMock as any)(...args),
-  // No `auth` namespace: session restore still falls back to /api/auth/me
-  // (Task 2 owns restore); bootstrap reads below come from Likha.
+  // Likha-only auth (Task 2): session restore reads auth.getMe, login reads
+  // loginLikhaUser; bootstrap reads below come from Likha.
   likhaLmsApi: {
+    loginLikhaUser: (...args: any[]) => (loginLikhaMock as any)(...args),
+    auth: {
+      getMe: (...args: any[]) => (getMeMock as any)(...args),
+    },
     getCoursesWithRelations: (...args: any[]) => (getCoursesMock as any)(...args),
     getNotifications: (...args: any[]) => (getNotifsMock as any)(...args),
     users: {
@@ -75,16 +90,21 @@ import { LMSProvider, useLMS } from './LMSContext';
 
 let seenAuthReady: unknown[] = [];
 let seenUserId: unknown = undefined;
+let doLogin: (() => Promise<any>) | null = null;
+let loginResult: unknown = undefined;
 
 const Probe: React.FC = () => {
-  const { authReady, currentUser } = useLMS();
+  const { authReady, currentUser, login } = useLMS();
   seenAuthReady.push(authReady);
   seenUserId = (currentUser as any)?.id;
+  doLogin = () => login('f@x', 'pw');
   return null;
 };
 
-// Bootstrap Express paths removed by the Likha-direct migration.
+// Express auth + bootstrap paths removed by the Likha-direct migration.
 const removedBootstrapPaths = new Set([
+  '/api/auth/login',
+  '/api/auth/me',
   '/api/courses',
   '/api/users',
   '/api/notifications?limit=200',
@@ -104,6 +124,8 @@ describe('authReady session-restore gate', () => {
     fetchedPaths.length = 0;
     seenAuthReady = [];
     seenUserId = undefined;
+    doLogin = null;
+    loginResult = undefined;
     try {
       localStorage.clear();
     } catch {}
@@ -119,9 +141,10 @@ describe('authReady session-restore gate', () => {
       expect(seenAuthReady[seenAuthReady.length - 1]).toBe(true);
     });
     expect(apiFetchMock).not.toHaveBeenCalled();
+    expect(getMeMock).not.toHaveBeenCalled();
   });
 
-  test('resolves true after the token -> /api/auth/me restore settles', async () => {
+  test('resolves true after the token -> Likha getMe restore settles', async () => {
     tokenInStore = 'stored-token';
     render(
       <LMSProvider>
@@ -131,7 +154,8 @@ describe('authReady session-restore gate', () => {
     await waitFor(() => {
       expect(seenAuthReady[seenAuthReady.length - 1]).toBe(true);
     });
-    expect(apiFetchMock).toHaveBeenCalledWith('/api/auth/me');
+    expect(getMeMock).toHaveBeenCalled();
+    expect(apiFetchMock).not.toHaveBeenCalledWith('/api/auth/me');
     expect(seenUserId).toBe('u9');
   });
 
@@ -145,8 +169,8 @@ describe('authReady session-restore gate', () => {
     await waitFor(() => {
       expect(seenAuthReady[seenAuthReady.length - 1]).toBe(true);
     });
-    // Restore itself still uses /api/auth/me (Task 2 scope); everything
-    // else on the bootstrap path must come from Likha.
+    // Restore itself now reads Likha getMe (Task 2); everything else on the
+    // bootstrap path must come from Likha too.
     await waitFor(() => {
       expect(getCoursesMock).toHaveBeenCalled();
     });
@@ -155,7 +179,7 @@ describe('authReady session-restore gate', () => {
 
   test('resolves true even when restore fails with a 401', async () => {
     tokenInStore = 'stale-token';
-    apiFetchMock.mockRejectedValueOnce(
+    getMeMock.mockRejectedValueOnce(
       Object.assign(new Error('Invalid or expired token.'), { status: 401 })
     );
     render(
@@ -166,5 +190,49 @@ describe('authReady session-restore gate', () => {
     await waitFor(() => {
       expect(seenAuthReady[seenAuthReady.length - 1]).toBe(true);
     });
+    expect(apiFetchMock).not.toHaveBeenCalledWith('/api/auth/me');
+  });
+
+  test('login performs zero Express calls', async () => {
+    render(
+      <LMSProvider>
+        <Probe />
+      </LMSProvider>
+    );
+    await act(async () => {
+      loginResult = await doLogin!();
+    });
+    await waitFor(() => {
+      expect(loginResult).toEqual({ success: true });
+    });
+    expect(apiFetchMock).not.toHaveBeenCalled();
+  });
+
+  test('login failure performs zero Express calls', async () => {
+    loginLikhaMock.mockRejectedValueOnce(new Error('Likha ERP offline'));
+    render(
+      <LMSProvider>
+        <Probe />
+      </LMSProvider>
+    );
+    await act(async () => {
+      loginResult = await doLogin!();
+    });
+    expect(loginResult).toEqual({ success: false, message: 'Login failed.' });
+    expect(apiFetchMock).not.toHaveBeenCalled();
+  });
+
+  test('restore failure performs zero Express calls', async () => {
+    tokenInStore = 'stored-token';
+    getMeMock.mockRejectedValueOnce(new Error('Likha ERP offline'));
+    render(
+      <LMSProvider>
+        <Probe />
+      </LMSProvider>
+    );
+    await waitFor(() => {
+      expect(seenAuthReady[seenAuthReady.length - 1]).toBe(true);
+    });
+    expect(apiFetchMock).not.toHaveBeenCalledWith('/api/auth/me');
   });
 });

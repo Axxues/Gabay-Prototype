@@ -80,7 +80,11 @@ let routes: Route[] = [];
 let fetchCalls: Array<{ url: string; init: any }> = [];
 
 const defaultRoutes = (): Route[] => [
-  { match: u => u === '/api/auth/login', handle: () => okRes({ token: 't', user: { ...baseUser } }) },
+  // Likha-only auth (Task 2): login reads the real Likha /auth/login +
+  // /users/me over stubbed fetch. Express /api/auth/login stays unmocked
+  // so any fallback regression throws loudly.
+  { match: (u, init) => u.endsWith('/auth/login') && init?.method === 'POST', handle: () => okRes({ data: { access_token: 't-likha-syllabus' } }) },
+  { match: u => u.includes('/users/me'), handle: () => okRes({ data: { id: 'u1', first_name: 'Test', last_name: 'User', email: 'test@example.com', role: { name: 'Faculty' } } }) },
   { match: u => u === '/api/courses', handle: () => okRes({ courses: [{ ...seededCourse }] }) },
   { match: u => u === '/api/notifications?limit=200', handle: () => okRes({ notifications: [] }) },
   { match: u => u === '/api/messages', handle: () => okRes({ messages: [] }) },

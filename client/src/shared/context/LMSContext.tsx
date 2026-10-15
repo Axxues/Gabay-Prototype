@@ -1421,23 +1421,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
         }
 
-        // 2. Fall back to apiFetch('/api/auth/me') for mock tests or legacy express
-        if (!user) {
-          try {
-            const res = await apiFetch<{ user: User }>('/api/auth/me');
-            user = res.user;
-          } catch (apiErr: any) {
-            if (
-              (apiErr instanceof ApiError && apiErr.status === 401) ||
-              apiErr?.status === 401 ||
-              String(apiErr?.message).includes('401')
-            ) {
-              clearToken();
-              return;
-            }
-          }
-        }
-
+        // Likha-only restore: no Express /api/auth/me fallback. If Likha
+        // yields no user, the stored token is unusable.
         if (!user) {
           clearToken();
           return;
@@ -1477,7 +1462,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const activeRole: UserRole = currentUser?.role || 'student';
 
   const login = async (emailOrId: string, password: string): Promise<{ success: boolean; message?: string }> => {
-    // Attempt direct Likha ERP authentication when an email address is provided
+    // Likha-only auth: no Express /api/auth/login fallback.
     if (emailOrId.includes('@')) {
       try {
         const likhaAuth = await likhaLmsApi.loginLikhaUser(emailOrId, password);
@@ -1509,24 +1494,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (msg.includes('401') || msg.includes('authentication failed')) {
           return { success: false, message: 'Invalid email or password.' };
         }
-        // Fall back to standard Express auth router if Likha ERP offline
       }
     }
 
-    try {
-      const { token, user } = await apiFetch<{ token: string; user: User }>('/api/auth/login', {
-        method: 'POST',
-        body: { email: emailOrId, password },
-      });
-      setToken(token);
-      setCurrentUser(user);
-      const essential = await refreshEssential(user);
-      void refreshDeferred(essential.fresh, essential.courses, essential.run);
-      return { success: true };
-    } catch (err) {
-      if (err instanceof ApiError) return { success: false, message: err.message };
-      return { success: false, message: 'Login failed.' };
-    }
+    return { success: false, message: 'Login failed.' };
   };
 
   const logout = () => {
