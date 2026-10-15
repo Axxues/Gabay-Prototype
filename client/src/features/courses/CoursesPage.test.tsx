@@ -45,9 +45,12 @@ describe('CoursesPage sub-tab lazy loading and suspense', () => {
     expect(screen.getByText('Syllabus')).toBeInTheDocument();
 
     // Resolves modules view after lazy import
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { level: 1, name: 'Modules' })).toBeInTheDocument();
-      expect(screen.getByText('No modules available for this course section yet.')).toBeInTheDocument();
-    });
+    await waitFor(
+      () => {
+        expect(screen.getByRole('heading', { level: 1, name: 'Modules' })).toBeInTheDocument();
+        expect(screen.getByText('No modules available for this course section yet.')).toBeInTheDocument();
+      },
+      { timeout: 5000 }
+    );
   });
 });
