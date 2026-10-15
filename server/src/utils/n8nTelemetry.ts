@@ -103,6 +103,11 @@ export function extractExecutionTelemetry(opts: {
       rows = opts.rows;
     } else {
       db = new DatabaseSync(dbPath, { readOnly: true });
+      try {
+        db.exec('PRAGMA busy_timeout = 5000; PRAGMA synchronous = NORMAL;');
+      } catch {
+        // Ignore pragma failures if read-only or restricted
+      }
       rows = db
         .prepare(
           `SELECT e.id, e.status, e.startedAt, e.stoppedAt, d.data

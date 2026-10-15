@@ -1,5 +1,6 @@
 import './env.js';
 import express from 'express';
+import { nativeCompression } from './middleware/compression.js';
 import { errorMiddleware } from './utils/errors.js';
 import { ragRouter } from './routes/rag.js';
 import { ragBaselineRouter } from './routes/ragBaseline.js';
@@ -7,6 +8,7 @@ import { ragAggregateRouter } from './routes/ragAggregate.js';
 import { ragExportRouter } from './routes/ragExport.js';
 
 const app = express();
+app.use(nativeCompression());
 app.use(express.json({ limit: '35mb' }));
 
 // ============================================================================
