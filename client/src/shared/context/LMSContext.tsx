@@ -50,6 +50,7 @@ import { apiFetch, ApiError, getToken, setToken, clearToken, likhaLmsApi, LIKHA_
 import { syllabusApi, deleteDraft, withdrawSyllabus } from '../api/syllabus';
 import type { SyllabusRevisionHeader, SyllabusRevisionResponse, SyllabusSectionKey } from '../types/syllabusApi';
 import { settledValue } from '../utils/promise';
+import { formatFileSize, toShortFileType } from '../utils/fileUploader';
 
 interface LMSContextType {
   theme: 'dark' | 'light';
@@ -888,6 +889,45 @@ export const resolveDirectusAssetUrl = (fileOrId: any, options?: AssetTransformO
     }
   }
   return undefined;
+};
+
+/** Task 9: Directus course_folders rows (snake_case) arrive from
+ *  read/write calls — map them to client CourseFolder shapes. */
+const mapLikhaCourseFolderRow = (f: any, fallbackCourseId?: string): CourseFolder => ({
+  id: String(f.id),
+  courseId: String(f.course_id ?? f.courseId ?? fallbackCourseId ?? ''),
+  parentId: f.parent_id !== undefined ? (f.parent_id ? String(f.parent_id) : null) : (f.parentId ?? null),
+  name: f.name || 'Folder',
+  updatedAt: f.date_updated ?? f.updated_at ?? f.updatedAt ?? f.created_at ?? new Date().toISOString(),
+  autoKey: f.autoKey ?? f.auto_key ?? undefined,
+});
+
+/** Task 9: Directus course_files rows (snake_case) arrive from
+ *  read/write calls — map them to client CourseFile shapes. */
+const mapLikhaCourseFileRow = (f: any, fallbackCourseId?: string): CourseFile => {
+  const fileObj = f.file;
+  const resolvedName = (typeof fileObj === 'object' && fileObj?.filename_download) || f.name || 'Untitled File';
+  const resolvedUrl = (typeof fileObj === 'object' ? resolveDirectusAssetUrl(fileObj) : undefined) || f.url || (f.file ? `${LIKHA_URL}/assets/${f.file}` : '');
+  const resolvedSize = (typeof fileObj === 'object' && typeof fileObj?.filesize === 'number') ? fileObj.filesize : (f.size ?? 0);
+  const resolvedType = f.type || toShortFileType(resolvedName);
+  return {
+    id: String(f.id),
+    courseId: String(f.course_id ?? f.courseId ?? fallbackCourseId ?? ''),
+    folderId: f.folder_id !== undefined ? (f.folder_id ? String(f.folder_id) : null) : (f.folderId ?? null),
+    name: resolvedName,
+    size: resolvedSize,
+    formattedSize: f.formatted_size ?? f.formattedSize ?? formatFileSize(resolvedSize),
+    type: resolvedType as CourseFile['type'],
+    visibility: (f.visibility as CourseFile['visibility']) || 'published',
+    updatedAt: f.date_updated ?? f.updated_at ?? f.updatedAt ?? f.created_at ?? new Date().toISOString(),
+    uploadedBy: String(f.user_created ?? f.uploaded_by ?? f.uploadedBy ?? ''),
+    uploadedByName: f.uploaded_by_name ?? f.uploadedByName ?? 'User',
+    content: f.content ?? undefined,
+    url: resolvedUrl,
+    fileUrl: f.file_url ?? f.fileUrl ?? resolvedUrl,
+    sourceArea: f.source_area ?? f.sourceArea ?? undefined,
+    sourceId: f.source_id ? String(f.source_id) : (f.sourceId ? String(f.sourceId) : undefined),
+  };
 };
 
 export const resolveDirectusUserName = (userOrId: any, fallbackName = ''): string => {
@@ -1877,7 +1917,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       fresh.courseGrades = allGrades;
       fresh.sprConfigs = allSPRConfigs;
       fresh.sprScores = allSPRScores;
-      // Task 5 files bootstrap: folders + direct CourseFile rows for each of
+      // Task 9 files bootstrap: folders + direct CourseFile rows for each of
       // the user's courses (virtual aggregation in useCourseFiles reads these
       // rows plus module/announcement/activity sources). Per-course
       // failures are tolerated (403-tolerant); sync getters read the cache.
@@ -1885,27 +1925,21 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         coursesRes.courses.map(course =>
           (async () => {
             const [foldersSettled, filesSettled] = await Promise.allSettled([
-              apiFetch<{ folders: CourseFolder[] }>(`/api/courses/${encodeURIComponent(course.id)}/folders`),
-              apiFetch<{ files: CourseFile[] }>(`/api/courses/${encodeURIComponent(course.id)}/files`),
+              likhaLmsApi.files?.getCourseFolders ? likhaLmsApi.files.getCourseFolders(course.id) : Promise.resolve([]),
+              likhaLmsApi.files?.getCourseFiles ? likhaLmsApi.files.getCourseFiles(course.id) : Promise.resolve([]),
             ]);
-            return { foldersSettled, filesSettled };
+            return { courseId: course.id, foldersSettled, filesSettled };
           })()
         )
       );
       const allFolders: CourseFolder[] = [];
       const allFiles: CourseFile[] = [];
       for (const r of fileResults) {
-        if (r.foldersSettled.status === 'fulfilled') allFolders.push(...r.foldersSettled.value.folders);
-        if (r.filesSettled.status === 'fulfilled') {
-          for (const f of r.filesSettled.value.files) {
-            const fileObj = (f as any).file;
-            allFiles.push({
-              ...f,
-              name: (typeof fileObj === 'object' && fileObj?.filename_download) || f.name,
-              url: resolveDirectusAssetUrl(fileObj) || f.url,
-              size: (typeof fileObj === 'object' && typeof fileObj?.filesize === 'number') ? fileObj.filesize : f.size,
-            });
-          }
+        if (r.foldersSettled.status === 'fulfilled' && Array.isArray(r.foldersSettled.value)) {
+          allFolders.push(...r.foldersSettled.value.map((f: any) => mapLikhaCourseFolderRow(f, r.courseId)));
+        }
+        if (r.filesSettled.status === 'fulfilled' && Array.isArray(r.filesSettled.value)) {
+          allFiles.push(...r.filesSettled.value.map((f: any) => mapLikhaCourseFileRow(f, r.courseId)));
         }
       }
       fresh.courseFolders = allFolders;
@@ -4415,16 +4449,13 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const createCourseFolder = async (courseId: string, name: string, parentId?: string | null, autoKey?: string): Promise<CourseFolder> => {
     try {
-      const { folder } = await apiFetch<{ folder: CourseFolder }>(
-        `/api/courses/${encodeURIComponent(courseId)}/folders`,
-        {
-          method: 'POST',
-          body: {
-            name,
-            ...(parentId ? { parentId } : {}),
-          },
-        }
-      );
+      const payload: Record<string, any> = {
+        course_id: courseId,
+        name,
+      };
+      if (parentId) payload.parent_id = parentId;
+      const res = await likhaLmsApi.files.createCourseFolder(payload);
+      const folder = mapLikhaCourseFolderRow(res, courseId);
       // Server stores name/parent only — autoKey stays a client cache overlay.
       const merged: CourseFolder = autoKey ? { ...folder, autoKey } : folder;
       setDb(prev => ({
@@ -4444,33 +4475,31 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     fileData: Partial<CourseFile> & { rawFile?: File | Blob; area?: string; moduleId?: string; moduleTitle?: string; silent?: boolean }
   ): Promise<CourseFile> => {
     const courseId = fileData.courseId || activeCourseId || 'crs-cmsc131';
-    // Metadata-only calls (no raw bytes) go to the JSON files endpoint —
-    // no Blob placeholders anywhere. Real bytes ride the multipart upload.
+    // Metadata-only calls (no raw bytes)
     if (!fileData.rawFile) {
       try {
-        const body: Record<string, unknown> = { name: fileData.name };
-        if (fileData.url !== undefined) body.url = fileData.url;
-        if (fileData.fileUrl !== undefined) body.fileUrl = fileData.fileUrl;
-        if (fileData.size !== undefined) body.size = fileData.size;
-        if (fileData.formattedSize !== undefined) body.formattedSize = fileData.formattedSize;
-        if (fileData.type !== undefined) body.type = fileData.type;
-        if (fileData.visibility !== undefined) body.visibility = fileData.visibility;
-        if (fileData.folderId !== undefined) body.folderId = fileData.folderId;
-        if (fileData.area !== undefined) body.sourceArea = fileData.area;
-        if (fileData.moduleId !== undefined) body.sourceId = fileData.moduleId;
-        if (fileData.content !== undefined) body.content = fileData.content;
-        const { file } = await apiFetch<{ file: CourseFile }>(
-          `/api/courses/${encodeURIComponent(courseId)}/files`,
-          { method: 'POST', body }
-        );
+        const payload: Record<string, any> = {
+          course_id: courseId,
+          name: fileData.name,
+        };
+        if (fileData.url !== undefined) payload.url = fileData.url;
+        if (fileData.fileUrl !== undefined) payload.file_url = fileData.fileUrl;
+        if (fileData.size !== undefined) payload.size = fileData.size;
+        if (fileData.formattedSize !== undefined) payload.formatted_size = fileData.formattedSize;
+        if (fileData.type !== undefined) payload.type = fileData.type;
+        if (fileData.visibility !== undefined) payload.visibility = fileData.visibility;
+        if (fileData.folderId !== undefined) payload.folder_id = fileData.folderId;
+        if (fileData.area !== undefined) payload.source_area = fileData.area;
+        if (fileData.moduleId !== undefined) payload.source_id = fileData.moduleId;
+        if (fileData.content !== undefined) payload.content = fileData.content;
+        const res = await likhaLmsApi.files.createCourseFile(payload);
+        const file = mapLikhaCourseFileRow(res, courseId);
         setDb(prev => ({
           ...prev,
           courseFiles: [...(prev.courseFiles || []), file]
         }));
         return file;
       } catch (err) {
-        // silent first attempts (backend-first upload with local fallback)
-        // must not alarm before the fallback runs.
         if (!fileData.silent) {
           const message = err instanceof ApiError ? err.message : 'Failed to upload file.';
           setLastError(message);
@@ -4479,35 +4508,32 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         throw err;
       }
     }
-    // The files endpoint is multipart (multer single `file`) — apiFetch is
-    // JSON-only, so this posts FormData directly with the auth token.
-    const form = new FormData();
-    form.append('file', fileData.rawFile, fileData.name || 'uploaded_asset.pdf');
-    if (fileData.folderId) form.append('folderId', fileData.folderId);
-    if (fileData.area) {
-      form.append('area', fileData.area);
-      if (fileData.moduleId) form.append('moduleId', fileData.moduleId);
-      if (fileData.moduleTitle) form.append('moduleTitle', fileData.moduleTitle);
-    }
-    form.append('visibility', fileData.visibility || 'published');
+    // Real file upload: upload asset to Likha storage first, then create CourseFile row
     try {
-      const headers: Record<string, string> = {};
-      const token = getToken();
-      if (token) headers.Authorization = `Bearer ${token}`;
-      const res = await fetch(`/api/courses/${encodeURIComponent(courseId)}/files/upload`, {
-        method: 'POST',
-        headers,
-        body: form,
-      });
-      const data = (await res.json().catch(() => null)) as { file?: CourseFile; error?: { code?: string; message?: string } } | null;
-      if (!res.ok || !data?.file) {
-        throw new ApiError(res.status, data?.error?.code || 'request_failed', data?.error?.message || `Upload failed (${res.status}).`);
+      const rawFileToUpload = fileData.rawFile instanceof File
+        ? fileData.rawFile
+        : new File([fileData.rawFile], fileData.name || 'uploaded_asset.bin');
+      const asset = await likhaLmsApi.files.uploadFile(rawFileToUpload);
+      const payload: Record<string, any> = {
+        course_id: courseId,
+        name: fileData.name || asset.filename_download || rawFileToUpload.name,
+        file: asset.id,
+        url: asset.url,
+        visibility: fileData.visibility || 'published',
+      };
+      if (fileData.folderId) payload.folder_id = fileData.folderId;
+      if (fileData.area) {
+        payload.source_area = fileData.area;
+        if (fileData.moduleId) payload.source_id = fileData.moduleId;
       }
+      if (fileData.size !== undefined) payload.size = fileData.size;
+      const res = await likhaLmsApi.files.createCourseFile(payload);
+      const file = mapLikhaCourseFileRow(res, courseId);
       setDb(prev => ({
         ...prev,
-        courseFiles: [...(prev.courseFiles || []), data.file as CourseFile]
+        courseFiles: [...(prev.courseFiles || []), file]
       }));
-      return data.file as CourseFile;
+      return file;
     } catch (err) {
       if (!fileData.silent) {
         const message = err instanceof ApiError ? err.message : 'Failed to upload file.';
@@ -4525,9 +4551,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const isVirtual = /^(mod-file-|ann-file-|act-file-|sub-file-|quiz-file-|quiz-q-file-)/.test(fileId);
     if (!isVirtual) {
       try {
-        await apiFetch<{ ok: true }>(`/api/files/${encodeURIComponent(fileId)}`, {
-          method: 'DELETE'
-        });
+        await likhaLmsApi.files.deleteCourseFile(fileId);
       } catch (err) {
         const message = err instanceof ApiError ? err.message : 'Failed to delete file.';
         setLastError(message);
@@ -4668,9 +4692,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteCourseFolder = async (folderId: string): Promise<void> => {
     try {
-      await apiFetch<{ ok: true }>(`/api/folders/${encodeURIComponent(folderId)}`, {
-        method: 'DELETE'
-      });
+      await likhaLmsApi.files.deleteCourseFolder(folderId);
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to delete folder.';
       setLastError(message);
@@ -4686,14 +4708,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateFileVisibility = async (fileId: string, visibility: 'published' | 'unpublished' | 'restricted'): Promise<void> => {
     try {
-      const { file } = await apiFetch<{ file: CourseFile }>(
-        `/api/files/${encodeURIComponent(fileId)}`,
-        { method: 'PATCH', body: { visibility } }
-      );
+      const res = await likhaLmsApi.files.updateCourseFile(fileId, { visibility });
+      const updated = mapLikhaCourseFileRow(res);
       setDb(prev => ({
         ...prev,
         courseFiles: (prev.courseFiles || []).map(f =>
-          f.id === fileId ? { ...f, ...(file as CourseFile) } : f
+          f.id === fileId ? { ...f, ...updated, visibility } : f
         )
       }));
     } catch (err) {
@@ -4711,14 +4731,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const isVirtual = /^(mod-file-|ann-file-|act-file-|sub-file-|quiz-file-|quiz-q-file-)/.test(fileId);
     if (!isVirtual) {
       try {
-        const { file } = await apiFetch<{ file: CourseFile }>(
-          `/api/files/${encodeURIComponent(fileId)}`,
-          { method: 'PATCH', body: { name: newName } }
-        );
+        const res = await likhaLmsApi.files.updateCourseFile(fileId, { name: newName });
+        const updated = mapLikhaCourseFileRow(res);
         setDb(prev => ({
           ...prev,
           courseFiles: (prev.courseFiles || []).map(f =>
-            f.id === fileId ? { ...f, ...(file as CourseFile) } : f
+            f.id === fileId ? { ...f, ...updated, name: newName } : f
           )
         }));
         return;

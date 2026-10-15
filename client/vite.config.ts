@@ -37,13 +37,11 @@ function fileUploadPlugin(): Plugin {
               fileBuffer = body;
             }
 
-            // Write into server/uploads: that is the directory the backend
-            // serves at /uploads (see server/src/index.ts), and Vite proxies
-            // /uploads to the backend — so files written to client/public
-            // would 404. Supports vite being run from client/ or repo root.
+            // Write into client/public/uploads: Vite dev server serves public files
+            // directly at /uploads/filename without requiring an Express static mount.
             const candidates = [
-              path.resolve(process.cwd(), '../server/uploads'),
-              path.resolve(process.cwd(), 'server/uploads'),
+              path.resolve(process.cwd(), 'public/uploads'),
+              path.resolve(process.cwd(), 'client/public/uploads'),
             ];
             const uploadsDir =
               candidates.find(dir => fs.existsSync(dir)) ?? candidates[0];
@@ -105,7 +103,6 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': 'http://localhost:4001',
-      '/uploads': 'http://localhost:4001',
       '/likha': {
         target: 'https://gabay.zyberlab.com',
         changeOrigin: true,

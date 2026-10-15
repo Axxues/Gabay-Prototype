@@ -77,7 +77,7 @@ export const uploadFileToPublic = async (file: File): Promise<UploadResult> => {
 
   // 1. Direct-to-Likha ERP native asset upload
   try {
-    const likhaRes = await likhaLmsApi.uploadFile(file);
+    const likhaRes = await likhaLmsApi.files.uploadFile(file);
     if (likhaRes?.url) {
       return {
         name: likhaRes.filename_download || file.name,

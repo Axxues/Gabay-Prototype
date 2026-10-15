@@ -792,6 +792,43 @@ export const likhaLmsApi = {
         body: JSON.stringify(data),
       });
     },
+
+    async updateCourseFile(id: string, patch: any): Promise<any> {
+      return likhaRequest(`/items/course_files/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      });
+    },
+
+    async deleteCourseFile(id: string): Promise<void> {
+      await likhaRequest(`/items/course_files/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+    },
+
+    async getCourseFolders(courseId: string): Promise<any[]> {
+      return likhaRequest(`/items/course_folders?filter[course_id][_eq]=${encodeURIComponent(courseId)}&sort=name`);
+    },
+
+    async createCourseFolder(data: any): Promise<any> {
+      return likhaRequest('/items/course_folders', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+    },
+
+    async updateCourseFolder(id: string, patch: any): Promise<any> {
+      return likhaRequest(`/items/course_folders/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      });
+    },
+
+    async deleteCourseFolder(id: string): Promise<void> {
+      await likhaRequest(`/items/course_folders/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+    },
   },
 
   // =========================================================================
