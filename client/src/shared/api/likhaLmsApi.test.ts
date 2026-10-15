@@ -152,5 +152,22 @@ describe('Likha LMS Direct API Client', () => {
     expect(comment.id).toBe('sc-1');
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
+
+  it('fetches the user directory with expanded role relations', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: [{ id: 'u-fac', email: 'faculty1@dmmmsu.edu.ph', role: { name: 'Instructor' } }],
+      }),
+    } as any);
+
+    const users = await likhaLmsApi.users.getUsers();
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining('role.*'),
+      expect.any(Object)
+    );
+    expect(users[0].role).toEqual({ name: 'Instructor' });
+  });
 });
 

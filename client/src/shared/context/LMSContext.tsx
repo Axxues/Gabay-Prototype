@@ -916,11 +916,14 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               id: u.id,
               name: `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email,
               email: u.email,
-              role: (u.role?.name || u.role || 'student').toLowerCase().includes('faculty')
+              role: (u.role?.name || u.role || 'student').toLowerCase().includes('faculty') ||
+                (u.role?.name || u.role || 'student').toLowerCase().includes('instructor')
                 ? 'faculty'
                 : (u.role?.name || u.role || 'student').toLowerCase().includes('admin')
                   ? 'admin'
-                  : 'student',
+                  : (u.role?.name || u.role || 'student').toLowerCase().includes('staff')
+                    ? 'staff'
+                    : 'student',
               avatar: u.avatar ? `https://gabay.zyberlab.com/assets/${u.avatar}` : undefined,
               department: u.department || 'College of Computer Science',
             }));

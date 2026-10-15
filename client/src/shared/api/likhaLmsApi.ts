@@ -159,7 +159,7 @@ export const likhaLmsApi = {
 
   users: {
     async getUsers(): Promise<any[]> {
-      const users = await likhaRequest<any[]>('/users?limit=250&sort=first_name');
+      const users = await likhaRequest<any[]>('/users?fields=*,role.*&limit=250&sort=first_name');
       return users || [];
     },
 
