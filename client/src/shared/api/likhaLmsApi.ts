@@ -163,11 +163,22 @@ export const likhaLmsApi = {
       return users || [];
     },
 
+    async createUser(payload: any): Promise<any> {
+      return likhaRequest('/users', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+    },
+
     async updateUser(id: string, updates: any): Promise<any> {
       return likhaRequest(`/users/${encodeURIComponent(id)}`, {
         method: 'PATCH',
         body: JSON.stringify(updates),
       });
+    },
+
+    async deleteUser(id: string): Promise<void> {
+      await likhaRequest(`/users/${encodeURIComponent(id)}`, { method: 'DELETE' });
     },
   },
 

@@ -16,11 +16,11 @@ const likhaUser = {
   avatar: 'OLD_AVATAR',
 };
 
-// Login is Likha-only (Task 2): only the update-user feature path still
-// reads Express here. Any other Express call throws loudly.
+// Users CRUD is Likha-only (Task 3): update-user writes go to Directus via
+// likhaLmsApi.users.updateUser. Any Express /api/users call throws loudly.
 const apiFetchMock = vi.fn(async (path: string, _options?: any) => {
-  if (path === `/api/users/${likhaUser.id}`)
-    return { user: { id: likhaUser.id, avatar: NEW_AVATAR } };
+  if (String(path).startsWith('/api/users'))
+    throw new Error(`regressed to Express: ${path}`);
   throw new Error(`unmocked: ${path}`);
 });
 
@@ -37,6 +37,17 @@ const getGroupsMock = vi.fn(async () => []);
 const getSlotsMock = vi.fn(async () => []);
 const getSectionsMock = vi.fn(async () => []);
 const getRequestsMock = vi.fn(async () => []);
+// Echoes the PATCH back as a Directus row, like the live endpoint does.
+const updateUserMock = vi.fn(async (id: string, patch: any) => ({
+  id,
+  first_name: patch.first_name ?? likhaUser.first_name,
+  last_name: patch.last_name ?? likhaUser.last_name,
+  email: patch.email ?? likhaUser.email,
+  role: { name: 'Faculty' },
+  avatar: 'OLD_AVATAR',
+}));
+const createUserMock = vi.fn(async (payload: any) => ({ id: 'u-new', role: { name: 'Student' }, ...payload }));
+const deleteUserMock = vi.fn(async () => {});
 
 vi.mock('../api/client', () => ({
   ApiError: class ApiError extends Error {
@@ -53,6 +64,9 @@ vi.mock('../api/client', () => ({
     getNotifications: (...args: any[]) => (getNotifsMock as any)(...args),
     users: {
       getUsers: (...args: any[]) => (getUsersMock as any)(...args),
+      createUser: (...args: any[]) => (createUserMock as any)(...args),
+      updateUser: (...args: any[]) => (updateUserMock as any)(...args),
+      deleteUser: (...args: any[]) => (deleteUserMock as any)(...args),
     },
     communications: {
       getMessages: (...args: any[]) => (getMessagesMock as any)(...args),
@@ -73,14 +87,18 @@ vi.mock('../api/client', () => ({
 import { LMSProvider, useLMS } from './LMSContext';
 
 let latestAvatar: string | null | undefined;
+let latestName: string | null | undefined;
 let doLogin: (() => Promise<any>) | null = null;
-let doUpdate: (() => Promise<boolean>) | null = null;
+let doUpdateAvatar: (() => Promise<boolean>) | null = null;
+let doUpdateName: (() => Promise<boolean>) | null = null;
 
 const Probe: React.FC = () => {
   const { activeUser, login, updateUser } = useLMS();
   latestAvatar = (activeUser as any)?.avatar;
+  latestName = (activeUser as any)?.name;
   doLogin = () => login('test@example.com', 'pw');
-  doUpdate = () => updateUser(likhaUser.id, { avatar: NEW_AVATAR });
+  doUpdateAvatar = () => updateUser(likhaUser.id, { avatar: NEW_AVATAR });
+  doUpdateName = () => updateUser(likhaUser.id, { name: 'Renamed User' });
   return <div data-testid="avatar">{String(latestAvatar)}</div>;
 };
 
@@ -88,8 +106,10 @@ describe('updateUser syncs the active session user', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     latestAvatar = undefined;
+    latestName = undefined;
     doLogin = null;
-    doUpdate = null;
+    doUpdateAvatar = null;
+    doUpdateName = null;
     try {
       localStorage.clear();
     } catch {}
@@ -110,12 +130,43 @@ describe('updateUser syncs the active session user', () => {
     expect(latestAvatar).toBe(MAPPED_AVATAR);
 
     await act(async () => {
-      await doUpdate!();
+      await doUpdateAvatar!();
     });
 
     await waitFor(() => {
       expect(latestAvatar).toBe(NEW_AVATAR);
     });
     expect(screen.getByTestId('avatar').textContent).toBe(NEW_AVATAR);
+    // Avatar-only edits apply locally; no Express /api call at all.
+    expect(updateUserMock).not.toHaveBeenCalled();
+    expect(apiFetchMock).not.toHaveBeenCalled();
+  });
+
+  test('name edits PATCH Directus identity fields and echo back', async () => {
+    render(
+      <LMSProvider>
+        <Probe />
+      </LMSProvider>
+    );
+
+    await act(async () => {
+      await doLogin!();
+    });
+
+    await act(async () => {
+      await doUpdateName!();
+    });
+
+    expect(updateUserMock).toHaveBeenCalledWith(
+      likhaUser.id,
+      expect.objectContaining({ first_name: 'Renamed', last_name: 'User' })
+    );
+    await waitFor(() => {
+      expect(latestName).toBe('Renamed User');
+    });
+    const expressCalls = (apiFetchMock.mock.calls as any[][]).filter(([p]) =>
+      String(p).startsWith('/api/') && !String(p).startsWith('/api/rag'),
+    );
+    expect(expressCalls).toEqual([]);
   });
 });

@@ -487,6 +487,35 @@ export const resolveDirectusUserAvatar = (userOrId: any, fallbackAvatar = ''): s
   return fallbackAvatar;
 };
 
+// Canonical Directus user-row → User mapping (same predicate as the user
+// directory bootstrap: faculty|instructor → faculty, admin → admin,
+// staff → staff, else student).
+export const mapLikhaUserRowToUser = (row: any): User => {
+  const roleName = String(row?.role?.name ?? row?.role ?? 'student').toLowerCase();
+  const role: User['role'] =
+    roleName.includes('faculty') || roleName.includes('instructor')
+      ? 'faculty'
+      : roleName.includes('admin')
+        ? 'admin'
+        : roleName.includes('staff')
+          ? 'staff'
+          : 'student';
+  return {
+    id: String(row?.id ?? ''),
+    name: resolveDirectusUserName(row, row?.email ?? ''),
+    email: row?.email ?? '',
+    role,
+    avatar: resolveDirectusUserAvatar(row, ''),
+    department: row?.department || 'College of Computer Science',
+    title: row?.title || (role === 'student' ? 'Undergraduate Student' : 'Faculty Instructor'),
+  };
+};
+
+const splitDisplayName = (name: string): { first_name: string; last_name: string } => {
+  const [first, ...rest] = name.trim().split(/\s+/);
+  return { first_name: first || '', last_name: rest.join(' ') };
+};
+
 export const normalizeSubmission = (raw: any): Submission => {
   const studentObj = raw?.student ?? raw?.student_id;
   const studentId =
@@ -2454,23 +2483,28 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const createUser = async (userData: Partial<User>): Promise<User> => {
     const role = userData.role || 'student';
+    const displayName = userData.name?.trim() || userData.email?.trim() || 'New User';
+    const { first_name, last_name } = splitDisplayName(displayName);
     try {
-      const { user } = await apiFetch<{ user: User }>('/api/users', {
-        method: 'POST',
-        body: {
-          name: userData.name?.trim() || userData.email?.trim() || 'New User',
-          email: userData.email?.trim() || '',
-          role,
-          password: userData.password || 'password123',
-          avatar: userData.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-          department: userData.department || 'College of Computer Science',
-          title: userData.title || (role === 'student' ? 'Undergraduate Student' : 'Faculty Instructor'),
-        }
+      // Directus owns identity fields only. Avatar URLs, titles, and role
+      // names are not valid Directus values (avatar/role are UUID foreign
+      // keys), so they stay client-side in the merged extras below.
+      const row = await likhaLmsApi.users.createUser({
+        first_name,
+        last_name,
+        email: userData.email?.trim() || '',
+        password: userData.password || 'password123',
+        department: userData.department || 'College of Computer Science',
       });
-      // The server returns the public user only — reattach the client-side
-      // account extras (studentId, password, enrolledCourseIds).
+      const mapped = mapLikhaUserRowToUser(row);
       const merged: User = {
-        ...user,
+        ...mapped,
+        role,
+        avatar:
+          userData.avatar ||
+          mapped.avatar ||
+          'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+        title: userData.title || mapped.title,
         studentId: userData.studentId || (role === 'student' ? `2026-${Math.floor(10000 + Math.random() * 90000)}` : undefined),
         password: userData.password || 'password123',
         enrolledCourseIds: userData.enrolledCourseIds || []
@@ -2481,7 +2515,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }));
       return merged;
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Failed to create user.';
+      const message = err instanceof Error ? err.message : 'Failed to create user.';
       setLastError(message);
       showAlert(message, 'Create User Failed');
       throw err;
@@ -2489,34 +2523,36 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateUser = async (id: string, updates: Partial<User> & { banner?: string }): Promise<boolean> => {
-    // Server PATCH accepts name/avatar/department/title plus
-    // email/role/password (validated server-side).
+    // Directus PATCH accepts core identity fields only (avatar URLs, titles,
+    // and role names are UUID foreign keys server-side) — those apply
+    // locally only via localUpdates below.
     const patchBody: Record<string, string> = {};
-    if (updates.name !== undefined) patchBody.name = updates.name;
-    if (updates.avatar !== undefined) patchBody.avatar = updates.avatar;
-    if (updates.department !== undefined) patchBody.department = updates.department;
-    if (updates.title !== undefined) patchBody.title = updates.title;
+    if (updates.name !== undefined) {
+      const { first_name, last_name } = splitDisplayName(updates.name);
+      patchBody.first_name = first_name;
+      if (last_name) patchBody.last_name = last_name;
+    }
     if (updates.email !== undefined) patchBody.email = updates.email;
-    if (updates.role !== undefined) patchBody.role = updates.role;
     if (updates.password !== undefined) patchBody.password = updates.password;
+    if (updates.department !== undefined) patchBody.department = updates.department;
     const localUpdates = Object.fromEntries(
       Object.entries(updates).filter(([, v]) => v !== undefined)
     ) as Partial<User>;
 
     try {
       if (Object.keys(patchBody).length > 0) {
-        const { user } = await apiFetch<{ user: User }>(
-          `/api/users/${encodeURIComponent(id)}`,
-          { method: 'PATCH', body: patchBody }
-        );
-        const merged = { ...user, ...localUpdates };
+        const row = await likhaLmsApi.users.updateUser(id, patchBody);
+        const mapped = mapLikhaUserRowToUser(row);
+        // Name/email/department echo back from the server; every other field
+        // keeps its local value unless explicitly updated.
+        const serverEcho = { name: mapped.name, email: mapped.email, department: mapped.department };
         setDb(prev => ({
           ...prev,
-          users: prev.users.map(u => (u.id === id ? { ...u, ...merged } : u))
+          users: prev.users.map(u => (u.id === id ? { ...u, ...serverEcho, ...localUpdates } : u))
         }));
         // Active session reads from currentUser (not db.users) — sync it so
         // avatar/banner/name changes render instantly without a reload.
-        setCurrentUser(prev => (prev && prev.id === id ? { ...prev, ...merged } : prev));
+        setCurrentUser(prev => (prev && prev.id === id ? { ...prev, ...serverEcho, ...localUpdates } : prev));
       } else {
         setDb(prev => ({
           ...prev,
@@ -2526,7 +2562,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return true;
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Failed to update user.';
+      const message = err instanceof Error ? err.message : 'Failed to update user.';
       setLastError(message);
       showAlert(message, 'Update User Failed');
       return false;
@@ -2547,11 +2583,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     try {
-      await apiFetch<{ ok: true }>(`/api/users/${encodeURIComponent(userId)}`, {
-        method: 'DELETE'
-      });
+      await likhaLmsApi.users.deleteUser(userId);
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Failed to delete user.';
+      const message = err instanceof Error ? err.message : 'Failed to delete user.';
       setLastError(message);
       return { success: false, message };
     }

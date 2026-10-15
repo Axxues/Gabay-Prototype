@@ -169,5 +169,18 @@ describe('Likha LMS Direct API Client', () => {
     );
     expect(users[0].role).toEqual({ name: 'Instructor' });
   });
+
+  it('deletes a user via Directus users endpoint', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({}),
+    } as any);
+    await likhaLmsApi.users.deleteUser('u-1');
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining('/users/u-1'),
+      expect.objectContaining({ method: 'DELETE' })
+    );
+  });
 });
 
