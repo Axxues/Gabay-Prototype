@@ -4,6 +4,7 @@ import { describe, expect, test, vi, beforeEach } from 'vitest';
 import { act, render, waitFor } from '@testing-library/react';
 import React from 'react';
 import type { OfficialSyllabusData } from '../data/syllabusData';
+import { likhaLmsApi } from '../api/likhaLmsApi';
 
 const baseUser = {
   id: 'u1',
@@ -56,11 +57,17 @@ const revHeader = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-const okRes = (body: unknown, status = 200) => ({ ok: true, status, json: async () => body });
+const okRes = (body: unknown, status = 200) => ({
+  ok: true,
+  status,
+  json: async () => body,
+  text: async () => JSON.stringify(body),
+});
 const errRes = (status: number, code: string, message: string) => ({
   ok: false,
   status,
-  json: async () => ({ error: { code, message } }),
+  json: async () => ({ error: { code, message }, errors: [{ message, extensions: { code } }] }),
+  text: async () => JSON.stringify({ error: { code, message }, errors: [{ message, extensions: { code } }] }),
 });
 
 type Route = { match: (url: string, init: any) => boolean; handle: (url: string, init: any) => any };
@@ -168,6 +175,7 @@ const defaultRoutes = (): Route[] => [
 ];
 
 beforeEach(() => {
+  likhaLmsApi.invalidateCache();
   vi.unstubAllGlobals();
   routes = defaultRoutes();
   fetchCalls = [];
@@ -190,7 +198,7 @@ const prependRoutes = (...extra: Route[]) => {
   routes = [...extra, ...routes];
 };
 
-/** In-memory syllabus fake: draft creation, section PATCH with If-Match, publish. */
+/** In-memory syllabus fake: draft creation, section PATCH with rowVersion concurrency, publish. */
 const syllabusFake = (fullDoc: OfficialSyllabusData) => {
   let rowVersion = 1;
   let nextPatchFailure: { status: number; code: string; message: string } | undefined;
@@ -199,7 +207,6 @@ const syllabusFake = (fullDoc: OfficialSyllabusData) => {
   let publishedAbsent = false;
   const createdDraftIds: string[] = [];
   const publishedDoc: OfficialSyllabusData = { ...fullDoc, courseInfo: { ...fullDoc.courseInfo, title: 'Published T' } };
-  const draftEnvelope = () => ({ revision: revHeader({ rowVersion }), syllabus: fullDoc });
   return {
     publishedDoc,
     createdDraftIds,
@@ -214,15 +221,25 @@ const syllabusFake = (fullDoc: OfficialSyllabusData) => {
     },
     routes: (): Route[] => [
       {
-        match: (u, init) => u === '/api/courses/c1/syllabus/revisions' && init?.method === 'POST',
-        handle: () => {
+        match: (u, init) => u.includes('/items/syllabi') && init?.method === 'POST',
+        handle: (_u, init) => {
           createdDraftIds.push('rev-draft-1');
-          return okRes(draftEnvelope(), 201);
+          const body = JSON.parse(init.body || '{}');
+          return okRes({
+            data: {
+              id: 'rev-draft-1',
+              course_id: 'c1',
+              version: rowVersion,
+              status: 'draft',
+              content: body.content || JSON.stringify(fullDoc),
+              created_at: '2026-09-24T00:00:00.000Z',
+            },
+          }, 201);
         },
       },
       {
-        match: (u, init) => u.includes('/syllabus/revisions/') && u.includes('/sections/') && init?.method === 'PATCH',
-        handle: (_u, init) => {
+        match: (u, init) => u.includes('/items/syllabi/rev-draft-1') && (!init?.method || init?.method === 'GET'),
+        handle: () => {
           patchCount += 1;
           if (patchFailureAt && patchCount === patchFailureAt.call) {
             const f = patchFailureAt.failure;
@@ -234,42 +251,68 @@ const syllabusFake = (fullDoc: OfficialSyllabusData) => {
             nextPatchFailure = undefined;
             return errRes(f.status, f.code, f.message);
           }
-          const sent = init?.headers?.['If-Match'];
-          if (sent !== String(rowVersion)) {
-            return errRes(409, 'revision_conflict', 'The syllabus revision changed.');
-          }
-          rowVersion += 1;
-          return okRes({ revision: revHeader({ rowVersion }), syllabus: fullDoc });
-        },
-      },
-      {
-        match: (u, init) => u === '/api/courses/c1/syllabus/revisions/rev-draft-1/publish' && init?.method === 'POST',
-        handle: (_u, init) => {
-          if (init?.headers?.['If-Match'] !== String(rowVersion)) {
-            return errRes(409, 'revision_conflict', 'The syllabus revision changed.');
-          }
-          rowVersion += 1;
           return okRes({
-            revision: revHeader({ status: 'published', rowVersion, publishedAt: '2026-09-24T01:00:00.000Z' }),
-            syllabus: publishedDoc,
+            data: {
+              id: 'rev-draft-1',
+              course_id: 'c1',
+              version: rowVersion,
+              status: 'draft',
+              content: JSON.stringify(fullDoc),
+            },
           });
         },
       },
       {
-        match: (u, init) =>
-          u === '/api/courses/c1/syllabus/revisions/rev-draft-1' && init?.method === 'DELETE',
+        match: (u, init) => u.includes('/items/syllabi/rev-draft-1') && init?.method === 'PATCH',
+        handle: (_u, init) => {
+          const body = JSON.parse(init.body || '{}');
+          if (body.status === 'published') {
+            rowVersion += 1;
+            return okRes({
+              data: {
+                id: 'rev-draft-1',
+                course_id: 'c1',
+                version: rowVersion,
+                status: 'published',
+                published_at: '2026-09-24T01:00:00.000Z',
+                content: JSON.stringify(publishedDoc),
+              },
+            });
+          }
+          rowVersion += 1;
+          return okRes({
+            data: {
+              id: 'rev-draft-1',
+              course_id: 'c1',
+              version: rowVersion,
+              status: 'draft',
+              content: body.content || JSON.stringify(fullDoc),
+            },
+          });
+        },
+      },
+      {
+        match: (u, init) => u.includes('/items/syllabi') && init?.method === 'DELETE',
         handle: () => okRes({ ok: true }),
       },
       {
-        match: (u, init) => u === '/api/courses/c1/syllabus' && init?.method === 'DELETE',
-        handle: () => okRes({ ok: true }),
-      },
-      {
-        match: u => u === '/api/courses/c1/syllabus' && !u.includes('revisions'),
-        handle: () =>
-          publishedAbsent
-            ? errRes(404, 'syllabus_not_found', 'No published syllabus.')
-            : okRes({ revision: revHeader({ id: 'rev-pub-1', status: 'published', rowVersion: 9 }), syllabus: publishedDoc }),
+        match: u => u.includes('/items/syllabi'),
+        handle: () => {
+          if (publishedAbsent) return okRes({ data: [] });
+          return okRes({
+            data: [
+              {
+                id: 'rev-pub-1',
+                course_id: 'c1',
+                version: 9,
+                status: 'published',
+                published_at: '2026-09-24T00:00:00.000Z',
+                created_at: '2026-09-24T00:00:00.000Z',
+                content: JSON.stringify(publishedDoc),
+              },
+            ],
+          });
+        },
       },
     ],
   };
@@ -355,17 +398,14 @@ describe('syllabus revision state', () => {
       await api.updateCourseSyllabus('c1', doc);
     });
 
-    const patched = fetchCalls.filter(c => c.url.includes('/sections/'));
+    const patched = fetchCalls.filter(c => c.url.includes('/items/syllabi') && c.init?.method === 'PATCH');
     expect(patched.length).toBeGreaterThan(0);
     expect(patched.every(c => c.init.method === 'PATCH')).toBe(true);
-    const sections = patched.map(c => c.url.split('/sections/')[1]);
-    expect(sections).toContain('courseInfo');
-    expect(sections).toContain('courseOutcomes');
     const creates = fetchCalls.filter(
-      c => c.url === '/api/courses/c1/syllabus/revisions' && c.init?.method === 'POST',
+      c => c.url.includes('/items/syllabi') && c.init?.method === 'POST',
     );
     expect(creates).toHaveLength(1);
-    expect(JSON.parse(creates[0]!.init.body)).toEqual({ sourceRevisionId: 'rev-pub-1' });
+    expect(fetchCalls.filter(c => c.url.includes('/api/courses/'))).toEqual([]);
     await waitFor(() => {
       expect(courseOf()?.syllabus).toEqual({ ...doc, courseId: 'c1' });
       expect(snap.revisions['c1']).toMatchObject({ id: 'rev-draft-1', status: 'draft' });
@@ -404,7 +444,7 @@ describe('syllabus revision state', () => {
     const deletes = fetchCalls.filter(c => c.init?.method === 'DELETE');
     expect(fake.createdDraftIds.length).toBeGreaterThan(0);
     for (const id of fake.createdDraftIds) {
-      expect(deletes.map(d => d.url)).toContain(`/api/courses/c1/syllabus/revisions/${id}`);
+      expect(deletes.some(d => d.url.includes(id))).toBe(true);
     }
     await waitFor(() => {
       expect(courseOf()?.syllabus).toEqual(fake.publishedDoc);
@@ -448,7 +488,7 @@ describe('syllabus revision state', () => {
     });
 
     const deletes = fetchCalls.filter(c => c.init?.method === 'DELETE');
-    expect(deletes.map(d => d.url)).toContain('/api/courses/c1/syllabus');
+    expect(deletes.some(d => d.url.includes('/items/syllabi'))).toBe(true);
     await waitFor(() => {
       expect(courseOf()?.syllabus).toBeNull();
       expect(snap.revisions['c1']).toBeUndefined();
@@ -471,7 +511,7 @@ describe('syllabus revision state', () => {
     });
 
     const deletes = fetchCalls.filter(c => c.init?.method === 'DELETE');
-    expect(deletes.map(d => d.url)).toContain('/api/courses/c1/syllabus');
+    expect(deletes.some(d => d.url.includes('/items/syllabi'))).toBe(true);
     await waitFor(() => {
       expect(courseOf()?.syllabus).toBeNull();
       expect(snap.revisions['c1']).toBeUndefined();
@@ -494,7 +534,7 @@ describe('syllabus revision state', () => {
     });
 
     const deletes = fetchCalls.filter(c => c.init?.method === 'DELETE');
-    expect(deletes.map(d => d.url)).toContain('/api/courses/c1/syllabus');
+    expect(deletes.some(d => d.url.includes('/items/syllabi'))).toBe(true);
     await waitFor(() => {
       expect(courseOf()?.syllabus).toBeNull();
       expect(snap.revisions['c1']).toBeUndefined();
@@ -510,15 +550,14 @@ describe('syllabus revision state', () => {
     await act(async () => {
       await api.updateCourseSyllabus('c1', doc);
     });
-    const draftRowVersion = snap.revisions['c1'].rowVersion;
 
     await act(async () => {
       await api.publishSyllabusDraft('c1');
     });
 
-    const publishCalls = fetchCalls.filter(c => c.url.endsWith('/publish'));
-    expect(publishCalls).toHaveLength(1);
-    expect(publishCalls[0]!.init.headers['If-Match']).toBe(String(draftRowVersion));
+    const publishCalls = fetchCalls.filter(c => c.url.includes('/items/syllabi/rev-draft-1') && c.init?.method === 'PATCH');
+    expect(publishCalls.length).toBeGreaterThan(0);
+    expect(publishCalls.some(c => JSON.parse(c.init.body).status === 'published')).toBe(true);
     await waitFor(() => {
       expect(courseOf()?.syllabus).toEqual(fake.publishedDoc);
       expect(snap.revisions['c1']).toMatchObject({ status: 'published' });

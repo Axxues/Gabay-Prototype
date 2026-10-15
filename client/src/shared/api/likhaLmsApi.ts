@@ -1,4 +1,10 @@
-import { getToken, setToken, clearToken } from './client';
+import { getToken, setToken, clearToken, ApiError } from './client';
+import type {
+  SyllabusRevisionResponse,
+  SyllabusRevisionHeader,
+  SyllabusSectionKey,
+} from '../types/syllabusApi';
+import type { OfficialSyllabusData } from '../data/syllabusData';
 
 export const LIKHA_URL =
   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_LIKHA_URL) ||
@@ -75,10 +81,15 @@ async function rawLikhaFetch<T = any>(
 
   if (!res.ok) {
     const errorText = await res.text().catch(() => '');
-    const error: any = new Error(`Likha request failed (${res.status}): ${errorText}`);
-    error.status = res.status;
-    error.code = res.status === 401 ? 'unauthorized' : res.status === 403 ? 'forbidden' : 'request_failed';
-    throw error;
+    let parsedCode = 'request_failed';
+    try {
+      const parsed = JSON.parse(errorText);
+      parsedCode = parsed.errors?.[0]?.extensions?.code || parsed.error?.code || parsedCode;
+    } catch {}
+    if (parsedCode === 'request_failed') {
+      parsedCode = res.status === 401 ? 'unauthorized' : res.status === 403 ? 'forbidden' : res.status === 404 ? 'not_found' : res.status === 409 ? 'revision_conflict' : 'request_failed';
+    }
+    throw new ApiError(res.status, parsedCode.toLowerCase(), `Likha request failed (${res.status}): ${errorText}`);
   }
 
   const json = await res.json().catch(() => ({}));
@@ -123,6 +134,64 @@ async function likhaRequest<T = any>(
 // hook in likhaRequest) do not. Safe because role id↔name mappings are
 // effectively static for a session.
 const roleIdByName = new Map<string, string | null>();
+
+export const mapLikhaSyllabusHeader = (row: any, fallbackCourseId = ''): SyllabusRevisionHeader => ({
+  id: String(row.id),
+  courseId: String(row.course_id || fallbackCourseId),
+  revisionNo: Number(row.version ?? 1),
+  status: (row.status as SyllabusRevisionHeader['status']) || 'draft',
+  schemaVersion: '1',
+  rowVersion: Number(row.version ?? 1),
+  createdAt: row.created_at || new Date().toISOString(),
+  updatedAt: row.published_at || row.created_at || new Date().toISOString(),
+  publishedAt: row.published_at || null,
+});
+
+export const mapLikhaSyllabusRow = (row: any, fallbackCourseId = ''): SyllabusRevisionResponse => {
+  let parsedContent: any = {};
+  if (row.content) {
+    try {
+      parsedContent = typeof row.content === 'string' ? JSON.parse(row.content) : row.content;
+    } catch {
+      parsedContent = {};
+    }
+  }
+  return {
+    revision: mapLikhaSyllabusHeader(row, fallbackCourseId),
+    syllabus: {
+      ...parsedContent,
+      courseId: String(row.course_id || fallbackCourseId),
+    },
+  };
+};
+
+export const createBlankSyllabus = (courseId: string): OfficialSyllabusData => ({
+  courseId,
+  institution: { university: 'Don Mariano Marcos Memorial State University', college: '', formCode: '', revision: '' },
+  courseInfo: {
+    code: '', title: '', semester: '', academicYear: '', type: 'Lec',
+    credit: '3', lectureHours: '3', labHours: '0', prerequisite: '', description: '',
+  },
+  facultyMembers: [],
+  institutionalStatements: {
+    philosophy: '', vision: '', mission: '', goal: '', coreValues: [], graduateAttributes: [],
+  },
+  programOutcomes: [],
+  courseOutcomes: [],
+  courseRequirements: { major: [], other: [] },
+  gradingSystem: { termFormula: '', finalFormula: '', classStandingComponents: [], passingGrade: '3.0' },
+  projectRubrics: [],
+  classroomPolicies: [],
+  courseOutline: [],
+  learningPlan: [],
+  courseMap: [],
+  references: [],
+  signatories: {
+    preparedBy: [],
+    recommendingApproval: { name: '', title: '' },
+    approved: { name: '', title: '' },
+  },
+});
 
 export const likhaLmsApi = {
   cache: likhaCache,
@@ -828,6 +897,165 @@ export const likhaLmsApi = {
       await likhaRequest(`/items/course_folders/${encodeURIComponent(id)}`, {
         method: 'DELETE',
       });
+    },
+  },
+
+  syllabus: {
+    async getSyllabus(courseId: string): Promise<any> {
+      const items = await likhaRequest<any[]>(
+        `/items/syllabi?filter[course_id][_eq]=${encodeURIComponent(courseId)}&fields=*,course_info.*,course_outcomes.*`
+      );
+      return items?.[0] || null;
+    },
+
+    async getPublished(courseId: string): Promise<SyllabusRevisionResponse | null> {
+      const items = await likhaRequest<any[]>(
+        `/items/syllabi?filter[course_id][_eq]=${encodeURIComponent(courseId)}&filter[status][_eq]=published&sort=-version&limit=1`
+      );
+      if (!items || items.length === 0) return null;
+      return mapLikhaSyllabusRow(items[0], courseId);
+    },
+
+    async listRevisions(courseId: string): Promise<SyllabusRevisionHeader[]> {
+      const items = await likhaRequest<any[]>(
+        `/items/syllabi?filter[course_id][_eq]=${encodeURIComponent(courseId)}&sort=-version`
+      );
+      return (items || []).map(row => mapLikhaSyllabusHeader(row, courseId));
+    },
+
+    async createDraft(courseId: string, sourceRevisionId?: string): Promise<SyllabusRevisionResponse> {
+      let initialSyllabus: OfficialSyllabusData | null = null;
+      if (sourceRevisionId) {
+        try {
+          const source = await likhaRequest<any>(`/items/syllabi/${encodeURIComponent(sourceRevisionId)}`);
+          if (source?.content) {
+            initialSyllabus = typeof source.content === 'string' ? JSON.parse(source.content) : source.content;
+          }
+        } catch {}
+      }
+      if (!initialSyllabus) {
+        const pub = await likhaLmsApi.syllabus.getPublished(courseId);
+        if (pub) initialSyllabus = pub.syllabus;
+      }
+      if (!initialSyllabus) {
+        initialSyllabus = createBlankSyllabus(courseId);
+      }
+
+      // Determine next version
+      const existing = await likhaRequest<any[]>(
+        `/items/syllabi?filter[course_id][_eq]=${encodeURIComponent(courseId)}&sort=-version&limit=1`
+      );
+      const nextVersion = (existing?.[0]?.version ?? 0) + 1;
+      const draftId = `syl-${courseId}-${Date.now().toString(36)}`;
+      const now = new Date().toISOString();
+
+      const newRow = await likhaRequest('/items/syllabi', {
+        method: 'POST',
+        body: JSON.stringify({
+          id: draftId,
+          course_id: courseId,
+          version: nextVersion,
+          status: 'draft',
+          content: JSON.stringify(initialSyllabus),
+          created_at: now,
+          published_at: null,
+        }),
+      });
+
+      return mapLikhaSyllabusRow(newRow, courseId);
+    },
+
+    async updateSection(
+      courseId: string,
+      revisionId: string,
+      rowVersion: number,
+      section: SyllabusSectionKey,
+      value: unknown
+    ): Promise<SyllabusRevisionResponse> {
+      const current = await likhaRequest<any>(`/items/syllabi/${encodeURIComponent(revisionId)}`);
+      if (!current) {
+        throw new ApiError(404, 'syllabus_not_found', 'Syllabus revision not found.');
+      }
+      if (current.version !== undefined && current.version !== rowVersion) {
+        throw new ApiError(409, 'revision_conflict', 'Revision conflict: rowVersion mismatch.');
+      }
+
+      let parsedContent: any = {};
+      if (current.content) {
+        parsedContent = typeof current.content === 'string' ? JSON.parse(current.content) : current.content;
+      }
+      parsedContent[section] = value;
+
+      const updated = await likhaRequest(`/items/syllabi/${encodeURIComponent(revisionId)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          content: JSON.stringify(parsedContent),
+        }),
+      });
+
+      return mapLikhaSyllabusRow(updated, courseId);
+    },
+
+    async publish(
+      courseId: string,
+      revisionId: string,
+      rowVersion: number
+    ): Promise<SyllabusRevisionResponse> {
+      const current = await likhaRequest<any>(`/items/syllabi/${encodeURIComponent(revisionId)}`);
+      if (!current) {
+        throw new ApiError(404, 'syllabus_not_found', 'Syllabus revision not found.');
+      }
+      if (current.version !== undefined && current.version !== rowVersion) {
+        throw new ApiError(409, 'revision_conflict', 'Revision conflict: rowVersion mismatch.');
+      }
+
+      // Archive other published syllabi for this course
+      try {
+        const others = await likhaRequest<any[]>(
+          `/items/syllabi?filter[course_id][_eq]=${encodeURIComponent(courseId)}&filter[status][_eq]=published`
+        );
+        for (const o of others || []) {
+          if (o.id !== revisionId) {
+            await likhaRequest(`/items/syllabi/${encodeURIComponent(o.id)}`, {
+              method: 'PATCH',
+              body: JSON.stringify({ status: 'archived' }),
+            }).catch(() => undefined);
+          }
+        }
+      } catch {}
+
+      const published = await likhaRequest(`/items/syllabi/${encodeURIComponent(revisionId)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          status: 'published',
+          published_at: new Date().toISOString(),
+        }),
+      });
+
+      return mapLikhaSyllabusRow(published, courseId);
+    },
+
+    async deleteDraft(courseId: string, revisionId: string): Promise<void> {
+      await likhaRequest(`/items/syllabi/${encodeURIComponent(revisionId)}`, {
+        method: 'DELETE',
+      });
+    },
+
+    async withdrawSyllabus(courseId: string): Promise<void> {
+      const allForCourse = await likhaRequest<any[]>(
+        `/items/syllabi?filter[course_id][_eq]=${encodeURIComponent(courseId)}`
+      ).catch(() => []);
+      if (allForCourse && allForCourse.length > 0) {
+        for (const p of allForCourse) {
+          await likhaRequest(`/items/syllabi/${encodeURIComponent(p.id)}`, {
+            method: 'DELETE',
+          }).catch(() => undefined);
+        }
+      } else {
+        await likhaRequest(`/items/syllabi?filter[course_id][_eq]=${encodeURIComponent(courseId)}`, {
+          method: 'DELETE',
+        }).catch(() => undefined);
+      }
     },
   },
 
