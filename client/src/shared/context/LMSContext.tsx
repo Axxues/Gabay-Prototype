@@ -28,7 +28,12 @@ import type {
   CourseSection,
   EnrollmentRequest,
   SPRConfig,
-  SPRColumn
+  SPRColumn,
+  College,
+  Department,
+  PendingRegistration,
+  AdminSubrole,
+  VerificationStatus
 } from '../types/lms';
 import type { Activity } from '../types/lms';
 import { activityPointsPossible } from '../utils/activities';
@@ -40,6 +45,7 @@ import {
   termGrade,
 } from '../utils/spr';
 import { commonsTemplates } from '../data/commonsTemplates';
+import { DEFAULT_COLLEGES, DEFAULT_DEPARTMENTS } from '../data/collegesData';
 import { effectiveTerms, normalizeGradesReleased, normalizeTermId } from '../utils/gradingTerms';
 import { isSyllabusGradeReady } from '../utils/syllabusGradeGate';
 import { AlertModal, type AlertModalOptions } from '../components/common/AlertModal';
@@ -52,7 +58,7 @@ import type { SyllabusRevisionHeader, SyllabusRevisionResponse, SyllabusSectionK
 import { settledValue } from '../utils/promise';
 import { formatFileSize, toShortFileType } from '../utils/fileUploader';
 
-interface LMSContextType {
+export interface LMSContextType {
   theme: 'dark' | 'light';
   toggleTheme: () => void;
   accent: AccentId;
@@ -251,11 +257,46 @@ interface LMSContextType {
   getMyRequest: (courseId: string) => EnrollmentRequest | null;
   getPendingRequests: (courseId: string) => Promise<EnrollmentRequest[]>;
 
+  // Academic Units & RBAC
+  colleges: College[];
+  departments: Department[];
+  pendingRegistrations: PendingRegistration[];
+  registerAccount: (
+    payload: {
+      firstName: string;
+      middleName?: string;
+      lastName: string;
+      fullName?: string;
+      email: string;
+      role: 'student' | 'faculty' | 'staff';
+      collegeId: string;
+      collegeName?: string;
+      department: string;
+      studentId: string;
+      password: string;
+    } & Partial<PendingRegistration>
+  ) => Promise<PendingRegistration>;
+  activateEmail: (token: string) => Promise<{ success: boolean; message: string }>;
+  verifyRegistration: (id: string) => Promise<{ success: boolean; message: string; user?: User }>;
+  rejectRegistration: (id: string, reason?: string) => Promise<{ success: boolean; message: string }>;
+  purgeExpiredRegistrations: () => Promise<number>;
+  transferLeadership: (
+    roleType: 'dean' | 'chairperson',
+    currentLeaderId: string,
+    successorId: string,
+    unitId: string
+  ) => Promise<{ success: boolean; message: string }>;
+  addCollege: (college: College) => Promise<College>;
+  addDepartment: (department: Department) => Promise<Department>;
+
   logHistory: (path: string, title: string) => void;
   clearHistory: () => void;
 }
 
 const STORAGE_KEY_THEME = 'gabay_theme_v1';
+const STORAGE_KEY_COLLEGES = 'gabay_colleges';
+const STORAGE_KEY_DEPARTMENTS = 'gabay_departments';
+const STORAGE_KEY_PENDING_REGISTRATIONS = 'gabay_pending_registrations';
 
 const safeSetLocalStorage = (key: string, value: string): boolean => {
   try {
@@ -1369,6 +1410,54 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Database State (API-backed cache; starts empty, no localStorage persistence)
   const [db, setDb] = useState<LMSDatabase>(() => emptyDb());
 
+  // Academic Units & Registration Staging State
+  const [colleges, setColleges] = useState<College[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_COLLEGES);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (_) {}
+    return DEFAULT_COLLEGES;
+  });
+
+  const [departments, setDepartments] = useState<Department[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_DEPARTMENTS);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (_) {}
+    return DEFAULT_DEPARTMENTS;
+  });
+
+  const [pendingRegistrations, setPendingRegistrations] = useState<PendingRegistration[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_PENDING_REGISTRATIONS);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (_) {}
+    return [];
+  });
+
+  const pendingRegistrationsRef = useRef(pendingRegistrations);
+  useEffect(() => {
+    pendingRegistrationsRef.current = pendingRegistrations;
+    safeSetLocalStorage(STORAGE_KEY_PENDING_REGISTRATIONS, JSON.stringify(pendingRegistrations));
+  }, [pendingRegistrations]);
+
+  useEffect(() => {
+    safeSetLocalStorage(STORAGE_KEY_COLLEGES, JSON.stringify(colleges));
+  }, [colleges]);
+
+  useEffect(() => {
+    safeSetLocalStorage(STORAGE_KEY_DEPARTMENTS, JSON.stringify(departments));
+  }, [departments]);
+
   // Authentication State (token-backed; session restores via GET /api/auth/me)
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -2073,6 +2162,49 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const activeRole: UserRole = currentUser?.role || 'student';
 
   const login = async (emailOrId: string, password: string): Promise<{ success: boolean; message?: string }> => {
+    const cleanEmail = emailOrId.trim().toLowerCase();
+    const pendingList = pendingRegistrationsRef.current || pendingRegistrations;
+    const pending = pendingList.find(
+      r => r.email.trim().toLowerCase() === cleanEmail || r.studentId?.trim().toLowerCase() === cleanEmail
+    );
+
+    if (pending) {
+      const isExpired = pending.status === 'expired' || Date.now() >= new Date(pending.expiresAt).getTime();
+      if (isExpired) {
+        if (pending.status !== 'expired') {
+          setPendingRegistrations(prev =>
+            prev.map(r => (r.id === pending.id ? { ...r, status: 'expired' } : r))
+          );
+        }
+        return {
+          success: false,
+          message: 'Your registration has expired. Please register again.',
+        };
+      }
+
+      if (pending.status === 'rejected') {
+        return {
+          success: false,
+          message: 'Your registration was rejected by an administrator.',
+        };
+      }
+
+      if (pending.status === 'pending') {
+        if (!pending.emailVerified) {
+          return {
+            success: false,
+            message: 'Please verify your email address first via the activation link sent to your inbox.',
+          };
+        }
+        const msRemaining = new Date(pending.expiresAt).getTime() - Date.now();
+        const daysRemaining = Math.max(1, Math.ceil(msRemaining / (1000 * 60 * 60 * 24)));
+        return {
+          success: false,
+          message: `Account pending administrator verification. (Expires in ${daysRemaining} day${daysRemaining === 1 ? '' : 's'})`,
+        };
+      }
+    }
+
     // Likha-only auth: no Express /api/auth/login fallback.
     if (emailOrId.includes('@')) {
       try {
@@ -2106,6 +2238,17 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           return { success: false, message: 'Invalid email or password.' };
         }
       }
+    }
+
+    const localUser = db.users.find(
+      u => (u.email.toLowerCase() === cleanEmail || u.studentId?.toLowerCase() === cleanEmail)
+    );
+    if (localUser) {
+      if (localUser.password && localUser.password !== password) {
+        return { success: false, message: 'Invalid email or password.' };
+      }
+      setCurrentUser(localUser);
+      return { success: true };
     }
 
     return { success: false, message: 'Login failed.' };
@@ -3006,6 +3149,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const mapped = mapLikhaUserRowToUser(row);
       const merged: User = {
         ...mapped,
+        id: userData.id || mapped.id,
         role,
         avatar:
           userData.avatar ||
@@ -3014,7 +3158,18 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         title: userData.title || mapped.title,
         studentId: userData.studentId || (role === 'student' ? `2026-${Math.floor(10000 + Math.random() * 90000)}` : undefined),
         password: userData.password || 'password123',
-        enrolledCourseIds: userData.enrolledCourseIds || []
+        enrolledCourseIds: userData.enrolledCourseIds || [],
+        name: userData.name || mapped.name,
+        firstName: userData.firstName,
+        middleName: userData.middleName,
+        lastName: userData.lastName,
+        adminSubrole: userData.adminSubrole,
+        collegeId: userData.collegeId,
+        collegeName: userData.collegeName,
+        verificationStatus: userData.verificationStatus,
+        emailVerified: userData.emailVerified,
+        registeredAt: userData.registeredAt,
+        verificationExpiresAt: userData.verificationExpiresAt,
       };
       setDb(prev => ({
         ...prev,
@@ -3119,6 +3274,283 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       success: true,
       message: `Account for ${userToDelete.name} has been deleted.`
     };
+  };
+
+  const registerAccount = async (
+    payload: {
+      firstName: string;
+      middleName?: string;
+      lastName: string;
+      fullName?: string;
+      email: string;
+      role: 'student' | 'faculty' | 'staff';
+      collegeId: string;
+      collegeName?: string;
+      department: string;
+      studentId: string;
+      password: string;
+    } & Partial<PendingRegistration>
+  ): Promise<PendingRegistration> => {
+    const id = payload.id || `reg-${Math.random().toString(36).substring(2, 9)}-${Date.now().toString(36)}`;
+    const fullName =
+      payload.fullName ||
+      [payload.firstName, payload.middleName, payload.lastName].filter(Boolean).join(' ');
+    const matchedCollege = colleges.find(
+      c => c.id === payload.collegeId || c.code.toLowerCase() === payload.collegeId.toLowerCase()
+    );
+    const collegeName = payload.collegeName || matchedCollege?.name || payload.collegeId;
+    const activationToken =
+      payload.activationToken ||
+      (Math.random().toString(36).substring(2) + Date.now().toString(36));
+    const registeredAt = payload.registeredAt || new Date().toISOString();
+    const expiresAt =
+      payload.expiresAt || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+    const newRegistration: PendingRegistration = {
+      id,
+      firstName: payload.firstName,
+      middleName: payload.middleName,
+      lastName: payload.lastName,
+      fullName,
+      email: payload.email,
+      role: payload.role,
+      collegeId: payload.collegeId,
+      collegeName,
+      department: payload.department,
+      studentId: payload.studentId,
+      password: payload.password,
+      emailVerified: payload.emailVerified ?? false,
+      activationToken,
+      registeredAt,
+      expiresAt,
+      status: payload.status || 'pending',
+    };
+
+    setPendingRegistrations(prev => [newRegistration, ...prev]);
+    return newRegistration;
+  };
+
+  const activateEmail = async (token: string): Promise<{ success: boolean; message: string }> => {
+    const list = pendingRegistrationsRef.current || pendingRegistrations;
+    const target = list.find(r => r.activationToken === token);
+    if (!target) {
+      return { success: false, message: 'Invalid or expired activation link.' };
+    }
+    const isExpired = target.status === 'expired' || Date.now() >= new Date(target.expiresAt).getTime();
+    if (isExpired) {
+      setPendingRegistrations(prev =>
+        prev.map(r => (r.activationToken === token ? { ...r, status: 'expired' } : r))
+      );
+      return { success: false, message: 'Activation token has expired.' };
+    }
+
+    setPendingRegistrations(prev =>
+      prev.map(r => (r.activationToken === token ? { ...r, emailVerified: true } : r))
+    );
+    return { success: true, message: 'Email address successfully verified.' };
+  };
+
+  const verifyRegistration = async (id: string): Promise<{ success: boolean; message: string; user?: User }> => {
+    const list = pendingRegistrationsRef.current || pendingRegistrations;
+    const target = list.find(r => r.id === id);
+    if (!target) {
+      return { success: false, message: 'Registration record not found.' };
+    }
+
+    const isExpired = target.status === 'expired' || Date.now() >= new Date(target.expiresAt).getTime();
+    if (isExpired) {
+      setPendingRegistrations(prev =>
+        prev.map(r => (r.id === id ? { ...r, status: 'expired' } : r))
+      );
+      return { success: false, message: 'Registration has expired.' };
+    }
+
+    let createdUser: User;
+    try {
+      createdUser = await createUser({
+        name: target.fullName,
+        firstName: target.firstName,
+        middleName: target.middleName,
+        lastName: target.lastName,
+        email: target.email,
+        role: target.role,
+        department: target.department,
+        collegeId: target.collegeId,
+        collegeName: target.collegeName,
+        studentId: target.studentId,
+        password: target.password,
+        verificationStatus: 'verified',
+        emailVerified: true,
+        registeredAt: target.registeredAt,
+        verificationExpiresAt: target.expiresAt,
+      });
+    } catch (_) {
+      createdUser = {
+        id: `usr-${Date.now()}`,
+        name: target.fullName,
+        firstName: target.firstName,
+        middleName: target.middleName,
+        lastName: target.lastName,
+        email: target.email,
+        role: target.role,
+        department: target.department,
+        collegeId: target.collegeId,
+        collegeName: target.collegeName,
+        studentId: target.studentId,
+        password: target.password,
+        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+        title: target.role === 'student' ? 'Undergraduate Student' : 'Instructor',
+        verificationStatus: 'verified',
+        emailVerified: true,
+        registeredAt: target.registeredAt,
+        verificationExpiresAt: target.expiresAt,
+        enrolledCourseIds: [],
+      };
+      setDb(prev => ({
+        ...prev,
+        users: [...prev.users, createdUser],
+      }));
+    }
+
+    setPendingRegistrations(prev =>
+      prev.map(r => (r.id === id ? { ...r, status: 'verified' } : r))
+    );
+
+    return {
+      success: true,
+      message: 'User registration approved and active account created.',
+      user: createdUser,
+    };
+  };
+
+  const rejectRegistration = async (id: string, reason?: string): Promise<{ success: boolean; message: string }> => {
+    setPendingRegistrations(prev =>
+      prev.map(r => (r.id === id ? { ...r, status: 'rejected' } : r))
+    );
+    return {
+      success: true,
+      message: reason ? `Registration rejected: ${reason}` : 'Registration rejected.',
+    };
+  };
+
+  const purgeExpiredRegistrations = async (): Promise<number> => {
+    const now = Date.now();
+    const currentList = pendingRegistrationsRef.current || pendingRegistrations;
+    let count = 0;
+    const updated = currentList.map(reg => {
+      if (reg.status === 'pending' && new Date(reg.expiresAt).getTime() <= now) {
+        count++;
+        return { ...reg, status: 'expired' as const };
+      }
+      return reg;
+    });
+    if (count > 0) {
+      setPendingRegistrations(updated);
+    }
+    return count;
+  };
+
+  const transferLeadership = async (
+    roleType: 'dean' | 'chairperson',
+    currentLeaderId: string,
+    successorId: string,
+    unitId: string
+  ): Promise<{ success: boolean; message: string }> => {
+    if (currentLeaderId === successorId) {
+      return { success: false, message: 'Predecessor and successor cannot be the same user.' };
+    }
+
+    // Atomically update db.users: predecessor to faculty, successor to admin with adminSubrole
+    setDb(prev => ({
+      ...prev,
+      users: prev.users.map(u => {
+        if (u.id === currentLeaderId) {
+          return {
+            ...u,
+            role: 'faculty' as UserRole,
+            adminSubrole: undefined,
+          };
+        }
+        if (u.id === successorId) {
+          return {
+            ...u,
+            role: 'admin' as UserRole,
+            adminSubrole: roleType,
+          };
+        }
+        return u;
+      }),
+    }));
+
+    // Update active user session if leader or successor is currently logged in
+    setCurrentUser(prev => {
+      if (!prev) return prev;
+      if (prev.id === currentLeaderId) {
+        return { ...prev, role: 'faculty' as UserRole, adminSubrole: undefined };
+      }
+      if (prev.id === successorId) {
+        return { ...prev, role: 'admin' as UserRole, adminSubrole: roleType };
+      }
+      return prev;
+    });
+
+    // Single-seat invariant in colleges and departments
+    if (roleType === 'dean') {
+      setColleges(prev =>
+        prev.map(c =>
+          c.id === unitId || c.deanId === currentLeaderId ? { ...c, deanId: successorId } : c
+        )
+      );
+    } else if (roleType === 'chairperson') {
+      setDepartments(prev =>
+        prev.map(d =>
+          d.id === unitId || d.chairpersonId === currentLeaderId
+            ? { ...d, chairpersonId: successorId }
+            : d
+        )
+      );
+    }
+
+    // Best effort API sync if reachable
+    try {
+      await Promise.allSettled([
+        likhaLmsApi.users.updateUser(currentLeaderId, { role: 'faculty' }),
+        likhaLmsApi.users.updateUser(successorId, { role: 'admin' }),
+      ]);
+    } catch (_) {}
+
+    return {
+      success: true,
+      message: `Leadership transferred successfully to ${roleType === 'dean' ? 'Dean' : 'Chairperson'} successor.`,
+    };
+  };
+
+  const addCollege = async (college: College): Promise<College> => {
+    setColleges(prev => {
+      const exists = prev.some(
+        c => c.id === college.id || c.code.toLowerCase() === college.code.toLowerCase()
+      );
+      if (exists) {
+        return prev.map(c => (c.id === college.id ? { ...c, ...college } : c));
+      }
+      return [...prev, college];
+    });
+    return college;
+  };
+
+  const addDepartment = async (department: Department): Promise<Department> => {
+    setDepartments(prev => {
+      const exists = prev.some(
+        d =>
+          d.id === department.id ||
+          (d.collegeId === department.collegeId && d.code.toLowerCase() === department.code.toLowerCase())
+      );
+      if (exists) {
+        return prev.map(d => (d.id === department.id ? { ...d, ...department } : d));
+      }
+      return [...prev, department];
+    });
+    return department;
   };
 
   const joinCourseByCode = async (code: string): Promise<{ success: boolean; message: string; course?: Course }> => {
@@ -5972,6 +6404,17 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         requestJoinCourse,
         getMyRequest,
         getPendingRequests,
+        colleges,
+        departments,
+        pendingRegistrations,
+        registerAccount,
+        activateEmail,
+        verifyRegistration,
+        rejectRegistration,
+        purgeExpiredRegistrations,
+        transferLeadership,
+        addCollege,
+        addDepartment,
         logHistory,
         clearHistory
       }}
