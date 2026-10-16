@@ -1,16 +1,20 @@
 import type { UserRole } from '../types/lms';
 export type NavIcon = 'dashboard'|'courses'|'calendar'|'inbox'|'history'|'help'|'modules'|'syllabus'|'announcements'|'assessments'|'activities'|'quizzes'|'assignments'|'projects'|'presentations'|'exams'|'files'|'grades'|'people'|'accounts'|'page1'|'page2'|'page3'|'pending-requests'|'gabay-rag';
 export interface NavItem { id: string; label: string; icon: NavIcon; roles: UserRole[] }
-const ALL: UserRole[] = ['admin','faculty','student','staff'];
-const NO_STAFF: UserRole[] = ['admin','faculty','student'];
+export const ALL: UserRole[] = ['superadmin', 'admin', 'faculty', 'student', 'staff'];
+export const NO_STAFF: UserRole[] = ['superadmin', 'admin', 'faculty', 'student'];
 export const MAIN_NAV: NavItem[] = [
   { id: 'lms', label: 'Learning Management', icon: 'courses', roles: ALL },
   { id: 'gabay-rag', label: 'Gabay RAG', icon: 'gabay-rag', roles: ALL },
   { id: 'page1', label: 'Page 1', icon: 'page1', roles: NO_STAFF },
   { id: 'page2', label: 'Page 2', icon: 'page2', roles: NO_STAFF },
   { id: 'page3', label: 'Page 3', icon: 'page3', roles: NO_STAFF },
-  { id: 'accounts', label: 'Manage College Accounts', icon: 'accounts', roles: ['admin'] },
+  { id: 'accounts', label: 'Manage College Accounts', icon: 'accounts', roles: ['superadmin', 'admin'] },
 ];
+
+export function canAccessAccountManagement(role?: UserRole | string | null, _adminSubrole?: string | null): boolean {
+  return role === 'superadmin' || role === 'admin';
+}
 export const LMS_CHILDREN: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', roles: NO_STAFF },
   { id: 'courses', label: 'Courses', icon: 'courses', roles: NO_STAFF },

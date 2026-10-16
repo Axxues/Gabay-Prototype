@@ -26,6 +26,7 @@ const CreateAccountPage = React.lazy(() => import('./features/accounts/CreateAcc
 const EditAccountPage = React.lazy(() => import('./features/accounts/EditAccountPage').then(m => ({ default: m.EditAccountPage })));
 const GabayRAGPage = React.lazy(() => import('./features/rag/GabayRAGPage').then(m => ({ default: m.GabayRAGPage })));
 const SpeedGraderModal = React.lazy(() => import('./features/assessments/components/grading/SpeedGraderModal').then(m => ({ default: m.SpeedGraderModal })));
+const RegisterPage = React.lazy(() => import('./features/auth/RegisterPage').then(m => ({ default: m.RegisterPage })));
 
 function useAppNavigation() {
   const navigate = useNavigate();
@@ -87,7 +88,7 @@ const RequireAuth: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
 const RequireAdmin: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { activeRole } = useLMS();
-  if (activeRole !== 'admin') {
+  if (activeRole !== 'admin' && activeRole !== 'superadmin') {
     return <Navigate to="/dashboard" replace />;
   }
   return <>{children}</>;
@@ -240,6 +241,8 @@ export const AppContent: React.FC = () => {
   return (
     <Routes>
       <Route path="/login" element={<LoginRoute />} />
+      <Route path="/register" element={<React.Suspense fallback={<AuthLoadingScreen />}><RegisterPage /></React.Suspense>} />
+      <Route path="/activate" element={<React.Suspense fallback={<AuthLoadingScreen />}><RegisterPage /></React.Suspense>} />
       <Route element={<RequireAuth><AppShell /></RequireAuth>}>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<RouteWithNav element={(nav) => <DashboardPage onNavigateCourse={nav.handleNavigateCourse} onNavigateTab={nav.handleNavigateTab} />} />} />

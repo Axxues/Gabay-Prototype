@@ -9,6 +9,8 @@ export const TAB_PATHS: Record<string, string> = {
   help: '/help',
   accounts: '/accounts',
   'create-account': '/accounts/new',
+  register: '/register',
+  activate: '/activate',
   page1: '/page1',
   page2: '/page2',
   page3: '/page3',
@@ -31,6 +33,8 @@ export function pathToTab(pathname: string): { tab: string; courseId?: string; s
   if (parts.length === 0) return { tab: 'dashboard' };
   const [first, second, third] = parts;
   if (first === 'login') return { tab: 'login' };
+  if (first === 'register') return { tab: 'register' };
+  if (first === 'activate') return { tab: 'activate' };
   if (first === 'dashboard') return { tab: 'dashboard' };
   if (first === 'calendar') return { tab: 'calendar' };
   if (first === 'inbox') return { tab: 'inbox' };

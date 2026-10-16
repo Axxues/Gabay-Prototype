@@ -31,9 +31,7 @@ import type {
   SPRColumn,
   College,
   Department,
-  PendingRegistration,
-  AdminSubrole,
-  VerificationStatus
+  PendingRegistration
 } from '../types/lms';
 import type { Activity } from '../types/lms';
 import { activityPointsPossible } from '../utils/activities';
