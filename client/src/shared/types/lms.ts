@@ -1,4 +1,41 @@
-export type UserRole = 'admin' | 'faculty' | 'staff' | 'student';
+export type UserRole = 'superadmin' | 'admin' | 'faculty' | 'staff' | 'student';
+export type AdminSubrole = 'chancellor' | 'dean' | 'chairperson';
+export type VerificationStatus = 'pending' | 'verified' | 'rejected' | 'expired';
+
+export interface College {
+  id: string;
+  name: string;
+  code: string;
+  deanId?: string;
+}
+
+export interface Department {
+  id: string;
+  collegeId: string;
+  name: string;
+  code: string;
+  chairpersonId?: string;
+}
+
+export interface PendingRegistration {
+  id: string;
+  firstName: string;
+  middleName?: string;
+  lastName: string;
+  fullName: string;
+  email: string;
+  role: 'student' | 'faculty' | 'staff';
+  collegeId: string;
+  collegeName: string;
+  department: string;
+  studentId: string;
+  password: string;
+  emailVerified: boolean;
+  activationToken: string;
+  registeredAt: string;
+  expiresAt: string;
+  status: VerificationStatus;
+}
 
 export type TermId = 'prelim' | 'midterm' | 'finals';
 
@@ -16,10 +53,23 @@ export interface User {
   enrolledCourseIds?: string[];
   courseSections?: Record<string, string>;
   lastVisitedAt?: Record<string, string>;
+  firstName?: string;
+  middleName?: string;
+  lastName?: string;
+  adminSubrole?: AdminSubrole;
+  collegeId?: string;
+  collegeName?: string;
+  verificationStatus?: VerificationStatus;
+  emailVerified?: boolean;
+  registeredAt?: string;
+  verificationExpiresAt?: string;
 }
 
 // Runtime export stubs to guarantee Vite ESM dev imports and browser runtime never fail
 export const User = {} as unknown as User;
+export const College = {} as unknown as College;
+export const Department = {} as unknown as Department;
+export const PendingRegistration = {} as unknown as PendingRegistration;
 
 import type { OfficialSyllabusData } from '../data/syllabusData';
 
