@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useLMS } from '../../shared/context/LMSContext';
 import {
   Lock,
@@ -199,6 +200,17 @@ export const LoginPage: React.FC = () => {
             )}
           </button>
         </form>
+
+        {/* Self-Registration Link */}
+        <div className="text-center text-xs text-muted-foreground pt-1">
+          Don't have an account?{' '}
+          <Link
+            to="/register"
+            className="font-semibold text-primary hover:underline cursor-pointer"
+          >
+            Register here
+          </Link>
+        </div>
 
         {/* Clean Demo Accounts */}
         <div className="pt-3 border-t border-border space-y-2">
