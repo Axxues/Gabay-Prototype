@@ -24,7 +24,7 @@ interface TopbarProps {
   onOpenSidebar?: () => void;
 }
 
-export const Topbar: React.FC<TopbarProps> = ({
+export const Topbar: React.FC<TopbarProps> = React.memo(({
   currentTab,
   onNavigateTab,
   onNavigateCourse,
@@ -260,4 +260,4 @@ export const Topbar: React.FC<TopbarProps> = ({
       </div>
     </nav>
   );
-};
+});

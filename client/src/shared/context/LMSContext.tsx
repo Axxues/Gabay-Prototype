@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import type {
   User,
   UserRole,
@@ -1252,6 +1252,25 @@ export const normalizeCourse = (raw: any): Course => {
 
 export const normalizeCourseSyllabus = normalizeCourse;
 
+async function mapConcurrent<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  if (items.length === 0) return [];
+  const concurrency = Math.max(1, Math.min(limit, items.length));
+  const results = new Array<R>(items.length);
+  let nextIdx = 0;
+  const workers = Array.from({ length: concurrency }, async () => {
+    while (nextIdx < items.length) {
+      const idx = nextIdx++;
+      results[idx] = await fn(items[idx]);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Theme state
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -1370,6 +1389,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     syllabusRevisionsRef.current = syllabusRevisions;
   }, [syllabusRevisions]);
+  const activeCourseIdRef = useRef<string | null>('crs-cmsc131');
 
   // ponytail: two-phase bootstrap — essential paints the shell fast,
   // deferred fills per-course details in the background without blocking authReady.
@@ -1411,12 +1431,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           .then((likhaNotifs: any): any => ({
             notifications: ((Array.isArray(likhaNotifs) ? likhaNotifs : []) as any[]).map((ln: any) => ({
               id: ln.id || `notif-likha-${Date.now()}`,
-              recipientId: ln.user_id || ln.recipientId || user.id,
-              title: ln.title || 'Likha System Notification',
+              recipientId: ln.recipient || ln.user_id || ln.recipientId || user.id,
+              title: ln.subject || ln.title || 'Likha System Notification',
               message: ln.message || '',
               type: ln.type || 'system',
-              read: Boolean(ln.is_read ?? ln.read),
-              createdAt: ln.created_at || ln.createdAt || new Date().toISOString(),
+              read: ln.status === 'read' || Boolean(ln.is_read ?? ln.read),
+              createdAt: ln.timestamp || ln.created_at || ln.createdAt || new Date().toISOString(),
               link: ln.link || undefined,
             })),
           })),
@@ -1470,21 +1490,25 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (Array.isArray(likhaUsers) && likhaUsers.length > 0) {
           const others = likhaUsers
             .filter((u: any) => u.id !== user.id)
-            .map((u: any) => ({
-              id: u.id,
-              name: `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email,
-              email: u.email,
-              role: (u.role?.name || u.role || 'student').toLowerCase().includes('faculty') ||
+            .map((u: any) => {
+              const role: UserRole = (u.role?.name || u.role || 'student').toLowerCase().includes('faculty') ||
                 (u.role?.name || u.role || 'student').toLowerCase().includes('instructor')
                 ? 'faculty'
                 : (u.role?.name || u.role || 'student').toLowerCase().includes('admin')
                   ? 'admin'
                   : (u.role?.name || u.role || 'student').toLowerCase().includes('staff')
                     ? 'staff'
-                    : 'student',
-              avatar: u.avatar ? `https://gabay.zyberlab.com/assets/${u.avatar}` : undefined,
-              department: u.department || 'College of Computer Science',
-            }));
+                    : 'student';
+              return {
+                id: u.id,
+                name: `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email,
+                email: u.email,
+                role,
+                avatar: u.avatar ? `https://gabay.zyberlab.com/assets/${u.avatar}` : '',
+                department: u.department || 'College of Computer Science',
+                title: u.title || (role === 'student' ? 'Undergraduate Student' : 'Instructor'),
+              };
+            });
           fresh.users = [user, ...others];
         } else {
           fresh.users = [user];
@@ -1501,13 +1525,16 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (Array.isArray(likhaNotifs) && likhaNotifs.length > 0) {
           const mapped: Notification[] = likhaNotifs.map((ln: any) => ({
             id: ln.id || `notif-likha-${Date.now()}`,
-            recipientId: ln.user_id || user.id,
-            title: ln.title || 'Likha System Notification',
-            message: ln.message || '',
-            type: ln.type || 'system',
-            read: Boolean(ln.is_read ?? ln.read),
-            createdAt: ln.created_at || new Date().toISOString(),
-            link: ln.link || undefined,
+            recipientId: ln.recipient || ln.user_id || user.id,
+            actorId: ln.sender || ln.actor_id || 'system',
+            actorName: ln.actor_name || 'System',
+            actorAvatar: ln.actor_avatar || '',
+            relatedId: ln.related_id || ln.link || ln.item || '',
+            relatedTitle: ln.subject || ln.title || 'Notification',
+            content: ln.message || ln.content || '',
+            type: (['module_comment_reply', 'announcement_reply', 'quiz_draft_saved', 'activity_submitted', 'calendar_event', 'file_uploaded', 'grade_posted'].includes(ln.type) ? ln.type : 'calendar_event') as Notification['type'],
+            read: ln.status === 'read' || Boolean(ln.is_read ?? ln.read),
+            createdAt: ln.timestamp || ln.created_at || new Date().toISOString(),
           }));
           const seen = new Set(fresh.notifications.map(n => n.id));
           for (const item of mapped) {
@@ -1556,6 +1583,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               : Array.isArray(g.members)
                 ? g.members.map((m: any) => m.userId || m.id)
                 : [],
+            createdAt: g.created_at || new Date().toISOString(),
+            createdBy: g.created_by || user.id,
           }));
         }
         if (Array.isArray(slots) && slots.length > 0) {
@@ -1578,7 +1607,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const refreshDeferred = async (fresh: LMSDatabase, courses: Course[], run: number): Promise<void> => {
-    const coursesRes = { courses };
+    const prioritizedCourses = [...courses].sort((a, b) => {
+      if (a.id === activeCourseIdRef.current) return -1;
+      if (b.id === activeCourseIdRef.current) return 1;
+      return 0;
+    });
+    const coursesRes = { courses: prioritizedCourses };
     try {
       // Course/request cache scope comes from Likha ERP (no Express
       // fallback): sections plus pending/approved requests per course.
@@ -1699,8 +1733,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // readBy), discussions (with replies) for each of the user's courses
       // (enrolled + taught — the same course set resolved above). Per-course
       // failures are tolerated (403-tolerant); sync getters read the cache.
-      const contentResults = await Promise.all(
-        coursesRes.courses.map(course =>
+      const contentResults = await mapConcurrent(
+        coursesRes.courses,
+        3,
+        course =>
           (async () => {
             const [modulesSettled, announcementsSettled, discussionsSettled] = await Promise.allSettled([
               // Task 5: modules (+ embedded items; row-embedded comments when
@@ -1730,7 +1766,6 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             ]);
             return { modulesSettled, announcementsSettled, discussionsSettled };
           })()
-        )
       );
       const allModules: Module[] = [];
       const allAnnouncements: Announcement[] = [];
@@ -1751,8 +1786,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // from Likha ERP (no Express fallback on this path). Task 7: grades
       // + SPR config ride the same Likha path. Per-course failures are
       // tolerated (403-tolerant); sync getters read the cache.
-      const assessmentResults = await Promise.all(
-        coursesRes.courses.map(course =>
+      const assessmentResults = await mapConcurrent(
+        coursesRes.courses,
+        3,
+        course =>
           (async () => {
             const [quizzesSettled, examsSettled, activitiesSettled, gradesSettled] =
               await Promise.allSettled([
@@ -1810,7 +1847,6 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 gradesSettled.status === 'fulfilled' ? gradesSettled.value.gradeCellRows : [],
             };
           })()
-        )
       );
       const allQuizzes: Quiz[] = [];
       const allExams: Exam[] = [];
@@ -1838,8 +1874,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // read whatever the cache holds and ensureSPRCourse retries lazily.
       // spr_cells split per course here so column ids bucket against the
       // freshly loaded config (cells survive reload with no extra round-trip).
-      const sprConfigResults = await Promise.all(
-        coursesRes.courses.map(course =>
+      const sprConfigResults = await mapConcurrent(
+        coursesRes.courses,
+        4,
+        course =>
           (async () => {
             try {
               const row = await likhaLmsApi?.grades?.getSPRConfig?.(course.id);
@@ -1848,7 +1886,6 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               return { courseId: course.id, config: null };
             }
           })()
-        )
       );
       const allSPRConfigs: Record<string, SPRConfig> = {};
       for (const r of sprConfigResults) {
@@ -1880,34 +1917,28 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       const allSubmissions: Submission[] = [];
       const seenSubmissionIds = new Set<string>();
-      const quizSubmissionResults = await Promise.allSettled(
-        allQuizzes.map(q =>
-          Promise.resolve()
-            .then(() => likhaLmsApi?.submissions?.getSubmissions?.(q.id, 'quiz') ?? [])
-            .then(mapLikhaSubmissionList(q.id))
-        )
-      );
-      const activitySubmissionResults = await Promise.allSettled(
-        allActivities.map(a =>
-          Promise.resolve()
-            .then(() => likhaLmsApi?.submissions?.getSubmissions?.(a.id, 'activity') ?? [])
-            .then(mapLikhaSubmissionList(a.id))
-        )
-      );
-      const examSubmissionResults = await Promise.allSettled(
-        allExams.map(e =>
-          Promise.resolve()
-            .then(() => likhaLmsApi?.submissions?.getSubmissions?.(e.id, 'exam') ?? [])
-            .then(mapLikhaSubmissionList(e.id))
-        )
-      );
-      for (const r of [...quizSubmissionResults, ...examSubmissionResults, ...activitySubmissionResults]) {
-        if (r.status === 'fulfilled') {
-          for (const merged of r.value.submissions) {
-            if (seenSubmissionIds.has(merged.id)) continue;
-            seenSubmissionIds.add(merged.id);
-            allSubmissions.push(merged);
+      const assessmentItems: Array<{ id: string; type: 'quiz' | 'activity' | 'exam' }> = [
+        ...allQuizzes.map(q => ({ id: q.id, type: 'quiz' as const })),
+        ...allActivities.map(a => ({ id: a.id, type: 'activity' as const })),
+        ...allExams.map(e => ({ id: e.id, type: 'exam' as const })),
+      ];
+      const submissionResults = await mapConcurrent(
+        assessmentItems,
+        6,
+        async item => {
+          try {
+            const rows = (await likhaLmsApi?.submissions?.getSubmissions?.(item.id, item.type)) ?? [];
+            return mapLikhaSubmissionList(item.id)(rows);
+          } catch {
+            return { submissions: [] };
           }
+        }
+      );
+      for (const r of submissionResults) {
+        for (const merged of r.submissions) {
+          if (seenSubmissionIds.has(merged.id)) continue;
+          seenSubmissionIds.add(merged.id);
+          allSubmissions.push(merged);
         }
       }
       fresh.submissions = allSubmissions;
@@ -1921,8 +1952,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // the user's courses (virtual aggregation in useCourseFiles reads these
       // rows plus module/announcement/activity sources). Per-course
       // failures are tolerated (403-tolerant); sync getters read the cache.
-      const fileResults = await Promise.all(
-        coursesRes.courses.map(course =>
+      const fileResults = await mapConcurrent(
+        coursesRes.courses,
+        3,
+        course =>
           (async () => {
             const [foldersSettled, filesSettled] = await Promise.allSettled([
               likhaLmsApi.files?.getCourseFolders ? likhaLmsApi.files.getCourseFolders(course.id) : Promise.resolve([]),
@@ -1930,7 +1963,6 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             ]);
             return { courseId: course.id, foldersSettled, filesSettled };
           })()
-        )
       );
       const allFolders: CourseFolder[] = [];
       const allFiles: CourseFile[] = [];
@@ -1985,7 +2017,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 name: `${me.first_name || ''} ${me.last_name || ''}`.trim() || me.email,
                 email: me.email,
                 role: mappedRole,
-                avatar: me.avatar ? `https://gabay.zyberlab.com/assets/${me.avatar}` : undefined,
+                avatar: me.avatar ? `https://gabay.zyberlab.com/assets/${me.avatar}` : '',
                 department: me.department || 'College of Computer Science',
                 title: me.title || (mappedRole === 'student' ? 'Undergraduate Student' : 'Instructor'),
               };
@@ -2058,7 +2090,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             name: `${likhaAuth.user.first_name || ''} ${likhaAuth.user.last_name || ''}`.trim() || likhaAuth.user.email,
             email: likhaAuth.user.email,
             role: mappedRole,
-            avatar: likhaAuth.user.avatar ? `${likhaLmsApi ? 'https://gabay.zyberlab.com/assets/' + likhaAuth.user.avatar : ''}` : undefined,
+            avatar: likhaAuth.user.avatar ? `${likhaLmsApi ? 'https://gabay.zyberlab.com/assets/' + likhaAuth.user.avatar : ''}` : '',
             department: likhaAuth.user.department || 'College of Computer Science',
             title: likhaAuth.user.title || (mappedRole === 'student' ? 'Undergraduate Student' : 'Instructor'),
           };
@@ -2098,7 +2130,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Course state
-  const [activeCourseId, setActiveCourseId] = useState<string | null>('crs-cmsc131');
+  const [activeCourseId, setActiveCourseIdState] = useState<string | null>('crs-cmsc131');
+  const setActiveCourseId = useCallback((id: string | null) => {
+    activeCourseIdRef.current = id;
+    setActiveCourseIdState(id);
+  }, []);
 
   // UI Drawers & Modals
   const [isHistoryDrawerOpen, setIsHistoryDrawerOpen] = useState(false);
@@ -2260,12 +2296,55 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteCourse = async (courseId: string): Promise<void> => {
     try {
-      await likhaLmsApi.courses.deleteCourse(courseId);
-      setDb(prev => ({
-        ...prev,
-        courses: (prev.courses || []).filter(c => c.id !== courseId)
-      }));
+      // Children-first cascade: Directus has no server-side CASCADE, so a
+      // bare course DELETE orphans (or is blocked by) modules, items,
+      // syllabus rows, announcements, assessments, files, grades, etc.
+      try {
+        await likhaLmsApi.courses.deleteCourseCascade(courseId);
+      } catch {
+        await likhaLmsApi.courses.deleteCourse(courseId);
+      }
+      // Purge every course-scoped slice so no orphaned modules, items,
+      // syllabus revisions, announcements, assessments, files, grades,
+      // sections, or requests survive in the UI.
+      setDb(prev => {
+        const keep = <T extends { courseId?: string }>(rows: T[] | undefined) =>
+          (rows || []).filter(r => r.courseId !== courseId);
+        const { [courseId]: _droppedCfg, ...sprConfigs } = prev.sprConfigs || {};
+        const { [courseId]: _droppedScores, ...sprScores } = prev.sprScores || {};
+        return {
+          ...prev,
+          courses: (prev.courses || []).filter(c => c.id !== courseId),
+          modules: keep(prev.modules),
+          activities: keep(prev.activities),
+          quizzes: keep(prev.quizzes),
+          exams: keep(prev.exams),
+          submissions: (prev.submissions || []).filter(s => s.courseId !== courseId),
+          announcements: keep(prev.announcements),
+          discussions: keep(prev.discussions),
+          courseFiles: keep(prev.courseFiles),
+          courseFolders: keep(prev.courseFolders),
+          courseGrades: keep(prev.courseGrades),
+          courseSections: keep(prev.courseSections),
+          enrollmentRequests: keep(prev.enrollmentRequests),
+          calendarEvents: (prev.calendarEvents || []).filter(e => e.courseId !== courseId),
+          users: (prev.users || []).map(u =>
+            (u.enrolledCourseIds || []).includes(courseId)
+              ? { ...u, enrolledCourseIds: (u.enrolledCourseIds || []).filter(c => c !== courseId) }
+              : u
+          ),
+          sprConfigs,
+          sprScores,
+        };
+      });
+      setSyllabusRevisions(prev => {
+        const { [courseId]: _dropped, ...rest } = prev;
+        return rest;
+      });
       likhaLmsApi.invalidateCache('/items/courses');
+      // Clear every cached child list whose filter references this course
+      // (keys look like `...filter[course_id][_eq]=<courseId>...`).
+      likhaLmsApi.invalidateCache(`_eq]=${courseId}`);
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to delete course.';
       setLastError(message);

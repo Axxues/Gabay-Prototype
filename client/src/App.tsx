@@ -9,7 +9,7 @@ import { LoginPage } from './features/auth/LoginPage';
 import { RoleSwitcherModal } from './shared/components/common/RoleSwitcherModal';
 import { GlobalSearchDialog } from './shared/components/common/GlobalSearchDialog';
 import { PageTransition } from './shared/components/common/PageTransition';
-import { AppSkeleton, ProfileSkeleton } from './shared/components/common/AppSkeleton';
+import { AppSkeleton, ProfileSkeleton, PageSkeleton } from './shared/components/common/AppSkeleton';
 import { tabToPath, courseToPath, pathToTab } from './shared/config/routes';
 
 const DashboardPage = React.lazy(() => import('./features/dashboard/DashboardPage').then(m => ({ default: m.DashboardPage })));
@@ -31,7 +31,7 @@ function useAppNavigation() {
   const navigate = useNavigate();
   const { activeCourseId, setActiveCourseId, logHistory } = useLMS();
 
-  const handleNavigateTab = (tab: string) => {
+  const handleNavigateTab = React.useCallback((tab: string) => {
     if (tab === 'edit-account') {
       navigate('/accounts');
       logHistory('/accounts', 'LMS > Edit Account');
@@ -40,26 +40,26 @@ function useAppNavigation() {
     const path = tabToPath(tab, activeCourseId);
     navigate(path);
     logHistory(path, `LMS > ${tab.charAt(0).toUpperCase() + tab.slice(1)}`);
-  };
+  }, [navigate, activeCourseId, logHistory]);
 
-  const handleNavigateCourse = (courseId: string, subTab = 'modules') => {
+  const handleNavigateCourse = React.useCallback((courseId: string, subTab = 'modules') => {
     setActiveCourseId(courseId);
     const path = courseToPath(courseId, subTab);
     navigate(path);
     logHistory(path, `LMS > Course > ${subTab}`);
-  };
+  }, [navigate, setActiveCourseId, logHistory]);
 
-  const handleSelectCourseTab = (subTab: string) => {
+  const handleSelectCourseTab = React.useCallback((subTab: string) => {
     if (activeCourseId) {
       handleNavigateCourse(activeCourseId, subTab);
     }
-  };
+  }, [activeCourseId, handleNavigateCourse]);
 
-  const handleEditAccount = (user: { id: string }) => {
+  const handleEditAccount = React.useCallback((user: { id: string }) => {
     const path = `/accounts/${encodeURIComponent(user.id)}/edit`;
     navigate(path);
     logHistory(path, 'LMS > Edit Account');
-  };
+  }, [navigate, logHistory]);
 
   return { handleNavigateTab, handleNavigateCourse, handleSelectCourseTab, handleEditAccount };
 }
@@ -180,31 +180,35 @@ export const AppShell: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  const handleOpenSearch = React.useCallback(() => setSearchOpen(true), []);
+  const handleOpenSidebar = React.useCallback(() => setSidebarOpen(true), []);
+  const handleCloseSidebar = React.useCallback(() => setSidebarOpen(false), []);
+
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-muted font-sans selection:bg-primary/20 dark:bg-background">
       <Topbar
         currentTab={currentTab}
         onNavigateTab={nav.handleNavigateTab}
         onNavigateCourse={nav.handleNavigateCourse}
-        onOpenSearch={() => setSearchOpen(true)}
-        onOpenSidebar={() => setSidebarOpen(true)}
+        onOpenSearch={handleOpenSearch}
+        onOpenSidebar={handleOpenSidebar}
       />
 
       <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden pt-16">
         {sidebarOpen && (
           <div
             className="fixed inset-0 overlay-backdrop z-10 lg:hidden transition-opacity animate-fade-in"
-            onClick={() => setSidebarOpen(false)}
+            onClick={handleCloseSidebar}
           />
         )}
 
         <div className="hidden lg:flex"><AppRail currentTab={currentTab} onNavigateTab={nav.handleNavigateTab} /><LMSContextPanel currentTab={currentTab} courseSubTab={courseSubTab} onNavigateTab={nav.handleNavigateTab} onSelectCourseTab={nav.handleSelectCourseTab} onNavigateCourse={nav.handleNavigateCourse} /></div>
-        {sidebarOpen && <div className="fixed left-0 top-16 bottom-0 z-20 flex lg:hidden animate-slide-in-right"><AppRail currentTab={currentTab} onNavigateTab={(t) => { nav.handleNavigateTab(t); setSidebarOpen(false); }} /><LMSContextPanel currentTab={currentTab} courseSubTab={courseSubTab} onNavigateTab={(t) => { nav.handleNavigateTab(t); setSidebarOpen(false); }} onSelectCourseTab={(t) => { nav.handleSelectCourseTab(t); setSidebarOpen(false); }} onNavigateCourse={(id, sub) => { nav.handleNavigateCourse(id, sub); setSidebarOpen(false); }} /></div>}
+        {sidebarOpen && <div className="fixed left-0 top-16 bottom-0 z-20 flex lg:hidden animate-slide-in-right"><AppRail currentTab={currentTab} onNavigateTab={(t) => { nav.handleNavigateTab(t); handleCloseSidebar(); }} /><LMSContextPanel currentTab={currentTab} courseSubTab={courseSubTab} onNavigateTab={(t) => { nav.handleNavigateTab(t); handleCloseSidebar(); }} onSelectCourseTab={(t) => { nav.handleSelectCourseTab(t); handleCloseSidebar(); }} onNavigateCourse={(id, sub) => { nav.handleNavigateCourse(id, sub); handleCloseSidebar(); }} /></div>}
 
         <main className={`relative min-h-0 min-w-0 w-full flex-1 ${currentTab === 'courses' || currentTab === 'inbox' || currentTab === 'gabay-rag' ? 'overflow-hidden flex flex-col' : 'overflow-y-auto custom-scrollbar'}`}>
           <div className={currentTab === 'courses' || currentTab === 'inbox' || currentTab === 'gabay-rag' ? "flex h-full min-h-0 w-full min-w-0 flex-1 flex-col" : "mx-auto flex min-h-full w-full max-w-[1600px] flex-col p-5 sm:p-8 lg:p-10"}>
             <PageTransition pageKey={location.pathname} className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
-              <React.Suspense fallback={<AppSkeleton />}>
+              <React.Suspense fallback={<PageSkeleton />}>
                 <Outlet context={nav} />
               </React.Suspense>
             </PageTransition>

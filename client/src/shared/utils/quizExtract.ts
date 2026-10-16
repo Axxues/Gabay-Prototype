@@ -1,9 +1,4 @@
-import * as pdfjsLib from 'pdfjs-dist';
-import workerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import mammoth from 'mammoth';
 import { applyQuizTextLimit, type ExtractedQuizText } from './quizImport';
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
 
 const MIN_TEXT_CHARS = 20;
 const MAX_PDF_PAGES = 50;
@@ -13,6 +8,12 @@ function significantChars(text: string): number {
 }
 
 export async function extractPdfText(file: File): Promise<ExtractedQuizText> {
+  const [pdfjsLib, { default: workerSrc }] = await Promise.all([
+    import('pdfjs-dist'),
+    import('pdfjs-dist/build/pdf.worker.min.mjs?url'),
+  ]);
+  pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
+
   const buffer = await file.arrayBuffer();
   let pdf;
   try {
@@ -44,6 +45,7 @@ export async function extractPdfText(file: File): Promise<ExtractedQuizText> {
 }
 
 export async function extractDocxText(file: File): Promise<ExtractedQuizText> {
+  const { default: mammoth } = await import('mammoth');
   const arrayBuffer = await file.arrayBuffer();
   let value: string;
   try {

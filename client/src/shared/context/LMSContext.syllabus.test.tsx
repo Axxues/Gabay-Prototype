@@ -141,7 +141,7 @@ const defaultRoutes = (): Route[] => [
   // regression throws loudly via the unmocked-fetch error below.
   { match: u => u.includes('/items/courses?'), handle: () => okRes({ data: [{ id: 'c1', code: 'C1', title: 'T', published: true, enrolled_count: 0 }] }) },
   { match: u => u.includes('/items/notifications'), handle: () => okRes({ data: [] }) },
-  { match: u => u.includes('/items/chat_messages'), handle: () => okRes({ data: [] }) },
+  { match: u => u.includes('/items/messages'), handle: () => okRes({ data: [] }) },
   { match: u => u.includes('/items/calendar_events'), handle: () => okRes({ data: [] }) },
   { match: u => u.includes('/users?fields'), handle: () => okRes({ data: [] }) },
   { match: u => u.includes('/items/chat_groups'), handle: () => okRes({ data: [] }) },

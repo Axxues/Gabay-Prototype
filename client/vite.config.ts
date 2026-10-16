@@ -89,8 +89,14 @@ export default defineConfig({
             if (id.includes('lucide-react')) {
               return 'vendor-icons';
             }
-            if (id.includes('pdfjs-dist') || id.includes('xlsx') || id.includes('mammoth')) {
-              return 'vendor-parsers';
+            if (id.includes('pdfjs-dist')) {
+              return 'vendor-pdf';
+            }
+            if (id.includes('xlsx')) {
+              return 'vendor-xlsx';
+            }
+            if (id.includes('mammoth')) {
+              return 'vendor-docx';
             }
             if (id.includes('recharts')) {
               return 'vendor-charts';

@@ -102,7 +102,7 @@ describe('Likha LMS Direct API Client', () => {
     expect(notifs[0].id).toBe('notif-1');
     expect(fetchSpy).toHaveBeenCalledTimes(3);
     expect(fetchSpy).toHaveBeenCalledWith(
-      expect.stringContaining('fields=id,user_id,title,message,type,is_read,created_at,link'),
+      expect.stringContaining('/notifications'),
       expect.any(Object)
     );
   });
@@ -241,6 +241,51 @@ describe('Likha LMS Direct API Client', () => {
     const retried = await likhaLmsApi.users.resolveRoleId('FlakyRole');
     expect(retried).toBe('role-uuid-flaky');
     expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('deleteCourseCascade removes children before the parent course', async () => {
+    const urls: string[] = [];
+    vi.spyOn(global, 'fetch').mockImplementation(async (url: any, init: any) => {
+      const u = String(url);
+      urls.push(`${init?.method || 'GET'} ${u}`);
+      if ((init?.method || 'GET') === 'GET') {
+        if (u.includes('/items/module_items?')) return { ok: true, json: async () => ({ data: [{ id: 'mi-1', module_id: 'm-1' }] }) } as any;
+        if (u.includes('/items/modules?')) return { ok: true, json: async () => ({ data: [{ id: 'm-1', items: [] }] }) } as any;
+        if (u.includes('/items/activities?')) return { ok: true, json: async () => ({ data: [{ id: 'a-1' }] }) } as any;
+        if (u.includes('/items/submissions?')) return { ok: true, json: async () => ({ data: [{ id: 'sub-1', activity_id: 'a-1' }] }) } as any;
+        if (u.includes('/items/submission_answers?')) return { ok: true, json: async () => ({ data: [{ id: 'sa-1', submission_id: 'sub-1' }] }) } as any;
+        if (u.includes('/items/assessment_questions?')) return { ok: true, json: async () => ({ data: [{ id: 'q-1', activity_id: 'a-1' }] }) } as any;
+        if (u.includes('/items/announcements?')) return { ok: true, json: async () => ({ data: [{ id: 'an-1' }] }) } as any;
+        if (u.includes('/items/syllabi?')) return { ok: true, json: async () => ({ data: [{ id: 's-1' }] }) } as any;
+        return { ok: true, json: async () => ({ data: [] }) } as any;
+      }
+      return { ok: true, json: async () => ({}) } as any;
+    });
+    await likhaLmsApi.courses.deleteCourseCascade('c-1');
+    const parentIdx = urls.findIndex(u => u === 'DELETE https://gabay.zyberlab.com/items/courses/c-1');
+    expect(parentIdx).toBeGreaterThan(-1);
+
+    const saIdx = urls.findIndex(u => u === 'DELETE https://gabay.zyberlab.com/items/submission_answers/sa-1');
+    const subIdx = urls.findIndex(u => u === 'DELETE https://gabay.zyberlab.com/items/submissions/sub-1');
+    const qIdx = urls.findIndex(u => u === 'DELETE https://gabay.zyberlab.com/items/assessment_questions/q-1');
+    const actIdx = urls.findIndex(u => u === 'DELETE https://gabay.zyberlab.com/items/activities/a-1');
+
+    // Leaves must be deleted before intermediate parents
+    expect(saIdx).toBeGreaterThan(-1);
+    expect(subIdx).toBeGreaterThan(-1);
+    expect(saIdx).toBeLessThan(subIdx);
+
+    expect(qIdx).toBeGreaterThan(-1);
+    expect(actIdx).toBeGreaterThan(-1);
+    expect(qIdx).toBeLessThan(actIdx);
+
+    // Everything before the course itself
+    expect(subIdx).toBeLessThan(parentIdx);
+    expect(actIdx).toBeLessThan(parentIdx);
+    expect(urls.slice(0, parentIdx)).toContain('DELETE https://gabay.zyberlab.com/items/module_items/mi-1');
+    expect(urls.slice(0, parentIdx)).toContain('DELETE https://gabay.zyberlab.com/items/modules/m-1');
+    expect(urls.slice(0, parentIdx)).toContain('DELETE https://gabay.zyberlab.com/items/announcements/an-1');
+    expect(urls.slice(0, parentIdx)).toContain('DELETE https://gabay.zyberlab.com/items/syllabi/s-1');
   });
 });
 

@@ -46,7 +46,7 @@ export const UserProfileModal: React.FC = () => {
 
   const roleBadges: Record<string, { label: string; style: string; icon: React.ReactNode }> = {
     admin: {
-      label: 'DEAN / ACADEMIC ADMIN',
+      label: 'ADMIN',
       style: 'bg-primary/10 text-primary border-primary/20',
       icon: <Building className="w-3.5 h-3.5" />
     },

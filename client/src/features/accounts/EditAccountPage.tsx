@@ -171,12 +171,12 @@ export const EditAccountPage: React.FC<EditAccountPageProps> = ({ user, onNaviga
     { value: 'faculty', label: 'Faculty Instructor', icon: <UserCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> },
     { value: 'student', label: 'Enrolled Student', icon: <GraduationCap className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" /> },
     { value: 'staff', label: 'Non-Teaching Staff', icon: <ShieldCheck className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" /> },
-    { value: 'admin', label: 'Dean / Administrator', icon: <Building className="w-3.5 h-3.5 text-primary" /> }
+    { value: 'admin', label: 'Administrator', icon: <Building className="w-3.5 h-3.5 text-primary" /> }
   ];
 
   const previewMeta = useMemo(() => {
-    const defaultTitle = formRole === 'student' ? 'Student' : formRole === 'faculty' ? 'Faculty Instructor' : formRole === 'admin' ? 'Dean / Administrator' : 'Staff / Registrar Aide';
-    const roleLabel = formRole === 'admin' ? 'Dean / admin' : formRole === 'faculty' ? 'Faculty' : formRole === 'staff' ? 'Registrar / staff' : 'Student';
+    const defaultTitle = formRole === 'student' ? 'Student' : formRole === 'faculty' ? 'Faculty Instructor' : formRole === 'admin' ? 'Administrator' : 'Staff / Registrar Aide';
+    const roleLabel = formRole === 'admin' ? 'Admin' : formRole === 'faculty' ? 'Faculty' : formRole === 'staff' ? 'Registrar / staff' : 'Student';
     return { defaultTitle, roleLabel };
   }, [formRole]);
 

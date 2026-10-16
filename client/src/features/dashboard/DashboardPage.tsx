@@ -222,12 +222,37 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           {/* Empty State or Course Cards Grid */}
           {isLoading && userCourses.length === 0 ? (
             <div data-testid="dashboard-courses-loading" className={`grid gap-5 ${hasRightSidebar ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1 md:grid-cols-2 lg:grid-cols-3"}`} aria-hidden="true">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div key={`dashboard-courses-skeleton-${i}`} className="bg-card border border-border rounded-2xl overflow-hidden animate-pulse">
-                  <div className="h-28 bg-muted" />
-                  <div className="p-4 space-y-2">
-                    <div className="h-4 w-2/3 rounded bg-muted" />
-                    <div className="h-3 w-1/2 rounded bg-muted/70" />
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={`dashboard-courses-skeleton-${i}`} className="bg-card text-card-foreground border border-border rounded-2xl overflow-hidden flex flex-col justify-between animate-pulse">
+                  <div>
+                    <div className="h-20 p-4 flex flex-col justify-between bg-muted/40 border-b border-border/40">
+                      <div className="h-5 w-36 rounded-full bg-muted/70" />
+                      <div className="h-5 w-4/5 rounded-md bg-muted" />
+                    </div>
+                    <div className="p-5 space-y-3">
+                      <div className="space-y-2 text-xs">
+                        <div className="flex justify-between items-center">
+                          <div className="h-3 w-16 rounded bg-muted/50" />
+                          <div className="h-3.5 w-28 rounded bg-muted" />
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <div className="h-3 w-16 rounded bg-muted/50" />
+                          <div className="h-3.5 w-20 rounded bg-muted" />
+                        </div>
+                        <div className="flex justify-between items-center pt-1.5 border-t border-border/50">
+                          <div className="h-3 w-16 rounded bg-muted/50" />
+                          <div className="h-4 w-10 rounded bg-muted/70" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="px-5 py-2.5 bg-muted/30 border-t border-border flex items-center justify-between">
+                    <div className="h-4 w-24 rounded bg-muted/60" />
+                    <div className="flex items-center gap-2">
+                      <div className="h-6 w-6 rounded-lg bg-muted/40" />
+                      <div className="h-6 w-6 rounded-lg bg-muted/40" />
+                      <div className="h-6 w-6 rounded-lg bg-muted/40" />
+                    </div>
                   </div>
                 </div>
               ))}

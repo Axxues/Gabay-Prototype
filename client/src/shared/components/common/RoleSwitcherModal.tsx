@@ -36,8 +36,8 @@ export const RoleSwitcherModal: React.FC = () => {
   }[] = [
     {
       role: 'admin',
-      title: '1. Administrator (Dean / Chair)',
-      personName: 'Dean 1',
+      title: '1. Administrator',
+      personName: 'Admin 1',
       icon: <Building className="w-5 h-5 text-primary" />,
       badgeColor: 'bg-primary/10 text-primary border-primary/20',
       scope: 'College-wide visibility across all course shells, instructors & enrollments.',

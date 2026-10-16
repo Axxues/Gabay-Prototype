@@ -52,7 +52,7 @@ beforeEach(() => {
 });
 
 describe('exportSPRToExcel prelim bucket', () => {
-  it('keeps 2-term exports byte-identical when no prelim bucket is passed', () => {
+  it('keeps 2-term exports byte-identical when no prelim bucket is passed', async () => {
     const mt = [col('m1', 'MT Quiz 1')];
     const ft = [col('f1', 'FT Quiz 1')];
     const baseResolve = () => ({
@@ -66,7 +66,7 @@ describe('exportSPRToExcel prelim bucket', () => {
       numerical: '2.50',
     });
 
-    exportSPRToExcel({
+    await exportSPRToExcel({
       course: course(),
       roster: roster(),
       config: { courseId: 'c1', midtermColumns: mt, finalColumns: ft, mtExamPerfect: 100, ftExamPerfect: 100 },
@@ -74,7 +74,7 @@ describe('exportSPRToExcel prelim bucket', () => {
     });
     const withoutPrelim = aoaRows();
 
-    exportSPRToExcel({
+    await exportSPRToExcel({
       course: course(),
       roster: roster(),
       // Explicit empty prelim bucket must not change 2-term output.
@@ -86,12 +86,12 @@ describe('exportSPRToExcel prelim bucket', () => {
     expect(withEmptyPrelim).toEqual(withoutPrelim);
   });
 
-  it('includes prelim columns and grade in export output for a 3-term course', () => {
+  it('includes prelim columns and grade in export output for a 3-term course', async () => {
     const prelim = [col('p1', 'Prelim Quiz 1'), col('p2', 'Prelim Quiz 2')];
     const mt = [col('m1', 'MT Quiz 1')];
     const ft = [col('f1', 'FT Quiz 1')];
 
-    exportSPRToExcel({
+    await exportSPRToExcel({
       course: course(),
       roster: roster(),
       config: {

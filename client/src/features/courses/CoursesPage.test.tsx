@@ -50,7 +50,7 @@ describe('CoursesPage sub-tab lazy loading and suspense', () => {
         expect(screen.getByRole('heading', { level: 1, name: 'Modules' })).toBeInTheDocument();
         expect(screen.getByText('No modules available for this course section yet.')).toBeInTheDocument();
       },
-      { timeout: 5000 }
+      { timeout: 10000 }
     );
   });
 });

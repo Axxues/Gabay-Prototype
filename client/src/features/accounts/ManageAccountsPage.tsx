@@ -306,7 +306,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
     switch (normalized) {
       case 'admin':
         return {
-          label: 'Dean / admin',
+          label: 'Admin',
           badgeClass: 'bg-muted text-muted-foreground border-border',
           icon: <Building className="w-3 h-3" />
         };
@@ -356,7 +356,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
             onClick={() => setIsRoleModalOpen(true)}
             className="px-3.5 py-1.5 bg-amber-500 text-white dark:text-amber-950 font-bold text-xs rounded-xl shadow-xs hover:bg-amber-600 transition-colors shrink-0 cursor-pointer"
           >
-            Switch to Dean / Admin
+            Switch to Admin
           </button>
         </div>
       )}

@@ -66,6 +66,16 @@ async function rawLikhaFetch<T = any>(
 
   const res = await fetch(url, { ...options, headers });
 
+  if ((res.status === 502 || res.status === 503 || res.status === 504) && allowRetry) {
+    // Transient backend gateway restart (e.g. nodemon restart on shared live system)
+    await new Promise(r => setTimeout(r, 800));
+    const retryRes = await fetch(url, { ...options, headers });
+    if (retryRes.ok) {
+      const retryJson = await retryRes.json().catch(() => ({}));
+      return retryJson.data !== undefined ? retryJson.data : retryJson;
+    }
+  }
+
   if (res.status === 403 && allowRetry) {
     const svcToken = await getServiceToken();
     if (svcToken) {
@@ -101,7 +111,7 @@ function getPathTtl(path: string): number {
   if (path.includes('/items/syllabi')) return 120000;
   if (path.includes('/users')) return 300000;
   if (path.includes('/items/calendar_events')) return 60000;
-  if (path.includes('/items/notifications')) return 15000;
+  if (path.includes('/notifications')) return 15000;
   return 30000;
 }
 
@@ -270,7 +280,7 @@ export const likhaLmsApi = {
       // NOT cached, so a transient outage can recover on the next call.
       let rows: any[];
       try {
-        rows = await likhaRequest<any[]>(
+        rows = await rawLikhaFetch<any[]>(
           `/roles?filter[name][_eq]=${encodeURIComponent(key)}&fields=id,name`
         );
       } catch {
@@ -331,6 +341,148 @@ export const likhaLmsApi = {
 
     async deleteCourse(id: string): Promise<void> {
       await likhaRequest(`/items/courses/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    },
+
+    // Robust children-first relational cascade: Directus does not apply server-side
+    // CASCADE ON DELETE, so parent deletes are blocked by foreign key constraints.
+    // We discover existing records from Directus and delete them bottom-up:
+    // Level 1: Leaf children (submission answers/comments/rubric scores, questions, criteria, syllabus parts, module items/comments, spr cells)
+    // Level 2: Submissions
+    // Level 3: Assessments, modules, syllabi, spr configs
+    // Level 4: Enrollments, grades, files, folders, sections, requests, announcements, discussions, events
+    // Level 5: Course itself
+    async deleteCourseCascade(id: string): Promise<void> {
+      const del = (p: Promise<unknown>) => p.catch(() => {});
+      const list = async (p: Promise<unknown>): Promise<any[]> => {
+        try {
+          const r = await p;
+          return Array.isArray(r) ? r : [];
+        } catch {
+          return [];
+        }
+      };
+
+      const fetchItems = async (collection: string, filterQuery: string): Promise<any[]> => {
+        try {
+          const res = await likhaRequest(`/items/${collection}?${filterQuery}&limit=-1`);
+          return Array.isArray(res) ? res : [];
+        } catch {
+          return [];
+        }
+      };
+
+      const deleteItems = async (collection: string, items: Array<{ id?: string; revisionId?: string }>): Promise<void> => {
+        const validIds = items.map(it => it.id ?? it.revisionId).filter(Boolean) as string[];
+        if (validIds.length === 0) return;
+        await Promise.allSettled(
+          validIds.map(itemId => del(likhaRequest(`/items/${collection}/${encodeURIComponent(itemId)}`, { method: 'DELETE' })))
+        );
+      };
+
+      // 1. Discover all course children
+      const [
+        mods, acts, quizzes, exams, anns, discs, files, folders,
+        sections, reqs, enrolls, grades, events, syllabi, sprConfig
+      ] = await Promise.all([
+        list(likhaLmsApi.modules.getModulesWithItems(id)),
+        list(likhaLmsApi.assessments.getActivities(id)),
+        list(likhaLmsApi.assessments.getQuizzes(id)),
+        list(likhaLmsApi.assessments.getExams(id)),
+        list(likhaLmsApi.communications.getAnnouncements(id)),
+        list(likhaLmsApi.communications.getDiscussions(id)),
+        list(likhaLmsApi.files.getCourseFiles(id)),
+        list(likhaLmsApi.files.getCourseFolders(id)),
+        list(likhaLmsApi.sections.getSections(id)),
+        list(likhaLmsApi.requests.getRequests(id)),
+        list(likhaLmsApi.courses.getCourseEnrollments(id)),
+        list(likhaLmsApi.grades.getCourseGrades(id)),
+        list(likhaLmsApi.communications.getCalendarEvents()),
+        list(likhaLmsApi.syllabus.listRevisions(id)),
+        likhaLmsApi.grades.getSPRConfig(id).catch(() => null),
+      ]);
+
+      const allAssessments = [...acts, ...quizzes, ...exams];
+      const subLists = await Promise.all([
+        ...acts.map(a => list(likhaLmsApi.submissions.getSubmissions(a.id, 'activity'))),
+        ...quizzes.map(q => list(likhaLmsApi.submissions.getSubmissions(q.id, 'quiz'))),
+        ...exams.map(e => list(likhaLmsApi.submissions.getSubmissions(e.id, 'exam'))),
+      ]);
+      const allSubmissions = subLists.flat();
+
+      // Discover leaf items for submissions, assessments, syllabi, modules
+      const [
+        subAnswers, subComments, subRubricScores,
+        questions, rubrics, actFiles,
+        sylSignatories, sylReferences, sylPolicies, sylRubrics, sylPlans, sylMaps,
+        modComments, sprCells
+      ] = await Promise.all([
+        allSubmissions.length > 0 ? fetchItems('submission_answers', `filter[submission_id][_in]=${allSubmissions.map(s => s.id).join(',')}`) : [],
+        allSubmissions.length > 0 ? fetchItems('submission_comments', `filter[submission_id][_in]=${allSubmissions.map(s => s.id).join(',')}`) : [],
+        allSubmissions.length > 0 ? fetchItems('submission_rubric_scores', `filter[submission_id][_in]=${allSubmissions.map(s => s.id).join(',')}`) : [],
+        allAssessments.length > 0 ? fetchItems('assessment_questions', `filter[activity_id][_in]=${allAssessments.map(a => a.id).join(',')}`) : [],
+        allAssessments.length > 0 ? fetchItems('rubric_criteria', `filter[activity_id][_in]=${allAssessments.map(a => a.id).join(',')}`) : [],
+        allAssessments.length > 0 ? fetchItems('activities_files', `filter[activities_id][_in]=${allAssessments.map(a => a.id).join(',')}`) : [],
+        syllabi.length > 0 ? fetchItems('syllabus_signatories', `filter[syllabus_id][_in]=${syllabi.map(s => s.id ?? s.revisionId).join(',')}`) : [],
+        syllabi.length > 0 ? fetchItems('syllabus_references', `filter[syllabus_id][_in]=${syllabi.map(s => s.id ?? s.revisionId).join(',')}`) : [],
+        syllabi.length > 0 ? fetchItems('syllabus_policies', `filter[syllabus_id][_in]=${syllabi.map(s => s.id ?? s.revisionId).join(',')}`) : [],
+        syllabi.length > 0 ? fetchItems('syllabus_rubrics', `filter[syllabus_id][_in]=${syllabi.map(s => s.id ?? s.revisionId).join(',')}`) : [],
+        syllabi.length > 0 ? fetchItems('syllabus_learning_plans', `filter[syllabus_id][_in]=${syllabi.map(s => s.id ?? s.revisionId).join(',')}`) : [],
+        syllabi.length > 0 ? fetchItems('syllabus_course_maps', `filter[syllabus_id][_in]=${syllabi.map(s => s.id ?? s.revisionId).join(',')}`) : [],
+        mods.length > 0 ? fetchItems('module_comments', `filter[module_id][_in]=${mods.map(m => m.id).join(',')}`) : [],
+        sprConfig?.id ? fetchItems('spr_cells', `filter[config_id][_eq]=${encodeURIComponent(sprConfig.id)}`) : [],
+      ]);
+
+      const modItems = mods.flatMap(m => m.items || []);
+
+      // Stage 1: Delete all Leaf records (Foreign key dependants)
+      await Promise.allSettled([
+        deleteItems('submission_answers', subAnswers),
+        deleteItems('submission_comments', subComments),
+        deleteItems('submission_rubric_scores', subRubricScores),
+        deleteItems('assessment_questions', questions),
+        deleteItems('rubric_criteria', rubrics),
+        deleteItems('activities_files', actFiles),
+        deleteItems('syllabus_signatories', sylSignatories),
+        deleteItems('syllabus_references', sylReferences),
+        deleteItems('syllabus_policies', sylPolicies),
+        deleteItems('syllabus_rubrics', sylRubrics),
+        deleteItems('syllabus_learning_plans', sylPlans),
+        deleteItems('syllabus_course_maps', sylMaps),
+        deleteItems('module_items', modItems),
+        deleteItems('module_comments', modComments),
+        deleteItems('spr_cells', sprCells),
+      ]);
+
+      // Stage 2: Delete Submissions
+      await Promise.allSettled([
+        deleteItems('submissions', allSubmissions),
+      ]);
+
+      // Stage 3: Delete Assessments, Modules, Syllabi, SPR Configs
+      await Promise.allSettled([
+        deleteItems('activities', acts),
+        deleteItems('activities', quizzes),
+        deleteItems('activities', exams),
+        deleteItems('modules', mods),
+        deleteItems('syllabi', syllabi),
+        sprConfig?.id ? del(likhaRequest(`/items/spr_configs/${encodeURIComponent(sprConfig.id)}`, { method: 'DELETE' })) : Promise.resolve(),
+      ]);
+
+      // Stage 4: Delete Course-level records
+      await Promise.allSettled([
+        deleteItems('Course_Enrollments', enrolls),
+        deleteItems('course_grades', grades),
+        deleteItems('course_files', files),
+        deleteItems('course_folders', folders),
+        deleteItems('course_sections', sections),
+        deleteItems('enrollment_requests', reqs),
+        deleteItems('announcements', anns),
+        deleteItems('discussions', discs),
+        deleteItems('calendar_events', events.filter(ev => String(ev.course_id ?? ev.courseId ?? '') === String(id))),
+      ]);
+
+      // Stage 5: Delete Course itself
+      await likhaLmsApi.courses.deleteCourse(id);
     },
   },
 
@@ -663,7 +815,7 @@ export const likhaLmsApi = {
   // =========================================================================
   communications: {
     async getAnnouncements(courseId: string): Promise<any[]> {
-      return likhaRequest(`/items/announcements?filter[course_id][_eq]=${encodeURIComponent(courseId)}&fields=*,replies.*&sort=-date`);
+      return likhaRequest(`/items/announcements?filter[course_id][_eq]=${encodeURIComponent(courseId)}&sort=-created_at`);
     },
 
     async createAnnouncement(data: any): Promise<any> {
@@ -694,7 +846,7 @@ export const likhaLmsApi = {
     },
 
     async getDiscussions(courseId: string): Promise<any[]> {
-      return likhaRequest(`/items/discussions?filter[course_id][_eq]=${encodeURIComponent(courseId)}&fields=*,replies.*&sort=-date`);
+      return likhaRequest(`/items/discussions?filter[course_id][_eq]=${encodeURIComponent(courseId)}&sort=-created_at`);
     },
 
     async createDiscussion(data: any): Promise<any> {
@@ -724,17 +876,19 @@ export const likhaLmsApi = {
       });
     },
 
-    async getNotifications(userId: string): Promise<any[]> {
-      return likhaRequest(
-        `/items/notifications?filter[user_id][_eq]=${encodeURIComponent(userId)}&fields=id,user_id,title,message,type,is_read,created_at,link&sort=-created_at&limit=50`
-      );
+    async getNotifications(_userId?: string): Promise<any[]> {
+      return likhaRequest('/notifications?limit=50').catch(() => []);
     },
 
     async markNotificationRead(id: string): Promise<void> {
-      await likhaRequest(`/items/notifications/${encodeURIComponent(id)}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ is_read: true }),
-      });
+      try {
+        await likhaRequest(`/notifications/${encodeURIComponent(id)}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ status: 'read' }),
+        });
+      } catch {
+        /* ignore */
+      }
     },
 
     async markAllNotificationsRead(ids: string[]): Promise<void> {
@@ -744,7 +898,7 @@ export const likhaLmsApi = {
     async markThreadRead(messageIds: string[]): Promise<void> {
       await Promise.allSettled(
         messageIds.map(id =>
-          likhaRequest(`/items/chat_messages/${encodeURIComponent(id)}`, {
+          likhaRequest(`/items/messages/${encodeURIComponent(id)}`, {
             method: 'PATCH',
             body: JSON.stringify({ is_read: true }),
           })
@@ -753,11 +907,11 @@ export const likhaLmsApi = {
     },
 
     async getMessages(): Promise<any[]> {
-      return likhaRequest('/items/chat_messages?sort=created_at&limit=200');
+      return likhaRequest('/items/messages?sort=created_at&limit=200');
     },
 
     async sendMessage(data: any): Promise<any> {
-      return likhaRequest('/items/chat_messages', {
+      return likhaRequest('/items/messages', {
         method: 'POST',
         body: JSON.stringify(data),
       });
@@ -1192,8 +1346,15 @@ export const likhaLmsApi = {
   },
 
   async getCourseGrades(courseId: string): Promise<any[]> {
-    return likhaRequest(
-      `/items/course_grades?filter[course_id][_eq]=${encodeURIComponent(courseId)}&fields=*,spr_cells.*`
-    );
+    try {
+      return await likhaRequest(
+        `/items/course_grades?filter[course_id][_eq]=${encodeURIComponent(courseId)}&fields=*,spr_cells.*`
+      );
+    } catch {
+      // Graceful fallback to unexpanded query if relation expansion encounters transient issues
+      return await likhaRequest(
+        `/items/course_grades?filter[course_id][_eq]=${encodeURIComponent(courseId)}`
+      ).catch(() => []);
+    }
   },
 };

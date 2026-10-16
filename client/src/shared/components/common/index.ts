@@ -1,5 +1,5 @@
 export { AlertModal } from './AlertModal';
-export { AppSkeleton, ProfileSkeleton } from './AppSkeleton';
+export { AppSkeleton, ProfileSkeleton, PageSkeleton, DashboardSkeleton } from './AppSkeleton';
 export { DialogFrame } from './DialogFrame';
 export { EmptyState } from './EmptyState';
 export { FilePickerModal } from './FilePickerModal';

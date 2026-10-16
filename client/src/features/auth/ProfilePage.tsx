@@ -214,7 +214,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
 
   const roleBadges: Record<string, { label: string; style: string; icon: React.ReactNode }> = {
     admin: {
-      label: 'Dean / academic admin',
+      label: 'Admin',
       style: 'bg-primary/10 text-primary border-primary/20',
       icon: <Building className="w-3.5 h-3.5" />
     },

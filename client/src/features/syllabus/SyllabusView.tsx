@@ -175,8 +175,8 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
       },
       classroomPolicies: Array.isArray(rawData.classroomPolicies) && rawData.classroomPolicies.length > 0
         ? rawData.classroomPolicies
-        : (Array.isArray(rawData.policies) && rawData.policies.length > 0
-            ? rawData.policies.map((p: any) => typeof p === 'string' ? p : `${p.title ? p.title + ': ' : ''}${p.content || p.description || ''}`)
+        : (Array.isArray((rawData as any).policies) && (rawData as any).policies.length > 0
+            ? (rawData as any).policies.map((p: any) => typeof p === 'string' ? p : `${p.title ? p.title + ': ' : ''}${p.content || p.description || ''}`)
             : (base?.classroomPolicies || [])),
       projectRubrics: Array.isArray(rawData.projectRubrics) && rawData.projectRubrics.length > 0
         ? rawData.projectRubrics
@@ -197,8 +197,8 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
       learningPlan: (
         Array.isArray(rawData.learningPlan) && rawData.learningPlan.length > 0
           ? rawData.learningPlan
-          : (Array.isArray(rawData.learningPlans) && rawData.learningPlans.length > 0
-              ? rawData.learningPlans
+          : (Array.isArray((rawData as any).learningPlans) && (rawData as any).learningPlans.length > 0
+              ? (rawData as any).learningPlans
               : (base?.learningPlan || []))
       ).map((lp: any) => {
         const topics = Array.isArray(lp.topics)
@@ -1262,7 +1262,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                   : `${currentCourse?.term || data.courseInfo?.semester || '1st Semester'}, AY ${data.courseInfo?.academicYear || '2025-2026'}`}
               </span>
               <span>·</span>
-              <span className="text-foreground font-semibold">{data.courseInfo?.credit || currentCourse?.units || '3 units'}</span>
+              <span className="text-foreground font-semibold">{data.courseInfo?.credit || (currentCourse as any)?.units || '3 units'}</span>
               <span>({data.courseInfo?.lectureHours || '2 hrs lec'}, {data.courseInfo?.labHours || '3 hrs lab'})</span>
               <span>·</span>
               <span>Prereq: <strong className="text-foreground">{data.courseInfo?.prerequisite || 'None'}</strong></span>
@@ -1335,7 +1335,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
           <span className="font-semibold text-foreground block text-[12px]">
             Course rationale and description
           </span>
-          <p className="text-foreground/90">{data.courseInfo?.description || currentCourse?.description || 'No description provided.'}</p>
+          <p className="text-foreground/90">{data.courseInfo?.description || (currentCourse as any)?.description || 'No description provided.'}</p>
         </div>
 
         {/* Global Search Bar */}

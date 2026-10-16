@@ -1,9 +1,8 @@
 // src/utils/sprExport.ts
-import * as XLSX from 'xlsx';
 import type { Course, SPRConfig, User } from '../types/lms';
 import { round2 } from './spr';
 
-export function exportSPRToExcel(args: {
+export async function exportSPRToExcel(args: {
   course: Course;
   roster: User[];
   config: SPRConfig;
@@ -14,7 +13,8 @@ export function exportSPRToExcel(args: {
     mtGrade: number | null; ftGrade: number | null;
     finalPercent: number | null; numerical: string;
   };
-}): void {
+}): Promise<void> {
+  const XLSX = await import('xlsx');
   const { course, roster, config, resolveStudent } = args;
   const prelimCols = config.prelimColumns ?? [];
   // Prelim is class-standing-only (no exam column), mirroring the gradebook UI.

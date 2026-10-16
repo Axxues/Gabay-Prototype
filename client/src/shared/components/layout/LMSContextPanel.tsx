@@ -62,7 +62,8 @@ const COURSE_ICONS: Record<string, React.ReactNode> = {
   people: <Users className="h-4 w-4" />,
   'pending-requests': <Users className="h-4 w-4" />,
 };
-export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: string; onNavigateTab: (t: string) => void; onSelectCourseTab: (t: string) => void; onNavigateCourse: (id: string, sub?: string) => void }> = (p) => {
+
+export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: string; onNavigateTab: (t: string) => void; onSelectCourseTab: (t: string) => void; onNavigateCourse: (id: string, sub?: string) => void }> = React.memo((p) => {
   const { db, activeCourseId, activeRole, activeUser, getUnreadNotificationCount } = useLMS();
   const [copied, setCopied] = React.useState(false);
   const [isAssessmentsOpen, setIsAssessmentsOpen] = React.useState(() => isAssessmentTab(p.courseSubTab));
@@ -320,4 +321,4 @@ export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: strin
       <div className="mt-auto px-2 pt-3 text-[10px] text-muted-foreground">Trail: LMS &gt; {p.currentTab}</div>
     </aside>
   );
-};
+});
