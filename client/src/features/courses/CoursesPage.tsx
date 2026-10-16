@@ -5,6 +5,7 @@ import { JoinCourseModal } from '../../shared/components/common/JoinCourseModal'
 import { EmptyState } from '../../shared/components/common/EmptyState';
 import { PageTransition } from '../../shared/components/common/PageTransition';
 import { COURSE_CHILDREN, isVisible } from '../../shared/config/navigation';
+import { getScopedCourses } from '../../shared/utils/courseScoping';
 import {
   countNewFiles,
   countNewGrades,
@@ -49,7 +50,7 @@ interface CoursesPageProps {
 }
 
 export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modules' }) => {
-  const { activeCourseId, setActiveCourseId, db, activeRole, activeUser, getUnreadNotificationCount, markTabVisited, isCourseGradeReady } = useLMS();
+  const { activeCourseId, setActiveCourseId, db, activeRole, activeUser, colleges, departments, getUnreadNotificationCount, markTabVisited, isCourseGradeReady } = useLMS();
 
   const [subTab, setSubTab] = useState(initialSubTab);
   const [returnToTab, setReturnToTab] = useState<string | null>(null);
@@ -69,11 +70,17 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
       .filter(r => r.studentId === activeUser.id && r.status === 'approved')
       .map(r => r.courseId)
   );
-  const availableCourses = activeRole === 'student'
-    ? db.courses.filter(c => (activeUser.enrolledCourseIds || []).includes(c.id) || approvedCourseIds.has(c.id))
-    : (activeRole === 'faculty' || activeRole === 'admin')
-      ? db.courses.filter(c => c.instructorId === activeUser.id)
-      : db.courses;
+  const availableCourses = activeRole === 'staff'
+    ? db.courses
+    : getScopedCourses({
+        courses: db.courses,
+        users: db.users,
+        activeUser,
+        activeRole,
+        approvedCourseIds,
+        colleges,
+        departments,
+      });
 
   const activeCourse = availableCourses.find(c => c.id === activeCourseId) || availableCourses[0];
 
@@ -100,7 +107,7 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
     // Legacy guard: 'pending-requests' was removed as a standalone
     // course sub-tab (now handled inside People). Redirect any stale
     // navigation (history, search) to People instead of a blank view.
-    if (subTab === 'pending-requests' && (activeRole === 'faculty' || activeRole === 'admin')) {
+    if (subTab === 'pending-requests' && (activeRole === 'faculty' || activeRole === 'admin' || activeRole === 'superadmin')) {
       setSubTab('people');
     }
   }, [activeRole, subTab]);
@@ -183,11 +190,11 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
         ...courseActivities.filter(a => a.format !== 'classic').map(a => `asg-activity-${a.id}`),
       ];
       const courseSubs = db.submissions.filter(s => s.courseId === cid);
-      badgeCount = (activeRole === 'faculty' || activeRole === 'admin')
+      badgeCount = (activeRole === 'faculty' || activeRole === 'admin' || activeRole === 'superadmin')
         ? countFacultyGradingBadge(courseSubs, allIds)
         : countStudentAssessmentBadge(publishedIds, courseSubs.filter(s => s.studentId === activeUser.id).map(s => s.activityKey ?? ''));
     } else if (tab.id === 'quizzes') {
-      badgeCount = (activeRole === 'faculty' || activeRole === 'admin')
+      badgeCount = (activeRole === 'faculty' || activeRole === 'admin' || activeRole === 'superadmin')
         ? countFacultyGradingBadge(db.submissions.filter(s => s.courseId === cid), (db.quizzes || []).filter(q => q.courseId === cid).map(q => `asg-quiz-${q.id}`))
         : (db.quizzes || []).filter(q => q.courseId === cid && q.published && !db.submissions.some(s => s.activityKey === `asg-quiz-${q.id}` && s.studentId === activeUser.id)).length;
     } else if (tab.id === 'files') {
@@ -195,7 +202,7 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
     } else if (tab.id === 'grades') {
       badgeCount = activeRole === 'student' ? countNewGrades(db.courseGrades || [], cid, activeUser.id, visits) : 0;
     } else if (tab.id === 'people') {
-      badgeCount = (activeRole === 'faculty' || activeRole === 'admin') ? countPendingPeople(db.enrollmentRequests || [], cid) : 0;
+      badgeCount = (activeRole === 'faculty' || activeRole === 'admin' || activeRole === 'superadmin') ? countPendingPeople(db.enrollmentRequests || [], cid) : 0;
     } else if (tab.id === 'calendar') {
       badgeCount = countUpcomingCalendar(db.calendarEvents || [], cid, visits);
     }
@@ -368,8 +375,8 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
         {subTab === 'grades' && activeCourse && !isCourseGradeReady(activeCourse.id) && (
           <div className="bg-card border border-border rounded-2xl p-8 text-center" data-testid="grades-syllabus-gate">
             <h3 className="text-sm font-bold text-foreground">Syllabus required for grades</h3>
-            <p className="text-xs text-muted-foreground mt-1">The grading formula lives in the syllabus under Course Requirements &amp; Official Grading Formula. {(activeRole === 'faculty' || activeRole === 'admin') ? 'Upload a syllabus to enable the gradebook.' : 'Waiting for your instructor to upload the syllabus.'}</p>
-            {(activeRole === 'faculty' || activeRole === 'admin') && (
+            <p className="text-xs text-muted-foreground mt-1">The grading formula lives in the syllabus under Course Requirements &amp; Official Grading Formula. {(activeRole === 'faculty' || activeRole === 'admin' || activeRole === 'superadmin') ? 'Upload a syllabus to enable the gradebook.' : 'Waiting for your instructor to upload the syllabus.'}</p>
+            {(activeRole === 'faculty' || activeRole === 'admin' || activeRole === 'superadmin') && (
               <button type="button" onClick={() => setSubTab('syllabus')} className="mt-3 px-4 py-2 text-xs font-bold bg-primary text-primary-foreground rounded-xl cursor-pointer">Go to Syllabus</button>
             )}
           </div>

@@ -521,4 +521,52 @@ describe('LMSContext RBAC: Registration Staging, Verification Queue & Leadership
     expect(ctx!.colleges.some(c => c.id === 'col-art')).toBe(true);
     expect(ctx!.departments.some(d => d.id === 'dept-math')).toBe(true);
   });
+
+  test('logging in jayveegenetareyes@gmail.com bootstraps as Chancellor (superadmin)', async () => {
+    loginLikhaMock.mockResolvedValueOnce({
+      token: 't-chancellor',
+      user: {
+        id: 'u-jayvee',
+        first_name: 'Jayvee',
+        last_name: 'Reyes',
+        email: 'jayveegenetareyes@gmail.com',
+        role: { name: 'Administrator' },
+      },
+    } as any);
+
+    render(
+      <LMSProvider>
+        <ContextProbe />
+      </LMSProvider>
+    );
+
+    let res: any;
+    await act(async () => {
+      res = await ctx!.login('jayveegenetareyes@gmail.com', 'qwerty12345');
+    });
+
+    expect(res.success).toBe(true);
+    expect(ctx!.activeRole).toBe('superadmin');
+    expect(ctx!.currentUser?.role).toBe('superadmin');
+    expect(ctx!.currentUser?.adminSubrole).toBe('chancellor');
+    expect(ctx!.currentUser?.title).toBe('University Chancellor');
+  });
+
+  test('switchRole("superadmin") switches session to Chancellor superadmin', async () => {
+    render(
+      <LMSProvider>
+        <ContextProbe />
+      </LMSProvider>
+    );
+
+    await act(async () => {
+      ctx!.switchRole('superadmin');
+    });
+
+    expect(ctx!.activeRole).toBe('superadmin');
+    expect(ctx!.currentUser?.role).toBe('superadmin');
+    expect(ctx!.currentUser?.adminSubrole).toBe('chancellor');
+    expect(ctx!.currentUser?.title).toBe('University Chancellor');
+  });
 });
+

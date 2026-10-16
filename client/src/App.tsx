@@ -22,7 +22,6 @@ const HistoryPage = React.lazy(() => import('./features/system/HistoryPage').the
 const HelpPage = React.lazy(() => import('./features/system/HelpPage').then(m => ({ default: m.HelpPage })));
 const EmptyPage = React.lazy(() => import('./features/system/EmptyPage').then(m => ({ default: m.EmptyPage })));
 const ManageAccountsPage = React.lazy(() => import('./features/accounts/ManageAccountsPage').then(m => ({ default: m.ManageAccountsPage })));
-const CreateAccountPage = React.lazy(() => import('./features/accounts/CreateAccountPage').then(m => ({ default: m.CreateAccountPage })));
 const EditAccountPage = React.lazy(() => import('./features/accounts/EditAccountPage').then(m => ({ default: m.EditAccountPage })));
 const GabayRAGPage = React.lazy(() => import('./features/rag/GabayRAGPage').then(m => ({ default: m.GabayRAGPage })));
 const SpeedGraderModal = React.lazy(() => import('./features/assessments/components/grading/SpeedGraderModal').then(m => ({ default: m.SpeedGraderModal })));
@@ -162,7 +161,7 @@ export const AppShell: React.FC = () => {
       if (!allowedStaffTabs.includes(currentTab)) {
         navigate('/inbox', { replace: true });
       }
-    } else if (activeRole !== 'admin') {
+    } else if (activeRole !== 'admin' && activeRole !== 'superadmin') {
       if (currentTab === 'accounts' || currentTab === 'create-account' || currentTab === 'edit-account') {
         navigate('/dashboard', { replace: true });
       }
@@ -257,7 +256,7 @@ export const AppContent: React.FC = () => {
         <Route path="/history" element={<RouteWithNav element={(nav) => <HistoryPage onNavigateCourse={nav.handleNavigateCourse} onNavigateTab={nav.handleNavigateTab} />} />} />
         <Route path="/help" element={<RouteWithNav element={(nav) => <HelpPage onNavigateTab={nav.handleNavigateTab} />} />} />
         <Route path="/accounts" element={<RequireAdmin><RouteWithNav element={(nav) => <ManageAccountsPage onNavigateTab={nav.handleNavigateTab} onEditAccount={nav.handleEditAccount} />} /></RequireAdmin>} />
-        <Route path="/accounts/new" element={<RequireAdmin><RouteWithNav element={(nav) => <CreateAccountPage onNavigateTab={nav.handleNavigateTab} />} /></RequireAdmin>} />
+        <Route path="/accounts/new" element={<Navigate to="/accounts" replace />} />
         <Route path="/accounts/:userId/edit" element={<RequireAdmin><RouteWithNav element={(nav) => <EditAccountRoute nav={nav} />} /></RequireAdmin>} />
         <Route path="/page1" element={<RouteWithNav element={(nav) => <EmptyPage title="Page 1" onNavigateTab={nav.handleNavigateTab} />} />} />
         <Route path="/page2" element={<RouteWithNav element={(nav) => <EmptyPage title="Page 2" onNavigateTab={nav.handleNavigateTab} />} />} />

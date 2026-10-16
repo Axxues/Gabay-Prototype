@@ -3,6 +3,7 @@ import { useLMS } from '../../shared/context/LMSContext';
 import type { EnrollmentRequest } from '../../shared/types/lms';
 import { getDisplaySectionName } from '../../shared/utils/sections';
 import { resolveDirectusAssetUrl } from '../../shared/utils/avatar';
+import { getScopedCourses } from '../../shared/utils/courseScoping';
 import { JoinCourseModal } from '../../shared/components/common/JoinCourseModal';
 import { PageHeader } from '../../shared/components/common/PageHeader';
 import { EmptyState } from '../../shared/components/common/EmptyState';
@@ -35,7 +36,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   onNavigateCourse,
   onNavigateTab
 }) => {
-  const { activeRole, activeUser, db, isLoading, openSpeedGrader, getPendingRequestsForStudent, studentApproveInvitation, studentDeclineInvitation, deleteCourse, showConfirm, showAlert, getApprovedRequestsForCourse } = useLMS();
+  const { activeRole, activeUser, db, colleges, departments, isLoading, openSpeedGrader, getPendingRequestsForStudent, studentApproveInvitation, studentDeclineInvitation, deleteCourse, showConfirm, showAlert, getApprovedRequestsForCourse } = useLMS();
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
   const [copiedCodeCourseId, setCopiedCodeCourseId] = useState<string | null>(null);
   const { isProcessing, run } = useProcessing();
@@ -51,12 +52,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       .filter(r => r.studentId === activeUser.id && r.status === 'approved')
       .map(r => r.courseId)
   );
-  const userCourses = db.courses.filter(c => {
-    if (activeRole === 'student') {
-      return (activeUser.enrolledCourseIds || []).includes(c.id) || approvedCourseIds.has(c.id);
-    }
-    if (activeRole === 'faculty' || activeRole === 'admin') return c.instructorId === activeUser.id;
-    return false;
+  const userCourses = getScopedCourses({
+    courses: db.courses,
+    users: db.users,
+    activeUser,
+    activeRole,
+    approvedCourseIds,
+    colleges,
+    departments,
   });
 
   const [coursePage, setCoursePage] = useState(1);
@@ -99,11 +102,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       submitted: db.submissions.some(s => s.activityKey === `asg-activity-${a.id}` && s.studentId === activeUser.id)
     }))
   ];
-  const hasRightSidebar = activeRole === 'student' || activeRole === 'faculty' || activeRole === 'admin';
+  const hasRightSidebar = activeRole === 'student' || activeRole === 'faculty' || activeRole === 'admin' || activeRole === 'superadmin';
 
   // Dynamic Instructor Name Resolution
   const getCourseInstructorName = (course: (typeof db.courses)[0]) => {
-    if ((activeRole === 'faculty' || activeRole === 'admin') && (course.instructorId === activeUser.id || !course.instructorId)) {
+    if ((activeRole === 'faculty' || activeRole === 'admin' || activeRole === 'superadmin') && (course.instructorId === activeUser.id || !course.instructorId)) {
       return activeUser.name;
     }
     const instructor = db.users.find(u => u.id === course.instructorId);
@@ -202,7 +205,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                     <span>Join course</span>
                   </button>
                 )}
-                {(activeRole === 'faculty' || activeRole === 'admin') && (
+                {(activeRole === 'faculty' || activeRole === 'admin' || activeRole === 'superadmin') && (
                   <button
                     type="button"
                     onClick={() => onNavigateTab('create-course')}
@@ -400,7 +403,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                     >
                       <Folder className="w-3.5 h-3.5" />
                     </button>
-                    {(activeRole === 'faculty' || activeRole === 'admin') && (
+                    {(activeRole === 'faculty' || activeRole === 'admin' || activeRole === 'superadmin') && (
                       <button
                         type="button"
                         title={deleting ? 'Deleting course…' : 'Delete Course'}
@@ -614,8 +617,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             </>
           )}
 
-          {/* FACULTY & ADMIN GRADING WIDGETS */}
-          {(activeRole === 'faculty' || activeRole === 'admin') && (
+          {/* FACULTY, ADMIN & CHANCELLOR GRADING WIDGETS */}
+          {(activeRole === 'faculty' || activeRole === 'admin' || activeRole === 'superadmin') && (
             <div className="bg-card border border-border rounded-2xl p-5 space-y-4">
               <div className="flex items-center justify-between border-b border-border/70 pb-3">
                 <h3 className="font-bold text-sm text-foreground flex items-center space-x-2">
@@ -664,8 +667,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             </div>
           )}
 
-          {/* ADMIN WIDGETS */}
-          {activeRole === 'admin' && (
+          {/* ADMIN & CHANCELLOR WIDGETS */}
+          {(activeRole === 'admin' || activeRole === 'superadmin') && (
             <div className="bg-card border border-border rounded-2xl p-5 space-y-4">
               <div className="flex items-center justify-between border-b border-border/70 pb-3">
                 <h3 className="font-bold text-sm text-foreground flex items-center space-x-2">

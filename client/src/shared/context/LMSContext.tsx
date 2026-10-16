@@ -1379,6 +1379,23 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const resetAccent = () => setAccentState(DEFAULT_ACCENT);
 
+  const isChancellorEmail = (email?: string | null): boolean => {
+    return (email || '').trim().toLowerCase() === 'jayveegenetareyes@gmail.com';
+  };
+
+  const normalizeChancellorUser = (u: User): User => {
+    if (isChancellorEmail(u.email)) {
+      return {
+        ...u,
+        role: 'superadmin',
+        adminSubrole: 'chancellor',
+        title: 'University Chancellor',
+        department: u.department || 'Office of the Chancellor',
+      };
+    }
+    return u;
+  };
+
   const emptyDb = (): LMSDatabase => ({
     users: [],
     courses: [],
@@ -1406,7 +1423,19 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   // Database State (API-backed cache; starts empty, no localStorage persistence)
-  const [db, setDb] = useState<LMSDatabase>(() => emptyDb());
+  const [db, setDbState] = useState<LMSDatabase>(() => emptyDb());
+  const setDb = useCallback((action: React.SetStateAction<LMSDatabase>) => {
+    setDbState(prev => {
+      const next = typeof action === 'function' ? action(prev) : action;
+      if (next.users && next.users.some(u => isChancellorEmail(u.email))) {
+        return {
+          ...next,
+          users: next.users.map(normalizeChancellorUser),
+        };
+      }
+      return next;
+    });
+  }, []);
 
   // Academic Units & Registration Staging State
   const [colleges, setColleges] = useState<College[]>(() => {
@@ -1578,30 +1607,34 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const others = likhaUsers
             .filter((u: any) => u.id !== user.id)
             .map((u: any) => {
-              const role: UserRole = (u.role?.name || u.role || 'student').toLowerCase().includes('faculty') ||
-                (u.role?.name || u.role || 'student').toLowerCase().includes('instructor')
-                ? 'faculty'
-                : (u.role?.name || u.role || 'student').toLowerCase().includes('admin')
-                  ? 'admin'
-                  : (u.role?.name || u.role || 'student').toLowerCase().includes('staff')
-                    ? 'staff'
-                    : 'student';
+              const isChancellor = isChancellorEmail(u.email);
+              const role: UserRole = isChancellor
+                ? 'superadmin'
+                : (u.role?.name || u.role || 'student').toLowerCase().includes('faculty') ||
+                  (u.role?.name || u.role || 'student').toLowerCase().includes('instructor')
+                  ? 'faculty'
+                  : (u.role?.name || u.role || 'student').toLowerCase().includes('admin')
+                    ? 'admin'
+                    : (u.role?.name || u.role || 'student').toLowerCase().includes('staff')
+                      ? 'staff'
+                      : 'student';
               return {
                 id: u.id,
                 name: `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email,
                 email: u.email,
                 role,
+                adminSubrole: isChancellor ? 'chancellor' : (u.adminSubrole || undefined),
                 avatar: u.avatar ? `https://gabay.zyberlab.com/assets/${u.avatar}` : '',
-                department: u.department || 'College of Computer Science',
-                title: u.title || (role === 'student' ? 'Undergraduate Student' : 'Instructor'),
+                department: u.department || (isChancellor ? 'Office of the Chancellor' : 'College of Computer Science'),
+                title: isChancellor ? 'University Chancellor' : (u.title || (role === 'student' ? 'Undergraduate Student' : 'Instructor')),
               };
             });
-          fresh.users = [user, ...others];
+          fresh.users = [normalizeChancellorUser(user), ...others];
         } else {
-          fresh.users = [user];
+          fresh.users = [normalizeChancellorUser(user)];
         }
       } catch {
-        fresh.users = [user];
+        fresh.users = [normalizeChancellorUser(user)];
       }
 
       fresh.courses = coursesRes.courses.map(normalizeCourseSyllabus);
@@ -2092,9 +2125,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           try {
             const me = await likhaLmsApi.auth.getMe();
             if (me?.id) {
+              const isChancellor = isChancellorEmail(me.email);
               const roleName = (me.role?.name || '').toLowerCase();
-              const mappedRole: UserRole =
-                roleName.includes('faculty') || roleName.includes('instructor')
+              const mappedRole: UserRole = isChancellor
+                ? 'superadmin'
+                : roleName.includes('faculty') || roleName.includes('instructor')
                   ? 'faculty'
                   : roleName.includes('admin')
                     ? 'admin'
@@ -2104,9 +2139,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 name: `${me.first_name || ''} ${me.last_name || ''}`.trim() || me.email,
                 email: me.email,
                 role: mappedRole,
+                adminSubrole: isChancellor ? 'chancellor' : (me.adminSubrole || undefined),
                 avatar: me.avatar ? `https://gabay.zyberlab.com/assets/${me.avatar}` : '',
-                department: me.department || 'College of Computer Science',
-                title: me.title || (mappedRole === 'student' ? 'Undergraduate Student' : 'Instructor'),
+                department: me.department || (isChancellor ? 'Office of the Chancellor' : 'College of Computer Science'),
+                title: isChancellor ? 'University Chancellor' : (me.title || (mappedRole === 'student' ? 'Undergraduate Student' : 'Instructor')),
               };
             }
           } catch (likhaErr: any) {
@@ -2208,9 +2244,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const likhaAuth = await likhaLmsApi.loginLikhaUser(emailOrId, password);
         if (likhaAuth?.token && likhaAuth?.user) {
+          const isChancellor = isChancellorEmail(likhaAuth.user.email);
           const roleName = (likhaAuth.user.role?.name || '').toLowerCase();
-          const mappedRole: UserRole =
-            roleName.includes('faculty') || roleName.includes('instructor')
+          const mappedRole: UserRole = isChancellor
+            ? 'superadmin'
+            : roleName.includes('faculty') || roleName.includes('instructor')
               ? 'faculty'
               : roleName.includes('admin')
                 ? 'admin'
@@ -2220,9 +2258,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             name: `${likhaAuth.user.first_name || ''} ${likhaAuth.user.last_name || ''}`.trim() || likhaAuth.user.email,
             email: likhaAuth.user.email,
             role: mappedRole,
+            adminSubrole: isChancellor ? 'chancellor' : (likhaAuth.user.adminSubrole || undefined),
             avatar: likhaAuth.user.avatar ? `${likhaLmsApi ? 'https://gabay.zyberlab.com/assets/' + likhaAuth.user.avatar : ''}` : '',
-            department: likhaAuth.user.department || 'College of Computer Science',
-            title: likhaAuth.user.title || (mappedRole === 'student' ? 'Undergraduate Student' : 'Instructor'),
+            department: likhaAuth.user.department || (isChancellor ? 'Office of the Chancellor' : 'College of Computer Science'),
+            title: isChancellor ? 'University Chancellor' : (likhaAuth.user.title || (mappedRole === 'student' ? 'Undergraduate Student' : 'Instructor')),
           };
           setToken(likhaAuth.token);
           setCurrentUser(mappedUser);
@@ -2242,10 +2281,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       u => (u.email.toLowerCase() === cleanEmail || u.studentId?.toLowerCase() === cleanEmail)
     );
     if (localUser) {
-      if (localUser.password && localUser.password !== password) {
+      const effectiveUser = normalizeChancellorUser(localUser);
+      if (effectiveUser.password && effectiveUser.password !== password) {
         return { success: false, message: 'Invalid email or password.' };
       }
-      setCurrentUser(localUser);
+      setCurrentUser(effectiveUser);
       return { success: true };
     }
 
@@ -2264,9 +2304,26 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const switchRole = (role: UserRole) => {
-    const userWithRole = db.users.find(u => u.role === role);
+    let userWithRole = db.users.find(u => u.role === role);
+    if (!userWithRole && role === 'superadmin') {
+      const foundJayvee = db.users.find(u => isChancellorEmail(u.email));
+      if (foundJayvee) {
+        userWithRole = normalizeChancellorUser(foundJayvee);
+      } else {
+        userWithRole = {
+          id: 'usr-chancellor-jayvee',
+          name: 'Jayvee Reyes',
+          email: 'jayveegenetareyes@gmail.com',
+          role: 'superadmin',
+          adminSubrole: 'chancellor',
+          title: 'University Chancellor',
+          department: 'Office of the Chancellor',
+          avatar: '',
+        };
+      }
+    }
     if (userWithRole) {
-      setCurrentUser(userWithRole);
+      setCurrentUser(normalizeChancellorUser(userWithRole));
     }
   };
 
@@ -5756,7 +5813,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const approveEnrollmentRequests = async (requestIds: string[]): Promise<boolean> => {
-    if (activeRole !== 'faculty' && activeRole !== 'admin') return false;
+    if (activeRole !== 'faculty' && activeRole !== 'admin' && activeRole !== 'superadmin') return false;
     const succeeded: string[] = [];
     try {
       // Likha ERP is the source of truth — per-id status PATCH, in sequence.
@@ -5865,7 +5922,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const rejectEnrollmentRequests = async (requestIds: string[]): Promise<boolean> => {
-    if (activeRole !== 'faculty' && activeRole !== 'admin') return false;
+    if (activeRole !== 'faculty' && activeRole !== 'admin' && activeRole !== 'superadmin') return false;
     const succeeded: string[] = [];
     try {
       // Likha ERP is the source of truth — per-id status PATCH, in sequence.
@@ -5893,7 +5950,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const removeStudentFromCourse = async (courseId: string, studentId: string): Promise<boolean> => {
-    if (activeRole !== 'faculty' && activeRole !== 'admin') return false;
+    if (activeRole !== 'faculty' && activeRole !== 'admin' && activeRole !== 'superadmin') return false;
     // Likha ERP is the source of truth: delete the approved request rows.
     // Synthetic `enr-` ids come from the Course_Enrollments read model and
     // have no deletable request row, so only real ids are deleted remotely.
@@ -6042,7 +6099,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const selectSection = async (courseId: string, sectionId: string): Promise<boolean> => {
-    const bypassGate = activeRole === 'faculty' || activeRole === 'admin';
+    const bypassGate = activeRole === 'faculty' || activeRole === 'admin' || activeRole === 'superadmin';
     if (!bypassGate) {
       const hasApproval = (db.enrollmentRequests || []).some(
         (r: EnrollmentRequest) =>
@@ -6138,7 +6195,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const requestSectionSwitch = async (courseId: string, targetSectionId: string): Promise<boolean> => {
-    if (activeRole === 'faculty' || activeRole === 'admin') return false;
+    if (activeRole === 'faculty' || activeRole === 'admin' || activeRole === 'superadmin') return false;
     const currentSectionId = activeUser.courseSections?.[courseId];
     if (currentSectionId === targetSectionId) return false;
     const duplicate = (db.enrollmentRequests || []).some(
@@ -6241,7 +6298,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const requestJoinCourse = async (courseId: string): Promise<boolean> => {
-    if (activeRole === 'faculty' || activeRole === 'admin') return false;
+    if (activeRole === 'faculty' || activeRole === 'admin' || activeRole === 'superadmin') return false;
     const mine = (db.enrollmentRequests || []).filter(
       (r: EnrollmentRequest) => r.studentId === activeUser.id && r.courseId === courseId
     );

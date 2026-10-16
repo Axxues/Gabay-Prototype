@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { useLMS } from '../../context/LMSContext';
 import type { UserRole } from '../../types/lms';
-import { ShieldCheck, UserCheck, GraduationCap, Building, X, AlertTriangle } from 'lucide-react';
+import { ShieldCheck, UserCheck, GraduationCap, Building, X, AlertTriangle, Crown } from 'lucide-react';
 import { ModalPortal, useModalAnimate } from './ModalPortal';
 
 export const RoleSwitcherModal: React.FC = () => {
@@ -35,9 +35,19 @@ export const RoleSwitcherModal: React.FC = () => {
     restrictions: string;
   }[] = [
     {
+      role: 'superadmin',
+      title: '0. Chancellor (Superadmin)',
+      personName: 'Chancellor (Jayvee)',
+      icon: <Crown className="w-5 h-5 text-purple-600 dark:text-purple-400" />,
+      badgeColor: 'bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/20',
+      scope: 'Institution-wide oversight across all colleges, academic programs & course shells.',
+      allowed: 'Full system administration, account verification across colleges, leadership assignment.',
+      restrictions: 'Direct grade modification restricted to course instructors.'
+    },
+    {
       role: 'admin',
-      title: '1. Administrator',
-      personName: 'Admin 1',
+      title: '1. Administrator (Dean / Chairperson)',
+      personName: 'Dean / Chair',
       icon: <Building className="w-5 h-5 text-primary" />,
       badgeColor: 'bg-primary/10 text-primary border-primary/20',
       scope: 'College-wide visibility across all course shells, instructors & enrollments.',
