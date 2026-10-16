@@ -376,11 +376,38 @@ export const PageSkeleton: React.FC = () => {
   if (path.startsWith('/profile')) {
     return <ProfilePageSkeleton />;
   }
-  if (path.startsWith('/accounts')) {
+  if (path === '/accounts') {
     return <AccountsSkeleton />;
+  }
+  if (path === '/login' || path === '/register' || path === '/activate') {
+    return <AuthCardSkeleton />;
   }
   return <DashboardSkeleton />;
 };
+
+// Standalone auth card skeleton used during auth loading (/login, /register, /activate)
+export const AuthCardSkeleton: React.FC = () => (
+  <div className="min-h-screen bg-muted flex items-center justify-center p-4 sm:p-6 relative overflow-hidden text-foreground select-none font-sans" data-testid="auth-card-skeleton">
+    <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8 space-y-6 animate-pulse">
+      <div className="w-16 h-16 mx-auto rounded-2xl bg-muted" />
+      <div className="space-y-2 text-center">
+        <div className="h-6 w-32 rounded-lg bg-muted mx-auto" />
+        <div className="h-3.5 w-48 rounded bg-muted/60 mx-auto" />
+      </div>
+      <div className="space-y-4 pt-2">
+        <div className="space-y-1.5">
+          <div className="h-3 w-20 rounded bg-muted/70" />
+          <div className="h-10 w-full rounded-xl bg-muted/50" />
+        </div>
+        <div className="space-y-1.5">
+          <div className="h-3 w-20 rounded bg-muted/70" />
+          <div className="h-10 w-full rounded-xl bg-muted/50" />
+        </div>
+        <div className="h-10 w-full rounded-xl bg-primary/20 mt-4" />
+      </div>
+    </div>
+  </div>
+);
 
 // Full application shell skeleton used before user authentication / authReady completes
 export const AppSkeleton: React.FC = () => (

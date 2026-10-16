@@ -6,10 +6,11 @@ import { AppRail } from './shared/components/layout/AppRail';
 import { LMSContextPanel } from './shared/components/layout/LMSContextPanel';
 import { Topbar } from './shared/components/layout/Topbar';
 import { LoginPage } from './features/auth/LoginPage';
+import { RegisterPage } from './features/auth/RegisterPage';
 import { RoleSwitcherModal } from './shared/components/common/RoleSwitcherModal';
 import { GlobalSearchDialog } from './shared/components/common/GlobalSearchDialog';
 import { PageTransition } from './shared/components/common/PageTransition';
-import { AppSkeleton, ProfileSkeleton, PageSkeleton } from './shared/components/common/AppSkeleton';
+import { AppSkeleton, ProfileSkeleton, PageSkeleton, AuthCardSkeleton } from './shared/components/common/AppSkeleton';
 import { tabToPath, courseToPath, pathToTab } from './shared/config/routes';
 
 const DashboardPage = React.lazy(() => import('./features/dashboard/DashboardPage').then(m => ({ default: m.DashboardPage })));
@@ -25,7 +26,6 @@ const ManageAccountsPage = React.lazy(() => import('./features/accounts/ManageAc
 const EditAccountPage = React.lazy(() => import('./features/accounts/EditAccountPage').then(m => ({ default: m.EditAccountPage })));
 const GabayRAGPage = React.lazy(() => import('./features/rag/GabayRAGPage').then(m => ({ default: m.GabayRAGPage })));
 const SpeedGraderModal = React.lazy(() => import('./features/assessments/components/grading/SpeedGraderModal').then(m => ({ default: m.SpeedGraderModal })));
-const RegisterPage = React.lazy(() => import('./features/auth/RegisterPage').then(m => ({ default: m.RegisterPage })));
 
 function useAppNavigation() {
   const navigate = useNavigate();
@@ -66,6 +66,9 @@ function useAppNavigation() {
 
 const AuthLoadingScreen: React.FC = () => {
   const { pathname } = useLocation();
+  if (pathname === '/login' || pathname === '/register' || pathname === '/activate') {
+    return <AuthCardSkeleton />;
+  }
   if (pathname === '/profile' || pathname.startsWith('/profile/')) {
     return <ProfileSkeleton />;
   }
@@ -240,8 +243,8 @@ export const AppContent: React.FC = () => {
   return (
     <Routes>
       <Route path="/login" element={<LoginRoute />} />
-      <Route path="/register" element={<React.Suspense fallback={<AuthLoadingScreen />}><RegisterPage /></React.Suspense>} />
-      <Route path="/activate" element={<React.Suspense fallback={<AuthLoadingScreen />}><RegisterPage /></React.Suspense>} />
+      <Route path="/register" element={<RegisterPage />} />
+      <Route path="/activate" element={<RegisterPage />} />
       <Route element={<RequireAuth><AppShell /></RequireAuth>}>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<RouteWithNav element={(nav) => <DashboardPage onNavigateCourse={nav.handleNavigateCourse} onNavigateTab={nav.handleNavigateTab} />} />} />
