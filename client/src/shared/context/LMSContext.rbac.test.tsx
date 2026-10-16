@@ -315,6 +315,62 @@ describe('LMSContext RBAC: Registration Staging, Verification Queue & Leadership
     expect(loginExpiredRes.message).toContain('expired');
   });
 
+  test('verified registration older than 30 days can still successfully log in without being marked expired', async () => {
+    render(
+      <LMSProvider>
+        <ContextProbe />
+      </LMSProvider>
+    );
+
+    let reg: any;
+    await act(async () => {
+      // 1. Account registered 40 days ago (expiresAt was 10 days ago)
+      reg = await ctx!.registerAccount({
+        firstName: 'Veteran',
+        lastName: 'Faculty',
+        email: 'veteran@dmmmsu.edu.ph',
+        role: 'faculty',
+        collegeId: 'col-ccs',
+        department: 'Department of Computer Science',
+        studentId: '202-6007-7',
+        password: 'Password123!',
+        registeredAt: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString(),
+        expiresAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+      });
+      await ctx!.activateEmail(reg.activationToken);
+
+      // 2. Verified active account was created
+      await ctx!.createUser({
+        name: 'Veteran Faculty',
+        email: 'veteran@dmmmsu.edu.ph',
+        role: 'faculty',
+        department: 'Department of Computer Science',
+        password: 'Password123!',
+        verificationStatus: 'verified',
+        emailVerified: true,
+      });
+    });
+
+    // Mark registration record as verified
+    await act(async () => {
+      const target = ctx!.pendingRegistrations.find(r => r.id === reg.id);
+      if (target) target.status = 'verified';
+    });
+
+    // 3. Purging expired registrations must NOT touch verified accounts
+    await act(async () => {
+      await ctx!.purgeExpiredRegistrations();
+    });
+    expect(ctx!.pendingRegistrations.find(r => r.id === reg.id)?.status).toBe('verified');
+
+    // 4. Login must succeed and not be locked out by expiration
+    let loginRes: any;
+    await act(async () => {
+      loginRes = await ctx!.login('veteran@dmmmsu.edu.ph', 'Password123!');
+    });
+    expect(loginRes.success).toBe(true);
+  });
+
   test('transferLeadership() promotes successor to admin/dean/chair and steps predecessor down to faculty', async () => {
     render(
       <LMSProvider>
@@ -322,8 +378,12 @@ describe('LMSContext RBAC: Registration Staging, Verification Queue & Leadership
       </LMSProvider>
     );
 
-    // 1. Dean Handover
+    // 1. Dean Handover with multi-unit cleanup check
     await act(async () => {
+      // Set current leader as dean on col-ccs AND col-coe (stale assignment)
+      await ctx!.addCollege({ id: 'col-ccs', name: 'CCS', code: 'CCS', deanId: 'u-dean-1' });
+      await ctx!.addCollege({ id: 'col-coe', name: 'COED', code: 'COED', deanId: 'u-dean-1' });
+
       await ctx!.createUser({
         id: 'u-dean-1',
         name: 'Dr. Current Dean',
@@ -358,8 +418,12 @@ describe('LMSContext RBAC: Registration Staging, Verification Queue & Leadership
     expect(updatedSuccessorDean?.role).toBe('admin');
     expect(updatedSuccessorDean?.adminSubrole).toBe('dean');
 
-    const updatedCollege = ctx!.colleges.find(c => c.id === 'col-ccs');
-    expect(updatedCollege?.deanId).toBe('u-fac-succ');
+    const updatedTargetCollege = ctx!.colleges.find(c => c.id === 'col-ccs');
+    expect(updatedTargetCollege?.deanId).toBe('u-fac-succ');
+
+    // Prior unit held by predecessor has deanId cleared to undefined
+    const priorCollege = ctx!.colleges.find(c => c.id === 'col-coe');
+    expect(priorCollege?.deanId).toBeUndefined();
 
     // 2. Chairperson Handover
     await act(async () => {

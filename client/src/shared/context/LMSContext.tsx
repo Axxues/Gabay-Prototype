@@ -2168,7 +2168,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       r => r.email.trim().toLowerCase() === cleanEmail || r.studentId?.trim().toLowerCase() === cleanEmail
     );
 
-    if (pending) {
+    if (pending && pending.status !== 'verified') {
       const isExpired = pending.status === 'expired' || Date.now() >= new Date(pending.expiresAt).getTime();
       if (isExpired) {
         if (pending.status !== 'expired') {
@@ -3450,6 +3450,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return count;
   };
 
+  // Automatically purge expired registrations when context initializes
+  useEffect(() => {
+    void purgeExpiredRegistrations();
+  }, []);
+
   const transferLeadership = async (
     roleType: 'dean' | 'chairperson',
     currentLeaderId: string,
@@ -3494,20 +3499,23 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return prev;
     });
 
-    // Single-seat invariant in colleges and departments
+    // Single-seat invariant in colleges and departments: assign successor to unitId,
+    // and clear any previous unit held by currentLeaderId if different.
     if (roleType === 'dean') {
       setColleges(prev =>
-        prev.map(c =>
-          c.id === unitId || c.deanId === currentLeaderId ? { ...c, deanId: successorId } : c
-        )
+        prev.map(c => {
+          if (c.id === unitId) return { ...c, deanId: successorId };
+          if (c.deanId === currentLeaderId) return { ...c, deanId: undefined };
+          return c;
+        })
       );
     } else if (roleType === 'chairperson') {
       setDepartments(prev =>
-        prev.map(d =>
-          d.id === unitId || d.chairpersonId === currentLeaderId
-            ? { ...d, chairpersonId: successorId }
-            : d
-        )
+        prev.map(d => {
+          if (d.id === unitId) return { ...d, chairpersonId: successorId };
+          if (d.chairpersonId === currentLeaderId) return { ...d, chairpersonId: undefined };
+          return d;
+        })
       );
     }
 
