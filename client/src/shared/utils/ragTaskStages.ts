@@ -358,6 +358,7 @@ export function generateDynamicProgress(
 
 
 export const ERROR_REPLY_PHRASES = [
+  'sorry, the gabay academic assistant is currently unavailable',
   'sorry, the gabay rag is currently unavailable',
   'rag upstream failed',
   'error in workflow',

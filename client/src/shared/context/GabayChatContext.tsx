@@ -83,7 +83,7 @@ export interface GabayChatContextType {
 const STORAGE_KEY_PREFIX = 'gabay_chat_sessions_v1';
 const USER_ID_KEY = 'gabay_user_id';
 const RAG_UNAVAILABLE_MESSAGE =
-  'Sorry, the Gabay RAG is currently unavailable. Please check that the n8n backend is running and activated.';
+  'Sorry, the Gabay academic assistant is currently unavailable. Please ensure the RAG service is running.';
 
 const uid = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -228,6 +228,15 @@ export const GabayChatProvider: React.FC<{ children: React.ReactNode; userId?: s
 }) => {
   const lmsContext = useContext(LMSContext);
   const contextUserId = lmsContext?.activeUser?.id;
+
+  // Resolve student name and active course context from LMSContext
+  const studentName = lmsContext?.activeUser?.name || undefined;
+  const activeCourseId = lmsContext?.activeCourseId;
+  const activeCourse = useMemo(() => {
+    if (!lmsContext) return undefined;
+    const course = lmsContext.db?.courses?.find((c) => c.id === activeCourseId);
+    return course?.code || course?.id || activeCourseId || undefined;
+  }, [lmsContext?.db?.courses, activeCourseId]);
 
   // Resolve user id immediately from prop, live context, or synchronous localStorage cache
   const effectiveUserId = propUserId ?? contextUserId ?? getCachedUserId();
@@ -471,9 +480,24 @@ export const GabayChatProvider: React.FC<{ children: React.ReactNode; userId?: s
       setExecutingSessionIds((prev) => [...prev, sessionId]);
       setRagStatus('connecting');
 
+      // 4. Extract recent conversation history (up to 6 prior completed turns)
+      const currentConvo = conversations.find((c) => c.id === sessionId);
+      const history = (currentConvo?.messages || [])
+        .filter((m) => !m.isPending && m.content && (m.role === 'user' || m.role === 'assistant'))
+        .slice(-6)
+        .map((m) => ({
+          role: m.role,
+          content: m.content,
+        }));
+
       try {
-        // Asynchronously execute query against n8n / Express proxy
-        const res = await sendRagMessage(cleanText, sessionId);
+        // Asynchronously execute query against standalone FastAPI RAG service
+        const res = await sendRagMessage(cleanText, {
+          sessionId,
+          student_name: studentName,
+          active_course: activeCourse,
+          history,
+        });
         setRagStatus('live');
 
         const totalDurationMs = Math.max(Date.now() - startTime, 500);
@@ -482,7 +506,7 @@ export const GabayChatProvider: React.FC<{ children: React.ReactNode; userId?: s
             ? res.execution
             : generateDynamicProgress(cleanText, res.reply, totalDurationMs);
 
-        // 4. Update the placeholder message with full response and persist
+        // 5. Update the placeholder message with full response and persist
         setConversations((prev) => {
           const next = prev.map((c) => {
             if (c.id !== sessionId) return c;
@@ -548,7 +572,7 @@ export const GabayChatProvider: React.FC<{ children: React.ReactNode; userId?: s
         });
       }
     },
-    [activeSessionId, executingSessionIds, addMessage, storageKey]
+    [activeSessionId, executingSessionIds, addMessage, storageKey, conversations, studentName, activeCourse]
   );
 
   const clearAllSessions = useCallback(() => {
