@@ -134,7 +134,11 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/api': 'http://localhost:4001',
+      '/api/rag': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/rag/, '/api'),
+      },
       '/likha': {
         target: 'https://gabay.zyberlab.com',
         changeOrigin: true,
