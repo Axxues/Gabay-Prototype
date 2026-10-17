@@ -1,9 +1,18 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
 import React from 'react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { AcademicGovernancePage } from './AcademicGovernancePage';
 import type { User, College, Department } from '../../shared/types/lms';
+
+const mockNavigate = vi.fn();
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual('react-router-dom');
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+  };
+});
 
 const mockUsers: User[] = [
   {
@@ -140,5 +149,35 @@ describe('AcademicGovernancePage', () => {
 
     expect(screen.getByText(/Administrative console preview:/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /switch to admin/i })).toBeInTheDocument();
+  });
+
+  it('collapses and expands college card hiding and showing department rows on click', () => {
+    render(<AcademicGovernancePage />);
+
+    // Department of Computer Science is initially visible
+    expect(screen.getByText('Department of Computer Science')).toBeInTheDocument();
+
+    // Click collapse toggle button for the college
+    const collapseBtn = screen.getByRole('button', { name: /toggle departments for college of computer science/i });
+    fireEvent.click(collapseBtn);
+
+    // Department should now be hidden
+    expect(screen.queryByText('Department of Computer Science')).not.toBeInTheDocument();
+
+    // Click expand
+    fireEvent.click(collapseBtn);
+
+    // Department should be visible again
+    expect(screen.getByText('Department of Computer Science')).toBeInTheDocument();
+  });
+
+  it('navigates to department details page when department row is clicked', () => {
+    render(<AcademicGovernancePage />);
+
+    const deptRow = screen.getByTestId('department-row-dept-cs');
+    expect(deptRow).toBeInTheDocument();
+
+    fireEvent.click(deptRow);
+    expect(mockNavigate).toHaveBeenCalledWith('/governance/departments/dept-cs');
   });
 });

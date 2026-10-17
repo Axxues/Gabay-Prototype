@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useLMS } from '../../../shared/context/LMSContext';
 import type { College, Department, User } from '../../../shared/types/lms';
 import { DialogFrame } from '../../../shared/components/common/DialogFrame';
@@ -8,11 +9,22 @@ import {
   Plus,
   ShieldAlert,
   ChevronRight,
+  ChevronDown,
   FolderTree,
   AlertCircle
 } from 'lucide-react';
 
 export const AcademicStructureTab: React.FC = () => {
+  const navigate = useNavigate();
+  const [collapsedColleges, setCollapsedColleges] = useState<Record<string, boolean>>({});
+
+  const toggleCollegeCollapse = (collegeId: string) => {
+    setCollapsedColleges(prev => ({
+      ...prev,
+      [collegeId]: !prev[collegeId],
+    }));
+  };
+
   const {
     colleges,
     departments,
@@ -263,6 +275,18 @@ export const AcademicStructureTab: React.FC = () => {
               {/* College Header */}
               <div className="p-4 sm:p-5 bg-muted/40 border-b border-border flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="flex items-center space-x-3">
+                  <button
+                    type="button"
+                    onClick={() => toggleCollegeCollapse(college.id)}
+                    aria-label={`Toggle departments for ${college.name}`}
+                    className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors cursor-pointer"
+                  >
+                    {collapsedColleges[college.id] ? (
+                      <ChevronRight className="w-4 h-4" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4" />
+                    )}
+                  </button>
                   <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold text-sm shrink-0 border border-primary/20">
                     <Building className="w-5 h-5" />
                   </div>
@@ -304,7 +328,8 @@ export const AcademicStructureTab: React.FC = () => {
                       {!isDean && (
                         <button
                           type="button"
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             setAppointModalData({
                               roleType: 'dean',
                               unitId: college.id,
@@ -339,7 +364,8 @@ export const AcademicStructureTab: React.FC = () => {
                       {!isDean && (
                         <button
                           type="button"
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             setAppointModalData({
                               roleType: 'dean',
                               unitId: college.id,
@@ -358,99 +384,107 @@ export const AcademicStructureTab: React.FC = () => {
               </div>
 
               {/* Department Listing Table */}
-              <div className="divide-y divide-border/60">
-                {collegeDepts.length === 0 ? (
-                  <div className="p-6 text-center text-xs text-muted-foreground">
-                    No departments added yet for this college.{' '}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDeptCollegeId(college.id);
-                        setIsAddDeptOpen(true);
-                      }}
-                      className="text-primary font-bold hover:underline ml-1"
-                    >
-                      Add one now
-                    </button>
-                  </div>
-                ) : (
-                  collegeDepts.map(dept => {
-                    const chair = getUserById(dept.chairpersonId);
-
-                    return (
-                      <div
-                        key={dept.id}
-                        className="p-3.5 sm:px-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-muted/30 transition-colors"
+              {!collapsedColleges[college.id] && (
+                <div className="divide-y divide-border/60">
+                  {collegeDepts.length === 0 ? (
+                    <div className="p-6 text-center text-xs text-muted-foreground">
+                      No departments added yet for this college.{' '}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDeptCollegeId(college.id);
+                          setIsAddDeptOpen(true);
+                        }}
+                        className="text-primary font-bold hover:underline ml-1 cursor-pointer"
                       >
-                        <div className="flex items-center space-x-3">
-                          <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-                          <div>
-                            <div className="flex items-center space-x-2">
-                              <span className="font-bold text-foreground text-xs">{dept.name}</span>
-                              <span className="px-1.5 py-0.5 text-[9px] font-mono font-bold bg-muted text-muted-foreground rounded border border-border">
-                                {dept.code}
-                              </span>
+                        Add one now
+                      </button>
+                    </div>
+                  ) : (
+                    collegeDepts.map(dept => {
+                      const chair = getUserById(dept.chairpersonId);
+
+                      return (
+                        <div
+                          key={dept.id}
+                          data-testid={`department-row-${dept.id}`}
+                          onClick={() => navigate(`/governance/departments/${encodeURIComponent(dept.id)}`)}
+                          className="p-3.5 sm:px-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-muted/30 transition-colors cursor-pointer group"
+                        >
+                          <div className="flex items-center space-x-3">
+                            <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors shrink-0" />
+                            <div>
+                              <div className="flex items-center space-x-2">
+                                <span className="font-bold text-foreground text-xs group-hover:text-primary transition-colors">
+                                  {dept.name}
+                                </span>
+                                <span className="px-1.5 py-0.5 text-[9px] font-mono font-bold bg-muted text-muted-foreground rounded border border-border">
+                                  {dept.code}
+                                </span>
+                              </div>
                             </div>
                           </div>
-                        </div>
 
-                        {/* Chairperson info */}
-                        <div className="flex items-center space-x-3">
-                          {chair ? (
-                            <div className="flex items-center space-x-2 bg-muted/40 px-3 py-1.5 rounded-xl border border-border">
-                              <UserAvatar
-                                name={chair.name}
-                                src={chair.avatar}
-                                className="w-6 h-6 rounded-full border border-border shrink-0"
-                              />
-                              <div className="text-left text-xs">
-                                <span className="text-[10px] text-muted-foreground font-semibold mr-1.5">
-                                  Chair:
-                                </span>
-                                <span className="font-bold text-foreground">{chair.name}</span>
+                          {/* Chairperson info */}
+                          <div className="flex items-center space-x-3">
+                            {chair ? (
+                              <div className="flex items-center space-x-2 bg-muted/40 px-3 py-1.5 rounded-xl border border-border">
+                                <UserAvatar
+                                  name={chair.name}
+                                  src={chair.avatar}
+                                  className="w-6 h-6 rounded-full border border-border shrink-0"
+                                />
+                                <div className="text-left text-xs">
+                                  <span className="text-[10px] text-muted-foreground font-semibold mr-1.5">
+                                    Chair:
+                                  </span>
+                                  <span className="font-bold text-foreground">{chair.name}</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setAppointModalData({
+                                      roleType: 'chairperson',
+                                      unitId: dept.id,
+                                      unitName: dept.name,
+                                      currentLeaderId: dept.chairpersonId,
+                                    });
+                                  }}
+                                  className="text-[11px] text-primary hover:underline font-semibold ml-2 cursor-pointer"
+                                >
+                                  Reassign
+                                </button>
                               </div>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setAppointModalData({
-                                    roleType: 'chairperson',
-                                    unitId: dept.id,
-                                    unitName: dept.name,
-                                    currentLeaderId: dept.chairpersonId,
-                                  });
-                                }}
-                                className="text-[11px] text-primary hover:underline font-semibold ml-2"
-                              >
-                                Reassign
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="flex items-center space-x-2 bg-amber-500/10 px-3 py-1.5 rounded-xl border border-amber-500/20">
-                              <span className="text-xs text-amber-700 dark:text-amber-300 font-semibold">
-                                No Chair Appointed
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setAppointModalData({
-                                    roleType: 'chairperson',
-                                    unitId: dept.id,
-                                    unitName: dept.name,
-                                    currentLeaderId: dept.chairpersonId,
-                                  });
-                                }}
-                                className="text-xs text-primary font-bold hover:underline ml-1"
-                              >
-                                Appoint
-                              </button>
-                            </div>
-                          )}
+                            ) : (
+                              <div className="flex items-center space-x-2 bg-amber-500/10 px-3 py-1.5 rounded-xl border border-amber-500/20">
+                                <span className="text-xs text-amber-700 dark:text-amber-300 font-semibold">
+                                  No Chair Appointed
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setAppointModalData({
+                                      roleType: 'chairperson',
+                                      unitId: dept.id,
+                                      unitName: dept.name,
+                                      currentLeaderId: dept.chairpersonId,
+                                    });
+                                  }}
+                                  className="text-xs text-primary font-bold hover:underline ml-1 cursor-pointer"
+                                >
+                                  Appoint
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
