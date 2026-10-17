@@ -2422,7 +2422,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
     if (localUser) {
       const effectiveUser = normalizeChancellorUser(localUser);
-      if (effectiveUser.password && effectiveUser.password !== password) {
+      if (!effectiveUser.password || effectiveUser.password !== password) {
         return { success: false, message: 'Invalid email or password.' };
       }
       setCurrentUser(effectiveUser);
