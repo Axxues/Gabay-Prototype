@@ -147,4 +147,21 @@ describe('ChatMarkdown', () => {
     expect(screen.getByText('First Distinct Chart')).toBeInTheDocument();
     expect(screen.getByText('Second Distinct Chart')).toBeInTheDocument();
   });
+
+  it('neutralizes dangerous javascript: and data: URI protocols in markdown links', () => {
+    render(<ChatMarkdown content="[Malicious Link](javascript:alert(1))" />);
+    const link = screen.queryByRole('link', { name: 'Malicious Link' });
+    expect(link).toBeNull();
+    expect(screen.getByText('Malicious Link')).toBeInTheDocument();
+  });
+
+  it('renders safe https links with target blank and rel noopener noreferrer', () => {
+    render(<ChatMarkdown content="[Official Documentation](https://dmmmsu.edu.ph)" />);
+    const link = screen.getByRole('link', { name: 'Official Documentation' });
+    expect(link).toBeInTheDocument();
+    expect(link).toHaveAttribute('href', 'https://dmmmsu.edu.ph');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  });
 });
+

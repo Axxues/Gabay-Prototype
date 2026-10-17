@@ -169,7 +169,21 @@ export const ChatMarkdown: React.FC<ChatMarkdownProps> = ({ content, attachedCha
             return <strong className="font-bold text-foreground">{children}</strong>;
           },
           a({ children, href }) {
-            return <a href={href} className="font-medium text-primary underline underline-offset-2">{children}</a>;
+            const rawHref = (href || '').trim();
+            const isSafeProtocol = /^(https?:\/\/|mailto:)/i.test(rawHref);
+            if (!isSafeProtocol) {
+              return <span className="font-medium text-foreground underline underline-offset-2">{children}</span>;
+            }
+            return (
+              <a
+                href={rawHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-primary underline underline-offset-2 hover:opacity-80"
+              >
+                {children}
+              </a>
+            );
           },
           blockquote({ children }) {
             return (
