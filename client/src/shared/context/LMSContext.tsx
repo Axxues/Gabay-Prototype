@@ -58,7 +58,7 @@ import { syllabusApi, deleteDraft, withdrawSyllabus } from '../api/syllabus';
 import type { SyllabusRevisionHeader, SyllabusRevisionResponse, SyllabusSectionKey } from '../types/syllabusApi';
 import { settledValue } from '../utils/promise';
 import { formatFileSize, toShortFileType } from '../utils/fileUploader';
-import { generateSecureActivationToken } from '../utils/cryptoToken';
+import { isValidUuid, generateSecureActivationToken } from '../utils/cryptoToken';
 import { isChairRole, isDeanRole } from '../utils/roles';
 
 export interface LMSContextType {
@@ -1623,7 +1623,18 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               code: c.code,
               deanId: typeof c.dean_id === 'object' && c.dean_id ? String(c.dean_id.id) : (typeof c.dean_id === 'string' && c.dean_id ? c.dean_id : undefined),
             }));
-            setColleges(mappedCols);
+            setColleges(prev => {
+              const merged = [...mappedCols];
+              for (const localCol of prev) {
+                const exists = merged.some(
+                  r => r.id === localCol.id || (r.code && localCol.code && r.code.toUpperCase() === localCol.code.toUpperCase())
+                );
+                if (!exists) {
+                  merged.push(localCol);
+                }
+              }
+              return merged;
+            });
           }
 
           if (!cancelled && deptSettled.status === 'fulfilled' && Array.isArray(deptSettled.value) && deptSettled.value.length > 0) {
@@ -1634,7 +1645,18 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               code: d.code,
               chairpersonId: typeof d.chairperson_id === 'object' && d.chairperson_id ? String(d.chairperson_id.id) : (typeof d.chairperson_id === 'string' && d.chairperson_id ? d.chairperson_id : undefined),
             }));
-            setDepartments(mappedDepts);
+            setDepartments(prev => {
+              const merged = [...mappedDepts];
+              for (const localDept of prev) {
+                const exists = merged.some(
+                  r => r.id === localDept.id || (r.collegeId === localDept.collegeId && r.code && localDept.code && r.code.toUpperCase() === localDept.code.toUpperCase())
+                );
+                if (!exists) {
+                  merged.push(localDept);
+                }
+              }
+              return merged;
+            });
           }
         }
       } catch {
@@ -1915,7 +1937,18 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               code: c.code,
               deanId: typeof c.dean_id === 'object' && c.dean_id ? String(c.dean_id.id) : (typeof c.dean_id === 'string' && c.dean_id ? c.dean_id : undefined),
             }));
-            setColleges(mappedCols);
+            setColleges(prev => {
+              const merged = [...mappedCols];
+              for (const localCol of prev) {
+                const exists = merged.some(
+                  r => r.id === localCol.id || (r.code && localCol.code && r.code.toUpperCase() === localCol.code.toUpperCase())
+                );
+                if (!exists) {
+                  merged.push(localCol);
+                }
+              }
+              return merged;
+            });
           }
           if (deptSettled.status === 'fulfilled' && Array.isArray(deptSettled.value) && deptSettled.value.length > 0) {
             const mappedDepts: Department[] = deptSettled.value.map((d: any) => ({
@@ -1925,7 +1958,18 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               code: d.code,
               chairpersonId: typeof d.chairperson_id === 'object' && d.chairperson_id ? String(d.chairperson_id.id) : (typeof d.chairperson_id === 'string' && d.chairperson_id ? d.chairperson_id : undefined),
             }));
-            setDepartments(mappedDepts);
+            setDepartments(prev => {
+              const merged = [...mappedDepts];
+              for (const localDept of prev) {
+                const exists = merged.some(
+                  r => r.id === localDept.id || (r.collegeId === localDept.collegeId && r.code && localDept.code && r.code.toUpperCase() === localDept.code.toUpperCase())
+                );
+                if (!exists) {
+                  merged.push(localDept);
+                }
+              }
+              return merged;
+            });
           }
         }
       } catch {
@@ -3758,14 +3802,31 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     const currentList = pendingRegistrationsRef.current || pendingRegistrations;
-    const updated = [newRegistration, ...currentList.filter(r => r.id !== newRegistration.id)];
+    const updated = [
+      newRegistration,
+      ...currentList.filter(
+        r => r.id !== newRegistration.id && r.email.toLowerCase() !== newRegistration.email.toLowerCase()
+      )
+    ];
     pendingRegistrationsRef.current = updated;
     setPendingRegistrations(updated);
     return newRegistration;
   };
 
-  const activateEmail = async (token: string): Promise<{ success: boolean; message: string }> => {
-    const list = pendingRegistrationsRef.current || pendingRegistrations;
+  const activateEmail = useCallback(async (token: string): Promise<{ success: boolean; message: string }> => {
+    let list = pendingRegistrationsRef.current || [];
+    if (!list.some(r => r.activationToken === token)) {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY_PENDING_REGISTRATIONS);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            list = parsed;
+          }
+        }
+      } catch (_) {}
+    }
+
     const target = list.find(r => r.activationToken === token);
     if (!target) {
       return { success: false, message: 'Invalid or expired activation link.' };
@@ -3775,14 +3836,23 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const updated = list.map(r => (r.activationToken === token ? { ...r, status: 'expired' as const } : r));
       pendingRegistrationsRef.current = updated;
       setPendingRegistrations(updated);
+      try {
+        const sanitized = updated.map(({ password: _, ...rest }) => rest);
+        safeSetLocalStorage(STORAGE_KEY_PENDING_REGISTRATIONS, JSON.stringify(sanitized));
+      } catch (_) {}
       return { success: false, message: 'Activation token has expired.' };
     }
 
     const updated = list.map(r => (r.activationToken === token ? { ...r, emailVerified: true } : r));
     pendingRegistrationsRef.current = updated;
     setPendingRegistrations(updated);
+    try {
+      const sanitized = updated.map(({ password: _, ...rest }) => rest);
+      safeSetLocalStorage(STORAGE_KEY_PENDING_REGISTRATIONS, JSON.stringify(sanitized));
+    } catch (_) {}
     return { success: true, message: 'Email address successfully verified.' };
-  };
+  }, []);
+
 
   const verifyRegistration = async (id: string): Promise<{ success: boolean; message: string; user?: User }> => {
     const list = pendingRegistrationsRef.current || pendingRegistrations;
@@ -4158,12 +4228,22 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             dean_id: effectiveDeanId || null,
           }).catch(() => {});
         } else {
-          await likhaLmsApi.academicStructure.createCollege({
+          const remoteCol = await likhaLmsApi.academicStructure.createCollege({
             id: targetCollege.id,
             name: targetCollege.name,
             code: targetCollege.code,
             dean_id: effectiveDeanId || null,
-          }).catch(() => {});
+          }).catch(() => null);
+
+          if (remoteCol && remoteCol.id && remoteCol.id !== targetCollege.id) {
+            const oldId = targetCollege.id;
+            targetCollege.id = String(remoteCol.id);
+            setColleges(prev => {
+              const updated = prev.map(c => (c.id === oldId || (c.code && targetCollege.code && c.code.toLowerCase() === targetCollege.code.toLowerCase()) ? { ...c, id: targetCollege.id } : c));
+              safeSetLocalStorage(STORAGE_KEY_COLLEGES, JSON.stringify(updated));
+              return updated;
+            });
+          }
         }
       }
     } catch (_) {}
@@ -4302,13 +4382,31 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             chairperson_id: effectiveChairId || null,
           }).catch(() => {});
         } else {
-          await likhaLmsApi.academicStructure.createDepartment({
+          let syncCollegeId = targetDept.collegeId;
+          const parentCollege = colleges.find(
+            c => c.id === targetDept.collegeId || (c.code && targetDept.collegeId && c.code.toLowerCase() === targetDept.collegeId.toLowerCase())
+          );
+          if (parentCollege && isValidUuid(parentCollege.id)) {
+            syncCollegeId = parentCollege.id;
+          }
+
+          const remoteDept = await likhaLmsApi.academicStructure.createDepartment({
             id: targetDept.id,
-            college_id: targetDept.collegeId,
+            college_id: syncCollegeId,
             name: targetDept.name,
             code: targetDept.code,
             chairperson_id: effectiveChairId || null,
-          }).catch(() => {});
+          }).catch(() => null);
+
+          if (remoteDept && remoteDept.id && remoteDept.id !== targetDept.id) {
+            const oldId = targetDept.id;
+            targetDept.id = String(remoteDept.id);
+            setDepartments(prev => {
+              const updated = prev.map(d => (d.id === oldId || (d.collegeId === targetDept.collegeId && d.code && targetDept.code && d.code.toLowerCase() === targetDept.code.toLowerCase()) ? { ...d, id: targetDept.id } : d));
+              safeSetLocalStorage(STORAGE_KEY_DEPARTMENTS, JSON.stringify(updated));
+              return updated;
+            });
+          }
         }
       }
     } catch (_) {}

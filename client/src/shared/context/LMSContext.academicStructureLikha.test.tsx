@@ -69,10 +69,8 @@ describe('LMSContext Likha ERP Academic Structure Integration', () => {
 
   function TestHarness({ onReady }: { onReady: (ctx: ReturnType<typeof useContext<typeof LMSContext>>) => void }) {
     const ctx = useContext(LMSContext);
-    React.useEffect(() => {
-      if (ctx) onReady(ctx);
-    }, [ctx, onReady]);
-    return <div>Academic Units: {ctx.colleges.length} colleges, {ctx.departments.length} departments</div>;
+    if (ctx) onReady(ctx);
+    return <div>Academic Units: {ctx?.colleges.length ?? 0} colleges, {ctx?.departments.length ?? 0} departments</div>;
   }
 
   test('synchronizes colleges and departments from Likha ERP on mount', async () => {
@@ -171,4 +169,101 @@ describe('LMSContext Likha ERP Academic Structure Integration', () => {
     expect(updateUserMock).toHaveBeenCalledWith('u-dean-9', { role: 'faculty' });
     expect(updateUserMock).toHaveBeenCalledWith('u-faculty-3', { role: 'admin' });
   });
+
+  test('preserves locally created colleges and departments across mount revalidation', async () => {
+    localStorage.setItem(
+      'gabay_colleges',
+      JSON.stringify([
+        { id: '11111111-1111-4111-8111-111111111111', name: 'Custom Local College', code: 'CLC' },
+      ])
+    );
+    localStorage.setItem(
+      'gabay_departments',
+      JSON.stringify([
+        {
+          id: '22222222-2222-4222-8222-222222222222',
+          collegeId: '11111111-1111-4111-8111-111111111111',
+          name: 'Custom Local Department',
+          code: 'CLD',
+        },
+      ])
+    );
+
+    let capturedCtx: any = null;
+    render(
+      <LMSProvider>
+        <TestHarness onReady={ctx => { capturedCtx = ctx; }} />
+      </LMSProvider>
+    );
+
+    await waitFor(() => {
+      expect(getCollegesMock).toHaveBeenCalled();
+      expect(getDepartmentsMock).toHaveBeenCalled();
+    });
+
+    await waitFor(() => {
+      // Remote college synchronized
+      expect(capturedCtx.colleges.some((c: any) => c.id === 'col-directus-1')).toBe(true);
+      // Locally created college preserved on reload/refresh
+      expect(capturedCtx.colleges.some((c: any) => c.code === 'CLC')).toBe(true);
+
+      // Remote department synchronized
+      expect(capturedCtx.departments.some((d: any) => d.id === 'dept-directus-1')).toBe(true);
+      // Locally created department preserved on reload/refresh
+      expect(capturedCtx.departments.some((d: any) => d.code === 'CLD')).toBe(true);
+    });
+  });
+
+  test('adopts remote UUID returned by Likha ERP on creation and updates localStorage', async () => {
+    createCollegeMock.mockResolvedValueOnce({
+      id: '99999999-9999-4999-8999-999999999999',
+      name: 'College of Allied Health',
+      code: 'CAH',
+    });
+    createDepartmentMock.mockResolvedValueOnce({
+      id: '88888888-8888-4888-8888-888888888888',
+      college_id: '99999999-9999-4999-8999-999999999999',
+      name: 'Department of Nursing',
+      code: 'NUR',
+    });
+
+    let capturedCtx: any = null;
+    render(
+      <LMSProvider>
+        <TestHarness onReady={ctx => { capturedCtx = ctx; }} />
+      </LMSProvider>
+    );
+
+    await waitFor(() => expect(capturedCtx).not.toBeNull());
+
+    await act(async () => {
+      await capturedCtx.addCollege({
+        id: 'temp-c-id',
+        name: 'College of Allied Health',
+        code: 'CAH',
+      });
+    });
+
+    await waitFor(() => {
+      expect(capturedCtx.colleges.some((c: any) => c.id === '99999999-9999-4999-8999-999999999999')).toBe(true);
+      const stored = JSON.parse(localStorage.getItem('gabay_colleges') || '[]');
+      expect(stored.some((c: any) => c.id === '99999999-9999-4999-8999-999999999999')).toBe(true);
+    });
+
+    await act(async () => {
+      await capturedCtx.addDepartment({
+        id: 'temp-d-id',
+        collegeId: '99999999-9999-4999-8999-999999999999',
+        name: 'Department of Nursing',
+        code: 'NUR',
+      });
+    });
+
+    await waitFor(() => {
+      expect(capturedCtx.departments.some((d: any) => d.id === '88888888-8888-4888-8888-888888888888')).toBe(true);
+      const storedDepts = JSON.parse(localStorage.getItem('gabay_departments') || '[]');
+      expect(storedDepts.some((d: any) => d.id === '88888888-8888-4888-8888-888888888888')).toBe(true);
+    });
+  });
 });
+

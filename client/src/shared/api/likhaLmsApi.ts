@@ -1421,9 +1421,14 @@ export const likhaLmsApi = {
     },
 
     async createCollege(payload: any): Promise<any> {
+      const isUuid = (val: any) => typeof val === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(val);
+      const body = { ...payload };
+      if ('id' in body && !isUuid(body.id)) {
+        delete body.id;
+      }
       return likhaRequest('/items/colleges', {
         method: 'POST',
-        body: JSON.stringify(payload),
+        body: JSON.stringify(body),
       });
     },
 
@@ -1444,9 +1449,14 @@ export const likhaLmsApi = {
     },
 
     async createDepartment(payload: any): Promise<any> {
+      const isUuid = (val: any) => typeof val === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(val);
+      const body = { ...payload };
+      if ('id' in body && !isUuid(body.id)) {
+        delete body.id;
+      }
       return likhaRequest('/items/departments', {
         method: 'POST',
-        body: JSON.stringify(payload),
+        body: JSON.stringify(body),
       });
     },
 

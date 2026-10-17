@@ -14,6 +14,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { isDeanRole, isChairRole } from '../../../shared/utils/roles';
+import { generateUuid } from '../../../shared/utils/cryptoToken';
 
 export const AcademicStructureTab: React.FC = () => {
   const navigate = useNavigate();
@@ -155,7 +156,7 @@ export const AcademicStructureTab: React.FC = () => {
     setIsSubmittingCollege(true);
     try {
       const newCol: College = {
-        id: `col-${collegeCode.trim().toLowerCase()}-${Date.now().toString().slice(-4)}`,
+        id: generateUuid(),
         name: collegeName.trim(),
         code: collegeCode.trim().toUpperCase(),
       };
@@ -191,7 +192,7 @@ export const AcademicStructureTab: React.FC = () => {
     setIsSubmittingDept(true);
     try {
       const newDept: Department = {
-        id: `dept-${deptCode.trim().toLowerCase()}-${Date.now().toString().slice(-4)}`,
+        id: generateUuid(),
         collegeId: targetCollegeId,
         name: deptName.trim(),
         code: deptCode.trim().toUpperCase(),
