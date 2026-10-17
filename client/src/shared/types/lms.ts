@@ -29,7 +29,7 @@ export interface PendingRegistration {
   collegeName: string;
   department: string;
   studentId: string;
-  password: string;
+  password?: string;
   emailVerified: boolean;
   activationToken: string;
   registeredAt: string;

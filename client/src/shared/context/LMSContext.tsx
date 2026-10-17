@@ -1507,7 +1507,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const saved = localStorage.getItem(STORAGE_KEY_PENDING_REGISTRATIONS);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) {
+          return parsed.map(({ password: _, ...rest }: any) => rest as PendingRegistration);
+        }
       }
     } catch (_) {}
     return [];
@@ -1516,7 +1518,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const pendingRegistrationsRef = useRef(pendingRegistrations);
   useEffect(() => {
     pendingRegistrationsRef.current = pendingRegistrations;
-    safeSetLocalStorage(STORAGE_KEY_PENDING_REGISTRATIONS, JSON.stringify(pendingRegistrations));
+    const sanitized = pendingRegistrations.map(({ password: _, ...rest }) => rest);
+    safeSetLocalStorage(STORAGE_KEY_PENDING_REGISTRATIONS, JSON.stringify(sanitized));
   }, [pendingRegistrations]);
 
   useEffect(() => {
