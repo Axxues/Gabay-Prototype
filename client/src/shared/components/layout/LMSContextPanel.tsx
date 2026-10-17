@@ -301,19 +301,12 @@ const CourseNavigationPanel: React.FC<CourseNavigationPanelProps> = ({
 export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: string; onNavigateTab: (t: string) => void; onSelectCourseTab: (t: string) => void; onNavigateCourse: (id: string, sub?: string) => void }> = React.memo((p) => {
   const { db, activeCourseId, activeRole, activeUser, colleges, departments, getUnreadNotificationCount } = useLMS();
 
-  // LMS navigations (Dashboard, Courses, Calendar, Inbox, History, Help) belong
-  // to the Learning Management section only — hide the whole context panel on
-  // top-level pages outside it (Page 1/2/3, Manage College Accounts).
-  if (!isLmsSectionTab(p.currentTab)) return null;
-
-  const unread = (db.messages || []).filter(m => m.recipientId === activeUser.id && !m.read).length;
-
   // Enrollment truth is approved request rows, falling back to enrolledCourseIds when stale.
   const approvedCourseIds = useMemo(() => new Set(
     (db.enrollmentRequests || [])
-      .filter(r => r.studentId === activeUser.id && r.status === 'approved')
+      .filter(r => r.studentId === activeUser?.id && r.status === 'approved')
       .map(r => r.courseId)
-  ), [db.enrollmentRequests, activeUser.id]);
+  ), [db.enrollmentRequests, activeUser?.id]);
 
   const visibleCourses = useMemo(() => (
     activeRole === 'staff'
@@ -329,6 +322,12 @@ export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: strin
         })
   ), [activeRole, db.courses, db.users, activeUser, approvedCourseIds, colleges, departments]);
 
+  // LMS navigations (Dashboard, Courses, Calendar, Inbox, History, Help) belong
+  // to the Learning Management section only — hide the whole context panel on
+  // top-level pages outside it (Page 1/2/3, Manage College Accounts).
+  if (!isLmsSectionTab(p.currentTab)) return null;
+
+  const unread = (db.messages || []).filter(m => m.recipientId === activeUser?.id && !m.read).length;
   const hasNoCourses = visibleCourses.length === 0;
 
   const lmsNav = (

@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useLMS } from '../../shared/context/LMSContext';
+import { getDisplayRoleLabel } from '../../shared/utils/roles';
 import {
   Send,
   Smile,
@@ -123,7 +124,7 @@ export const InboxPage: React.FC = () => {
         partner,
         title: partner.name,
         avatar: partner.avatar,
-        subtitle: `${partner.role.toUpperCase()}${partner.department ? ` • ${partner.department}` : ''}`,
+        subtitle: `${getDisplayRoleLabel(partner).toUpperCase()}${partner.department ? ` • ${partner.department}` : ''}`,
         lastMessage: lastMsg,
         messages: sortedMsgs,
         unreadCount
@@ -207,7 +208,7 @@ export const InboxPage: React.FC = () => {
       partner,
       title: partner.name,
       avatar: partner.avatar,
-      subtitle: `${partner.role.toUpperCase()}${partner.department ? ` • ${partner.department}` : ''}`,
+      subtitle: `${getDisplayRoleLabel(partner).toUpperCase()}${partner.department ? ` • ${partner.department}` : ''}`,
       lastMessage: {
         id: `pending-${partner.id}`,
         senderId: activeUser.id,
@@ -535,7 +536,7 @@ export const InboxPage: React.FC = () => {
                             </span>
                           ) : (
                             <span className="text-[11px] font-sans px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0 font-medium">
-                              {thread.partner?.role}
+                              {thread.partner ? getDisplayRoleLabel(thread.partner) : ''}
                             </span>
                           )}
                         </span>
@@ -621,7 +622,7 @@ export const InboxPage: React.FC = () => {
                         </span>
                       ) : (
                         <span className="px-1.5 py-0.5 text-[9px] rounded-full bg-primary/10 text-primary font-bold uppercase">
-                          {activePartner?.role}
+                          {activePartner ? getDisplayRoleLabel(activePartner) : ''}
                         </span>
                       )}
                     </h2>
@@ -678,7 +679,7 @@ export const InboxPage: React.FC = () => {
                   <p className="text-xs text-muted-foreground">
                     {activeThread.isGroup
                       ? `${activeGroup?.memberIds.length} Members • ${activeGroup?.courseCode || 'General Discussion'}`
-                      : `${activePartner?.role.toUpperCase()} • ${activePartner?.department || 'DMMMSU-SLUC'}`}
+                      : `${activePartner ? getDisplayRoleLabel(activePartner).toUpperCase() : ''} • ${activePartner?.department || 'DMMMSU-SLUC'}`}
                   </p>
                   <p className="text-[11px] text-muted-foreground/80 font-sans">
                     {activeThread.isGroup
@@ -1017,7 +1018,7 @@ export const InboxPage: React.FC = () => {
                 <p className="text-[11px] font-sans text-muted-foreground">
                   {activeThread.isGroup
                     ? `${activeGroup?.memberIds.length} Members • ${activeGroup?.courseCode || 'General Discussion'}`
-                    : `${activePartner?.role.toUpperCase()} • ${activePartner?.department || 'SLUC Faculty'}`}
+                    : `${activePartner ? getDisplayRoleLabel(activePartner).toUpperCase() : ''} • ${activePartner?.department || 'SLUC Faculty'}`}
                 </p>
                 {!activeThread.isGroup && (
                   <p className="text-[10px] font-sans text-muted-foreground/80 mt-0.5">
@@ -1083,7 +1084,7 @@ export const InboxPage: React.FC = () => {
                             <p className="font-bold text-[11px] text-foreground truncate">
                               {member.name} {isMe && <span className="text-primary font-normal">(You)</span>}
                             </p>
-                            <p className="text-[9px] text-muted-foreground uppercase">{member.role}</p>
+                            <p className="text-[9px] text-muted-foreground uppercase">{getDisplayRoleLabel(member)}</p>
                           </div>
                         </div>
 
@@ -1272,7 +1273,7 @@ export const InboxPage: React.FC = () => {
                             {u.name}
                           </div>
                           <div className="text-[10px] text-muted-foreground font-sans truncate">
-                            {u.role.toUpperCase()} • {u.department || 'SLUC Academic Dept'}
+                            {getDisplayRoleLabel(u).toUpperCase()} • {u.department || 'SLUC Academic Dept'}
                           </div>
                         </div>
                       </button>
@@ -1378,7 +1379,7 @@ export const InboxPage: React.FC = () => {
                             <div className="truncate">
                               <p className="font-bold text-xs truncate">{u.name}</p>
                               <p className="text-[10px] text-muted-foreground truncate">
-                                {u.role.toUpperCase()} • {u.department || 'SLUC Dept'}
+                                {getDisplayRoleLabel(u).toUpperCase()} • {u.department || 'SLUC Dept'}
                               </p>
                             </div>
                           </div>

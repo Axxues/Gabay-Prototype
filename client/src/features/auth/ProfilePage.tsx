@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { useLMS, ACCENT_PRESETS } from '../../shared/context/LMSContext';
 import { uploadFileToPublic } from '../../shared/utils/fileUploader';
 import { hasCustomAvatar } from '../../shared/utils/avatar';
+import { getDisplayRoleLabel } from '../../shared/utils/roles';
 import { UserAvatar } from '../../shared/components/common/UserAvatar';
 import {
   Building,
@@ -214,6 +215,11 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
 
   const roleBadges: Record<string, { label: string; style: string; icon: React.ReactNode }> = {
     admin: {
+      label: getDisplayRoleLabel(currentUser, 'admin'),
+      style: 'bg-primary/10 text-primary border-primary/20',
+      icon: <Building className="w-3.5 h-3.5" />
+    },
+    superadmin: {
       label: 'Admin',
       style: 'bg-primary/10 text-primary border-primary/20',
       icon: <Building className="w-3.5 h-3.5" />

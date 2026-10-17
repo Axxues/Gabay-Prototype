@@ -70,11 +70,11 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
 }) => {
   const { activeUser, db, createCourse, showAlert } = useLMS();
 
-  const [courseCode, setCourseCode] = useState('CMSC 180');
-  const [courseTitle, setCourseTitle] = useState('Artificial Intelligence & Expert Systems');
-  const [courseSection, setCourseSection] = useState('BSCS 4-1');
-  const [courseColor, setCourseColor] = useState('#2563eb');
-  const [courseImage, setCourseImage] = useState<string>(PRESET_IMAGES[0].url);
+  const [courseCode, setCourseCode] = useState('');
+  const [courseTitle, setCourseTitle] = useState('');
+  const [courseSection, setCourseSection] = useState('');
+  const [courseColor, setCourseColor] = useState('');
+  const [courseImage, setCourseImage] = useState<string>('');
   const [imageMode, setImageMode] = useState<'presets' | 'upload' | 'url'>('presets');
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -82,13 +82,9 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [courseTerm, setCourseTerm] = useState(() => getDefaultAcademicTerm());
-  const [courseDesc, setCourseDesc] = useState(
-    'Covers foundational concepts in heuristics, search algorithms, knowledge representation, inference engines, and expert system design.'
-  );
+  const [courseDesc, setCourseDesc] = useState('');
 
-  const [courseJoinCode, setCourseJoinCode] = useState(() =>
-    generateCourseJoinCode(db.courses, 'CMSC 180')
-  );
+  const [courseJoinCode, setCourseJoinCode] = useState('');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -216,7 +212,7 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
         instructorName: activeUser.name,
         term: courseTerm,
         published: true,
-        joinCode: courseJoinCode
+        joinCode: courseJoinCode.trim() || generateCourseJoinCode(db.courses, courseCode.trim())
       });
 
       showAlert({
@@ -327,7 +323,7 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
                     onChange={e => {
                       setCourseSection(e.target.value);
                     }}
-                    placeholder="BSCS 4-1"
+                    placeholder="4-E"
                     className="w-full p-2.5 bg-background border border-border focus:ring-2 focus:ring-primary/20 focus:border-primary/40 rounded-xl text-foreground text-[13px] outline-none"
                   />
                   <span className="text-[10px] text-muted-foreground">Class section or laboratory group — renamable later in course settings</span>
@@ -485,9 +481,10 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
                 <div className="flex items-center space-x-2">
                   <input
                     type="text"
+                    readOnly
                     value={courseJoinCode}
-                    onChange={e => setCourseJoinCode(e.target.value.toUpperCase())}
-                    className="w-full p-2 bg-background border border-border rounded-xl font-mono font-bold text-xs uppercase tracking-wider text-foreground outline-none focus:ring-2 focus:ring-primary/30"
+                    placeholder="Auto-generated upon creation"
+                    className="w-full p-2 bg-muted/40 border border-border rounded-xl font-mono font-bold text-xs uppercase tracking-wider text-foreground outline-none cursor-default select-all"
                   />
                 </div>
                 <p className="text-[10px] text-muted-foreground">

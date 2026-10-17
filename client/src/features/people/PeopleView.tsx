@@ -18,6 +18,7 @@ import { AnimatedModal } from '../../shared/components/common/ModalPortal';
 import { PageHeader } from '../../shared/components/common/PageHeader';
 import { UserAvatar } from '../../shared/components/common/UserAvatar';
 import { canPickSection } from '../../shared/utils/sections';
+import { getDisplayRoleLabel } from '../../shared/utils/roles';
 
 interface PeopleViewProps {
   courseId: string;
@@ -343,7 +344,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
                                 }`}
                             >
                               <Shield className="w-3 h-3" />
-                              <span>{u.role === 'faculty' ? 'Faculty' : u.role === 'admin' ? 'Admin' : 'Student'}</span>
+                              <span>{getDisplayRoleLabel(u)}</span>
                             </span>
                             {(activeRole === 'faculty' || activeRole === 'admin') && u.role === 'student' && u.id !== activeUser.id && (
                               <button

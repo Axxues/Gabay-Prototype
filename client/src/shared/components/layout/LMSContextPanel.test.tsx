@@ -88,6 +88,8 @@ describe('LMSContextPanel Collapsible Assessments', () => {
   });
 
   test('does not violate rules of hooks when switching from non-LMS governance tab to courses tab', () => {
+    const errorSpy = vi.spyOn(console, 'error');
+
     const { rerender, container } = render(
       <LMSContextPanel
         currentTab="governance"
@@ -126,6 +128,13 @@ describe('LMSContextPanel Collapsible Assessments', () => {
     );
 
     expect(container.firstChild).toBeNull();
+
+    const hookErrors = errorSpy.mock.calls.filter(call =>
+      call.some(arg => typeof arg === 'string' && (arg.includes('Rules of Hooks') || arg.includes('order of Hooks')))
+    );
+    expect(hookErrors).toHaveLength(0);
+
+    errorSpy.mockRestore();
   });
 
   test('does not display Course Navigation when faculty has not created any courses yet', () => {
@@ -162,9 +171,10 @@ describe('LMSContextPanel Collapsible Assessments', () => {
       />
     );
 
-    // Learning Management should be visible
+    // Learning Management should be visible without the Courses button
     expect(screen.getByText('Learning Management')).toBeDefined();
-    expect(screen.getByRole('button', { name: /Courses/i })).toBeDefined();
+    expect(screen.getByRole('button', { name: /Dashboard/i })).toBeDefined();
+    expect(screen.queryByRole('button', { name: /^Courses$/i })).toBeNull();
 
     // Course Navigation header and course items should NOT be displayed
     expect(screen.queryByText('Course Navigation')).toBeNull();

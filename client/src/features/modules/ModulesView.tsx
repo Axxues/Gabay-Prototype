@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useLMS } from '../../shared/context/LMSContext';
+import { getDisplayRoleLabel } from '../../shared/utils/roles';
 import type { Module, ModuleItem } from '../../shared/types/lms';
 import {
   FileText,
@@ -843,16 +844,22 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                                           <span className="text-xs font-bold text-foreground font-sans">
                                             {c.authorName}
                                           </span>
-                                          <span
-                                            className={`px-2 py-0.5 text-[11px] font-sans font-semibold rounded-full border ${c.authorRole === 'faculty'
-                                              ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20'
-                                              : c.authorRole === 'admin'
-                                                ? 'bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/20'
-                                                : 'bg-muted text-muted-foreground border-border'
-                                              }`}
-                                          >
-                                            {c.authorRole}
-                                          </span>
+                                          {(() => {
+                                            const authorUser = (db.users || []).find(u => u.id === c.authorId);
+                                            const roleLabel = getDisplayRoleLabel(authorUser, c.authorRole);
+                                            return (
+                                              <span
+                                                className={`px-2 py-0.5 text-[11px] font-sans font-semibold rounded-full border ${c.authorRole === 'faculty'
+                                                  ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20'
+                                                  : c.authorRole === 'admin'
+                                                    ? 'bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/20'
+                                                    : 'bg-muted text-muted-foreground border-border'
+                                                  }`}
+                                              >
+                                                {roleLabel}
+                                              </span>
+                                            );
+                                          })()}
                                           <span className="text-[11px] text-muted-foreground font-sans">
                                             · {c.createdAt.includes('T') ? new Date(c.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : c.createdAt}
                                           </span>

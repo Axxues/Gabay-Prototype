@@ -22,6 +22,7 @@ import { isImageFile } from '../../shared/utils/fileUploader';
 import { groupRepliesByRoot } from '../../shared/utils/threadReplies';
 import { PageHeader } from '../../shared/components/common/PageHeader';
 import { UserAvatar } from '../../shared/components/common/UserAvatar';
+import { getDisplayRoleLabel } from '../../shared/utils/roles';
 import { EmptyState } from '../../shared/components/common/EmptyState';
 import { CreateAnnouncementPage } from './CreateAnnouncementPage';
 
@@ -509,7 +510,7 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
                                           {rep.authorName}
                                         </span>
                                         <span className="px-2 py-0.5 text-[11px] font-sans font-medium rounded-full bg-muted text-muted-foreground border border-border">
-                                          {rep.authorRole}
+                                          {getDisplayRoleLabel((db.users || []).find(u => u.id === rep.authorId), rep.authorRole)}
                                         </span>
                                       </div>
                                       <span className="text-[10px] font-sans text-muted-foreground">
@@ -550,7 +551,7 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
                                                 {child.authorName}
                                               </span>
                                               <span className="px-2 py-0.5 text-[11px] font-sans font-medium rounded-full bg-muted text-muted-foreground border border-border">
-                                                {child.authorRole}
+                                                {getDisplayRoleLabel((db.users || []).find(u => u.id === child.authorId), child.authorRole)}
                                               </span>
                                             </div>
                                             <span className="text-[10px] font-sans text-muted-foreground">

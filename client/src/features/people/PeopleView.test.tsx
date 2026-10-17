@@ -15,6 +15,7 @@ vi.mock('../../shared/context/LMSContext', () => ({
       courses: [{ id: 'c1', code: 'CMSC 131', instructorId: 'u-fac-1' }],
       users: [
         { id: 'u-fac-1', name: 'Prof', email: 'prof@school.edu', role: 'faculty', avatar: '', department: 'CS', title: 'Prof' },
+        { id: 'u-dean-1', name: 'Dean Eleanor', email: 'dean@school.edu', role: 'admin', adminSubrole: 'dean', avatar: '', department: 'CS', title: 'College Dean' },
         { id: 'u-stu-1', name: 'Stu One', email: 'stu@school.edu', role: 'student', avatar: '', department: 'CS', title: '', studentId: '2021-00001', enrolledCourseIds: ['c1'] },
       ],
       enrollmentRequests: [
@@ -59,5 +60,10 @@ describe('PeopleView remove student', () => {
     fireEvent.click(screen.getByRole('button', { name: /remove stu one from course/i }));
     expect(mocks.showConfirm).toHaveBeenCalledTimes(1);
     expect(mocks.removeStudentFromCourse).toHaveBeenCalledWith('c1', 'u-stu-1');
+  });
+
+  test('renders Dean role badge for admin(dean) instead of generic Admin', () => {
+    renderPage();
+    expect(screen.getByText('Dean')).toBeInTheDocument();
   });
 });

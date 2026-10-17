@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useLMS } from '../../context/LMSContext';
 import { NotificationBell } from '../common/NotificationBell';
 import { UserAvatar } from '../common/UserAvatar';
+import { getDisplayRoleLabel } from '../../utils/roles';
 import {
   Menu,
   Search,
@@ -188,7 +189,7 @@ export const Topbar: React.FC<TopbarProps> = React.memo(({
                   </p>
                   <div className="flex items-center space-x-1.5 mt-1.5">
                     <span className="px-2 py-0.5 text-[11px] font-sans font-medium rounded-full bg-muted text-muted-foreground border border-border">
-                      {activeRole}
+                      {getDisplayRoleLabel(activeUser, activeRole)}
                     </span>
                     <span className="text-[12px] font-sans text-muted-foreground truncate font-normal">
                       {activeUser.email}

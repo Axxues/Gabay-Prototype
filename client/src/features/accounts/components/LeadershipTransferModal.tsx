@@ -253,7 +253,7 @@ export const LeadershipTransferModal: React.FC<LeadershipTransferModalProps> = (
               </div>
               <p>
                 Under the Gabay governance model, exactly one person may occupy an administrative
-                leadership seat ({roleType === 'dean' ? 'Dean' : 'Department Chairperson'}).
+                leadership seat ({roleType === 'dean' ? 'Dean' : 'Chair'}).
                 Handing over this seat instantly relinquishes administrative privilege and transfers
                 unit control to the chosen faculty successor.
               </p>
@@ -279,7 +279,7 @@ export const LeadershipTransferModal: React.FC<LeadershipTransferModalProps> = (
               </div>
               <div className="flex items-center justify-between py-1">
                 <span className="font-medium text-foreground">{currentLeader?.name} (You)</span>
-                <span className="text-muted-foreground font-mono text-[11px]">Admin → Faculty</span>
+                <span className="text-muted-foreground font-mono text-[11px]">{roleType === 'dean' ? 'Dean' : 'Chair'} → Faculty</span>
               </div>
               <div className="flex items-center justify-between py-1 text-primary font-bold">
                 <span className="flex items-center space-x-1.5">
@@ -287,7 +287,7 @@ export const LeadershipTransferModal: React.FC<LeadershipTransferModalProps> = (
                   <span>{selectedSuccessor?.name}</span>
                 </span>
                 <span className="font-mono text-[11px]">
-                  Faculty → Admin ({roleType === 'dean' ? 'Dean' : 'Chairperson'})
+                  Faculty → {roleType === 'dean' ? 'Dean' : 'Chair'}
                 </span>
               </div>
             </div>

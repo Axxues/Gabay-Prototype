@@ -4,6 +4,7 @@ import type { User, UserRole } from '../../shared/types/lms';
 import { PageHeader } from '../../shared/components/common/PageHeader';
 import { UserAvatar } from '../../shared/components/common/UserAvatar';
 import { DialogFrame } from '../../shared/components/common/DialogFrame';
+import { getDisplayRoleLabel } from '../../shared/utils/roles';
 import {
   Users,
   Search,
@@ -331,7 +332,8 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
         const matchDept = (user.department || '').toLowerCase().includes(q);
         const matchTitle = (user.title || '').toLowerCase().includes(q);
         const matchStudentId = (user.studentId || '').toLowerCase().includes(q);
-        if (!matchName && !matchEmail && !matchDept && !matchTitle && !matchStudentId) {
+        const matchRole = getDisplayRoleLabel(user, user.role).toLowerCase().includes(q) || (user.adminSubrole || '').toLowerCase().includes(q);
+        if (!matchName && !matchEmail && !matchDept && !matchTitle && !matchStudentId && !matchRole) {
           return false;
         }
       }
@@ -457,29 +459,40 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
     }
   };
 
-  const getRoleBadge = (role?: string) => {
-    const normalized = (role || '').toLowerCase();
-    switch (normalized) {
-      case 'admin':
+  const getRoleBadge = (role?: string, user?: User) => {
+    const displayLabel = getDisplayRoleLabel(user, role);
+    switch (displayLabel) {
+      case 'Dean':
+        return {
+          label: 'Dean',
+          badgeClass: 'bg-muted text-muted-foreground border-border',
+          icon: <Building className="w-3 h-3" />
+        };
+      case 'Chair':
+        return {
+          label: 'Chair',
+          badgeClass: 'bg-muted text-muted-foreground border-border',
+          icon: <Building className="w-3 h-3" />
+        };
+      case 'Admin':
         return {
           label: 'Admin',
           badgeClass: 'bg-muted text-muted-foreground border-border',
           icon: <Building className="w-3 h-3" />
         };
-      case 'faculty':
-      case 'instructor':
+      case 'Faculty':
         return {
           label: 'Faculty',
           badgeClass: 'bg-muted text-muted-foreground border-border',
           icon: <UserCheck className="w-3 h-3" />
         };
-      case 'staff':
+      case 'Staff':
         return {
           label: 'Registrar / staff',
           badgeClass: 'bg-muted text-muted-foreground border-border',
           icon: <ShieldCheck className="w-3 h-3" />
         };
-      case 'student':
+      case 'Student':
         return {
           label: 'Student',
           badgeClass: 'bg-muted text-muted-foreground border-border',
@@ -487,7 +500,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
         };
       default:
         return {
-          label: role || 'User',
+          label: displayLabel || role || 'User',
           badgeClass: 'bg-muted text-muted-foreground border-border',
           icon: <Building className="w-3 h-3" />
         };
@@ -788,7 +801,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
                     </tr>
                   ) : (
                     filteredUsers.map(user => {
-                      const roleMeta = getRoleBadge(user.role);
+                      const roleMeta = getRoleBadge(user.role, user);
                       const isCurrent = activeUser ? user.id === activeUser.id : false;
 
                       // Course count

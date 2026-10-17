@@ -18,7 +18,6 @@ export function canAccessAccountManagement(role?: UserRole | string | null, _adm
 }
 export const LMS_CHILDREN: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', roles: NO_STAFF },
-  { id: 'courses', label: 'Courses', icon: 'courses', roles: NO_STAFF },
   { id: 'calendar', label: 'Calendar', icon: 'calendar', roles: ALL },
   { id: 'inbox', label: 'Inbox', icon: 'inbox', roles: ALL },
 ];

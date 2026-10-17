@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { ModalPortal, useModalAnimate } from './ModalPortal';
 import { UserAvatar } from './UserAvatar';
+import { getDisplayRoleLabel } from '../../utils/roles';
 
 export const UserProfileModal: React.FC = () => {
   const {
@@ -46,6 +47,11 @@ export const UserProfileModal: React.FC = () => {
 
   const roleBadges: Record<string, { label: string; style: string; icon: React.ReactNode }> = {
     admin: {
+      label: getDisplayRoleLabel(currentUser, 'admin').toUpperCase(),
+      style: 'bg-primary/10 text-primary border-primary/20',
+      icon: <Building className="w-3.5 h-3.5" />
+    },
+    superadmin: {
       label: 'ADMIN',
       style: 'bg-primary/10 text-primary border-primary/20',
       icon: <Building className="w-3.5 h-3.5" />
