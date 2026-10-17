@@ -81,7 +81,7 @@ def classify_intent(
     """
     router = client if client is not None else get_groq_router()
 
-    user_content = f"User Query: {message.strip()}"
+    user_content = f"User Query: {(message or '').strip()}"
     if active_course:
         user_content += f"\nActive Course Context: {active_course.strip()}"
     if student_name:
@@ -96,6 +96,7 @@ def classify_intent(
             ],
             temperature=0.0,
             response_format={"type": "json_object"},
+            timeout=8.0,
         )
         response_text = completion.choices[0].message.content or "{}"
         parsed = json.loads(response_text)
@@ -111,8 +112,8 @@ def classify_intent(
     elif clean_cat in DOMAINS_REGISTRY:
         category = clean_cat
     else:
-        # Check partial match against registry keys
-        matched = next((d for d in DOMAINS_REGISTRY if d in clean_cat or clean_cat in d), None)
+        # Check partial match against registry keys (safeguarded against empty string)
+        matched = next((d for d in DOMAINS_REGISTRY if clean_cat and (d in clean_cat or clean_cat in d)), None)
         category = matched if matched else "student_support"
 
     # Determine direct_reply based on domain status or out of scope

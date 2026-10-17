@@ -200,3 +200,25 @@ class TestCoordinatorAgent:
         result = classify_intent(message="Tell me about quantum computing")
         # Should fallback gracefully to student_support or OUT_OF_SCOPE
         assert result["category"] in DOMAINS_REGISTRY or result["category"] == "OUT_OF_SCOPE"
+
+    @patch("app.agents.coordinator.get_groq_router")
+    def test_empty_category_response_fallback(self, mock_get_router):
+        """Verify fallback to student_support when LLM returns empty category string."""
+        mock_router = MagicMock()
+        mock_router.chat.completions.create.return_value = _mock_groq_completion("")
+        mock_get_router.return_value = mock_router
+
+        result = classify_intent(message="What is the schedule?")
+        assert result["category"] == "student_support"
+
+    @patch("app.agents.coordinator.get_groq_router")
+    def test_api_exception_fallback(self, mock_get_router):
+        """Verify graceful fallback to student_support when Groq API raises an exception."""
+        mock_router = MagicMock()
+        mock_router.chat.completions.create.side_effect = RuntimeError("Groq rate limit or network error")
+        mock_get_router.return_value = mock_router
+
+        result = classify_intent(message=None)
+        assert result["category"] == "student_support"
+        assert result["direct_reply"] is None
+
