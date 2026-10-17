@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import React from 'react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 
 const mocks = vi.hoisted(() => ({
   activeRole: 'student',
@@ -56,7 +56,7 @@ vi.mock('./shared/context/LMSContext', () => ({
 }));
 
 import { AppContent } from './App';
-import { AuthCardSkeleton, PageSkeleton } from './shared/components/common/AppSkeleton';
+import { AuthCardSkeleton } from './shared/components/common/AppSkeleton';
 
 describe('Auth Routing and Skeleton Loading', () => {
   it('renders RegisterPage without rendering dashboard skeleton on /register', async () => {
@@ -100,5 +100,26 @@ describe('Auth Routing and Skeleton Loading', () => {
     );
 
     expect(screen.queryByTestId('auth-card-skeleton')).not.toBeInTheDocument();
+  });
+
+  it('redirects authenticated user on /login directly to /dashboard even if location.state.from was set', () => {
+    mocks.activeRole = 'admin';
+    mocks.isAuthenticated = true;
+    mocks.isLoading = false;
+    mocks.authReady = true;
+
+    function LocationSpy() {
+      const location = useLocation();
+      return <div data-testid="location-spy">{location.pathname}</div>;
+    }
+
+    render(
+      <MemoryRouter initialEntries={[{ pathname: '/login', state: { from: '/governance' } }]}>
+        <LocationSpy />
+        <AppContent />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByTestId('location-spy')).toHaveTextContent('/dashboard');
   });
 });

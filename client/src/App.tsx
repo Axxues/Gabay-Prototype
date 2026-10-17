@@ -79,13 +79,11 @@ const AuthLoadingScreen: React.FC = () => {
 
 const RequireAuth: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, authReady } = useLMS();
-  const location = useLocation();
   if (!authReady) {
     return <AuthLoadingScreen />;
   }
   if (!isAuthenticated) {
-    const fromPath = location.pathname === '/gabay-rag' ? '/dashboard' : (location.pathname + location.search);
-    return <Navigate to="/login" replace state={{ from: fromPath }} />;
+    return <Navigate to="/login" replace />;
   }
   return <>{children}</>;
 };
@@ -100,15 +98,12 @@ const RequireAdmin: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 
 const LoginRoute: React.FC = () => {
   const { isAuthenticated, authReady } = useLMS();
-  const location = useLocation();
-  const stateFrom = (location.state as { from?: string } | null)?.from;
-  const from = (stateFrom && stateFrom !== '/gabay-rag' && stateFrom !== '/login') ? stateFrom : '/dashboard';
 
   if (!authReady) {
     return <AuthLoadingScreen />;
   }
   if (isAuthenticated) {
-    return <Navigate to={from} replace />;
+    return <Navigate to="/dashboard" replace />;
   }
   return <LoginPage />;
 };

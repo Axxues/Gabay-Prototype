@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useLMS } from '../../shared/context/LMSContext';
 import {
   Lock,
@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
+  const navigate = useNavigate();
   const { login, theme, toggleTheme, showAlert } = useLMS();
 
   const [identifier, setIdentifier] = useState('');
@@ -39,6 +40,8 @@ export const LoginPage: React.FC = () => {
       const res = await login(identifier, password);
       if (!res.success) {
         setErrorMessage(res.message || 'Invalid credentials. Please try again.');
+      } else {
+        navigate('/dashboard', { replace: true });
       }
     } catch {
       setErrorMessage('An unexpected error occurred. Please try again.');
@@ -53,8 +56,11 @@ export const LoginPage: React.FC = () => {
     setErrorMessage('');
     setIsLoading(true);
     setTimeout(async () => {
-      await login(email, pw);
+      const res = await login(email, pw);
       setIsLoading(false);
+      if (res?.success) {
+        navigate('/dashboard', { replace: true });
+      }
     }, 200);
   };
 
