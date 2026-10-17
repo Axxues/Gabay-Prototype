@@ -154,15 +154,24 @@ export const CreateAccountPage: React.FC<CreateAccountPageProps> = ({ onNavigate
     getSchoolYearsByCollege
   } = useLMS();
 
-  // Determine current college
+  const [formEmail, setFormEmail] = useState('');
+  const [formIdNumber, setFormIdNumber] = useState('');
+  const [formRole, setFormRole] = useState<UserRole>('faculty');
+  const [formDepartment, setFormDepartment] = useState('Program in Computer Science');
+
+  // Determine current college (considering selected program when applicable)
   const currentCollegeId = useMemo(() => {
+    if (formDepartment && departments) {
+      const prog = departments.find(d => d.name === formDepartment || d.code === formDepartment);
+      if (prog?.collegeId) return prog.collegeId;
+    }
     if (activeUser?.collegeId) return activeUser.collegeId;
     if (activeUser?.collegeName && colleges) {
       const match = colleges.find(c => c.name.toLowerCase() === activeUser.collegeName?.toLowerCase());
       if (match) return match.id;
     }
     return colleges?.[0]?.id || 'col-ccs';
-  }, [activeUser, colleges]);
+  }, [formDepartment, departments, activeUser, colleges]);
 
   // Initial active school year
   const defaultSchoolYear = useMemo(() => {
@@ -178,10 +187,6 @@ export const CreateAccountPage: React.FC<CreateAccountPageProps> = ({ onNavigate
     return ccsActive?.year || '2025-2026';
   }, [currentCollegeId, getActiveSchoolYearForCollege, getSchoolYearsByCollege, schoolYears]);
 
-  const [formEmail, setFormEmail] = useState('');
-  const [formIdNumber, setFormIdNumber] = useState('');
-  const [formRole, setFormRole] = useState<UserRole>('faculty');
-  const [formDepartment, setFormDepartment] = useState('Program in Computer Science');
   const [formSchoolYear, setFormSchoolYear] = useState(defaultSchoolYear);
   const [formPassword, setFormPassword] = useState('gabay2026');
   const [showPassword, setShowPassword] = useState(false);
