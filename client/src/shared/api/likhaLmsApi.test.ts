@@ -287,5 +287,162 @@ describe('Likha LMS Direct API Client', () => {
     expect(urls.slice(0, parentIdx)).toContain('DELETE https://gabay.zyberlab.com/items/announcements/an-1');
     expect(urls.slice(0, parentIdx)).toContain('DELETE https://gabay.zyberlab.com/items/syllabi/s-1');
   });
+
+  describe('academicStructure controller', () => {
+    it('fetches colleges with dean relations', async () => {
+      const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: [{ id: 'col-1', name: 'College of Computer Studies', code: 'CCS', dean_id: { id: 'u-dean1' } }],
+        }),
+      } as any);
+
+      const colleges = await likhaLmsApi.academicStructure.getColleges();
+      expect(fetchSpy).toHaveBeenCalledWith(
+        expect.stringContaining('/items/colleges?fields=*,dean_id.*'),
+        expect.any(Object)
+      );
+      expect(colleges[0].id).toBe('col-1');
+      expect(colleges[0].code).toBe('CCS');
+    });
+
+    it('creates a college and invalidates colleges cache', async () => {
+      const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: { id: 'col-2', name: 'College of Arts and Sciences', code: 'CAS', dean_id: null },
+        }),
+      } as any);
+
+      const result = await likhaLmsApi.academicStructure.createCollege({
+        name: 'College of Arts and Sciences',
+        code: 'CAS',
+        dean_id: null,
+      });
+
+      expect(fetchSpy).toHaveBeenCalledWith(
+        expect.stringContaining('/items/colleges'),
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ name: 'College of Arts and Sciences', code: 'CAS', dean_id: null }),
+        })
+      );
+      expect(result.id).toBe('col-2');
+    });
+
+    it('fetches departments with college and chairperson relations', async () => {
+      const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: [{ id: 'dept-1', name: 'Computer Science', code: 'CS', college_id: { id: 'col-1' } }],
+        }),
+      } as any);
+
+      const depts = await likhaLmsApi.academicStructure.getDepartments();
+      expect(fetchSpy).toHaveBeenCalledWith(
+        expect.stringContaining('/items/departments?fields=*,college_id.*,chairperson_id.*'),
+        expect.any(Object)
+      );
+      expect(depts[0].id).toBe('dept-1');
+    });
+
+    it('creates a department with college relation', async () => {
+      const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: { id: 'dept-2', name: 'Information Technology', code: 'IT', college_id: 'col-1' },
+        }),
+      } as any);
+
+      const result = await likhaLmsApi.academicStructure.createDepartment({
+        college_id: 'col-1',
+        name: 'Information Technology',
+        code: 'IT',
+      });
+
+      expect(fetchSpy).toHaveBeenCalledWith(
+        expect.stringContaining('/items/departments'),
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ college_id: 'col-1', name: 'Information Technology', code: 'IT' }),
+        })
+      );
+      expect(result.id).toBe('dept-2');
+    });
+
+    it('updates a college and handles leadership assignment', async () => {
+      const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: { id: 'col-1', name: 'Updated College', code: 'CCS', dean_id: 'u-dean2' },
+        }),
+      } as any);
+
+      const result = await likhaLmsApi.academicStructure.updateCollege('col-1', {
+        dean_id: 'u-dean2',
+      });
+
+      expect(fetchSpy).toHaveBeenCalledWith(
+        expect.stringContaining('/items/colleges/col-1'),
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify({ dean_id: 'u-dean2' }),
+        })
+      );
+      expect(result.dean_id).toBe('u-dean2');
+    });
+
+    it('deletes a college via DELETE endpoint', async () => {
+      const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({}),
+      } as any);
+
+      await likhaLmsApi.academicStructure.deleteCollege('col-1');
+
+      expect(fetchSpy).toHaveBeenCalledWith(
+        expect.stringContaining('/items/colleges/col-1'),
+        expect.objectContaining({ method: 'DELETE' })
+      );
+    });
+
+    it('updates a department and chairperson assignment', async () => {
+      const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: { id: 'dept-1', chairperson_id: 'u-chair2' },
+        }),
+      } as any);
+
+      const result = await likhaLmsApi.academicStructure.updateDepartment('dept-1', {
+        chairperson_id: 'u-chair2',
+      });
+
+      expect(fetchSpy).toHaveBeenCalledWith(
+        expect.stringContaining('/items/departments/dept-1'),
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify({ chairperson_id: 'u-chair2' }),
+        })
+      );
+      expect(result.chairperson_id).toBe('u-chair2');
+    });
+
+    it('deletes a department via DELETE endpoint', async () => {
+      const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({}),
+      } as any);
+
+      await likhaLmsApi.academicStructure.deleteDepartment('dept-1');
+
+      expect(fetchSpy).toHaveBeenCalledWith(
+        expect.stringContaining('/items/departments/dept-1'),
+        expect.objectContaining({ method: 'DELETE' })
+      );
+    });
+  });
 });
+
+
 

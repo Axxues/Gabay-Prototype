@@ -112,6 +112,7 @@ function getPathTtl(path: string): number {
   if (path.includes('/users')) return 300000;
   if (path.includes('/items/calendar_events')) return 60000;
   if (path.includes('/notifications')) return 15000;
+  if (path.includes('/items/colleges') || path.includes('/items/departments')) return 120000;
   return 30000;
 }
 
@@ -1356,5 +1357,56 @@ export const likhaLmsApi = {
         `/items/course_grades?filter[course_id][_eq]=${encodeURIComponent(courseId)}`
       ).catch(() => []);
     }
+  },
+
+  // =========================================================================
+  // 10. ACADEMIC STRUCTURE (COLLEGES & DEPARTMENTS)
+  // =========================================================================
+  academicStructure: {
+    async getColleges(): Promise<any[]> {
+      const colleges = await likhaRequest<any[]>('/items/colleges?fields=*,dean_id.*&limit=100&sort=name');
+      return colleges || [];
+    },
+
+    async createCollege(payload: any): Promise<any> {
+      return likhaRequest('/items/colleges', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+    },
+
+    async updateCollege(id: string, updates: any): Promise<any> {
+      return likhaRequest(`/items/colleges/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(updates),
+      });
+    },
+
+    async deleteCollege(id: string): Promise<void> {
+      await likhaRequest(`/items/colleges/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    },
+
+    async getDepartments(): Promise<any[]> {
+      const departments = await likhaRequest<any[]>('/items/departments?fields=*,college_id.*,chairperson_id.*&limit=250&sort=name');
+      return departments || [];
+    },
+
+    async createDepartment(payload: any): Promise<any> {
+      return likhaRequest('/items/departments', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+    },
+
+    async updateDepartment(id: string, updates: any): Promise<any> {
+      return likhaRequest(`/items/departments/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(updates),
+      });
+    },
+
+    async deleteDepartment(id: string): Promise<void> {
+      await likhaRequest(`/items/departments/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    },
   },
 };

@@ -1486,6 +1486,47 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     safeSetLocalStorage(STORAGE_KEY_DEPARTMENTS, JSON.stringify(departments));
   }, [departments]);
 
+  // Synchronize academic hierarchy with Likha ERP backend (Directus)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        if (likhaLmsApi?.academicStructure?.getColleges && likhaLmsApi?.academicStructure?.getDepartments) {
+          const [colSettled, deptSettled] = await Promise.allSettled([
+            likhaLmsApi.academicStructure.getColleges(),
+            likhaLmsApi.academicStructure.getDepartments(),
+          ]);
+
+          if (!cancelled && colSettled.status === 'fulfilled' && Array.isArray(colSettled.value) && colSettled.value.length > 0) {
+            const mappedCols: College[] = colSettled.value.map((c: any) => ({
+              id: String(c.id),
+              name: c.name,
+              code: c.code,
+              deanId: typeof c.dean_id === 'object' && c.dean_id ? String(c.dean_id.id) : (typeof c.dean_id === 'string' && c.dean_id ? c.dean_id : undefined),
+            }));
+            setColleges(mappedCols);
+          }
+
+          if (!cancelled && deptSettled.status === 'fulfilled' && Array.isArray(deptSettled.value) && deptSettled.value.length > 0) {
+            const mappedDepts: Department[] = deptSettled.value.map((d: any) => ({
+              id: String(d.id),
+              collegeId: typeof d.college_id === 'object' && d.college_id ? String(d.college_id.id) : String(d.college_id || ''),
+              name: d.name,
+              code: d.code,
+              chairpersonId: typeof d.chairperson_id === 'object' && d.chairperson_id ? String(d.chairperson_id.id) : (typeof d.chairperson_id === 'string' && d.chairperson_id ? d.chairperson_id : undefined),
+            }));
+            setDepartments(mappedDepts);
+          }
+        }
+      } catch {
+        // Tolerated; localStorage or default colleges/departments remain intact
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Authentication State (token-backed; session restores via GET /api/auth/me)
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -1718,6 +1759,37 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         if (Array.isArray(slots) && slots.length > 0) {
           fresh.advisingSlots = slots;
+        }
+      } catch {
+        // Tolerated
+      }
+
+      // Refresh academic hierarchy from Likha ERP
+      try {
+        if (likhaLmsApi?.academicStructure?.getColleges && likhaLmsApi?.academicStructure?.getDepartments) {
+          const [colSettled, deptSettled] = await Promise.allSettled([
+            likhaLmsApi.academicStructure.getColleges(),
+            likhaLmsApi.academicStructure.getDepartments(),
+          ]);
+          if (colSettled.status === 'fulfilled' && Array.isArray(colSettled.value) && colSettled.value.length > 0) {
+            const mappedCols: College[] = colSettled.value.map((c: any) => ({
+              id: String(c.id),
+              name: c.name,
+              code: c.code,
+              deanId: typeof c.dean_id === 'object' && c.dean_id ? String(c.dean_id.id) : (typeof c.dean_id === 'string' && c.dean_id ? c.dean_id : undefined),
+            }));
+            setColleges(mappedCols);
+          }
+          if (deptSettled.status === 'fulfilled' && Array.isArray(deptSettled.value) && deptSettled.value.length > 0) {
+            const mappedDepts: Department[] = deptSettled.value.map((d: any) => ({
+              id: String(d.id),
+              collegeId: typeof d.college_id === 'object' && d.college_id ? String(d.college_id.id) : String(d.college_id || ''),
+              name: d.name,
+              code: d.code,
+              chairpersonId: typeof d.chairperson_id === 'object' && d.chairperson_id ? String(d.chairperson_id.id) : (typeof d.chairperson_id === 'string' && d.chairperson_id ? d.chairperson_id : undefined),
+            }));
+            setDepartments(mappedDepts);
+          }
         }
       } catch {
         // Tolerated
@@ -3783,10 +3855,21 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Best effort API sync if reachable
     try {
-      await Promise.allSettled([
-        likhaLmsApi.users.updateUser(currentLeaderId, { role: 'faculty' }),
-        likhaLmsApi.users.updateUser(successorId, { role: 'admin' }),
-      ]);
+      const syncPromises: Promise<any>[] = [];
+      if (likhaLmsApi?.users?.updateUser) {
+        syncPromises.push(likhaLmsApi.users.updateUser(currentLeaderId, { role: 'faculty' }).catch(() => {}));
+        syncPromises.push(likhaLmsApi.users.updateUser(successorId, { role: 'admin' }).catch(() => {}));
+      }
+      if (likhaLmsApi?.academicStructure) {
+        if (roleType === 'dean') {
+          syncPromises.push(likhaLmsApi.academicStructure.updateCollege(unitId, { dean_id: successorId }).catch(() => {}));
+        } else if (roleType === 'chairperson') {
+          syncPromises.push(likhaLmsApi.academicStructure.updateDepartment(unitId, { chairperson_id: successorId }).catch(() => {}));
+        }
+      }
+      if (syncPromises.length > 0) {
+        await Promise.allSettled(syncPromises);
+      }
     } catch (_) {}
 
     return {
@@ -3904,6 +3987,26 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } catch (_) {}
     }
 
+    // Best effort Likha ERP academicStructure sync
+    try {
+      if (likhaLmsApi?.academicStructure) {
+        if (existingInState) {
+          await likhaLmsApi.academicStructure.updateCollege(targetCollege.id, {
+            name: targetCollege.name,
+            code: targetCollege.code,
+            dean_id: effectiveDeanId || null,
+          }).catch(() => {});
+        } else {
+          await likhaLmsApi.academicStructure.createCollege({
+            id: targetCollege.id,
+            name: targetCollege.name,
+            code: targetCollege.code,
+            dean_id: effectiveDeanId || null,
+          }).catch(() => {});
+        }
+      }
+    } catch (_) {}
+
     return targetCollege;
   };
 
@@ -4015,6 +4118,28 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         await Promise.allSettled(syncPromises);
       } catch (_) {}
     }
+
+    // Best effort Likha ERP academicStructure sync
+    try {
+      if (likhaLmsApi?.academicStructure) {
+        if (existingInState) {
+          await likhaLmsApi.academicStructure.updateDepartment(targetDept.id, {
+            college_id: targetDept.collegeId,
+            name: targetDept.name,
+            code: targetDept.code,
+            chairperson_id: effectiveChairId || null,
+          }).catch(() => {});
+        } else {
+          await likhaLmsApi.academicStructure.createDepartment({
+            id: targetDept.id,
+            college_id: targetDept.collegeId,
+            name: targetDept.name,
+            code: targetDept.code,
+            chairperson_id: effectiveChairId || null,
+          }).catch(() => {});
+        }
+      }
+    } catch (_) {}
 
     return targetDept;
   };
