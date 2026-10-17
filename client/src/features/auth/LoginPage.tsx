@@ -223,7 +223,7 @@ export const LoginPage: React.FC = () => {
               onClick={() => handleQuickLogin('jayveegenetareyes@gmail.com', 'qwerty12345')}
               className="py-1.5 px-2 bg-muted/50 hover:bg-primary/10 hover:border-primary/30 border border-border rounded-lg text-xs font-semibold text-foreground transition-all text-center cursor-pointer"
             >
-              Chancellor
+              Admin
             </button>
             <button
               type="button"
