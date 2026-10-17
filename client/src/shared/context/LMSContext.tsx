@@ -284,8 +284,8 @@ export interface LMSContextType {
     successorId: string,
     unitId: string
   ) => Promise<{ success: boolean; message: string }>;
-  addCollege: (college: College) => Promise<College>;
-  addDepartment: (department: Department) => Promise<Department>;
+  addCollege: (college: College, initialDeanId?: string) => Promise<College>;
+  addDepartment: (department: Department, initialChairId?: string) => Promise<Department>;
 
   logHistory: (path: string, title: string) => void;
   clearHistory: () => void;
@@ -2264,9 +2264,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             title: isChancellor ? 'University Chancellor' : (likhaAuth.user.title || (mappedRole === 'student' ? 'Undergraduate Student' : 'Instructor')),
           };
           setToken(likhaAuth.token);
-          setCurrentUser(mappedUser);
           const essentialLikha = await refreshEssential(mappedUser);
           void refreshDeferred(essentialLikha.fresh, essentialLikha.courses, essentialLikha.run);
+          setCurrentUser(mappedUser);
           return { success: true };
         }
       } catch (likhaErr: any) {
@@ -3555,23 +3555,49 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     // Single-seat invariant in colleges and departments: assign successor to unitId,
-    // and clear any previous unit held by currentLeaderId if different.
+    // clear previous unit held by currentLeaderId if different, and vacate cross-unit assignments.
     if (roleType === 'dean') {
-      setColleges(prev =>
-        prev.map(c => {
+      setColleges(prev => {
+        const next = prev.map(c => {
           if (c.id === unitId) return { ...c, deanId: successorId };
           if (c.deanId === currentLeaderId) return { ...c, deanId: undefined };
+          if (c.deanId === successorId && c.id !== unitId) return { ...c, deanId: undefined };
           return c;
-        })
-      );
+        });
+        safeSetLocalStorage(STORAGE_KEY_COLLEGES, JSON.stringify(next));
+        return next;
+      });
+      setDepartments(prev => {
+        const hasMatch = prev.some(d => d.chairpersonId === successorId);
+        if (!hasMatch) return prev;
+        const next = prev.map(d => {
+          if (d.chairpersonId === successorId) return { ...d, chairpersonId: undefined };
+          return d;
+        });
+        safeSetLocalStorage(STORAGE_KEY_DEPARTMENTS, JSON.stringify(next));
+        return next;
+      });
     } else if (roleType === 'chairperson') {
-      setDepartments(prev =>
-        prev.map(d => {
+      setDepartments(prev => {
+        const next = prev.map(d => {
           if (d.id === unitId) return { ...d, chairpersonId: successorId };
           if (d.chairpersonId === currentLeaderId) return { ...d, chairpersonId: undefined };
+          if (d.chairpersonId === successorId && d.id !== unitId) return { ...d, chairpersonId: undefined };
           return d;
-        })
-      );
+        });
+        safeSetLocalStorage(STORAGE_KEY_DEPARTMENTS, JSON.stringify(next));
+        return next;
+      });
+      setColleges(prev => {
+        const hasMatch = prev.some(c => c.deanId === successorId);
+        if (!hasMatch) return prev;
+        const next = prev.map(c => {
+          if (c.deanId === successorId) return { ...c, deanId: undefined };
+          return c;
+        });
+        safeSetLocalStorage(STORAGE_KEY_COLLEGES, JSON.stringify(next));
+        return next;
+      });
     }
 
     // Best effort API sync if reachable
@@ -3588,32 +3614,228 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   };
 
-  const addCollege = async (college: College): Promise<College> => {
+  const addCollege = async (college: College, initialDeanId?: string): Promise<College> => {
+    const hasInitialDean = Boolean(initialDeanId && initialDeanId.trim() !== '' && initialDeanId !== 'none');
+    const deanCandidateId = hasInitialDean
+      ? initialDeanId!.trim()
+      : (college.deanId && college.deanId !== 'none' ? college.deanId : undefined);
+
+    const existingInState = colleges.find(
+      c => c.id === college.id || (c.code && college.code && c.code.toLowerCase() === college.code.toLowerCase())
+    );
+    let predecessorId = existingInState?.deanId && existingInState.deanId !== deanCandidateId ? existingInState.deanId : undefined;
+
+    const targetCollege: College = { ...college };
+    if (hasInitialDean) {
+      targetCollege.deanId = initialDeanId!.trim();
+    } else if (initialDeanId === 'none' || college.deanId === 'none') {
+      delete targetCollege.deanId;
+    }
+
     setColleges(prev => {
-      const exists = prev.some(
-        c => c.id === college.id || c.code.toLowerCase() === college.code.toLowerCase()
+      const existing = prev.find(
+        c => c.id === college.id || (c.code && college.code && c.code.toLowerCase() === college.code.toLowerCase())
       );
-      if (exists) {
-        return prev.map(c => (c.id === college.id ? { ...c, ...college } : c));
+      if (existing?.deanId && existing.deanId !== deanCandidateId) {
+        predecessorId = existing.deanId;
       }
-      return [...prev, college];
+
+      let nextColleges: College[];
+      if (existing) {
+        nextColleges = prev.map(c => {
+          if (c.id === college.id || (c.code && college.code && c.code.toLowerCase() === college.code.toLowerCase())) {
+            return { ...c, ...targetCollege };
+          }
+          if (hasInitialDean && c.deanId === deanCandidateId) {
+            return { ...c, deanId: undefined };
+          }
+          return c;
+        });
+      } else {
+        const cleanedPrev = prev.map(c => (hasInitialDean && c.deanId === deanCandidateId ? { ...c, deanId: undefined } : c));
+        nextColleges = [...cleanedPrev, targetCollege];
+      }
+      safeSetLocalStorage(STORAGE_KEY_COLLEGES, JSON.stringify(nextColleges));
+      return nextColleges;
     });
-    return college;
+
+    if (hasInitialDean && deanCandidateId) {
+      // Vacate any prior leadership seat held by initialDeanId in any department
+      setDepartments(prev => {
+        const hasMatch = prev.some(d => d.chairpersonId === deanCandidateId);
+        if (!hasMatch) return prev;
+        const nextDepts = prev.map(d => (d.chairpersonId === deanCandidateId ? { ...d, chairpersonId: undefined } : d));
+        safeSetLocalStorage(STORAGE_KEY_DEPARTMENTS, JSON.stringify(nextDepts));
+        return nextDepts;
+      });
+
+      // Update db.users: promote candidate, step predecessor down if any
+      setDb(prev => ({
+        ...prev,
+        users: prev.users.map(u => {
+          if (predecessorId && u.id === predecessorId) {
+            return {
+              ...u,
+              role: 'faculty' as UserRole,
+              adminSubrole: undefined,
+            };
+          }
+          if (u.id === deanCandidateId) {
+            return {
+              ...u,
+              role: 'admin' as UserRole,
+              adminSubrole: 'dean',
+              collegeId: college.id,
+              collegeName: college.name,
+            };
+          }
+          return u;
+        }),
+      }));
+
+      // Update currentUser session if candidate or predecessor is active
+      setCurrentUser(prev => {
+        if (!prev) return prev;
+        if (predecessorId && prev.id === predecessorId) {
+          return { ...prev, role: 'faculty' as UserRole, adminSubrole: undefined };
+        }
+        if (prev.id === deanCandidateId) {
+          return {
+            ...prev,
+            role: 'admin' as UserRole,
+            adminSubrole: 'dean',
+            collegeId: college.id,
+            collegeName: college.name,
+          };
+        }
+        return prev;
+      });
+
+      // Best effort API sync if reachable
+      try {
+        const syncPromises = [
+          likhaLmsApi.users.updateUser(deanCandidateId, { role: 'admin' }),
+        ];
+        if (predecessorId) {
+          syncPromises.push(likhaLmsApi.users.updateUser(predecessorId, { role: 'faculty' }));
+        }
+        await Promise.allSettled(syncPromises);
+      } catch (_) {}
+    }
+
+    return targetCollege;
   };
 
-  const addDepartment = async (department: Department): Promise<Department> => {
+  const addDepartment = async (department: Department, initialChairId?: string): Promise<Department> => {
+    const hasInitialChair = Boolean(initialChairId && initialChairId.trim() !== '' && initialChairId !== 'none');
+    const chairCandidateId = hasInitialChair
+      ? initialChairId!.trim()
+      : (department.chairpersonId && department.chairpersonId !== 'none' ? department.chairpersonId : undefined);
+
+    const existingInState = departments.find(
+      d => d.id === department.id || (d.collegeId === department.collegeId && d.code && department.code && d.code.toLowerCase() === department.code.toLowerCase())
+    );
+    let predecessorId = existingInState?.chairpersonId && existingInState.chairpersonId !== chairCandidateId ? existingInState.chairpersonId : undefined;
+
+    const targetDept: Department = { ...department };
+    if (hasInitialChair) {
+      targetDept.chairpersonId = initialChairId!.trim();
+    } else if (initialChairId === 'none' || department.chairpersonId === 'none') {
+      delete targetDept.chairpersonId;
+    }
+
     setDepartments(prev => {
-      const exists = prev.some(
-        d =>
-          d.id === department.id ||
-          (d.collegeId === department.collegeId && d.code.toLowerCase() === department.code.toLowerCase())
+      const existing = prev.find(
+        d => d.id === department.id || (d.collegeId === department.collegeId && d.code && department.code && d.code.toLowerCase() === department.code.toLowerCase())
       );
-      if (exists) {
-        return prev.map(d => (d.id === department.id ? { ...d, ...department } : d));
+      if (existing?.chairpersonId && existing.chairpersonId !== chairCandidateId) {
+        predecessorId = existing.chairpersonId;
       }
-      return [...prev, department];
+
+      let nextDepts: Department[];
+      if (existing) {
+        nextDepts = prev.map(d => {
+          if (d.id === department.id || (d.collegeId === department.collegeId && d.code && department.code && d.code.toLowerCase() === department.code.toLowerCase())) {
+            return { ...d, ...targetDept };
+          }
+          if (hasInitialChair && d.chairpersonId === chairCandidateId) {
+            return { ...d, chairpersonId: undefined };
+          }
+          return d;
+        });
+      } else {
+        const cleanedPrev = prev.map(d => (hasInitialChair && d.chairpersonId === chairCandidateId ? { ...d, chairpersonId: undefined } : d));
+        nextDepts = [...cleanedPrev, targetDept];
+      }
+      safeSetLocalStorage(STORAGE_KEY_DEPARTMENTS, JSON.stringify(nextDepts));
+      return nextDepts;
     });
-    return department;
+
+    if (hasInitialChair && chairCandidateId) {
+      // Vacate any prior leadership seat held by initialChairId in any college
+      setColleges(prev => {
+        const hasMatch = prev.some(c => c.deanId === chairCandidateId);
+        if (!hasMatch) return prev;
+        const nextColleges = prev.map(c => (c.deanId === chairCandidateId ? { ...c, deanId: undefined } : c));
+        safeSetLocalStorage(STORAGE_KEY_COLLEGES, JSON.stringify(nextColleges));
+        return nextColleges;
+      });
+
+      // Update db.users: promote candidate, step predecessor down if any
+      setDb(prev => ({
+        ...prev,
+        users: prev.users.map(u => {
+          if (predecessorId && u.id === predecessorId) {
+            return {
+              ...u,
+              role: 'faculty' as UserRole,
+              adminSubrole: undefined,
+            };
+          }
+          if (u.id === chairCandidateId) {
+            return {
+              ...u,
+              role: 'admin' as UserRole,
+              adminSubrole: 'chairperson',
+              collegeId: department.collegeId,
+              department: department.name,
+            };
+          }
+          return u;
+        }),
+      }));
+
+      // Update currentUser session if candidate or predecessor is active
+      setCurrentUser(prev => {
+        if (!prev) return prev;
+        if (predecessorId && prev.id === predecessorId) {
+          return { ...prev, role: 'faculty' as UserRole, adminSubrole: undefined };
+        }
+        if (prev.id === chairCandidateId) {
+          return {
+            ...prev,
+            role: 'admin' as UserRole,
+            adminSubrole: 'chairperson',
+            collegeId: department.collegeId,
+            department: department.name,
+          };
+        }
+        return prev;
+      });
+
+      // Best effort API sync if reachable
+      try {
+        const syncPromises = [
+          likhaLmsApi.users.updateUser(chairCandidateId, { role: 'admin' }),
+        ];
+        if (predecessorId) {
+          syncPromises.push(likhaLmsApi.users.updateUser(predecessorId, { role: 'faculty' }));
+        }
+        await Promise.allSettled(syncPromises);
+      } catch (_) {}
+    }
+
+    return targetDept;
   };
 
   const joinCourseByCode = async (code: string): Promise<{ success: boolean; message: string; course?: Course }> => {
