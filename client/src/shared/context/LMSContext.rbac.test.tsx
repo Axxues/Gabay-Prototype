@@ -568,5 +568,70 @@ describe('LMSContext RBAC: Registration Staging, Verification Queue & Leadership
     expect(ctx!.currentUser?.adminSubrole).toBe('chancellor');
     expect(ctx!.currentUser?.title).toBe('University Chancellor');
   });
+
+  test('logging in user with Directus role "Dean" maps to admin with dean subrole', async () => {
+    loginLikhaMock.mockResolvedValueOnce({
+      token: 't-dean',
+      user: {
+        id: 'u-dean-directus',
+        first_name: 'Maria',
+        last_name: 'Santos',
+        email: 'dean.santos@dmmmsu.edu.ph',
+        role: { name: 'Dean' },
+        college_id: 'col-ccs',
+        college_name: 'College of Computer Science',
+      },
+    } as any);
+
+    render(
+      <LMSProvider>
+        <ContextProbe />
+      </LMSProvider>
+    );
+
+    let res: any;
+    await act(async () => {
+      res = await ctx!.login('dean.santos@dmmmsu.edu.ph', 'password123');
+    });
+
+    expect(res.success).toBe(true);
+    expect(ctx!.activeRole).toBe('admin');
+    expect(ctx!.currentUser?.role).toBe('admin');
+    expect(ctx!.currentUser?.adminSubrole).toBe('dean');
+    expect(ctx!.currentUser?.title).toBe('College Dean');
+    expect(ctx!.currentUser?.collegeId).toBe('col-ccs');
+  });
+
+  test('logging in user with Directus role "Chairperson" maps to admin with chairperson subrole', async () => {
+    loginLikhaMock.mockResolvedValueOnce({
+      token: 't-chair',
+      user: {
+        id: 'u-chair-directus',
+        first_name: 'Roberto',
+        last_name: 'Cruz',
+        email: 'chair.cruz@dmmmsu.edu.ph',
+        role: { name: 'Chairperson' },
+        department: 'Computer Science',
+      },
+    } as any);
+
+    render(
+      <LMSProvider>
+        <ContextProbe />
+      </LMSProvider>
+    );
+
+    let res: any;
+    await act(async () => {
+      res = await ctx!.login('chair.cruz@dmmmsu.edu.ph', 'password123');
+    });
+
+    expect(res.success).toBe(true);
+    expect(ctx!.activeRole).toBe('admin');
+    expect(ctx!.currentUser?.role).toBe('admin');
+    expect(ctx!.currentUser?.adminSubrole).toBe('chairperson');
+    expect(ctx!.currentUser?.title).toBe('Department Chairperson');
+    expect(ctx!.currentUser?.department).toBe('Computer Science');
+  });
 });
 

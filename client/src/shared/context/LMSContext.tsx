@@ -31,7 +31,8 @@ import type {
   SPRColumn,
   College,
   Department,
-  PendingRegistration
+  PendingRegistration,
+  AdminSubrole
 } from '../types/lms';
 import type { Activity } from '../types/lms';
 import { activityPointsPossible } from '../utils/activities';
@@ -1384,17 +1385,57 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return (email || '').trim().toLowerCase() === 'jayveegenetareyes@gmail.com';
   };
 
+  const mapDirectusRole = (
+    rawRole: any,
+    email?: string | null,
+    fallbackSubrole?: AdminSubrole
+  ): { role: UserRole; adminSubrole?: AdminSubrole; title: string } => {
+    const roleName = (typeof rawRole === 'string' ? rawRole : rawRole?.name || '').toLowerCase();
+    const isChancellor =
+      isChancellorEmail(email) ||
+      roleName.includes('superadmin') ||
+      roleName.includes('chancellor');
+    const isDean = roleName.includes('dean') || fallbackSubrole === 'dean';
+    const isChair = roleName.includes('chair') || fallbackSubrole === 'chairperson';
+
+    if (isChancellor) {
+      return { role: 'superadmin', adminSubrole: 'chancellor', title: 'University Chancellor' };
+    }
+    if (isDean) {
+      return { role: 'admin', adminSubrole: 'dean', title: 'College Dean' };
+    }
+    if (isChair) {
+      return { role: 'admin', adminSubrole: 'chairperson', title: 'Department Chairperson' };
+    }
+    if (roleName.includes('faculty') || roleName.includes('instructor')) {
+      return { role: 'faculty', title: 'Instructor' };
+    }
+    if (roleName.includes('admin')) {
+      return { role: 'admin', adminSubrole: fallbackSubrole, title: 'Administrator' };
+    }
+    if (roleName.includes('staff')) {
+      return { role: 'staff', title: 'University Staff' };
+    }
+    return { role: 'student', title: 'Undergraduate Student' };
+  };
+
   const normalizeChancellorUser = (u: User): User => {
-    if (isChancellorEmail(u.email)) {
+    const mapped = mapDirectusRole(u.role, u.email, u.adminSubrole);
+    if (mapped.role === 'superadmin' || isChancellorEmail(u.email)) {
       return {
         ...u,
         role: 'superadmin',
         adminSubrole: 'chancellor',
-        title: 'University Chancellor',
+        title: u.title || 'University Chancellor',
         department: u.department || 'Office of the Chancellor',
       };
     }
-    return u;
+    return {
+      ...u,
+      role: mapped.role,
+      adminSubrole: mapped.adminSubrole,
+      title: u.title || mapped.title,
+    };
   };
 
   const emptyDb = (): LMSDatabase => ({
@@ -1657,26 +1698,20 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const others = likhaUsers
             .filter((u: any) => u.id !== user.id)
             .map((u: any) => {
-              const isChancellor = isChancellorEmail(u.email);
-              const role: UserRole = isChancellor
-                ? 'superadmin'
-                : (u.role?.name || u.role || 'student').toLowerCase().includes('faculty') ||
-                  (u.role?.name || u.role || 'student').toLowerCase().includes('instructor')
-                  ? 'faculty'
-                  : (u.role?.name || u.role || 'student').toLowerCase().includes('admin')
-                    ? 'admin'
-                    : (u.role?.name || u.role || 'student').toLowerCase().includes('staff')
-                      ? 'staff'
-                      : 'student';
+              const mapped = mapDirectusRole(u.role, u.email, u.adminSubrole);
               return {
                 id: u.id,
                 name: `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email,
                 email: u.email,
-                role,
-                adminSubrole: isChancellor ? 'chancellor' : (u.adminSubrole || undefined),
+                role: mapped.role,
+                adminSubrole: mapped.adminSubrole,
                 avatar: u.avatar ? `https://gabay.zyberlab.com/assets/${u.avatar}` : '',
-                department: u.department || (isChancellor ? 'Office of the Chancellor' : 'College of Computer Science'),
-                title: isChancellor ? 'University Chancellor' : (u.title || (role === 'student' ? 'Undergraduate Student' : 'Instructor')),
+                department:
+                  u.department ||
+                  (mapped.role === 'superadmin' ? 'Office of the Chancellor' : 'College of Computer Science'),
+                title: u.title || mapped.title,
+                collegeId: u.college_id || u.collegeId,
+                collegeName: u.college_name || u.collegeName,
               };
             });
           fresh.users = [normalizeChancellorUser(user), ...others];
@@ -2235,24 +2270,20 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           try {
             const me = await likhaLmsApi.auth.getMe();
             if (me?.id) {
-              const isChancellor = isChancellorEmail(me.email);
-              const roleName = (me.role?.name || '').toLowerCase();
-              const mappedRole: UserRole = isChancellor
-                ? 'superadmin'
-                : roleName.includes('faculty') || roleName.includes('instructor')
-                  ? 'faculty'
-                  : roleName.includes('admin')
-                    ? 'admin'
-                    : 'student';
+              const mapped = mapDirectusRole(me.role, me.email, me.adminSubrole);
               user = {
                 id: me.id,
                 name: `${me.first_name || ''} ${me.last_name || ''}`.trim() || me.email,
                 email: me.email,
-                role: mappedRole,
-                adminSubrole: isChancellor ? 'chancellor' : (me.adminSubrole || undefined),
+                role: mapped.role,
+                adminSubrole: mapped.adminSubrole,
                 avatar: me.avatar ? `https://gabay.zyberlab.com/assets/${me.avatar}` : '',
-                department: me.department || (isChancellor ? 'Office of the Chancellor' : 'College of Computer Science'),
-                title: isChancellor ? 'University Chancellor' : (me.title || (mappedRole === 'student' ? 'Undergraduate Student' : 'Instructor')),
+                department:
+                  me.department ||
+                  (mapped.role === 'superadmin' ? 'Office of the Chancellor' : 'College of Computer Science'),
+                title: me.title || mapped.title,
+                collegeId: me.college_id || me.collegeId,
+                collegeName: me.college_name || me.collegeName,
               };
             }
           } catch (likhaErr: any) {
@@ -2353,24 +2384,24 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const likhaAuth = await likhaLmsApi.loginLikhaUser(emailOrId, password);
         if (likhaAuth?.token && likhaAuth?.user) {
-          const isChancellor = isChancellorEmail(likhaAuth.user.email);
-          const roleName = (likhaAuth.user.role?.name || '').toLowerCase();
-          const mappedRole: UserRole = isChancellor
-            ? 'superadmin'
-            : roleName.includes('faculty') || roleName.includes('instructor')
-              ? 'faculty'
-              : roleName.includes('admin')
-                ? 'admin'
-                : 'student';
+          const mapped = mapDirectusRole(
+            likhaAuth.user.role,
+            likhaAuth.user.email,
+            likhaAuth.user.adminSubrole
+          );
           const mappedUser: User = {
             id: likhaAuth.user.id,
             name: `${likhaAuth.user.first_name || ''} ${likhaAuth.user.last_name || ''}`.trim() || likhaAuth.user.email,
             email: likhaAuth.user.email,
-            role: mappedRole,
-            adminSubrole: isChancellor ? 'chancellor' : (likhaAuth.user.adminSubrole || undefined),
+            role: mapped.role,
+            adminSubrole: mapped.adminSubrole,
             avatar: likhaAuth.user.avatar ? `${likhaLmsApi ? 'https://gabay.zyberlab.com/assets/' + likhaAuth.user.avatar : ''}` : '',
-            department: likhaAuth.user.department || (isChancellor ? 'Office of the Chancellor' : 'College of Computer Science'),
-            title: isChancellor ? 'University Chancellor' : (likhaAuth.user.title || (mappedRole === 'student' ? 'Undergraduate Student' : 'Instructor')),
+            department:
+              likhaAuth.user.department ||
+              (mapped.role === 'superadmin' ? 'Office of the Chancellor' : 'College of Computer Science'),
+            title: likhaAuth.user.title || mapped.title,
+            collegeId: likhaAuth.user.college_id || likhaAuth.user.collegeId,
+            collegeName: likhaAuth.user.college_name || likhaAuth.user.collegeName,
           };
           setToken(likhaAuth.token);
           const essentialLikha = await refreshEssential(mappedUser);
