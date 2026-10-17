@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   LayoutDashboard,
   BookOpen,
@@ -126,30 +126,27 @@ export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: strin
     // Prefer the student's assigned section; otherwise fall back to the
     // course's display section (first section row, then course.section label).
     const displaySection = (studentSection?.name || (course ? getDisplaySectionName(course, sectionsForCourse) : '')).trim();
-    const courseBadgeFor = (tabId: string): number => {
-      if (!course) return 0;
+    const courseBadges = useMemo(() => {
+      const map: Record<string, number> = {};
+      if (!course) return map;
       const cid = course.id;
       const visits = activeUser.lastVisitedAt || {};
-      if (tabId === 'inbox') return 0;
-      if (tabId === 'modules') return getUnreadNotificationCount(activeUser.id, 'module_comment_reply');
-      if (tabId === 'announcements') {
-        const sectionId = activeUser.courseSections?.[cid] ?? null;
-        return countUnreadAnnouncements(db.announcements || [], { id: activeUser.id, role: activeRole, sectionId }, cid);
-      }
-      if (tabId === 'assessments') {
-        return countTotalAssessmentBadge({
-          activities: db.activities || [],
-          quizzes: db.quizzes || [],
-          exams: db.exams || [],
-          submissions: db.submissions || [],
-          userId: activeUser.id,
-          role: activeRole,
-          courseId: cid,
-        });
-      }
-      if (tabId === 'activities' || tabId === 'assignments' || tabId === 'projects' || tabId === 'presentations') {
-        const cat = tabId === 'activities' ? 'activity' : tabId === 'assignments' ? 'assignment' : tabId === 'projects' ? 'project' : 'presentation';
-        return countAssessmentCategoryBadge(
+      map['inbox'] = 0;
+      map['modules'] = getUnreadNotificationCount(activeUser.id, 'module_comment_reply');
+      const sectionId = activeUser.courseSections?.[cid] ?? null;
+      map['announcements'] = countUnreadAnnouncements(db.announcements || [], { id: activeUser.id, role: activeRole, sectionId }, cid);
+      map['assessments'] = countTotalAssessmentBadge({
+        activities: db.activities || [],
+        quizzes: db.quizzes || [],
+        exams: db.exams || [],
+        submissions: db.submissions || [],
+        userId: activeUser.id,
+        role: activeRole,
+        courseId: cid,
+      });
+      for (const cat of ['activity', 'assignment', 'project', 'presentation'] as const) {
+        const tabId = cat === 'activity' ? 'activities' : cat === 'assignment' ? 'assignments' : cat === 'project' ? 'projects' : 'presentations';
+        map[tabId] = countAssessmentCategoryBadge(
           db.activities || [],
           db.submissions || [],
           cat,
@@ -158,40 +155,33 @@ export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: strin
           cid
         );
       }
-      if (tabId === 'quizzes') {
-        if (activeRole === 'faculty' || activeRole === 'admin') {
-          const ids = (db.quizzes || []).filter(q => q.courseId === cid).map(q => `asg-quiz-${q.id}`);
-          return countFacultyGradingBadge(db.submissions.filter(s => s.courseId === cid), ids);
-        }
+      if (activeRole === 'faculty' || activeRole === 'admin') {
+        const ids = (db.quizzes || []).filter(q => q.courseId === cid).map(q => `asg-quiz-${q.id}`);
+        map['quizzes'] = countFacultyGradingBadge(db.submissions.filter(s => s.courseId === cid), ids);
+      } else {
         const pub = (db.quizzes || []).filter(q => q.courseId === cid && q.published).map(q => q.id);
         const taken = db.submissions.filter(s => s.courseId === cid && s.studentId === activeUser.id && (s.activityKey ?? '').startsWith('asg-quiz-')).map(s => (s.activityKey ?? '').replace('asg-quiz-', ''));
         const submitted = new Set(taken);
-        return pub.filter(id => !submitted.has(id)).length;
+        map['quizzes'] = pub.filter(id => !submitted.has(id)).length;
       }
-      if (tabId === 'exams') {
-        if (activeRole === 'faculty' || activeRole === 'admin') {
-          const ids = (db.exams || []).filter(e => e.courseId === cid).map(e => `asg-exam-${e.id}`);
-          return countFacultyGradingBadge(db.submissions.filter(s => s.courseId === cid), ids);
-        }
+      if (activeRole === 'faculty' || activeRole === 'admin') {
+        const ids = (db.exams || []).filter(e => e.courseId === cid).map(e => `asg-exam-${e.id}`);
+        map['exams'] = countFacultyGradingBadge(db.submissions.filter(s => s.courseId === cid), ids);
+      } else {
         const pub = (db.exams || []).filter(e => e.courseId === cid && e.published).map(e => e.id);
         const taken = db.submissions.filter(s => s.courseId === cid && s.studentId === activeUser.id && (s.activityKey ?? '').startsWith('asg-exam-')).map(s => (s.activityKey ?? '').replace('asg-exam-', ''));
         const submitted = new Set(taken);
-        return pub.filter(id => !submitted.has(id)).length;
+        map['exams'] = pub.filter(id => !submitted.has(id)).length;
       }
-      if (tabId === 'files') return countNewFiles(db.courseFiles || [], cid, visits);
-      if (tabId === 'grades') {
-        if (activeRole !== 'student') return 0;
-        return countNewGrades(db.courseGrades || [], cid, activeUser.id, visits);
-      }
-      if (tabId === 'people' || tabId === 'pending-requests') {
-        if (activeRole !== 'faculty' && activeRole !== 'admin') return 0;
-        // Sync read of the request cache (bootstrap fills it per course);
-        // the async getter cannot be awaited inside this badge counter.
-        return (db.enrollmentRequests || []).filter(r => r.courseId === cid && r.status === 'pending').length;
-      }
-      if (tabId === 'calendar') return countUpcomingCalendar(db.calendarEvents || [], cid, visits);
-      return 0;
-    };
+      map['files'] = countNewFiles(db.courseFiles || [], cid, visits);
+      map['grades'] = activeRole === 'student' ? countNewGrades(db.courseGrades || [], cid, activeUser.id, visits) : 0;
+      map['people'] = (activeRole === 'faculty' || activeRole === 'admin') ? (db.enrollmentRequests || []).filter(r => r.courseId === cid && r.status === 'pending').length : 0;
+      map['pending-requests'] = map['people'];
+      map['calendar'] = countUpcomingCalendar(db.calendarEvents || [], cid, visits);
+      return map;
+    }, [course, activeUser, activeRole, db, getUnreadNotificationCount]);
+
+    const courseBadgeFor = (tabId: string): number => courseBadges[tabId] ?? 0;
     return (
       <aside className="flex w-[240px] flex-shrink-0 flex-col border-r border-border/60 bg-card/50 p-3">
         <div className="custom-scrollbar flex-1 space-y-1 overflow-y-auto">

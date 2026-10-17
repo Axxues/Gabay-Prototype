@@ -108,31 +108,42 @@ def cells_equal(expected, generated, kind):
 # ---------------------------------------------------------------- ground truth
 class DB:
     def __init__(self):
-        import pymssql
+        self.conn = None
         env = {}
-        for line in ENV_PATH.read_text(encoding='utf-8').splitlines():
-            line = line.strip()
-            if not line or line.startswith('#') or '=' not in line:
-                continue
-            k, v = line.split('=', 1)
-            env[k.strip()] = v.strip().strip('"').strip("'")
-        url = env['DATABASE_URL']
-        rest = url.split('://', 1)[1]
-        parts = rest.split(';')
-        server = parts[0]
-        kv = dict(p.split('=', 1) for p in parts[1:] if '=' in p)
-        self.conn = pymssql.connect(server=server, user=kv['user'],
-                                    password=kv['password'],
-                                    database=kv['database'])
+        if ENV_PATH.exists():
+            for line in ENV_PATH.read_text(encoding='utf-8').splitlines():
+                line = line.strip()
+                if not line or line.startswith('#') or '=' not in line:
+                    continue
+                k, v = line.split('=', 1)
+                env[k.strip()] = v.strip().strip('"').strip("'")
+        url = env.get('DATABASE_URL')
+        if not url or not url.startswith('sqlserver://'):
+            print('[sql-comparator] MS SQL Server is decommissioned. Backend is hosted on Likha ERP.')
+            return
+        try:
+            import pymssql
+            rest = url.split('://', 1)[1]
+            parts = rest.split(';')
+            server = parts[0]
+            kv = dict(p.split('=', 1) for p in parts[1:] if '=' in p)
+            self.conn = pymssql.connect(server=server, user=kv.get('user', ''),
+                                        password=kv.get('password', ''),
+                                        database=kv.get('database', ''))
+        except Exception as e:
+            print(f'[sql-comparator] Could not connect to legacy MS SQL Server: {e}')
 
     def q(self, sql, args=()):
+        if not self.conn:
+            return []
         cur = self.conn.cursor()
         cur.execute(sql, args)
         cols = [c[0] for c in cur.description]
         return [dict(zip(cols, r)) for r in cur.fetchall()]
 
     def close(self):
-        self.conn.close()
+        if self.conn:
+            self.conn.close()
 
 
 def snapshot_fingerprint(db):

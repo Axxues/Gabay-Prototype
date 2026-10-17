@@ -8,15 +8,24 @@ const mocks = vi.hoisted(() => ({
   activeRole: 'student',
   isAuthenticated: false,
   authReady: true,
+  isLoading: false,
 }));
+
+const mockUser = {
+  id: 'u-1',
+  name: 'Test Student',
+  email: 'student@example.com',
+  role: 'student',
+};
 
 vi.mock('./shared/context/LMSContext', () => ({
   useLMS: () => ({
     activeRole: mocks.activeRole,
-    activeUser: null,
-    currentUser: null,
+    activeUser: mocks.isAuthenticated ? mockUser : null,
+    currentUser: mocks.isAuthenticated ? mockUser : null,
     isAuthenticated: mocks.isAuthenticated,
     authReady: mocks.authReady,
+    isLoading: mocks.isLoading,
     db: { users: [], courses: [], enrollmentRequests: [], notifications: [], messages: [], announcements: [] },
     activeCourseId: null,
     setActiveCourseId: vi.fn(),
@@ -27,6 +36,21 @@ vi.mock('./shared/context/LMSContext', () => ({
     activateEmail: vi.fn().mockResolvedValue({ success: true, message: 'Activated' }),
     colleges: [{ id: 'col-1', code: 'CIS', name: 'College of Information Systems', departments: [{ id: 'dept-1', name: 'IT', collegeId: 'col-1' }] }],
     departments: [{ id: 'dept-1', name: 'IT', collegeId: 'col-1' }],
+    getUnreadNotificationCount: () => 0,
+    getNotifications: () => [],
+    getPendingRequestsForStudent: () => [],
+    getUnreadMessageCount: () => 0,
+    isRoleModalOpen: false,
+    setIsRoleModalOpen: vi.fn(),
+    isUserProfileModalOpen: false,
+    setIsUserProfileModalOpen: vi.fn(),
+    isHistoryDrawerOpen: false,
+    setIsHistoryDrawerOpen: vi.fn(),
+    isHelpDrawerOpen: false,
+    setIsHelpDrawerOpen: vi.fn(),
+    accent: 'blue',
+    customAccentHex: '',
+    logout: vi.fn(),
   }),
   LMSProvider: ({ children }: any) => children,
 }));
@@ -36,6 +60,10 @@ import { AuthCardSkeleton, PageSkeleton } from './shared/components/common/AppSk
 
 describe('Auth Routing and Skeleton Loading', () => {
   it('renders RegisterPage without rendering dashboard skeleton on /register', async () => {
+    mocks.isAuthenticated = false;
+    mocks.isLoading = false;
+    mocks.authReady = true;
+
     render(
       <MemoryRouter initialEntries={['/register']}>
         <AppContent />
@@ -58,5 +86,19 @@ describe('Auth Routing and Skeleton Loading', () => {
 
     expect(screen.getByTestId('auth-card-skeleton')).toBeInTheDocument();
     expect(screen.queryByTestId('dashboard-skeleton')).not.toBeInTheDocument();
+  });
+
+  it('does not render AuthCardSkeleton when authenticated on /login even if background loading is true', () => {
+    mocks.isAuthenticated = true;
+    mocks.isLoading = true;
+    mocks.authReady = true;
+
+    render(
+      <MemoryRouter initialEntries={['/login']}>
+        <AppContent />
+      </MemoryRouter>
+    );
+
+    expect(screen.queryByTestId('auth-card-skeleton')).not.toBeInTheDocument();
   });
 });

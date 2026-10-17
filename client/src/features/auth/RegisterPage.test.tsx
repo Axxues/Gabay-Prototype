@@ -235,6 +235,24 @@ describe('RegisterPage Component', () => {
 
     expect(await screen.findByText(/invalid or expired activation link/i)).toBeInTheDocument();
   });
+
+  it('enables vertical scrolling so the registration card is fully accessible on all viewport heights', () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={['/register']}>
+        <RegisterPage />
+      </MemoryRouter>
+    );
+
+    const outerContainer = container.firstElementChild as HTMLElement;
+    expect(outerContainer.className).toContain('overflow-y-auto');
+    expect(outerContainer.className).not.toContain('overflow-hidden');
+
+    const card = screen.getByTestId('register-card');
+    expect(card.className).toContain('max-h-');
+
+    const scrollableBody = screen.getByTestId('register-card-scrollable');
+    expect(scrollableBody.className).toContain('overflow-y-auto');
+  });
 });
 
 describe('LoginPage Registration Link', () => {

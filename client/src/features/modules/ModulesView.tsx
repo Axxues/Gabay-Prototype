@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useLMS } from '../../shared/context/LMSContext';
 import type { Module, ModuleItem } from '../../shared/types/lms';
 import {
@@ -63,12 +63,15 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
   // Sibling-WIP refresh flag: read when the provider supplies it.
   } = useLMS() as ReturnType<typeof useLMS> & { isSyncing?: boolean };
 
-  const courseModules = db.modules.filter(m => m.courseId === courseId);
-  // Modules sorted with latest at the top
-  const sortedModules = [...courseModules].sort((a, b) => {
-    if (b.order !== a.order) return b.order - a.order;
-    return b.id.localeCompare(a.id);
-  });
+  // Modules sorted with latest at the top (memoized)
+  const sortedModules = useMemo(() => {
+    return db.modules
+      .filter(m => m.courseId === courseId)
+      .sort((a, b) => {
+        if (b.order !== a.order) return b.order - a.order;
+        return b.id.localeCompare(a.id);
+      });
+  }, [db.modules, courseId]);
   // Modules collapsed/hidden by default
   const [expandedModules, setExpandedModules] = useState<Record<string, boolean>>({});
 

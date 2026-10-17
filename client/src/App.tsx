@@ -97,12 +97,12 @@ const RequireAdmin: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 };
 
 const LoginRoute: React.FC = () => {
-  const { isAuthenticated, isLoading, authReady } = useLMS();
+  const { isAuthenticated, authReady } = useLMS();
   const location = useLocation();
   const stateFrom = (location.state as { from?: string } | null)?.from;
   const from = (stateFrom && stateFrom !== '/gabay-rag' && stateFrom !== '/login') ? stateFrom : '/dashboard';
 
-  if (!authReady || (isAuthenticated && isLoading)) {
+  if (!authReady) {
     return <AuthLoadingScreen />;
   }
   if (isAuthenticated) {

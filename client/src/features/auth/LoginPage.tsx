@@ -59,16 +59,16 @@ export const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-muted flex items-center justify-center p-4 relative overflow-hidden text-foreground select-none font-sans">
+    <div className="h-screen max-h-screen w-full bg-muted flex flex-col items-center justify-center p-4 relative overflow-y-auto overflow-x-hidden text-foreground font-sans custom-scrollbar">
       {/* Subtle Background Glows */}
-      <div className="absolute -top-32 -left-32 w-96 h-96 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute -bottom-32 -right-32 w-96 h-96 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="fixed -top-32 -left-32 w-96 h-96 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="fixed -bottom-32 -right-32 w-96 h-96 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
 
       {/* Floating Theme Button */}
-      <div className="absolute top-5 right-5 z-20">
+      <div className="fixed top-5 right-5 z-20">
         <button
           onClick={toggleTheme}
-          className="h-9 w-9 flex items-center justify-center rounded-xl border border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground transition-all cursor-pointer"
+          className="h-9 w-9 flex items-center justify-center rounded-xl border border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground transition-all cursor-pointer shadow-xs"
           title="Toggle theme"
         >
           {theme === 'dark' ? (
@@ -80,7 +80,7 @@ export const LoginPage: React.FC = () => {
       </div>
 
       {/* Cellwego Glass Login Card */}
-      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8 space-y-6 z-10 animate-scale-in">
+      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8 space-y-6 z-10 animate-scale-in my-auto shadow-sm">
         {/* Simple Brand Header */}
         <div className="text-center space-y-2">
           <img

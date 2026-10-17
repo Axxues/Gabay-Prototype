@@ -7,6 +7,7 @@ vi.mock('../../shared/context/LMSContext', () => ({
   useLMS: () => ({
     activeCourseId: 'c1',
     setActiveCourseId: vi.fn(),
+    hydrateCourse: vi.fn(),
     db: {
       courses: [
         {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useLMS } from '../../shared/context/LMSContext';
 import type { EnrollmentRequest } from '../../shared/types/lms';
 import { getDisplaySectionName } from '../../shared/utils/sections';
@@ -47,12 +47,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
   // Filter courses based on user role (approved requests are the
   // enrollment truth — fall back to them when enrolledCourseIds is stale).
-  const approvedCourseIds = new Set(
+  const approvedCourseIds = useMemo(() => new Set(
     (db.enrollmentRequests || [])
       .filter(r => r.studentId === activeUser.id && r.status === 'approved')
       .map(r => r.courseId)
-  );
-  const userCourses = getScopedCourses({
+  ), [db.enrollmentRequests, activeUser.id]);
+
+  const userCourses = useMemo(() => getScopedCourses({
     courses: db.courses,
     users: db.users,
     activeUser,
@@ -60,17 +61,17 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     approvedCourseIds,
     colleges,
     departments,
-  });
+  }), [db.courses, db.users, activeUser, activeRole, approvedCourseIds, colleges, departments]);
 
   const [coursePage, setCoursePage] = useState(1);
   const COURSES_PER_PAGE = 12;
-  const totalCoursePages = Math.max(1, Math.ceil(userCourses.length / COURSES_PER_PAGE));
-  const paginatedCourses = userCourses.slice((coursePage - 1) * COURSES_PER_PAGE, coursePage * COURSES_PER_PAGE);
+  const totalCoursePages = useMemo(() => Math.max(1, Math.ceil(userCourses.length / COURSES_PER_PAGE)), [userCourses.length]);
+  const paginatedCourses = useMemo(() => userCourses.slice((coursePage - 1) * COURSES_PER_PAGE, coursePage * COURSES_PER_PAGE), [userCourses, coursePage]);
 
-  const userCourseIds = new Set(userCourses.map(c => c.id));
-  const unsubmittedList = db.submissions.filter(
+  const userCourseIds = useMemo(() => new Set(userCourses.map(c => c.id)), [userCourses]);
+  const unsubmittedList = useMemo(() => db.submissions.filter(
     s => s.status === 'submitted' && (userCourseIds.has(s.courseId) || (!s.courseId && userCourses.length > 0))
-  );
+  ), [db.submissions, userCourseIds, userCourses.length]);
 
   // Pending rows can reference courses outside the cached (enrolled-only)
   // list — prefer the live cache, fall back to the server snapshot, and
@@ -81,27 +82,31 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     const title = course?.title ?? req.courseTitle ?? undefined;
     if (code || title) return `${code ?? ''}${code && title ? ' — ' : ''}${title ?? ''}`;
     return 'Pending course request';
-  };  const publishedActivities = (db.activities || []).filter(a => a.published);
-  const todoItems = [
-    ...publishedActivities.filter(a => a.format === 'classic').map(act => ({
-      id: act.id,
-      courseId: act.courseId,
-      title: act.title,
-      category: act.category || 'Activity',
-      pointsLabel: `${act.pointsPossible} pts`,
-      dueDate: act.dueDate,
-      submitted: db.submissions.some(s => s.activityKey === act.id && s.studentId === activeUser.id)
-    })),
-    ...publishedActivities.filter(a => a.format !== 'classic').map(a => ({
-      id: a.id,
-      courseId: a.courseId,
-      title: a.title,
-      category: 'Question Set',
-      pointsLabel: `${a.pointsPossible} pts`,
-      dueDate: a.dueDate,
-      submitted: db.submissions.some(s => s.activityKey === `asg-activity-${a.id}` && s.studentId === activeUser.id)
-    }))
-  ];
+  };
+
+  const todoItems = useMemo(() => {
+    const publishedActivities = (db.activities || []).filter(a => a.published);
+    return [
+      ...publishedActivities.filter(a => a.format === 'classic').map(act => ({
+        id: act.id,
+        courseId: act.courseId,
+        title: act.title,
+        category: act.category || 'Activity',
+        pointsLabel: `${act.pointsPossible} pts`,
+        dueDate: act.dueDate,
+        submitted: db.submissions.some(s => s.activityKey === act.id && s.studentId === activeUser.id)
+      })),
+      ...publishedActivities.filter(a => a.format !== 'classic').map(a => ({
+        id: a.id,
+        courseId: a.courseId,
+        title: a.title,
+        category: 'Question Set',
+        pointsLabel: `${a.pointsPossible} pts`,
+        dueDate: a.dueDate,
+        submitted: db.submissions.some(s => s.activityKey === `asg-activity-${a.id}` && s.studentId === activeUser.id)
+      }))
+    ];
+  }, [db.activities, db.submissions, activeUser.id]);
   const hasRightSidebar = activeRole === 'student' || activeRole === 'faculty' || activeRole === 'admin' || activeRole === 'superadmin';
 
   // Dynamic Instructor Name Resolution

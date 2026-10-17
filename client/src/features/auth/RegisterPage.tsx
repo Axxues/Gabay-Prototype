@@ -193,24 +193,24 @@ export const RegisterPage: React.FC = () => {
   // Render Token Activation Flow Screen
   if (isActivationRoute) {
     return (
-      <div className="min-h-screen bg-muted flex items-center justify-center p-4 relative overflow-hidden text-foreground select-none font-sans">
+      <div className="h-screen max-h-screen w-full bg-muted flex flex-col items-center justify-center p-4 sm:p-6 relative overflow-y-auto overflow-x-hidden text-foreground font-sans custom-scrollbar">
         {/* Subtle Background Glows */}
-        <div className="absolute -top-32 -left-32 w-96 h-96 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-32 -right-32 w-96 h-96 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="fixed -top-32 -left-32 w-96 h-96 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="fixed -bottom-32 -right-32 w-96 h-96 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
 
         {/* Floating Theme Button */}
-        <div className="absolute top-5 right-5 z-20">
+        <div className="fixed top-5 right-5 z-20">
           <button
             type="button"
             onClick={toggleTheme}
-            className="h-9 w-9 flex items-center justify-center rounded-xl border border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground transition-all cursor-pointer"
+            className="h-9 w-9 flex items-center justify-center rounded-xl border border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground transition-all cursor-pointer shadow-xs"
             title="Toggle theme"
           >
             {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-amber-500" />}
           </button>
         </div>
 
-        <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8 space-y-6 z-10 animate-scale-in text-center">
+        <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8 space-y-6 z-10 animate-scale-in text-center my-auto">
           <div className="space-y-2">
             <img
               src="/gabay-logo.png"
@@ -313,26 +313,29 @@ export const RegisterPage: React.FC = () => {
 
   // Registration Form Screen
   return (
-    <div className="min-h-screen bg-muted flex items-center justify-center p-4 sm:p-6 relative overflow-hidden text-foreground select-none font-sans">
+    <div className="h-screen max-h-screen w-full bg-muted flex flex-col items-center justify-center p-3 sm:p-6 relative overflow-y-auto overflow-x-hidden text-foreground font-sans custom-scrollbar">
       {/* Subtle Background Glows */}
-      <div className="absolute -top-32 -left-32 w-96 h-96 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute -bottom-32 -right-32 w-96 h-96 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="fixed -top-32 -left-32 w-96 h-96 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="fixed -bottom-32 -right-32 w-96 h-96 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
 
       {/* Floating Theme Button */}
-      <div className="absolute top-5 right-5 z-20">
+      <div className="fixed top-5 right-5 z-20">
         <button
           type="button"
           onClick={toggleTheme}
-          className="h-9 w-9 flex items-center justify-center rounded-xl border border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground transition-all cursor-pointer"
+          className="h-9 w-9 flex items-center justify-center rounded-xl border border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground transition-all cursor-pointer shadow-xs"
           title="Toggle theme"
         >
           {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-amber-500" />}
         </button>
       </div>
 
-      <div className="w-full max-w-xl rounded-2xl border border-border bg-card p-6 sm:p-8 space-y-6 z-10 animate-scale-in my-8">
+      <div
+        data-testid="register-card"
+        className="w-full max-w-xl max-h-[calc(100vh-2rem)] sm:max-h-[calc(100vh-3.5rem)] rounded-2xl border border-border bg-card p-6 sm:p-8 flex flex-col z-10 animate-scale-in my-auto shadow-sm overflow-hidden"
+      >
         {/* Brand Header */}
-        <div className="text-center space-y-2">
+        <div className="text-center space-y-2 shrink-0 pb-3">
           <img
             src="/gabay-logo.png"
             alt="GABAY logo"
@@ -348,13 +351,18 @@ export const RegisterPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Error Alert */}
-        {errorMessage && (
-          <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-xl flex items-start space-x-2 text-xs text-destructive animate-fade-in">
-            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-            <span>{errorMessage}</span>
-          </div>
-        )}
+        {/* Scrollable Card Body */}
+        <div
+          data-testid="register-card-scrollable"
+          className="overflow-y-auto custom-scrollbar flex-1 min-h-0 pr-1.5 -mr-1.5 space-y-4"
+        >
+          {/* Error Alert */}
+          {errorMessage && (
+            <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-xl flex items-start space-x-2 text-xs text-destructive animate-fade-in">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Role Selector */}
@@ -622,13 +630,14 @@ export const RegisterPage: React.FC = () => {
         </form>
 
         {/* Existing account link */}
-        <div className="text-center text-xs text-muted-foreground pt-1 border-t border-border">
+        <div className="text-center text-xs text-muted-foreground pt-2 border-t border-border">
           Already have an account?{' '}
           <Link to="/login" className="font-semibold text-primary hover:underline cursor-pointer">
             Sign In
           </Link>
         </div>
       </div>
+    </div>
 
       {/* Simulated Email Activation Modal */}
       {isModalOpen && registeredRecord && (

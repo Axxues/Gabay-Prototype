@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { BookOpen } from 'lucide-react';
 import { useLMS } from '../../shared/context/LMSContext';
 import { JoinCourseModal } from '../../shared/components/common/JoinCourseModal';
@@ -50,7 +50,7 @@ interface CoursesPageProps {
 }
 
 export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modules' }) => {
-  const { activeCourseId, setActiveCourseId, db, activeRole, activeUser, colleges, departments, getUnreadNotificationCount, markTabVisited, isCourseGradeReady } = useLMS();
+  const { activeCourseId, setActiveCourseId, hydrateCourse, db, activeRole, activeUser, colleges, departments, getUnreadNotificationCount, markTabVisited, isCourseGradeReady } = useLMS();
 
   const [subTab, setSubTab] = useState(initialSubTab);
   const [returnToTab, setReturnToTab] = useState<string | null>(null);
@@ -112,6 +112,71 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
     }
   }, [activeRole, subTab]);
 
+  useEffect(() => {
+    if (activeCourse?.id && typeof hydrateCourse === 'function') {
+      void hydrateCourse(activeCourse.id);
+    }
+  }, [activeCourse?.id, hydrateCourse]);
+
+  const tabBadges = useMemo(() => {
+    const badges: Record<string, number> = {};
+    if (!activeCourse) return badges;
+    const cid = activeCourse.id;
+    const visits = activeUser.lastVisitedAt || {};
+    for (const tab of COURSE_CHILDREN) {
+      if (!isVisible(tab, activeRole)) continue;
+      let badgeCount = 0;
+      if (tab.id === 'inbox') {
+        badgeCount = countUnreadMessages(db.messages, activeUser.id)
+          + getUnreadNotificationCount(activeUser.id, 'module_comment_reply')
+          + getUnreadNotificationCount(activeUser.id, 'announcement_reply');
+      } else if (tab.id === 'modules') {
+        badgeCount = getUnreadNotificationCount(activeUser.id, 'module_comment_reply');
+      } else if (tab.id === 'announcements') {
+        badgeCount = countUnreadAnnouncements(db.announcements || [], { id: activeUser.id, role: activeRole, sectionId: null }, cid);
+      } else if (tab.id === 'assessments') {
+        badgeCount = countTotalAssessmentBadge({
+          activities: db.activities || [],
+          quizzes: db.quizzes || [],
+          exams: db.exams || [],
+          submissions: db.submissions || [],
+          userId: activeUser.id,
+          role: activeRole,
+          courseId: cid,
+        });
+      } else if (tab.id === 'activities') {
+        const courseActivities = (db.activities || []).filter(a => a.courseId === cid);
+        const publishedActivities = courseActivities.filter(a => a.published);
+        const publishedIds = [
+          ...publishedActivities.filter(a => a.format === 'classic').map(a => a.id),
+          ...publishedActivities.filter(a => a.format !== 'classic').map(a => `asg-activity-${a.id}`),
+        ];
+        const allIds = [
+          ...courseActivities.filter(a => a.format === 'classic').map(a => a.id),
+          ...courseActivities.filter(a => a.format !== 'classic').map(a => `asg-activity-${a.id}`),
+        ];
+        const courseSubs = db.submissions.filter(s => s.courseId === cid);
+        badgeCount = (activeRole === 'faculty' || activeRole === 'admin' || activeRole === 'superadmin')
+          ? countFacultyGradingBadge(courseSubs, allIds)
+          : countStudentAssessmentBadge(publishedIds, courseSubs.filter(s => s.studentId === activeUser.id).map(s => s.activityKey ?? ''));
+      } else if (tab.id === 'quizzes') {
+        badgeCount = (activeRole === 'faculty' || activeRole === 'admin' || activeRole === 'superadmin')
+          ? countFacultyGradingBadge(db.submissions.filter(s => s.courseId === cid), (db.quizzes || []).filter(q => q.courseId === cid).map(q => `asg-quiz-${q.id}`))
+          : (db.quizzes || []).filter(q => q.courseId === cid && q.published && !db.submissions.some(s => s.activityKey === `asg-quiz-${q.id}` && s.studentId === activeUser.id)).length;
+      } else if (tab.id === 'files') {
+        badgeCount = countNewFiles(db.courseFiles || [], cid, visits);
+      } else if (tab.id === 'grades') {
+        badgeCount = activeRole === 'student' ? countNewGrades(db.courseGrades || [], cid, activeUser.id, visits) : 0;
+      } else if (tab.id === 'people') {
+        badgeCount = (activeRole === 'faculty' || activeRole === 'admin' || activeRole === 'superadmin') ? countPendingPeople(db.enrollmentRequests || [], cid) : 0;
+      } else if (tab.id === 'calendar') {
+        badgeCount = countUpcomingCalendar(db.calendarEvents || [], cid, visits);
+      }
+      badges[tab.id] = badgeCount;
+    }
+    return badges;
+  }, [activeCourse, activeRole, activeUser, db, getUnreadNotificationCount]);
+
   if (hasNoEnrollments || !activeCourse) {
     const showJoinAction = activeRole === 'student';
     return (
@@ -152,84 +217,26 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
       <main className="min-h-0 flex-1 p-6 overflow-y-auto bg-background custom-scrollbar">
         <div className="mb-4 flex gap-1.5 overflow-x-auto pb-1 md:hidden">
           {COURSE_CHILDREN.filter(i => isVisible(i, activeRole)).map(tab => {
-    let badge = null;
-    let badgeCount = 0;
-
-    const visits = activeUser.lastVisitedAt || {};
-    const cid = activeCourse.id;
-    if (tab.id === 'inbox') {
-      badgeCount = countUnreadMessages(db.messages, activeUser.id)
-        + getUnreadNotificationCount(activeUser.id, 'module_comment_reply')
-        + getUnreadNotificationCount(activeUser.id, 'announcement_reply');
-    } else if (tab.id === 'modules') {
-      badgeCount = getUnreadNotificationCount(activeUser.id, 'module_comment_reply');
-    } else if (tab.id === 'announcements') {
-      badgeCount = countUnreadAnnouncements(db.announcements || [], { id: activeUser.id, role: activeRole, sectionId: null }, cid);
-    } else if (tab.id === 'assessments') {
-      badgeCount = countTotalAssessmentBadge({
-        activities: db.activities || [],
-        quizzes: db.quizzes || [],
-        exams: db.exams || [],
-        submissions: db.submissions || [],
-        userId: activeUser.id,
-        role: activeRole,
-        courseId: cid,
-      });
-    } else if (tab.id === 'activities') {
-      // Classic rows live in db.activities now (format === 'classic');
-      // question sets link submissions via the synthetic asg-activity-<id>
-      // key (values preserved).
-      const courseActivities = (db.activities || []).filter(a => a.courseId === cid);
-      const publishedActivities = courseActivities.filter(a => a.published);
-      const publishedIds = [
-        ...publishedActivities.filter(a => a.format === 'classic').map(a => a.id),
-        ...publishedActivities.filter(a => a.format !== 'classic').map(a => `asg-activity-${a.id}`),
-      ];
-      const allIds = [
-        ...courseActivities.filter(a => a.format === 'classic').map(a => a.id),
-        ...courseActivities.filter(a => a.format !== 'classic').map(a => `asg-activity-${a.id}`),
-      ];
-      const courseSubs = db.submissions.filter(s => s.courseId === cid);
-      badgeCount = (activeRole === 'faculty' || activeRole === 'admin' || activeRole === 'superadmin')
-        ? countFacultyGradingBadge(courseSubs, allIds)
-        : countStudentAssessmentBadge(publishedIds, courseSubs.filter(s => s.studentId === activeUser.id).map(s => s.activityKey ?? ''));
-    } else if (tab.id === 'quizzes') {
-      badgeCount = (activeRole === 'faculty' || activeRole === 'admin' || activeRole === 'superadmin')
-        ? countFacultyGradingBadge(db.submissions.filter(s => s.courseId === cid), (db.quizzes || []).filter(q => q.courseId === cid).map(q => `asg-quiz-${q.id}`))
-        : (db.quizzes || []).filter(q => q.courseId === cid && q.published && !db.submissions.some(s => s.activityKey === `asg-quiz-${q.id}` && s.studentId === activeUser.id)).length;
-    } else if (tab.id === 'files') {
-      badgeCount = countNewFiles(db.courseFiles || [], cid, visits);
-    } else if (tab.id === 'grades') {
-      badgeCount = activeRole === 'student' ? countNewGrades(db.courseGrades || [], cid, activeUser.id, visits) : 0;
-    } else if (tab.id === 'people') {
-      badgeCount = (activeRole === 'faculty' || activeRole === 'admin' || activeRole === 'superadmin') ? countPendingPeople(db.enrollmentRequests || [], cid) : 0;
-    } else if (tab.id === 'calendar') {
-      badgeCount = countUpcomingCalendar(db.calendarEvents || [], cid, visits);
-    }
-
-    if (badgeCount > 0) {
-      badge = (
-        <span
-          key={tab.id + '-badge'}
-          className="absolute right-0 top-0 h-4 w-4 rounded-full bg-primary text-xs text-primary-foreground flex items-center justify-center -translate-half"
-        >
-          {badgeCount}
-        </span>
-      );
-    }
-
-    return (
-      <button
-        key={tab.id}
-        type="button"
-        onClick={() => { setSubTab(tab.id); setReturnToTab(null); markTabVisited(tab.id, activeCourse.id); }}
-        className={`shrink-0 rounded-full px-3 py-1.5 text-[12px] font-semibold cursor-pointer relative ${subTab === tab.id ? 'bg-foreground text-background' : 'bg-card text-muted-foreground border border-border'}`}
-      >
-        {tab.label}
-        {badge}
-      </button>
-    );
-  })}
+            const badgeCount = tabBadges[tab.id] ?? 0;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => { setSubTab(tab.id); setReturnToTab(null); markTabVisited(tab.id, activeCourse.id); }}
+                className={`shrink-0 rounded-full px-3 py-1.5 text-[12px] font-semibold cursor-pointer relative ${subTab === tab.id ? 'bg-foreground text-background' : 'bg-card text-muted-foreground border border-border'}`}
+              >
+                {tab.label}
+                {badgeCount > 0 && (
+                  <span
+                    key={tab.id + '-badge'}
+                    className="absolute right-0 top-0 h-4 w-4 rounded-full bg-primary text-xs text-primary-foreground flex items-center justify-center -translate-half"
+                  >
+                    {badgeCount}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
         <PageTransition pageKey={`${subTab}:${activeCourse.id}`} className="w-full min-w-0">
         <React.Suspense fallback={<CourseSubTabSkeleton />}>

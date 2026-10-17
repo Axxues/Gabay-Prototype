@@ -172,7 +172,7 @@ ragExportRouter.get('/courses', async (_req, res, next) => {
     const courses = await prisma.course.findMany({ select: { id: true, code: true, title: true, section: true, instructorName: true, published: true, enrolledCount: true } });
     const source = getRagSyllabusSource();
     const sectionLists = await Promise.all(
-      courses.map(async (c) => {
+      courses.map(async (c: any) => {
         try {
           const sections = await source.getRagSections(c.id);
           const records = typeof source.getRagSectionRecords === 'function'

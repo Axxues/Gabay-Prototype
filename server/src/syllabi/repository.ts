@@ -597,7 +597,7 @@ async function lockRevision(
   revisionId: string,
 ): Promise<void> {
   await tx.$queryRaw(
-    Prisma.sql`SELECT id FROM [Syllabus] WITH (UPDLOCK, ROWLOCK) WHERE [id] = ${revisionId} AND [courseId] = ${courseId}`,
+    Prisma.sql`SELECT id FROM [Syllabus] WHERE [id] = ${revisionId} AND [courseId] = ${courseId}`,
   );
 }
 
