@@ -26,6 +26,8 @@ class Settings(BaseModel):
     likha_token: Optional[str] = None
     likha_admin_email: Optional[str] = None
     likha_admin_password: Optional[str] = None
+    cors_allowed_origins: str = "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,https://gabay.zyberlab.com"
+    rag_client_key: Optional[str] = None
     port: int = 8000
 
     model_config = {
@@ -45,5 +47,10 @@ def get_settings() -> Settings:
         likha_token=os.getenv("LIKHA_TOKEN") or os.getenv("LIKHA_STATIC_TOKEN"),
         likha_admin_email=os.getenv("LIKHA_ADMIN_EMAIL"),
         likha_admin_password=os.getenv("LIKHA_ADMIN_PASSWORD"),
+        cors_allowed_origins=os.getenv(
+            "CORS_ALLOWED_ORIGINS",
+            "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,https://gabay.zyberlab.com",
+        ),
+        rag_client_key=os.getenv("RAG_CLIENT_KEY"),
         port=int(os.getenv("PORT", "8000")),
     )

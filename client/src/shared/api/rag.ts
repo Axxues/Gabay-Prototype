@@ -68,11 +68,17 @@ export async function sendRagMessage(
     payload.history = opts.history;
   }
 
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  const clientKey = import.meta.env.VITE_RAG_CLIENT_KEY;
+  if (clientKey && typeof clientKey === 'string' && clientKey.trim()) {
+    headers['X-Gabay-Client-Key'] = clientKey.trim();
+  }
+
   const res = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: JSON.stringify(payload),
   });
 
