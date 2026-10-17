@@ -102,6 +102,59 @@ describe('Likha LMS Direct API Client', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
+  it('gracefully returns empty arrays on 403 Forbidden for optional and role-scoped endpoints', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 403,
+      text: async () => JSON.stringify({ error: { code: 'FORBIDDEN', message: 'Forbidden' } }),
+      json: async () => ({ error: { code: 'FORBIDDEN', message: 'Forbidden' } })
+    } as any);
+
+    const sections = await likhaLmsApi.sections.getSections('c-1');
+    const requests = await likhaLmsApi.requests.getRequests('c-1', 'pending');
+    const chatGroups = await likhaLmsApi.communications.getChatGroups();
+    const advisingSlots = await likhaLmsApi.communications.getAdvisingSlots();
+
+    expect(sections).toEqual([]);
+    expect(requests).toEqual([]);
+    expect(chatGroups).toEqual([]);
+    expect(advisingSlots).toEqual([]);
+  });
+
+  it('returns valid data for sections, requests, chatGroups, and advisingSlots on 200 OK', async () => {
+    vi.spyOn(global, 'fetch')
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ data: [{ id: 'sec-1', name: 'Section A' }] }),
+      } as any)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ data: [{ id: 'req-1', status: 'pending' }] }),
+      } as any)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ data: [{ id: 'cg-1', name: 'Study Group' }] }),
+      } as any)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ data: [{ id: 'slot-1', status: 'available' }] }),
+      } as any);
+
+    const sections = await likhaLmsApi.sections.getSections('c-1');
+    const requests = await likhaLmsApi.requests.getRequests('c-1', 'pending');
+    const chatGroups = await likhaLmsApi.communications.getChatGroups();
+    const advisingSlots = await likhaLmsApi.communications.getAdvisingSlots();
+
+    expect(sections).toEqual([{ id: 'sec-1', name: 'Section A' }]);
+    expect(requests).toEqual([{ id: 'req-1', status: 'pending' }]);
+    expect(chatGroups).toEqual([{ id: 'cg-1', name: 'Study Group' }]);
+    expect(advisingSlots).toEqual([{ id: 'slot-1', status: 'available' }]);
+  });
+
   it('queries normalized relational syllabus with child tables', async () => {
     vi.spyOn(global, 'fetch').mockResolvedValueOnce({
       ok: true,

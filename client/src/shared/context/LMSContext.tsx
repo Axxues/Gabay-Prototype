@@ -1778,12 +1778,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       // Chat groups + advising slots come from Likha ERP (no Express fallback)
       try {
-        const [groups, slots] = await Promise.all([
+        const [groupsSettled, slotsSettled] = await Promise.allSettled([
           likhaLmsApi.communications.getChatGroups(),
           likhaLmsApi.communications.getAdvisingSlots(),
         ]);
-        if (Array.isArray(groups) && groups.length > 0) {
-          fresh.chatGroups = groups.map((g: any) => ({
+        if (groupsSettled.status === 'fulfilled' && Array.isArray(groupsSettled.value) && groupsSettled.value.length > 0) {
+          fresh.chatGroups = groupsSettled.value.map((g: any) => ({
             id: g.id,
             name: g.name || 'Chat Group',
             courseId: g.course_id || undefined,
@@ -1796,8 +1796,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             createdBy: g.created_by || user.id,
           }));
         }
-        if (Array.isArray(slots) && slots.length > 0) {
-          fresh.advisingSlots = slots;
+        if (slotsSettled.status === 'fulfilled' && Array.isArray(slotsSettled.value) && slotsSettled.value.length > 0) {
+          fresh.advisingSlots = slotsSettled.value;
         }
       } catch {
         // Tolerated

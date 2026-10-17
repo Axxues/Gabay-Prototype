@@ -452,7 +452,7 @@ export const likhaLmsApi = {
 
   sections: {
     async getSections(courseId: string): Promise<any[]> {
-      return likhaRequest(`/items/course_sections?filter[course_id][_eq]=${encodeURIComponent(courseId)}`);
+      return likhaRequest(`/items/course_sections?filter[course_id][_eq]=${encodeURIComponent(courseId)}`).catch(() => []);
     },
 
     async createSection(section: any): Promise<any> {
@@ -479,7 +479,7 @@ export const likhaLmsApi = {
       let q = `/items/enrollment_requests?limit=200`;
       if (courseId) q += `&filter[course_id][_eq]=${encodeURIComponent(courseId)}`;
       if (status) q += `&filter[status][_eq]=${encodeURIComponent(status)}`;
-      return likhaRequest(q);
+      return likhaRequest(q).catch(() => []);
     },
 
     async createRequest(request: any): Promise<any> {
@@ -907,7 +907,7 @@ export const likhaLmsApi = {
     },
 
     async getChatGroups(): Promise<any[]> {
-      return likhaRequest('/items/chat_groups?limit=50');
+      return likhaRequest('/items/chat_groups?limit=50').catch(() => []);
     },
 
     async createChatGroup(data: any): Promise<any> {
@@ -942,7 +942,7 @@ export const likhaLmsApi = {
     },
 
     async getAdvisingSlots(): Promise<any[]> {
-      return likhaRequest('/items/advising_slots?limit=100&sort=date');
+      return likhaRequest('/items/advising_slots?limit=100&sort=date').catch(() => []);
     },
 
     async bookAdvisingSlot(id: string, studentId: string): Promise<any> {
