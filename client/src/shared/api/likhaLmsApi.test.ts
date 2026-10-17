@@ -291,6 +291,58 @@ describe('Likha LMS Direct API Client', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
+  it('resolves student role with alias and user harvesting fallback when /roles is forbidden', async () => {
+    vi.spyOn(global, 'fetch')
+      // 1. /roles?filter[name][_eq]=student fails with 403
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        text: async () => JSON.stringify({ errors: [{ message: 'Forbidden' }] }),
+      } as any)
+      // 2. /users?fields=role.id,role.name succeeds and returns user with Student role
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: [
+            { id: 'u-1', role: { id: 'role-uuid-student', name: 'Student' } }
+          ],
+        }),
+      } as any);
+
+    const studentRoleId = await likhaLmsApi.users.resolveRoleId('student');
+    expect(studentRoleId).toBe('role-uuid-student');
+
+    // Subsequent resolution for 'Student' or 'student' uses cached ID
+    const cachedId = await likhaLmsApi.users.resolveRoleId('Student');
+    expect(cachedId).toBe('role-uuid-student');
+  });
+
+  it('indexes roles returned by getUsers and resolves them synchronously without network fetch', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: [
+          { id: 'u-stud', first_name: 'Juan', role: { id: 'uuid-student-indexed', name: 'Student' } },
+          { id: 'u-fac', first_name: 'Prof', role: { id: 'uuid-faculty-indexed', name: 'Instructor' } },
+        ],
+      }),
+    } as any);
+
+    const users = await likhaLmsApi.users.getUsers();
+    expect(users).toHaveLength(2);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+    // resolveRoleId for 'student' or 'faculty' now resolves immediately from cache
+    const studentId = await likhaLmsApi.users.resolveRoleId('student');
+    const facultyId = await likhaLmsApi.users.resolveRoleId('faculty');
+    expect(studentId).toBe('uuid-student-indexed');
+    expect(facultyId).toBe('uuid-faculty-indexed');
+    // No new network calls were made to /roles
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
   it('deleteCourseCascade removes children before the parent course', async () => {
     const urls: string[] = [];
     vi.spyOn(global, 'fetch').mockImplementation(async (url: any, init: any) => {

@@ -175,6 +175,36 @@ async function likhaRequest<T = any>(
 // effectively static for a session.
 const roleIdByName = new Map<string, string | null>();
 
+function indexRole(roleObj: any): void {
+  if (!roleObj || typeof roleObj !== 'object') return;
+  const id = roleObj.id != null ? String(roleObj.id) : null;
+  const name = roleObj.name != null ? String(roleObj.name).trim() : null;
+  if (!id || !name) return;
+
+  roleIdByName.set(name, id);
+  roleIdByName.set(name.toLowerCase(), id);
+  const lower = name.toLowerCase();
+  if (lower.includes('student')) {
+    roleIdByName.set('student', id);
+    roleIdByName.set('Student', id);
+    roleIdByName.set('students', id);
+    roleIdByName.set('Students', id);
+  } else if (lower.includes('faculty') || lower.includes('instructor')) {
+    roleIdByName.set('faculty', id);
+    roleIdByName.set('Faculty', id);
+    roleIdByName.set('instructor', id);
+    roleIdByName.set('Instructor', id);
+  } else if (lower.includes('admin')) {
+    roleIdByName.set('admin', id);
+    roleIdByName.set('Admin', id);
+    roleIdByName.set('Administrator', id);
+    roleIdByName.set('administrator', id);
+  } else if (lower.includes('staff')) {
+    roleIdByName.set('staff', id);
+    roleIdByName.set('Staff', id);
+  }
+}
+
 export const mapLikhaSyllabusHeader = (row: any, fallbackCourseId = ''): SyllabusRevisionHeader => ({
   id: String(row.id),
   courseId: String(row.course_id || fallbackCourseId),
@@ -266,6 +296,7 @@ export const likhaLmsApi = {
       if (refreshToken) setRefreshToken(refreshToken);
 
       const me = await likhaRequest('/users/me?fields=*,role.*');
+      if (me?.role) indexRole(me.role);
       return { token, user: me };
     },
 
@@ -274,7 +305,9 @@ export const likhaLmsApi = {
     },
 
     async getMe(): Promise<any> {
-      return likhaRequest('/users/me?fields=*,role.*');
+      const me = await likhaRequest('/users/me?fields=*,role.*');
+      if (me?.role) indexRole(me.role);
+      return me;
     },
 
     logout(): void {
@@ -286,6 +319,11 @@ export const likhaLmsApi = {
   users: {
     async getUsers(): Promise<any[]> {
       const users = await likhaRequest<any[]>('/users?fields=*,role.*&limit=250&sort=first_name');
+      if (Array.isArray(users)) {
+        for (const u of users) {
+          if (u?.role) indexRole(u.role);
+        }
+      }
       return users || [];
     },
 
@@ -308,22 +346,94 @@ export const likhaLmsApi = {
     },
 
     async resolveRoleId(name: string): Promise<string | null> {
-      const key = String(name);
+      const key = String(name).trim();
       if (roleIdByName.has(key)) return roleIdByName.get(key) ?? null;
-      // Best-effort lookup: a /roles outage rejects, but callers treat a
-      // missing role as local-only, so degrade to null here. Failures are
-      // NOT cached, so a transient outage can recover on the next call.
-      let rows: any[];
+      const lowerKey = key.toLowerCase();
+      for (const [k, v] of roleIdByName.entries()) {
+        if (k.toLowerCase() === lowerKey && v) {
+          roleIdByName.set(key, v);
+          return v;
+        }
+      }
+
+      // Best-effort lookup: query /roles?filter[name][_eq]=${key}
+      let rows: any[] = [];
+      let fetchFailed = false;
       try {
         rows = await rawLikhaFetch<any[]>(
           `/roles?filter[name][_eq]=${encodeURIComponent(key)}&fields=id,name`
         );
       } catch {
+        fetchFailed = true;
+      }
+
+      let list = Array.isArray(rows) ? rows : rows ? [rows] : [];
+      let found = list[0];
+
+      // Known aliases for standard LMS roles
+      const aliases: string[] = [];
+      if (lowerKey === 'student') aliases.push('Student', 'Students');
+      else if (lowerKey === 'faculty') aliases.push('Instructor', 'Faculty');
+      else if (lowerKey === 'admin') aliases.push('Administrator', 'Admin');
+      else if (lowerKey === 'staff') aliases.push('Staff');
+
+      // If not found and key has known aliases (e.g. 'student' -> 'Student'), try them
+      if (!found?.id && !fetchFailed && aliases.length > 0) {
+        for (const alias of aliases) {
+          if (roleIdByName.has(alias) && roleIdByName.get(alias)) {
+            const id = roleIdByName.get(alias)!;
+            roleIdByName.set(key, id);
+            return id;
+          }
+          try {
+            const aliasRows = await rawLikhaFetch<any[]>(
+              `/roles?filter[name][_eq]=${encodeURIComponent(alias)}&fields=id,name`
+            );
+            const aList = Array.isArray(aliasRows) ? aliasRows : aliasRows ? [aliasRows] : [];
+            if (aList[0]?.id) {
+              found = aList[0];
+              indexRole(found);
+              break;
+            }
+          } catch {
+            fetchFailed = true;
+          }
+        }
+      }
+
+      // Fallback: If role not found (or /roles was 403/unreachable) for a standard LMS role, discover from existing users
+      if (!found?.id && aliases.length > 0) {
+        try {
+          const userRows = await rawLikhaFetch<any[]>(
+            `/users?fields=role.id,role.name&limit=100`
+          );
+          if (Array.isArray(userRows)) {
+            for (const u of userRows) {
+              if (u?.role) indexRole(u.role);
+            }
+          }
+          const harvestedId =
+            (roleIdByName.has(key) ? roleIdByName.get(key) : null) ||
+            (() => {
+              for (const [k, v] of roleIdByName.entries()) {
+                if (k.toLowerCase() === lowerKey && v) return v;
+              }
+              return null;
+            })();
+          if (harvestedId) {
+            roleIdByName.set(key, harvestedId);
+            return harvestedId;
+          }
+        } catch {}
+      }
+
+      if (fetchFailed && !found?.id) {
+        // Failures are NOT cached so transient errors can retry
         return null;
       }
-      const list = Array.isArray(rows) ? rows : rows ? [rows] : [];
-      const found = list[0];
+
       const id = found?.id != null ? String(found.id) : null;
+      if (found) indexRole(found);
       roleIdByName.set(key, id);
       return id;
     },

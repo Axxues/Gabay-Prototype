@@ -1827,10 +1827,30 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const likhaUsers = await likhaLmsApi.users.getUsers();
         if (Array.isArray(likhaUsers) && likhaUsers.length > 0) {
+          const pendingList = pendingRegistrationsRef.current || pendingRegistrations;
+          const userEmail = (user.email || '').trim().toLowerCase();
+          const activeUserReg = pendingList.find(r => r.email?.trim().toLowerCase() === userEmail);
+          let effectiveActiveUser = user;
+          if (activeUserReg?.role === 'student' && user.role !== 'student') {
+            effectiveActiveUser = { ...user, role: 'student', title: 'Undergraduate Student' };
+          }
           const others = likhaUsers
             .filter((u: any) => u.id !== user.id)
             .map((u: any) => {
-              const mapped = mapDirectusRole(u.role, u.email, u.adminSubrole);
+              let mapped = mapDirectusRole(u.role, u.email, u.adminSubrole);
+              const uEmail = (u.email || '').trim().toLowerCase();
+              const knownReg = pendingList.find(r => r.email?.trim().toLowerCase() === uEmail);
+              if (knownReg?.role === 'student' && mapped.role !== 'student') {
+                mapped = { role: 'student', title: 'Undergraduate Student' };
+                // Background heal in Directus
+                likhaLmsApi.users.resolveRoleId('student').then(rId => {
+                  if (rId && u.id) {
+                    likhaLmsApi.users.updateUser(u.id, { role: rId }).catch(() => {});
+                  }
+                }).catch(() => {});
+              } else if (knownReg?.role === 'faculty' && mapped.role !== 'faculty' && mapped.role !== 'admin' && mapped.role !== 'superadmin') {
+                mapped = { role: 'faculty', title: 'Instructor' };
+              }
               const baseUser: User = {
                 id: u.id,
                 name: `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email,
@@ -1841,13 +1861,13 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 department:
                   u.department ||
                   (mapped.role === 'superadmin' ? 'Office of the Chancellor' : 'Department of Computer Science'),
-                title: u.title || mapped.title,
+                title: (mapped.role === 'student' ? 'Undergraduate Student' : (u.title || mapped.title)),
                 collegeId: u.college_id || u.collegeId,
                 collegeName: u.college_name || u.collegeName,
               };
               return normalizeChancellorUser(baseUser);
             });
-          fresh.users = [normalizeChancellorUser(user), ...others];
+          fresh.users = [normalizeChancellorUser(effectiveActiveUser), ...others];
         } else {
           fresh.users = [normalizeChancellorUser(user)];
         }
@@ -2425,7 +2445,20 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           try {
             const me = await likhaLmsApi.auth.getMe();
             if (me?.id) {
-              const mapped = mapDirectusRole(me.role, me.email, me.adminSubrole);
+              let mapped = mapDirectusRole(me.role, me.email, me.adminSubrole);
+              const meEmail = (me.email || '').trim().toLowerCase();
+              const pendingList = pendingRegistrationsRef.current || pendingRegistrations;
+              const knownReg = pendingList.find(r => r.email?.trim().toLowerCase() === meEmail);
+              if (knownReg?.role === 'student' && mapped.role !== 'student') {
+                mapped = { role: 'student', title: 'Undergraduate Student' };
+                likhaLmsApi.users.resolveRoleId('student').then(rId => {
+                  if (rId && me.id) {
+                    likhaLmsApi.users.updateUser(me.id, { role: rId }).catch(() => {});
+                  }
+                }).catch(() => {});
+              } else if (knownReg?.role === 'faculty' && mapped.role !== 'faculty' && mapped.role !== 'admin' && mapped.role !== 'superadmin') {
+                mapped = { role: 'faculty', title: 'Instructor' };
+              }
               const rawMeUser: User = {
                 id: me.id,
                 name: `${me.first_name || ''} ${me.last_name || ''}`.trim() || me.email,
@@ -2436,7 +2469,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 department:
                   me.department ||
                   (mapped.role === 'superadmin' ? 'Office of the Chancellor' : 'Department of Computer Science'),
-                title: me.title || mapped.title,
+                title: (mapped.role === 'student' ? 'Undergraduate Student' : (me.title || mapped.title)),
                 collegeId: me.college_id || me.collegeId,
                 collegeName: me.college_name || me.collegeName,
               };
@@ -2542,11 +2575,22 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const likhaAuth = await likhaLmsApi.loginLikhaUser(emailOrId, password);
         if (likhaAuth?.token && likhaAuth?.user) {
-          const mapped = mapDirectusRole(
+          let mapped = mapDirectusRole(
             likhaAuth.user.role,
             likhaAuth.user.email,
             likhaAuth.user.adminSubrole
           );
+          if (pending?.role === 'student' && mapped.role !== 'student') {
+            mapped = { role: 'student', title: 'Undergraduate Student' };
+            // Correct Directus role in background
+            likhaLmsApi.users.resolveRoleId('student').then(rId => {
+              if (rId && likhaAuth.user.id) {
+                likhaLmsApi.users.updateUser(likhaAuth.user.id, { role: rId }).catch(() => {});
+              }
+            }).catch(() => {});
+          } else if (pending?.role === 'faculty' && mapped.role !== 'faculty' && mapped.role !== 'admin' && mapped.role !== 'superadmin') {
+            mapped = { role: 'faculty', title: 'Instructor' };
+          }
           const rawMappedUser: User = {
             id: likhaAuth.user.id,
             name: `${likhaAuth.user.first_name || ''} ${likhaAuth.user.last_name || ''}`.trim() || likhaAuth.user.email,
@@ -2557,7 +2601,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             department:
               likhaAuth.user.department ||
               (mapped.role === 'superadmin' ? 'Office of the Chancellor' : 'Department of Computer Science'),
-            title: likhaAuth.user.title || mapped.title,
+            title: (mapped.role === 'student' ? 'Undergraduate Student' : (likhaAuth.user.title || mapped.title)),
             collegeId: likhaAuth.user.college_id || likhaAuth.user.collegeId,
             collegeName: likhaAuth.user.college_name || likhaAuth.user.collegeName,
           };
@@ -3630,6 +3674,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (roleId) payload.role = roleId;
       }
       const row = await likhaLmsApi.users.createUser(payload);
+      // If Directus ignored the role or assigned default role, ensure we update it via PATCH
+      if (payload.role && row?.id && (!row.role || (typeof row.role === 'object' ? row.role.id !== payload.role : row.role !== payload.role))) {
+        try {
+          await likhaLmsApi.users.updateUser(row.id, { role: payload.role });
+        } catch (_) {}
+      }
       const mapped = mapLikhaUserRowToUser(row);
       const merged: User = {
         ...mapped,
@@ -3639,7 +3689,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           userData.avatar ||
           mapped.avatar ||
           'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-        title: userData.title || mapped.title,
+        title: userData.title || (role === 'student' ? 'Undergraduate Student' : (role === 'faculty' ? 'Instructor' : mapped.title)),
         studentId: userData.studentId || (role === 'student' ? `2026-${Math.floor(10000 + Math.random() * 90000)}` : undefined),
         password: userData.password || 'password123',
         enrolledCourseIds: userData.enrolledCourseIds || [],
