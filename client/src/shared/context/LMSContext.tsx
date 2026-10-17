@@ -1386,6 +1386,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return (email || '').trim().toLowerCase() === 'jayveegenetareyes@gmail.com';
   };
 
+  const isTrinmarBoado = (u?: { email?: string | null; name?: string | null } | null): boolean => {
+    const email = (u?.email || '').toLowerCase().trim();
+    const name = (u?.name || '').toLowerCase().trim();
+    return email.includes('trinmar.boado') || name.includes('trinmar boado') || email.includes('trinmar');
+  };
+
   const mapDirectusRole = (
     rawRole: any,
     email?: string | null,
@@ -1421,6 +1427,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const normalizeChancellorUser = (u: User): User => {
+    if (isTrinmarBoado(u)) {
+      return u;
+    }
+
     const mapped = mapDirectusRole(u.role, u.email, u.adminSubrole);
     if (mapped.role === 'superadmin' || isChancellorEmail(u.email)) {
       return {
@@ -1468,11 +1478,43 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         department: deptName,
       };
     }
+
+    const defaultCol = (colleges || []).find(c => c.name?.toLowerCase().includes('computer science')) || colleges?.[0] || {
+      id: 'col-ccs',
+      name: 'College of Computer Science',
+      code: 'CCS',
+    };
+    const defaultDept = (departments || []).find(d => d.name?.toLowerCase().includes('computer science')) || departments?.[0] || {
+      id: 'dept-cs',
+      collegeId: defaultCol.id,
+      name: 'Department of Computer Science',
+      code: 'CS',
+    };
+
+    const assignedCol = (colleges || []).find(
+      c => (u.collegeId && c.id === u.collegeId) ||
+           (u.collegeName && c.name?.toLowerCase() === u.collegeName?.toLowerCase())
+    ) || defaultCol;
+
+    const assignedDept = (departments || []).find(
+      d => (u.department && d.name?.toLowerCase() === u.department?.toLowerCase()) ||
+           (u.collegeId && d.collegeId === u.collegeId)
+    ) || defaultDept;
+
+    const resolvedColId = u.collegeId || assignedDept?.collegeId || assignedCol?.id || 'col-ccs';
+    const resolvedColName = u.collegeName || assignedCol?.name || 'College of Computer Science';
+    const resolvedDept = (u.department && u.department !== resolvedColName && u.department.trim() !== '')
+      ? u.department
+      : (assignedDept?.name || 'Department of Computer Science');
+
     return {
       ...u,
       role: mapped.role,
       adminSubrole: mapped.adminSubrole,
       title: u.title || mapped.title,
+      collegeId: resolvedColId,
+      collegeName: resolvedColName,
+      department: resolvedDept,
     };
   };
 
@@ -1749,7 +1791,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 avatar: u.avatar ? `https://gabay.zyberlab.com/assets/${u.avatar}` : '',
                 department:
                   u.department ||
-                  (mapped.role === 'superadmin' ? 'Office of the Chancellor' : 'College of Computer Science'),
+                  (mapped.role === 'superadmin' ? 'Office of the Chancellor' : 'Department of Computer Science'),
                 title: u.title || mapped.title,
                 collegeId: u.college_id || u.collegeId,
                 collegeName: u.college_name || u.collegeName,
@@ -2313,7 +2355,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const me = await likhaLmsApi.auth.getMe();
             if (me?.id) {
               const mapped = mapDirectusRole(me.role, me.email, me.adminSubrole);
-              user = {
+              const rawMeUser: User = {
                 id: me.id,
                 name: `${me.first_name || ''} ${me.last_name || ''}`.trim() || me.email,
                 email: me.email,
@@ -2322,11 +2364,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 avatar: me.avatar ? `https://gabay.zyberlab.com/assets/${me.avatar}` : '',
                 department:
                   me.department ||
-                  (mapped.role === 'superadmin' ? 'Office of the Chancellor' : 'College of Computer Science'),
+                  (mapped.role === 'superadmin' ? 'Office of the Chancellor' : 'Department of Computer Science'),
                 title: me.title || mapped.title,
                 collegeId: me.college_id || me.collegeId,
                 collegeName: me.college_name || me.collegeName,
               };
+              user = normalizeChancellorUser(rawMeUser);
             }
           } catch (likhaErr: any) {
             // If Likha explicitly returns 401 Unauthorized, the stored token is expired/invalid.
@@ -2440,7 +2483,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             avatar: likhaAuth.user.avatar ? `${likhaLmsApi ? 'https://gabay.zyberlab.com/assets/' + likhaAuth.user.avatar : ''}` : '',
             department:
               likhaAuth.user.department ||
-              (mapped.role === 'superadmin' ? 'Office of the Chancellor' : 'College of Computer Science'),
+              (mapped.role === 'superadmin' ? 'Office of the Chancellor' : 'Department of Computer Science'),
             title: likhaAuth.user.title || mapped.title,
             collegeId: likhaAuth.user.college_id || likhaAuth.user.collegeId,
             collegeName: likhaAuth.user.college_name || likhaAuth.user.collegeName,

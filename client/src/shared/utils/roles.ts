@@ -66,3 +66,29 @@ export function isChairRole(user?: RoleResolvableUser | null, activeRole?: strin
   const title = (user?.title || '').toLowerCase();
   return (role === 'admin' && (subrole === 'chairperson' || subrole === 'chair' || title.includes('chair')));
 }
+
+export const AUTHORITY_RANK: Record<string, number> = {
+  Admin: 1,
+  Dean: 2,
+  Chair: 3,
+  Faculty: 4,
+  Staff: 5,
+  Student: 6,
+};
+
+export function getAuthorityRank(user?: RoleResolvableUser | null, fallbackRole?: string): number {
+  const label = getDisplayRoleLabel(user, fallbackRole);
+  return AUTHORITY_RANK[label] ?? 99;
+}
+
+export function compareUsersByAuthority(
+  a: RoleResolvableUser & { name?: string },
+  b: RoleResolvableUser & { name?: string }
+): number {
+  const rankA = getAuthorityRank(a);
+  const rankB = getAuthorityRank(b);
+  if (rankA !== rankB) {
+    return rankA - rankB;
+  }
+  return (a.name || '').localeCompare(b.name || '');
+}

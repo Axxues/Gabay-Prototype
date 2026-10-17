@@ -230,7 +230,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
       icon: <UserCheck className="w-3.5 h-3.5" />
     },
     staff: {
-      label: 'Registrar aide',
+      label: 'Staff',
       style: 'bg-primary/10 text-primary border-primary/20',
       icon: <ShieldCheck className="w-3.5 h-3.5" />
     },

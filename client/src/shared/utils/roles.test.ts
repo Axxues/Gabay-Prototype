@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getDisplayRoleLabel, isDeanRole, isChairRole } from './roles';
+import { getDisplayRoleLabel, isDeanRole, isChairRole, compareUsersByAuthority } from './roles';
 
 describe('roles utility', () => {
   it('returns Admin for superadmin role or chancellor subrole', () => {
@@ -37,5 +37,28 @@ describe('roles utility', () => {
     expect(getDisplayRoleLabel(null, 'admin')).toBe('Admin');
     expect(getDisplayRoleLabel(undefined, 'faculty')).toBe('Faculty');
     expect(getDisplayRoleLabel(null)).toBe('User');
+  });
+
+  it('correctly ranks and sorts users by authority: admin -> dean -> chair -> faculty -> staff -> student', () => {
+    const users = [
+      { name: 'Student Zach', role: 'student' },
+      { name: 'Faculty Bob', role: 'faculty' },
+      { name: 'Chancellor Alice', role: 'superadmin', adminSubrole: 'chancellor' },
+      { name: 'Staff Dan', role: 'staff' },
+      { name: 'Chair Carol', role: 'admin', adminSubrole: 'chairperson' },
+      { name: 'Dean Eleanor', role: 'admin', adminSubrole: 'dean' },
+      { name: 'Admin Zoe', role: 'admin' },
+    ];
+
+    const sorted = [...users].sort(compareUsersByAuthority);
+    expect(sorted.map(u => u.name)).toEqual([
+      'Admin Zoe',
+      'Chancellor Alice',
+      'Dean Eleanor',
+      'Chair Carol',
+      'Faculty Bob',
+      'Staff Dan',
+      'Student Zach',
+    ]);
   });
 });

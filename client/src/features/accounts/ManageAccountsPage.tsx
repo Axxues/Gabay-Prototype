@@ -4,7 +4,7 @@ import type { User, UserRole } from '../../shared/types/lms';
 import { PageHeader } from '../../shared/components/common/PageHeader';
 import { UserAvatar } from '../../shared/components/common/UserAvatar';
 import { DialogFrame } from '../../shared/components/common/DialogFrame';
-import { getDisplayRoleLabel } from '../../shared/utils/roles';
+import { getDisplayRoleLabel, compareUsersByAuthority } from '../../shared/utils/roles';
 import {
   Users,
   Search,
@@ -26,14 +26,6 @@ import {
   Inbox
 } from 'lucide-react';
 
-const DEPARTMENTS = [
-  'Department of Computer Science',
-  'Department of Information Technology',
-  'Department of Information Systems',
-  'College of Computer Science',
-  'Office of the College Registrar',
-  'Office of the Dean'
-];
 
 interface DropdownOption {
   value: string;
@@ -278,16 +270,22 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
     });
   }, [db?.users, isDean, effectiveDeanCollegeId, deanCollegeName]);
 
-  // Dynamically aggregated departments from base list and all active users
+  // Dynamically aggregated departments from registered hierarchy and all active users
   const allDepartments = useMemo(() => {
-    const deptSet = new Set<string>(DEPARTMENTS);
+    const deptSet = new Set<string>();
+    (departments || []).forEach(d => {
+      if (d.name) deptSet.add(d.name.trim());
+    });
+    if (deptSet.size === 0) {
+      deptSet.add('Department of Computer Science');
+    }
     (db?.users || []).forEach(u => {
       if (u?.department && typeof u.department === 'string') {
         deptSet.add(u.department.trim());
       }
     });
     return Array.from(deptSet).sort();
-  }, [db?.users]);
+  }, [departments, db?.users]);
 
   // Available departments scoped to Dean's college when viewing as Dean
   const availableDepartments = useMemo(() => {
@@ -311,7 +309,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
   // Filtered accounts list with complete null safety
   const filteredUsers = useMemo(() => {
     const userList = scopedDirectoryUsers;
-    return userList.filter(user => {
+    const filtered = userList.filter(user => {
       if (!user) return false;
 
       // Role filter
@@ -340,6 +338,8 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
 
       return true;
     });
+
+    return [...filtered].sort(compareUsersByAuthority);
   }, [scopedDirectoryUsers, roleFilter, departmentFilter, searchQuery]);
 
   // Custom Dropdown option definitions scoped by available departments
@@ -488,7 +488,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
         };
       case 'Staff':
         return {
-          label: 'Registrar / staff',
+          label: 'Staff',
           badgeClass: 'bg-muted text-muted-foreground border-border',
           icon: <ShieldCheck className="w-3 h-3" />
         };

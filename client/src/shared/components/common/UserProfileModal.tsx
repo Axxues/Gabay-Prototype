@@ -62,7 +62,7 @@ export const UserProfileModal: React.FC = () => {
       icon: <UserCheck className="w-3.5 h-3.5" />
     },
     staff: {
-      label: 'REGISTRAR / STAFF',
+      label: 'STAFF',
       style: 'bg-primary/10 text-primary border-primary/20',
       icon: <ShieldCheck className="w-3.5 h-3.5" />
     },

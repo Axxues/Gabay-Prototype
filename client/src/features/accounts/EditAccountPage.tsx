@@ -175,8 +175,8 @@ export const EditAccountPage: React.FC<EditAccountPageProps> = ({ user, onNaviga
   ];
 
   const previewMeta = useMemo(() => {
-    const defaultTitle = formRole === 'student' ? 'Student' : formRole === 'faculty' ? 'Faculty Instructor' : formRole === 'admin' ? 'Administrator' : 'Staff / Registrar Aide';
-    const roleLabel = formRole === 'admin' ? 'Admin' : formRole === 'faculty' ? 'Faculty' : formRole === 'staff' ? 'Registrar / staff' : 'Student';
+    const defaultTitle = formRole === 'student' ? 'Student' : formRole === 'faculty' ? 'Faculty Instructor' : formRole === 'admin' ? 'Administrator' : 'Staff';
+    const roleLabel = formRole === 'admin' ? 'Admin' : formRole === 'faculty' ? 'Faculty' : formRole === 'staff' ? 'Staff' : 'Student';
     return { defaultTitle, roleLabel };
   }, [formRole]);
 

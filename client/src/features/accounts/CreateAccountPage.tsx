@@ -174,8 +174,8 @@ export const CreateAccountPage: React.FC<CreateAccountPageProps> = ({ onNavigate
   ];
 
   const previewMeta = useMemo(() => {
-    const defaultTitle = formRole === 'student' ? 'Student' : formRole === 'faculty' ? 'Faculty Instructor' : formRole === 'admin' ? 'Administrator' : 'Staff / Registrar Aide';
-    const roleLabel = formRole === 'admin' ? 'ADMIN' : formRole === 'faculty' ? 'FACULTY' : formRole === 'staff' ? 'REGISTRAR / STAFF' : 'STUDENT';
+    const defaultTitle = formRole === 'student' ? 'Student' : formRole === 'faculty' ? 'Faculty Instructor' : formRole === 'admin' ? 'Administrator' : 'Staff';
+    const roleLabel = formRole === 'admin' ? 'ADMIN' : formRole === 'faculty' ? 'FACULTY' : formRole === 'staff' ? 'STAFF' : 'STUDENT';
     return { defaultTitle, roleLabel };
   }, [formRole]);
 
@@ -433,7 +433,7 @@ export const CreateAccountPage: React.FC<CreateAccountPageProps> = ({ onNavigate
               </div>
               <div>
                 <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold border bg-muted text-muted-foreground border-border">
-                  {formRole === 'admin' ? 'Admin' : formRole === 'faculty' ? 'Faculty' : formRole === 'staff' ? 'Registrar / staff' : 'Student'}
+                  {formRole === 'admin' ? 'Admin' : formRole === 'faculty' ? 'Faculty' : formRole === 'staff' ? 'Staff' : 'Student'}
                 </span>
               </div>
               <div className="text-[11px] text-muted-foreground">

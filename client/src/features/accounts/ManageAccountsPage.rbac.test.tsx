@@ -512,4 +512,84 @@ describe('ManageAccountsPage RBAC & Verification Queue', () => {
     const facRow = screen.getByText('Faculty User').closest('tr');
     expect(within(facRow!).getByText('Faculty')).toBeInTheDocument();
   });
+
+  it('9. sorts directory table accounts strictly by authority hierarchy: admin, dean, chair, faculty, staff, student', () => {
+    mocks.mockState.activeRole = 'superadmin';
+    mocks.mockState.activeUser = {
+      id: 'admin-1',
+      name: 'Jayvee Admin',
+      role: 'superadmin',
+      adminSubrole: 'chancellor',
+    };
+    mocks.mockState.db.users = [
+      {
+        id: 'u-stu',
+        name: 'Dup Student',
+        email: 'dup@dmmmsu.edu.ph',
+        role: 'student',
+        collegeId: 'col-ccs',
+        department: 'Department of Computer Science',
+      },
+      {
+        id: 'u-chair',
+        name: 'Brody Chair',
+        email: 'chair@dmmmsu.edu.ph',
+        role: 'admin',
+        adminSubrole: 'chairperson',
+        collegeId: 'col-ccs',
+        department: 'Department of Computer Science',
+      },
+      {
+        id: 'u-staff',
+        name: 'Staff Aide',
+        email: 'staff@dmmmsu.edu.ph',
+        role: 'staff',
+        collegeId: 'col-ccs',
+        department: 'Department of Computer Science',
+      },
+      {
+        id: 'u-dean',
+        name: 'Eleanor Dean',
+        email: 'dean@dmmmsu.edu.ph',
+        role: 'admin',
+        adminSubrole: 'dean',
+        collegeId: 'col-ccs',
+        department: 'College of Computer Science',
+      },
+      {
+        id: 'u-fac',
+        name: 'Prof Evelyn',
+        email: 'evelyn@dmmmsu.edu.ph',
+        role: 'faculty',
+        collegeId: 'col-ccs',
+        department: 'Department of Computer Science',
+      },
+      {
+        id: 'u-admin',
+        name: 'Jayvee Admin',
+        email: 'jayvee@dmmmsu.edu.ph',
+        role: 'superadmin',
+        adminSubrole: 'chancellor',
+        collegeId: 'col-ccs',
+        department: 'College of Information Technology',
+      },
+    ];
+
+    render(<ManageAccountsPage />);
+
+    const rows = screen.getAllByRole('row').slice(1);
+    const renderedNames = rows.map(r => {
+      const match = within(r).queryByText(/Jayvee Admin|Eleanor Dean|Brody Chair|Prof Evelyn|Staff Aide|Dup Student/);
+      return match ? match.textContent : '';
+    }).filter(Boolean);
+
+    expect(renderedNames).toEqual([
+      expect.stringContaining('Jayvee Admin'),
+      expect.stringContaining('Eleanor Dean'),
+      expect.stringContaining('Brody Chair'),
+      expect.stringContaining('Prof Evelyn'),
+      expect.stringContaining('Staff Aide'),
+      expect.stringContaining('Dup Student'),
+    ]);
+  });
 });
