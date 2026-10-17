@@ -44,12 +44,14 @@ export const RoleGuard: React.FC<RoleGuardProps> = ({
             </div>
 
             <div className="pt-2 flex items-center space-x-3">
-              <button
-                onClick={() => setIsRoleModalOpen(true)}
-                className="px-4 py-2 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all shadow-primary-sm active:scale-[0.98] cursor-pointer"
-              >
-                Switch Role to Test
-              </button>
+              {import.meta.env.DEV && (
+                <button
+                  onClick={() => setIsRoleModalOpen(true)}
+                  className="px-4 py-2 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all shadow-primary-sm active:scale-[0.98] cursor-pointer"
+                >
+                  Switch Role to Test
+                </button>
+              )}
               <button
                 onClick={() => window.history.back()}
                 className="inline-flex items-center space-x-1.5 px-4 py-2 text-xs font-bold border border-border text-foreground rounded-xl hover:bg-muted transition-colors cursor-pointer"
