@@ -9,6 +9,11 @@ import { LoginPage } from './LoginPage';
 const mockRegisterAccount = vi.fn();
 const mockActivateEmail = vi.fn();
 const mockShowAlert = vi.fn();
+const mockSendActivationEmail = vi.fn().mockResolvedValue({ success: true });
+
+vi.mock('../../shared/api/emailApi', () => ({
+  sendActivationEmail: (...args: any[]) => mockSendActivationEmail(...args),
+}));
 
 const mockColleges = [
   { id: 'col-ccs', name: 'College of Computer Science', code: 'CCS' },
@@ -21,6 +26,8 @@ const mockDepartments = [
   { id: 'dept-eled', collegeId: 'col-coe', name: 'Department of Elementary Education', code: 'ELED' },
 ];
 
+const mockLogout = vi.fn();
+
 vi.mock('../../shared/context/LMSContext', () => ({
   useLMS: () => ({
     registerAccount: mockRegisterAccount,
@@ -31,8 +38,10 @@ vi.mock('../../shared/context/LMSContext', () => ({
     theme: 'light',
     toggleTheme: vi.fn(),
     login: vi.fn(),
+    logout: mockLogout,
   }),
 }));
+
 
 describe('RegisterPage Component', () => {
   beforeEach(() => {
@@ -58,7 +67,7 @@ describe('RegisterPage Component', () => {
     expect(screen.getByLabelText(/institutional email/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/id number/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/college/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/department/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/program|department/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/^password/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/confirm password/i)).toBeInTheDocument();
 
@@ -74,13 +83,13 @@ describe('RegisterPage Component', () => {
     );
 
     expect(screen.getByLabelText(/^college/i)).toBeRequired();
-    expect(screen.getByLabelText(/^department/i)).toBeRequired();
+    expect(screen.getByLabelText(/^program|^department/i)).toBeRequired();
 
     // With nothing selected, College is invalid (required semantics)
     expect(screen.getByLabelText(/^college/i)).toBeInvalid();
 
     // Department stays disabled until a college is chosen, then it too is required
-    const departmentSelect = screen.getByLabelText(/^department/i);
+    const departmentSelect = screen.getByLabelText(/^program|^department/i);
     expect(departmentSelect).toBeDisabled();
 
     fireEvent.change(screen.getByLabelText(/^college/i), { target: { value: 'col-ccs' } });
@@ -89,7 +98,7 @@ describe('RegisterPage Component', () => {
 
     // Required markers are shown on both labels
     expect(screen.getByText('College *')).toBeInTheDocument();
-    expect(screen.getByText('Department *')).toBeInTheDocument();
+    expect(screen.getByText(/Program \*|Department \*/)).toBeInTheDocument();
   });
 
   it('blocks submission when College and Department are not selected', async () => {
@@ -123,7 +132,7 @@ describe('RegisterPage Component', () => {
     );
 
     const collegeSelect = screen.getByLabelText(/college/i) as HTMLSelectElement;
-    const departmentSelect = screen.getByLabelText(/department/i) as HTMLSelectElement;
+    const departmentSelect = screen.getByLabelText(/program|department/i) as HTMLSelectElement;
 
     // Initially no college selected or default option
     fireEvent.change(collegeSelect, { target: { value: 'col-ccs' } });
@@ -156,7 +165,7 @@ describe('RegisterPage Component', () => {
     fireEvent.change(screen.getByLabelText(/last name/i), { target: { value: 'Santos' } });
     fireEvent.change(screen.getByLabelText(/institutional email/i), { target: { value: 'msantos@dmmmsu.edu.ph' } });
     fireEvent.change(screen.getByLabelText(/college/i), { target: { value: 'col-ccs' } });
-    fireEvent.change(screen.getByLabelText(/department/i), { target: { value: 'Department of Computer Science' } });
+    fireEvent.change(screen.getByLabelText(/program|department/i), { target: { value: 'Department of Computer Science' } });
     fireEvent.change(screen.getByLabelText(/^password/i), { target: { value: 'password123' } });
     fireEvent.change(screen.getByLabelText(/confirm password/i), { target: { value: 'password123' } });
 
@@ -177,7 +186,7 @@ describe('RegisterPage Component', () => {
     fireEvent.change(screen.getByLabelText(/last name/i), { target: { value: 'Santos' } });
     fireEvent.change(screen.getByLabelText(/id number/i), { target: { value: '23110823' } });
     fireEvent.change(screen.getByLabelText(/college/i), { target: { value: 'col-ccs' } });
-    fireEvent.change(screen.getByLabelText(/department/i), { target: { value: 'Department of Computer Science' } });
+    fireEvent.change(screen.getByLabelText(/program|department/i), { target: { value: 'Department of Computer Science' } });
     fireEvent.change(screen.getByLabelText(/^password/i), { target: { value: 'password123' } });
     fireEvent.change(screen.getByLabelText(/confirm password/i), { target: { value: 'password123' } });
 
@@ -219,7 +228,7 @@ describe('RegisterPage Component', () => {
     });
     fireEvent.change(screen.getByLabelText(/id number/i), { target: { value: '23110823' } });
     fireEvent.change(screen.getByLabelText(/college/i), { target: { value: 'col-ccs' } });
-    fireEvent.change(screen.getByLabelText(/department/i), { target: { value: 'Department of Computer Science' } });
+    fireEvent.change(screen.getByLabelText(/program|department/i), { target: { value: 'Department of Computer Science' } });
     fireEvent.change(screen.getByLabelText(/^password/i), { target: { value: 'secretPass12' } });
     fireEvent.change(screen.getByLabelText(/confirm password/i), { target: { value: 'secretPass12' } });
 
@@ -235,7 +244,7 @@ describe('RegisterPage Component', () => {
     expect(screen.queryByText(/institutional email must end with/i)).not.toBeInTheDocument();
   });
 
-  it('submits registration successfully and displays email activation modal with simulated link', async () => {
+  it('submits registration successfully, dispatches activation email, and shows modal with Okay button without exposing the link', async () => {
     mockRegisterAccount.mockResolvedValueOnce({
       id: 'reg-101',
       activationToken: 'token-xyz-123',
@@ -264,7 +273,7 @@ describe('RegisterPage Component', () => {
     fireEvent.change(screen.getByLabelText(/institutional email/i), { target: { value: 'jdelacruz@dmmmsu.edu.ph' } });
     fireEvent.change(screen.getByLabelText(/id number/i), { target: { value: '23110823' } });
     fireEvent.change(screen.getByLabelText(/college/i), { target: { value: 'col-ccs' } });
-    fireEvent.change(screen.getByLabelText(/department/i), { target: { value: 'Department of Computer Science' } });
+    fireEvent.change(screen.getByLabelText(/program|department/i), { target: { value: 'Department of Computer Science' } });
     fireEvent.change(screen.getByLabelText(/^password/i), { target: { value: 'secretPass12' } });
     fireEvent.change(screen.getByLabelText(/confirm password/i), { target: { value: 'secretPass12' } });
 
@@ -286,11 +295,81 @@ describe('RegisterPage Component', () => {
       );
     });
 
-    // Activation link modal
-    expect(await screen.findByText(/registration submitted|account registration submitted/i)).toBeInTheDocument();
-    expect(screen.getByText(/\/activate\?token=token-xyz-123/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /copy activation link/i })).toBeInTheDocument();
+    // Email dispatch helper called
+    await waitFor(() => {
+      expect(mockSendActivationEmail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          email: 'jdelacruz@dmmmsu.edu.ph',
+          activationUrl: expect.stringContaining('/activate?token=token-xyz-123'),
+        })
+      );
+    });
+
+    // Activation link modal shows email-sent notification
+    expect(await screen.findByText(/registration submitted/i)).toBeInTheDocument();
+    expect(screen.getByText(/an activation link is sent to your email/i)).toBeInTheDocument();
+
+    // Raw link and direct activation buttons must NOT be present
+    expect(screen.queryByText(/\/activate\?token=token-xyz-123/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /copy activation link/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /activate now/i })).not.toBeInTheDocument();
+
+    // Single Okay button
+    const okayButton = screen.getByRole('button', { name: /okay/i });
+    expect(okayButton).toBeInTheDocument();
   });
+
+  it('does not display confirmation modal and shows error alert when email dispatch fails', async () => {
+    mockRegisterAccount.mockResolvedValueOnce({
+      id: 'reg-fail-email',
+      firstName: 'Ana',
+      lastName: 'Cruz',
+      email: 'acruz@dmmmsu.edu.ph',
+      studentId: '231-1082-4',
+      role: 'student',
+      collegeId: 'col-ccs',
+      department: 'Department of Computer Science',
+      activationToken: 'token-fail-123',
+      registeredAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      status: 'pending',
+      emailVerified: false,
+    });
+
+    mockSendActivationEmail.mockResolvedValueOnce({
+      success: false,
+      message: 'SMTP connection failed. Unable to deliver activation email.',
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/register']}>
+        <RegisterPage />
+      </MemoryRouter>
+    );
+
+    fireEvent.change(screen.getByLabelText(/first name/i), { target: { value: 'Ana' } });
+    fireEvent.change(screen.getByLabelText(/last name/i), { target: { value: 'Cruz' } });
+    fireEvent.change(screen.getByLabelText(/institutional email/i), {
+      target: { value: 'acruz@dmmmsu.edu.ph' },
+    });
+    fireEvent.change(screen.getByLabelText(/id number/i), { target: { value: '231-1082-4' } });
+    fireEvent.change(screen.getByLabelText(/college/i), { target: { value: 'col-ccs' } });
+    fireEvent.change(screen.getByLabelText(/program|department/i), {
+      target: { value: 'Department of Computer Science' },
+    });
+    fireEvent.change(screen.getByLabelText(/^password/i), { target: { value: 'secretPass12' } });
+    fireEvent.change(screen.getByLabelText(/confirm password/i), { target: { value: 'secretPass12' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /register|create account/i }));
+
+    // Error message must be displayed
+    expect(await screen.findByText(/SMTP connection failed/i)).toBeInTheDocument();
+
+    // Confirmation modal must NOT appear
+    expect(screen.queryByText(/registration submitted/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/an activation link is sent to your email/i)).not.toBeInTheDocument();
+  });
+
 
   it('automatically verifies token when accessed at /activate?token=...', async () => {
     mockActivateEmail.mockResolvedValueOnce({
@@ -309,7 +388,37 @@ describe('RegisterPage Component', () => {
     });
 
     expect(await screen.findByText(/email address successfully verified/i)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /back to sign in|proceed to sign in/i })).toHaveAttribute('href', '/login');
+    const backLink = screen.getByRole('link', { name: /back to sign in|proceed to sign in/i });
+    expect(backLink).toHaveAttribute('href', '/login');
+
+    fireEvent.click(backLink);
+    expect(mockLogout).toHaveBeenCalled();
+  });
+
+  it('navigates to /login when clicking Back to Sign In after email verification', async () => {
+    mockActivateEmail.mockResolvedValueOnce({
+      success: true,
+      message: 'Email address successfully verified.',
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/activate?token=valid-token-route']}>
+        <Routes>
+          <Route path="/activate" element={<RegisterPage />} />
+          <Route path="/login" element={<div>Sign In Screen Target</div>} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(mockActivateEmail).toHaveBeenCalledWith('valid-token-route');
+    });
+
+    const backLink = await screen.findByRole('link', { name: /back to sign in/i });
+    fireEvent.click(backLink);
+
+    expect(mockLogout).toHaveBeenCalled();
+    expect(await screen.findByText('Sign In Screen Target')).toBeInTheDocument();
   });
 
   it('shows error state when activation token is invalid or expired', async () => {

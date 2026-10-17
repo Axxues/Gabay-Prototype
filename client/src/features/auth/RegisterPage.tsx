@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Link, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
+
 import { useLMS } from '../../shared/context/LMSContext';
 import { formatIdNumber, isValidIdNumber, ID_NUMBER_EXAMPLE } from '../../shared/utils/idNumber';
 import { isValidInstitutionalEmail, INSTITUTIONAL_EMAIL_REQUIREMENT } from '../../shared/utils/institutionalEmail';
@@ -16,14 +17,12 @@ import {
   GraduationCap,
   UserCheck,
   ShieldCheck,
-  Copy,
-  Check,
   ArrowRight,
-  ExternalLink
 } from 'lucide-react';
+import { sendActivationEmail } from '../../shared/api/emailApi';
 
 export const RegisterPage: React.FC = () => {
-  const { registerAccount, activateEmail, colleges, departments, theme, toggleTheme } = useLMS();
+  const { registerAccount, activateEmail, colleges, departments, theme, toggleTheme, logout } = useLMS();
   const [searchParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -54,7 +53,7 @@ export const RegisterPage: React.FC = () => {
   // Modal State after registration
   const [registeredRecord, setRegisteredRecord] = useState<PendingRegistration | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [copiedLink, setCopiedLink] = useState(false);
+
 
   // Filter departments based on selected college
   const filteredDepartments = useMemo(() => {
@@ -63,31 +62,40 @@ export const RegisterPage: React.FC = () => {
   }, [departments, collegeId]);
 
   // Handle email activation when token is present
+  const activatedTokenRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (!tokenFromUrl) return;
+    if (activatedTokenRef.current === tokenFromUrl) return;
+    activatedTokenRef.current = tokenFromUrl;
 
-    let isMounted = true;
     setIsActivating(true);
 
-    activateEmail(tokenFromUrl)
+    void activateEmail(tokenFromUrl)
       .then(res => {
-        if (!isMounted) return;
         setIsActivating(false);
         setActivationResult(res);
       })
-      .catch(() => {
-        if (!isMounted) return;
+      .catch(err => {
+        console.error('Email activation error:', err);
         setIsActivating(false);
         setActivationResult({
           success: false,
           message: 'An unexpected error occurred during email activation.'
         });
       });
-
-    return () => {
-      isMounted = false;
-    };
   }, [tokenFromUrl, activateEmail]);
+
+  const handleBackToSignIn = (e?: React.MouseEvent) => {
+    if (e) e.preventDefault();
+    try {
+      logout?.();
+    } catch (err) {
+      console.warn('Error during logout:', err);
+    }
+    navigate('/login', { replace: true });
+  };
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -128,7 +136,7 @@ export const RegisterPage: React.FC = () => {
     }
 
     if (!department) {
-      setErrorMessage('Please select your department.');
+      setErrorMessage('Please select your program.');
       return;
     }
 
@@ -159,9 +167,28 @@ export const RegisterPage: React.FC = () => {
         collegeId,
         collegeName,
         department,
+        program: department,
         studentId: cleanIdNumber,
         password,
       });
+
+      // Dispatch activation link directly to user's institutional email and confirm delivery
+      const origin = window.location.origin;
+      const activationUrl = `${origin}/activate?token=${result.activationToken}`;
+      const recipientName = [firstName.trim(), middleName.trim(), lastName.trim()].filter(Boolean).join(' ');
+
+      const emailResult = await sendActivationEmail({
+        email: cleanEmail.toLowerCase(),
+        recipientName,
+        activationUrl,
+      });
+
+      if (!emailResult.success) {
+        setErrorMessage(
+          emailResult.message || 'Failed to send activation email. Please check your institutional email address or try again.'
+        );
+        return;
+      }
 
       setRegisteredRecord(result);
       setIsModalOpen(true);
@@ -172,18 +199,6 @@ export const RegisterPage: React.FC = () => {
     }
   };
 
-  const handleCopyActivationLink = async (link: string) => {
-    try {
-      if (navigator?.clipboard?.writeText) {
-        await navigator.clipboard.writeText(link);
-      }
-      setCopiedLink(true);
-      setTimeout(() => setCopiedLink(false), 2000);
-    } catch {
-      setCopiedLink(true);
-      setTimeout(() => setCopiedLink(false), 2000);
-    }
-  };
 
   // Render Token Activation Flow Screen
   if (isActivationRoute) {
@@ -230,7 +245,8 @@ export const RegisterPage: React.FC = () => {
               <div className="flex flex-col gap-2 pt-2">
                 <Link
                   to="/login"
-                  className="w-full py-2.5 bg-primary text-primary-foreground font-bold rounded-xl text-xs hover:bg-primary/90 transition-all text-center"
+                  onClick={handleBackToSignIn}
+                  className="w-full py-2.5 bg-primary text-primary-foreground font-bold rounded-xl text-xs hover:bg-primary/90 transition-all text-center block cursor-pointer"
                 >
                   Back to Sign In
                 </Link>
@@ -260,12 +276,13 @@ export const RegisterPage: React.FC = () => {
                   {activationResult.message}
                 </p>
                 <p className="text-[11px] text-muted-foreground/80 pt-1">
-                  Your registration is now pending review by your department chairperson or college dean. Once approved, you will be able to sign in.
+                  Your registration is now pending review by your program chairperson or college dean. Once approved, you will be able to sign in.
                 </p>
               </div>
               <Link
                 to="/login"
-                className="w-full py-2.5 bg-primary text-primary-foreground font-bold rounded-xl text-xs hover:bg-primary/90 transition-all flex items-center justify-center space-x-1.5 cursor-pointer block text-center"
+                onClick={handleBackToSignIn}
+                className="w-full py-2.5 bg-primary text-primary-foreground font-bold rounded-xl text-xs hover:bg-primary/90 transition-all flex items-center justify-center space-x-1.5 cursor-pointer text-center"
               >
                 <span>Back to Sign In</span>
                 <ArrowRight className="w-3.5 h-3.5" />
@@ -288,7 +305,8 @@ export const RegisterPage: React.FC = () => {
               <div className="flex flex-col gap-2 pt-2">
                 <Link
                   to="/login"
-                  className="w-full py-2.5 bg-primary text-primary-foreground font-bold rounded-xl text-xs hover:bg-primary/90 transition-all text-center"
+                  onClick={handleBackToSignIn}
+                  className="w-full py-2.5 bg-primary text-primary-foreground font-bold rounded-xl text-xs hover:bg-primary/90 transition-all text-center block cursor-pointer"
                 >
                   Back to Sign In
                 </Link>
@@ -499,7 +517,7 @@ export const RegisterPage: React.FC = () => {
             </div>
           </div>
 
-          {/* College and Department selection */}
+          {/* College and Program selection */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
               <label htmlFor="reg-college" className="text-[12px] font-semibold text-muted-foreground">
@@ -529,7 +547,7 @@ export const RegisterPage: React.FC = () => {
 
             <div className="space-y-1">
               <label htmlFor="reg-department" className="text-[12px] font-semibold text-muted-foreground">
-                Department *
+                Program *
               </label>
               <select
                 id="reg-department"
@@ -542,7 +560,7 @@ export const RegisterPage: React.FC = () => {
                 }}
                 className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-xs text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all font-sans cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <option value="">{collegeId ? 'Select Department' : 'Select a College first'}</option>
+                <option value="">{collegeId ? 'Select Program' : 'Select a College first'}</option>
                 {filteredDepartments.map(d => (
                   <option key={d.id} value={d.name}>
                     {d.name}
@@ -619,7 +637,10 @@ export const RegisterPage: React.FC = () => {
             className="w-full py-2.5 bg-primary hover:bg-primary/90 active:scale-[0.99] text-primary-foreground rounded-xl text-xs font-bold transition-all flex items-center justify-center cursor-pointer disabled:opacity-50 mt-2"
           >
             {isSubmitting ? (
-              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              <div className="flex items-center space-x-2">
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <span>Sending Activation Email...</span>
+              </div>
             ) : (
               <span>Create Account</span>
             )}
@@ -636,7 +657,7 @@ export const RegisterPage: React.FC = () => {
       </div>
     </div>
 
-      {/* Simulated Email Activation Modal */}
+      {/* Email-Only Activation Modal */}
       {isModalOpen && registeredRecord && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
           <div className="w-full max-w-md bg-card border border-border rounded-2xl p-6 sm:p-8 space-y-5 shadow-2xl text-center animate-scale-in">
@@ -644,54 +665,28 @@ export const RegisterPage: React.FC = () => {
               <CheckCircle2 className="w-6 h-6" />
             </div>
 
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <h2 className="text-lg font-bold text-foreground font-sans">
                 Registration Submitted
               </h2>
               <p className="text-xs text-muted-foreground leading-relaxed">
-                Your account application has been received. Because email dispatch is simulated in this environment, please use the activation link below to verify your email address:
+                An activation link is sent to your email (<span className="font-semibold text-foreground">{registeredRecord.email}</span>). Please check your inbox and spam folder to verify your account.
               </p>
-            </div>
-
-            {/* Link box */}
-            <div className="space-y-2">
-              <div className="p-3 bg-muted rounded-xl text-xs font-mono break-all border border-border select-all text-foreground text-left">
-                {`${window.location.origin}/activate?token=${registeredRecord.activationToken}`}
+              <div className="p-3 bg-muted/60 border border-border rounded-xl text-left text-[11px] text-muted-foreground space-y-1">
+                <p className="font-semibold text-foreground text-xs">Next Steps:</p>
+                <p>1. Open the activation link in your email to verify your address.</p>
+                <p>2. Your application will be reviewed by your program chairperson or college dean.</p>
               </div>
-              <button
-                type="button"
-                onClick={() => handleCopyActivationLink(`${window.location.origin}/activate?token=${registeredRecord.activationToken}`)}
-                className="w-full py-2 px-3 bg-muted hover:bg-accent border border-border rounded-xl text-xs font-semibold text-foreground flex items-center justify-center space-x-1.5 transition-colors cursor-pointer"
-              >
-                {copiedLink ? (
-                  <>
-                    <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                    <span>Copied!</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3.5 h-3.5 text-muted-foreground" />
-                    <span>Copy Activation Link</span>
-                  </>
-                )}
-              </button>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-2 pt-2">
+            <div className="pt-2">
               <button
                 type="button"
-                onClick={() => navigate(`/activate?token=${registeredRecord.activationToken}`)}
-                className="flex-1 py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-xl text-xs transition-all flex items-center justify-center space-x-1 cursor-pointer"
+                onClick={() => handleBackToSignIn()}
+                className="w-full py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-xl text-xs transition-all flex items-center justify-center cursor-pointer shadow-xs"
               >
-                <span>Activate Now</span>
-                <ExternalLink className="w-3.5 h-3.5" />
+                Okay
               </button>
-              <Link
-                to="/login"
-                className="flex-1 py-2.5 bg-muted hover:bg-muted/80 text-foreground font-semibold rounded-xl text-xs border border-border transition-all flex items-center justify-center cursor-pointer text-center"
-              >
-                Back to Sign In
-              </Link>
             </div>
           </div>
         </div>

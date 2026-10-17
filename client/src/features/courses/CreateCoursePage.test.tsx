@@ -19,6 +19,15 @@ vi.mock('../../shared/context/LMSContext', () => ({
   generateCourseJoinCode: (_courses: any[], prefix?: string) => `${prefix || 'GBY'}-TEST`,
 }));
 
+vi.mock('../../shared/utils/fileUploader', () => ({
+  uploadFileToPublic: vi.fn().mockResolvedValue({
+    name: 'custom_banner.png',
+    size: '1.2 MB',
+    url: '/uploads/custom_banner.png',
+    isImage: true,
+  }),
+}));
+
 import { CreateCoursePage } from './CreateCoursePage';
 
 describe('CreateCoursePage', () => {
@@ -105,6 +114,78 @@ describe('CreateCoursePage', () => {
       title: 'Calculus I',
       joinCode: 'MATH 101-TEST',
     }));
+  });
+
+  test('switching to Upload File tab and uploading an image displays the image preview banner and metadata', async () => {
+    const { fireEvent, act, waitFor } = await import('@testing-library/react');
+
+    render(
+      <CreateCoursePage
+        onNavigateCourse={vi.fn()}
+        onNavigateTab={vi.fn()}
+      />
+    );
+
+    // Switch to Upload File tab
+    const uploadTabBtn = screen.getByRole('button', { name: /upload file/i });
+    fireEvent.click(uploadTabBtn);
+
+    // Initially shows dropzone
+    expect(screen.getByText(/click to browse or drag & drop/i)).toBeInTheDocument();
+
+    // Find the hidden file input
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    expect(fileInput).toBeTruthy();
+
+    const fakeFile = new File(['dummy-content'], 'banner.png', { type: 'image/png' });
+
+    await act(async () => {
+      fireEvent.change(fileInput, { target: { files: [fakeFile] } });
+    });
+
+    // Preview should now be shown after simulated upload completes
+    await waitFor(() => {
+      expect(screen.getByAltText('Uploaded course cover')).toBeInTheDocument();
+    });
+
+    const previewImg = screen.getByAltText('Uploaded course cover') as HTMLImageElement;
+    expect(previewImg.src).toContain('/uploads/custom_banner.png');
+
+    // Filename and success indicator should be visible
+    expect(screen.getByText('custom_banner.png')).toBeInTheDocument();
+    expect(screen.getByText(/uploaded & ready/i)).toBeInTheDocument();
+
+    // Clicking remove clears the image and returns to dropzone
+    const removeBtns = screen.getAllByRole('button', { name: /^remove$/i });
+    expect(removeBtns.length).toBeGreaterThan(0);
+    fireEvent.click(removeBtns[0]);
+
+    expect(screen.getByText(/click to browse or drag & drop/i)).toBeInTheDocument();
+    expect(screen.queryByAltText('Uploaded course cover')).not.toBeInTheDocument();
+  });
+
+  test('live course card preview dynamically mirrors entered title, code, section, and instructor', () => {
+    const { fireEvent } = require('@testing-library/react');
+
+    render(
+      <CreateCoursePage
+        onNavigateCourse={vi.fn()}
+        onNavigateTab={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText(/live course card preview/i)).toBeInTheDocument();
+    expect(screen.getByText(/COURSE CODE • SECTION/i)).toBeInTheDocument();
+    expect(screen.getByText(/Course Title Preview/i)).toBeInTheDocument();
+
+    // Type course code, section, title
+    fireEvent.change(screen.getByPlaceholderText(/CMSC 180/i), { target: { value: 'CSPC 112' } });
+    fireEvent.change(screen.getByPlaceholderText(/4-E/i), { target: { value: '4-E' } });
+    fireEvent.change(screen.getByPlaceholderText(/Artificial Intelligence/i), { target: { value: 'Artificial Intelligence & Expert Systems' } });
+
+    expect(screen.getByText('CSPC 112 • 4-E')).toBeInTheDocument();
+    expect(screen.getByText('Artificial Intelligence & Expert Systems')).toBeInTheDocument();
+    expect(screen.getAllByText('Eleanor').length).toBe(2);
   });
 });
 

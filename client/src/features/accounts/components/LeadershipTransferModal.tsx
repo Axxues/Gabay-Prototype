@@ -59,13 +59,14 @@ export const LeadershipTransferModal: React.FC<LeadershipTransferModalProps> = (
         uId = col?.id || currentLeader?.collegeId || 'col-ccs';
         uName = col?.name || currentLeader?.collegeName || 'College of Computer Science';
       } else {
+        const leaderUnit = currentLeader?.program || currentLeader?.department;
         const dept = (departments || []).find(
           d =>
-            d.id === currentLeader?.department ||
-            (currentLeader?.department && d.name.toLowerCase() === currentLeader.department.toLowerCase())
+            d.id === leaderUnit ||
+            (leaderUnit && d.name.toLowerCase() === leaderUnit.toLowerCase())
         );
-        uId = dept?.id || currentLeader?.department || 'dept-cs';
-        uName = dept?.name || currentLeader?.department || 'Department of Computer Science';
+        uId = dept?.id || leaderUnit || 'dept-cs';
+        uName = dept?.name || leaderUnit || 'Program in Computer Science';
       }
     }
 
@@ -87,10 +88,13 @@ export const LeadershipTransferModal: React.FC<LeadershipTransferModalProps> = (
           (currentLeader?.collegeName && u.collegeName === currentLeader.collegeName);
         return matchesCollege;
       } else {
+        const uDept = u.program || u.department;
+        const leaderDept = currentLeader?.program || currentLeader?.department;
         const matchesDept =
-          u.department === unitName ||
-          u.department === currentLeader?.department ||
-          u.department === unitId;
+          uDept === unitName ||
+          uDept === leaderDept ||
+          uDept === unitId ||
+          u.department === unitName;
         return matchesDept;
       }
     });
@@ -107,7 +111,7 @@ export const LeadershipTransferModal: React.FC<LeadershipTransferModalProps> = (
   if (!isOpen) return null;
 
   const currentRoleTitle =
-    roleType === 'dean' ? `Dean of ${unitName}` : `Chairperson of ${unitName}`;
+    roleType === 'dean' ? `Dean of ${unitName}` : `Program Chairperson of ${unitName}`;
 
   const handleProceedToConfirm = () => {
     if (!selectedSuccessorId) return;
@@ -239,7 +243,7 @@ export const LeadershipTransferModal: React.FC<LeadershipTransferModalProps> = (
                   <option value="">Choose an eligible faculty member...</option>
                   {eligibleFaculty.map(faculty => (
                     <option key={faculty.id} value={faculty.id}>
-                      {faculty.name} ({faculty.email}) - {faculty.department}
+                      {faculty.name} ({faculty.email}) - {faculty.program || faculty.department}
                     </option>
                   ))}
                 </select>

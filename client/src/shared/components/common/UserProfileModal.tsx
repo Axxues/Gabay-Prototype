@@ -133,7 +133,7 @@ export const UserProfileModal: React.FC = () => {
                 {currentUser.name}
               </h2>
               <p className="text-xs text-muted-foreground font-sans mt-0.5">
-                {currentUser.title} • {currentUser.department}
+                {currentUser.title} • {currentUser.program || currentUser.department}
               </p>
             </div>
 

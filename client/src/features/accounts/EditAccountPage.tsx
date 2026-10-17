@@ -19,15 +19,6 @@ import {
   CheckCircle2
 } from 'lucide-react';
 
-const DEPARTMENTS = [
-  'Department of Computer Science',
-  'Department of Information Technology',
-  'Department of Information Systems',
-  'College of Computer Science',
-  'Office of the College Registrar',
-  'Office of the Dean'
-];
-
 interface DropdownOption {
   value: string;
   label: string;
@@ -151,21 +142,27 @@ interface EditAccountPageProps {
 }
 
 export const EditAccountPage: React.FC<EditAccountPageProps> = ({ user, onNavigateTab }) => {
-  const { updateUser, showAlert } = useLMS();
+  const { updateUser, showAlert, programs, departments } = useLMS();
 
   const [formEmail, setFormEmail] = useState(user.email || '');
   const [formIdNumber, setFormIdNumber] = useState(user.studentId || '');
   const [formRole, setFormRole] = useState<UserRole>(user.role);
-  const [formDepartment, setFormDepartment] = useState(user.department || 'Department of Computer Science');
+  const [formDepartment, setFormDepartment] = useState(user.program || user.department || 'Program in Computer Science');
   const [formPassword, setFormPassword] = useState(user.password || 'gabay2026');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const departmentSelectOptions: DropdownOption[] = useMemo(() => DEPARTMENTS.map(d => ({
-    value: d,
-    label: d,
-    icon: <Building className="w-3.5 h-3.5 text-muted-foreground" />
-  })), []);
+  const departmentSelectOptions: DropdownOption[] = useMemo(() => {
+    const list = (programs || departments || []).map(p => p.name);
+    const defaultList = list.length > 0 ? list : ['Program in Computer Science'];
+    const extras = ['College of Computer Science', 'Office of the College Registrar', 'Office of the Dean'];
+    const combined = Array.from(new Set([...defaultList, ...extras]));
+    return combined.map(d => ({
+      value: d,
+      label: d,
+      icon: <Building className="w-3.5 h-3.5 text-muted-foreground" />
+    }));
+  }, [programs, departments]);
 
   const roleOptions: DropdownOption[] = [
     { value: 'faculty', label: 'Faculty Instructor', icon: <UserCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> },
@@ -218,6 +215,7 @@ export const EditAccountPage: React.FC<EditAccountPageProps> = ({ user, onNaviga
         email: cleanEmail,
         role: formRole,
         department: formDepartment,
+        program: formDepartment,
         studentId: cleanIdNumber,
         password: formPassword.trim() || user.password || 'gabay2026'
       });
@@ -225,7 +223,7 @@ export const EditAccountPage: React.FC<EditAccountPageProps> = ({ user, onNaviga
 
       showAlert({
         title: 'Account Updated',
-        message: `Account settings for "${cleanEmail}" (email, password, role, department, ID number) have been saved successfully.`,
+        message: `Account settings for "${cleanEmail}" (email, password, role, program, ID number) have been saved successfully.`,
         type: 'success'
       });
       onNavigateTab('accounts');
@@ -345,7 +343,7 @@ export const EditAccountPage: React.FC<EditAccountPageProps> = ({ user, onNaviga
           <div className="bg-card border border-border rounded-2xl p-5 sm:p-6 shadow-none space-y-4">
             <div className="flex items-center space-x-2 border-b border-border/60 pb-3">
               <span className="text-[12px] font-semibold text-muted-foreground">
-                2. Role & department selection
+                2. Role & program selection
               </span>
             </div>
             <div>
@@ -361,14 +359,14 @@ export const EditAccountPage: React.FC<EditAccountPageProps> = ({ user, onNaviga
             </div>
             <div>
               <label className="block text-[12px] font-semibold text-muted-foreground mb-1.5">
-                Department *
+                Program *
               </label>
               <CustomDropdown
                 value={formDepartment}
                 onChange={setFormDepartment}
                 options={departmentSelectOptions}
                 searchable
-                placeholder="Select Department"
+                placeholder="Select Program"
               />
             </div>
           </div>
@@ -450,7 +448,7 @@ export const EditAccountPage: React.FC<EditAccountPageProps> = ({ user, onNaviga
             <div className="space-y-2 text-[11px] text-muted-foreground leading-relaxed">
               <div className="flex items-start space-x-2">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 mt-0.5 shrink-0" />
-                <span>Changes to <span className="font-semibold text-foreground">email, role, department, and password</span> apply immediately.</span>
+                <span>Changes to <span className="font-semibold text-foreground">email, role, program, and password</span> apply immediately.</span>
               </div>
               <div className="flex items-start space-x-2">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 mt-0.5 shrink-0" />

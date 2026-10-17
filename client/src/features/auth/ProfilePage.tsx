@@ -420,7 +420,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                 </span>
               </div>
               <p className="text-xs text-muted-foreground mt-1">
-                {currentUser.title} • {currentUser.department}
+                {currentUser.title} • {currentUser.program || currentUser.department}
               </p>
               <p className="text-[11px] text-muted-foreground/80 mt-0.5 truncate">
                 {currentUser.email}{currentUser.studentId ? ` • ${currentUser.studentId}` : ''}

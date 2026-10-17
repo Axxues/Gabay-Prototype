@@ -60,15 +60,20 @@ describe('RBAC Navigation Permissions', () => {
     expect(pathToTab('/governance')).toEqual({ tab: 'governance' });
   });
 
-  it('maps department details route under governance correctly', () => {
+  it('maps department and program details route under governance correctly', () => {
+    expect(pathToTab('/governance/programs/dept-cs')).toEqual({
+      tab: 'governance',
+      subTab: 'program-details',
+      departmentId: 'dept-cs',
+    });
     expect(pathToTab('/governance/departments/dept-cs')).toEqual({
       tab: 'governance',
-      subTab: 'department-details',
+      subTab: 'program-details',
       departmentId: 'dept-cs',
     });
     expect(pathToTab('/governance/departments/dept%201')).toEqual({
       tab: 'governance',
-      subTab: 'department-details',
+      subTab: 'program-details',
       departmentId: 'dept 1',
     });
   });

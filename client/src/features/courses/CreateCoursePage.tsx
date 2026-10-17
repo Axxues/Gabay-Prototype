@@ -20,7 +20,8 @@ import {
   RefreshCw,
   CalendarDays,
   ChevronDown,
-  Loader2
+  Loader2,
+  Eye
 } from 'lucide-react';
 
 const PRESET_COLORS = [
@@ -531,7 +532,7 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
                       </span>
                     </div>
                     <p className="text-[11px] font-sans text-muted-foreground mt-0.5">
-                      {activeUser.email} • {activeUser.department}
+                      {activeUser.email} • {activeUser.program || activeUser.department}
                     </p>
                   </div>
                 </div>
@@ -658,69 +659,128 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
                     onChange={handleFileUpload}
                     className="hidden"
                   />
-                  <div
-                    onDragOver={e => {
-                      e.preventDefault();
-                      if (!upload.isUploading) setIsDragging(true);
-                    }}
-                    onDragLeave={() => setIsDragging(false)}
-                    onDrop={handleDrop}
-                    onClick={() => {
-                      if (!upload.isUploading) fileInputRef.current?.click();
-                    }}
-                    aria-disabled={upload.isUploading}
-                    className={`border-2 border-dashed rounded-xl p-5 flex flex-col items-center justify-center text-center transition-all ${
-                      upload.isUploading
-                        ? 'border-border bg-muted/20 opacity-60 cursor-wait pointer-events-none'
-                        : isDragging
-                          ? 'border-primary bg-primary/10 scale-[1.01] cursor-pointer'
-                          : 'border-border hover:border-primary/50 bg-muted/20 hover:bg-muted/40 cursor-pointer'
-                    }`}
-                  >
-                    <div className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center mb-2">
-                      {upload.isUploading ? (
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                      ) : (
-                        <Upload className="w-5 h-5" />
+
+                  {upload.isUploading ? (
+                    <div className="border-2 border-dashed border-primary/40 bg-primary/5 rounded-xl p-6 flex flex-col items-center justify-center text-center">
+                      <Loader2 className="w-8 h-8 text-primary animate-spin mb-2" />
+                      <span className="text-xs font-bold text-foreground">
+                        Uploading image... {upload.progress}%
+                      </span>
+                      {upload.fileName && (
+                        <div className="w-full max-w-xs mt-3">
+                          <UploadProgress fileName={upload.fileName} progress={upload.progress} hint="Uploading image..." />
+                        </div>
                       )}
                     </div>
-                    <span className="text-xs font-bold text-foreground">
-                      {upload.isUploading ? `Uploading... ${upload.progress}%` : 'Click to browse or drag & drop'}
-                    </span>
-                    <p className="text-[10px] text-muted-foreground font-sans mt-0.5">
-                      PNG, JPG, WEBP, or GIF (up to 10MB)
-                    </p>
-                  </div>
-
-                  {upload.isUploading && upload.fileName && (
-                    <UploadProgress fileName={upload.fileName} progress={upload.progress} hint="Uploading image..." />
-                  )}
-
-                  {!upload.isUploading && uploadedFileName && courseImage.startsWith('data:') && (
-                    <div className="p-2.5 bg-muted/40 border border-border rounded-xl flex items-center justify-between">
-                      <div className="flex items-center space-x-2.5 truncate">
+                  ) : courseImage ? (
+                    <div className="space-y-2.5">
+                      <div
+                        onDragOver={e => {
+                          e.preventDefault();
+                          setIsDragging(true);
+                        }}
+                        onDragLeave={() => setIsDragging(false)}
+                        onDrop={handleDrop}
+                        className={`relative w-full h-44 rounded-xl overflow-hidden border transition-all ${
+                          isDragging ? 'border-primary ring-2 ring-primary/30 scale-[1.01]' : 'border-border'
+                        } bg-muted/20 group`}
+                      >
                         <img
                           src={courseImage}
-                          alt="Uploaded Preview"
-                          className="w-8 h-8 rounded-lg object-cover border border-border shrink-0"
+                          alt="Uploaded course cover"
+                          className="w-full h-full object-cover"
                         />
-                        <div className="truncate">
-                          <span className="text-xs font-bold text-foreground block truncate">
-                            {uploadedFileName}
-                          </span>
-                          <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-sans flex items-center space-x-1">
-                            <Check className="w-3 h-3 inline" />
-                            <span>Uploaded successfully</span>
-                          </span>
+                        {/* Hover Overlay */}
+                        <div className="absolute inset-0 bg-black/55 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2 p-4">
+                          <span className="text-white text-xs font-semibold drop-shadow">Drag a new image here or</span>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => fileInputRef.current?.click()}
+                              className="px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold rounded-lg shadow-sm transition-all flex items-center space-x-1.5 cursor-pointer"
+                            >
+                              <Upload className="w-3.5 h-3.5" />
+                              <span>Change Image</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCourseImage('');
+                                setUploadedFileName(null);
+                              }}
+                              className="px-3 py-1.5 bg-card/90 hover:bg-card text-destructive text-xs font-bold rounded-lg shadow-sm transition-all flex items-center space-x-1.5 cursor-pointer"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                              <span>Remove</span>
+                            </button>
+                          </div>
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="text-[11px] font-bold text-primary hover:underline shrink-0 ml-2 cursor-pointer"
-                      >
-                        Change
-                      </button>
+
+                      {/* Info & action strip */}
+                      <div className="p-2.5 bg-muted/40 border border-border rounded-xl flex items-center justify-between">
+                        <div className="flex items-center space-x-2.5 min-w-0">
+                          <div className="w-8 h-8 rounded-lg overflow-hidden border border-border shrink-0 bg-muted">
+                            <img src={courseImage} alt="Thumbnail" className="w-full h-full object-cover" />
+                          </div>
+                          <div className="min-w-0">
+                            <span className="text-xs font-bold text-foreground block truncate">
+                              {uploadedFileName || 'Custom cover image'}
+                            </span>
+                            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-sans flex items-center space-x-1">
+                              <Check className="w-3 h-3 inline" />
+                              <span>Uploaded & ready</span>
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2 shrink-0 ml-2">
+                          <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="text-[11px] font-bold text-primary hover:underline cursor-pointer"
+                          >
+                            Replace
+                          </button>
+                          <span className="text-muted-foreground/40 text-xs">•</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCourseImage('');
+                              setUploadedFileName(null);
+                            }}
+                            className="text-[11px] font-bold text-muted-foreground hover:text-destructive cursor-pointer"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      onDragOver={e => {
+                        e.preventDefault();
+                        if (!upload.isUploading) setIsDragging(true);
+                      }}
+                      onDragLeave={() => setIsDragging(false)}
+                      onDrop={handleDrop}
+                      onClick={() => {
+                        if (!upload.isUploading) fileInputRef.current?.click();
+                      }}
+                      className={`border-2 border-dashed rounded-xl p-5 flex flex-col items-center justify-center text-center transition-all cursor-pointer ${
+                        isDragging
+                          ? 'border-primary bg-primary/10 scale-[1.01]'
+                          : 'border-border hover:border-primary/50 bg-muted/20 hover:bg-muted/40'
+                      }`}
+                    >
+                      <div className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center mb-2">
+                        <Upload className="w-5 h-5" />
+                      </div>
+                      <span className="text-xs font-bold text-foreground">
+                        Click to browse or drag & drop
+                      </span>
+                      <p className="text-[10px] text-muted-foreground font-sans mt-0.5">
+                        PNG, JPG, WEBP, or GIF (up to 10MB)
+                      </p>
                     </div>
                   )}
                 </div>
@@ -728,7 +788,7 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
 
               {/* Mode: Custom Image URL */}
               {imageMode === 'url' && (
-                <div className="space-y-1">
+                <div className="space-y-2">
                   <label className="block text-[11px] font-sans text-muted-foreground">
                     Direct Image URL
                   </label>
@@ -745,6 +805,18 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
                       className="w-full pl-9 pr-3 py-2 bg-background border border-border focus:ring-2 focus:ring-primary/30 rounded-xl text-foreground text-xs font-sans outline-none"
                     />
                   </div>
+                  {courseImage && (
+                    <div className="relative w-full h-32 rounded-xl overflow-hidden border border-border bg-muted/20">
+                      <img
+                        src={courseImage}
+                        alt="URL Preview"
+                        className="w-full h-full object-cover"
+                        onError={e => {
+                          (e.target as HTMLElement).style.display = 'none';
+                        }}
+                      />
+                    </div>
+                  )}
                   <p className="text-[10px] text-muted-foreground font-sans">
                     Paste any public image address from Unsplash or web host.
                   </p>
@@ -823,6 +895,85 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
                   onChange={e => setCourseColor(e.target.value)}
                   className="w-full p-2 bg-background border border-border rounded-xl text-foreground font-sans text-xs uppercase placeholder:normal-case placeholder:text-muted-foreground"
                 />
+              </div>
+            </div>
+          </div>
+
+          {/* Live Course Card Preview */}
+          <div className="p-6 bg-card border border-border rounded-2xl space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-border/70">
+              <div className="flex items-center space-x-2">
+                <Eye className="w-4 h-4 text-muted-foreground" />
+                <h3 className="text-[12px] font-semibold text-muted-foreground">
+                  Live course card preview
+                </h3>
+              </div>
+              <span className="text-[10px] font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded border border-border">
+                Dashboard view
+              </span>
+            </div>
+
+            {/* Simulated Course Card */}
+            <div className="bg-card text-card-foreground border border-border rounded-2xl overflow-hidden shadow-xs">
+              {/* Card Color / Image Header */}
+              <div
+                className="h-24 p-4 flex flex-col justify-between relative overflow-hidden bg-muted/50"
+                style={
+                  courseColor
+                    ? {
+                        backgroundColor: `${courseColor}18`,
+                        boxShadow: `0 12px 32px -12px color-mix(in srgb, ${courseColor} 45%, transparent), inset 0 -28px 36px -24px color-mix(in srgb, ${courseColor} 55%, transparent)`,
+                      }
+                    : undefined
+                }
+              >
+                {courseImage && (
+                  <img
+                    src={courseImage}
+                    alt="Course Preview Cover"
+                    className="absolute inset-0 w-full h-full object-cover opacity-35 pointer-events-none"
+                  />
+                )}
+                {courseImage && courseColor && (
+                  <div
+                    className="absolute inset-0 pointer-events-none"
+                    style={{
+                      background: `linear-gradient(180deg, transparent 20%, color-mix(in srgb, ${courseColor} 40%, transparent) 100%)`,
+                    }}
+                  />
+                )}
+
+                <div className="flex items-center justify-between relative z-10">
+                  <span className="px-2.5 py-0.5 text-[10px] font-sans font-semibold bg-card/85 backdrop-blur-xs text-foreground rounded-full border border-border shadow-2xs">
+                    {courseCode || 'COURSE CODE'} • {courseSection || 'SECTION'}
+                  </span>
+                </div>
+                <h4 className="font-bold text-foreground text-[14px] leading-tight truncate relative z-10 drop-shadow-xs">
+                  {courseTitle || 'Course Title Preview'}
+                </h4>
+              </div>
+
+              {/* Card Body */}
+              <div className="p-4 space-y-2.5 text-xs font-sans">
+                <div className="flex justify-between items-center text-muted-foreground">
+                  <span>Instructor</span>
+                  <span className="font-semibold text-foreground truncate max-w-[150px]">{activeUser.name}</span>
+                </div>
+                <div className="flex justify-between items-center text-muted-foreground">
+                  <span>Academic Term</span>
+                  <span className="font-semibold text-foreground truncate max-w-[160px]">
+                    {selectedTerm?.label || courseTerm}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-muted-foreground pt-2 border-t border-border/60">
+                  <span className="flex items-center space-x-1">
+                    <KeyRound className="w-3 h-3 text-muted-foreground" />
+                    <span>Join code</span>
+                  </span>
+                  <span className="font-mono font-bold text-foreground bg-muted px-1.5 py-0.5 rounded border border-border text-[10px]">
+                    {courseJoinCode || generateCourseJoinCode(db.courses, courseCode || 'GBY')}
+                  </span>
+                </div>
               </div>
             </div>
           </div>

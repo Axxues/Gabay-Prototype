@@ -693,7 +693,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 <div className="p-3 bg-muted/40 border border-border rounded-xl space-y-1">
                   <span className="text-[12px] font-semibold font-sans text-muted-foreground">Total faculty</span>
                   <div className="text-xl font-bold font-sans text-foreground tabular-nums">
-                    {db.users.filter(u => u.role === 'faculty').length}
+                    {db.users.filter(u => u.role === 'faculty' || u.role === 'admin').length}
                   </div>
                 </div>
                 <div className="p-3 bg-muted/40 border border-border rounded-xl space-y-1">

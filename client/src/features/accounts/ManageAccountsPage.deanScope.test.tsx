@@ -201,7 +201,7 @@ describe('ManageAccountsPage - Dean Access & Full Collegiate Scoping', () => {
       render(<ManageAccountsPage />);
 
       // Open department dropdown
-      const dropdownButton = screen.getByRole('button', { name: /all departments/i });
+      const dropdownButton = screen.getByRole('button', { name: /all programs|all departments/i });
       fireEvent.click(dropdownButton);
 
       // CCS departments must be present
@@ -223,7 +223,7 @@ describe('ManageAccountsPage - Dean Access & Full Collegiate Scoping', () => {
       render(<ManageAccountsPage />);
 
       // Open department dropdown
-      const dropdownButton = screen.getByRole('button', { name: /all departments/i });
+      const dropdownButton = screen.getByRole('button', { name: /all programs|all departments/i });
       fireEvent.click(dropdownButton);
 
       // CCS departments are scoped
@@ -243,7 +243,7 @@ describe('ManageAccountsPage - Dean Access & Full Collegiate Scoping', () => {
       render(<ManageAccountsPage />);
 
       // Open department dropdown
-      const dropdownButton = screen.getByRole('button', { name: /all departments/i });
+      const dropdownButton = screen.getByRole('button', { name: /all programs|all departments/i });
       fireEvent.click(dropdownButton);
 
       // CCS departments are scoped
@@ -322,7 +322,7 @@ describe('ManageAccountsPage - Dean Access & Full Collegiate Scoping', () => {
     it('includes departments from all colleges in department filter', () => {
       render(<ManageAccountsPage />);
 
-      const dropdownButton = screen.getByRole('button', { name: /all departments/i });
+      const dropdownButton = screen.getByRole('button', { name: /all programs|all departments/i });
       fireEvent.click(dropdownButton);
 
       expect(screen.getByRole('button', { name: /Department of Computer Science/i })).toBeInTheDocument();

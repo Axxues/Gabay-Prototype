@@ -328,7 +328,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
                           />
                           <div className="min-w-0">
                             <div className="font-bold text-[13px] tracking-tight truncate">{u.name}</div>
-                            <div className="text-[11px] text-muted-foreground font-normal">{u.department}</div>
+                            <div className="text-[11px] text-muted-foreground font-normal">{u.program || u.department}</div>
                           </div>
                         </td>
                         <td className="px-4 py-3 text-muted-foreground tabular-nums">

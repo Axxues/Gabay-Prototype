@@ -161,4 +161,14 @@ describe('DashboardPage admin access', () => {
     expect(screen.getByText('College system overview')).toBeInTheDocument();
     expect(screen.getByText('Administration')).toBeInTheDocument();
   });
+
+  test('counts administrative accounts alongside faculty in the Total faculty metric', () => {
+    renderPage();
+
+    // Dean Admin (admin) + Prof (faculty) — the student is excluded
+    expect(screen.getByText('Total faculty').closest('div')).toHaveTextContent('2');
+
+    // Staff stays its own separate count
+    expect(screen.getByText('Staff accounts').closest('div')).toHaveTextContent('0');
+  });
 });

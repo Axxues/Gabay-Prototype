@@ -184,7 +184,7 @@ describe('ManageAccountsPage RBAC & Verification Queue', () => {
     expect(screen.getByText(/expires in 25 days/i)).toBeInTheDocument();
   });
 
-  it('2b. only displays pending applicants whose email is verified, hiding unverified applicants from the verification queue', () => {
+  it('2b. lists unverified applicants in the queue, flagged and not approvable', () => {
     const futureDate = new Date(Date.now() + 25 * 24 * 60 * 60 * 1000).toISOString();
     mocks.mockState.pendingRegistrations = [
       {
@@ -230,17 +230,23 @@ describe('ManageAccountsPage RBAC & Verification Queue', () => {
     const queueTab = screen.getByRole('tab', { name: /pending verifications|verification queue/i });
     fireEvent.click(queueTab);
 
-    // Only verified applicant MUST be in the document
+    // Both applicants are listed — unverified ones are flagged, not hidden
     expect(screen.getByText('Verified Applicant')).toBeInTheDocument();
     expect(screen.getByText('verified@dmmmsu.edu.ph')).toBeInTheDocument();
-    expect(screen.queryByText('Unverified Applicant')).not.toBeInTheDocument();
-    expect(screen.queryByText('unverified@dmmmsu.edu.ph')).not.toBeInTheDocument();
+    expect(screen.getByText('Unverified Applicant')).toBeInTheDocument();
+    expect(screen.getByText('unverified@dmmmsu.edu.ph')).toBeInTheDocument();
+    expect(screen.getByText(/2 applicants queued/i)).toBeInTheDocument();
 
     // Verification button for verified applicant is enabled
     const verifiedRow = screen.getByText('Verified Applicant').closest('tr')!;
     expect(within(verifiedRow).getByText(/email verified/i)).toBeInTheDocument();
     const verifiedVerifyBtn = within(verifiedRow).getByRole('button', { name: /verify/i });
     expect(verifiedVerifyBtn).not.toBeDisabled();
+
+    // Unverified applicant is flagged and cannot be approved until they confirm their email
+    const unverifiedRow = screen.getByText('Unverified Applicant').closest('tr')!;
+    expect(within(unverifiedRow).getByText(/email unverified/i)).toBeInTheDocument();
+    expect(within(unverifiedRow).getByRole('button', { name: /verify/i })).toBeDisabled();
   });
 
 

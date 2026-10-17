@@ -55,7 +55,7 @@ const EVENT_TYPE_OPTIONS: EventTypeOption[] = [
   {
     value: 'event',
     label: 'General event',
-    description: 'General activities, campus events, or departmental meetings',
+    description: 'General activities, campus events, or program meetings',
     icon: Calendar,
     iconColor: 'text-muted-foreground',
     defaultColor: '#2563eb'
@@ -765,7 +765,7 @@ export const CreateEventPage: React.FC<CreateEventPageProps> = ({
                   onChange={e => setLocation(e.target.value)}
                   placeholder={eventType === 'virtual_meeting'
                     ? 'e.g. SLUC Computer Lab 304 (optional physical backup room)'
-                    : 'e.g. SLUC CS Department Room 102, Building A'}
+                    : 'e.g. SLUC CS Program Room 102, Building A'}
                   className="w-full pl-10 pr-4 py-2.5 bg-background border border-border hover:border-primary/40 focus:border-primary rounded-xl text-foreground text-xs font-sans focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all "
                 />
               </div>

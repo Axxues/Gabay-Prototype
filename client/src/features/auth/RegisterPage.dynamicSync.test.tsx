@@ -74,7 +74,7 @@ describe('RegisterPage Dynamic Self-Registration Sync', () => {
 
     // 1. Verify that initially rendered colleges include default colleges
     const collegeSelect = screen.getByLabelText(/college/i) as HTMLSelectElement;
-    const departmentSelect = screen.getByLabelText(/department/i) as HTMLSelectElement;
+    const departmentSelect = screen.getByLabelText(/program|department/i) as HTMLSelectElement;
 
     expect(collegeSelect).toBeInTheDocument();
     expect(screen.getByRole('option', { name: /College of Computer Science/i })).toBeInTheDocument();
@@ -117,7 +117,7 @@ describe('RegisterPage Dynamic Self-Registration Sync', () => {
     expect(screen.getByRole('option', { name: /Department of Nursing/i })).toBeInTheDocument();
 
     // Verify departments from other colleges are NOT shown in CAHS
-    expect(screen.queryByRole('option', { name: /Department of Computer Science/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /(Program|Department) (in|of) Computer Science/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('option', { name: /Department of Elementary Education/i })).not.toBeInTheDocument();
 
     // Select the newly available department
@@ -127,7 +127,7 @@ describe('RegisterPage Dynamic Self-Registration Sync', () => {
     // 6. Changing college filters departments dynamically and resets department value
     fireEvent.change(collegeSelect, { target: { value: 'col-ccs' } });
     expect(departmentSelect.value).toBe('');
-    expect(screen.getByRole('option', { name: /Department of Computer Science/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /(Program|Department) (in|of) Computer Science/i })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: /Department of Nursing/i })).not.toBeInTheDocument();
 
     // Switch back to CAHS: Nursing should be present again
@@ -147,7 +147,7 @@ describe('RegisterPage Dynamic Self-Registration Sync', () => {
     );
 
     const collegeSelect = screen.getByLabelText(/college/i) as HTMLSelectElement;
-    const departmentSelect = screen.getByLabelText(/department/i) as HTMLSelectElement;
+    const departmentSelect = screen.getByLabelText(/program|department/i) as HTMLSelectElement;
 
     await act(async () => {
       await lmsContext!.addCollege({

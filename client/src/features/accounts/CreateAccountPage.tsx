@@ -19,15 +19,6 @@ import {
   CheckCircle2
 } from 'lucide-react';
 
-const DEPARTMENTS = [
-  'Department of Computer Science',
-  'Department of Information Technology',
-  'Department of Information Systems',
-  'College of Computer Science',
-  'Office of the College Registrar',
-  'Office of the Dean'
-];
-
 interface DropdownOption {
   value: string;
   label: string;
@@ -150,21 +141,27 @@ interface CreateAccountPageProps {
 }
 
 export const CreateAccountPage: React.FC<CreateAccountPageProps> = ({ onNavigateTab }) => {
-  const { createUser, showAlert } = useLMS();
+  const { createUser, showAlert, programs, departments } = useLMS();
 
   const [formEmail, setFormEmail] = useState('');
   const [formIdNumber, setFormIdNumber] = useState('');
   const [formRole, setFormRole] = useState<UserRole>('faculty');
-  const [formDepartment, setFormDepartment] = useState('Department of Computer Science');
+  const [formDepartment, setFormDepartment] = useState('Program in Computer Science');
   const [formPassword, setFormPassword] = useState('gabay2026');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const departmentSelectOptions: DropdownOption[] = useMemo(() => DEPARTMENTS.map(d => ({
-    value: d,
-    label: d,
-    icon: <Building className="w-3.5 h-3.5 text-muted-foreground" />
-  })), []);
+  const departmentSelectOptions: DropdownOption[] = useMemo(() => {
+    const list = (programs || departments || []).map(p => p.name);
+    const defaultList = list.length > 0 ? list : ['Program in Computer Science'];
+    const extras = ['College of Computer Science', 'Office of the College Registrar', 'Office of the Dean'];
+    const combined = Array.from(new Set([...defaultList, ...extras]));
+    return combined.map(d => ({
+      value: d,
+      label: d,
+      icon: <Building className="w-3.5 h-3.5 text-muted-foreground" />
+    }));
+  }, [programs, departments]);
 
   const roleOptions: DropdownOption[] = [
     { value: 'faculty', label: 'Faculty Instructor', icon: <UserCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> },
@@ -216,6 +213,7 @@ export const CreateAccountPage: React.FC<CreateAccountPageProps> = ({ onNavigate
         email: cleanEmail,
         role: formRole,
         department: formDepartment,
+        program: formDepartment,
         title: previewMeta.defaultTitle,
         studentId: cleanIdNumber,
         password: formPassword.trim() || 'gabay2026',
@@ -263,7 +261,7 @@ export const CreateAccountPage: React.FC<CreateAccountPageProps> = ({ onNavigate
                 <span>Provision college account</span>
               </h1>
               <p className="text-[13px] text-muted-foreground font-normal pl-0.5">
-                Create an official institutional account with role, department, and access credentials.
+                Create an official institutional account with role, academic program, and access credentials.
               </p>
             </div>
 
@@ -345,7 +343,7 @@ export const CreateAccountPage: React.FC<CreateAccountPageProps> = ({ onNavigate
           <div className="bg-card border border-border rounded-2xl p-5 sm:p-6 shadow-none space-y-4">
             <div className="flex items-center space-x-2 border-b border-border/70 pb-3">
               <span className="text-[12px] font-semibold text-muted-foreground">
-                2. Role & department selection
+                2. Role & program selection
               </span>
             </div>
             <div>
@@ -361,14 +359,14 @@ export const CreateAccountPage: React.FC<CreateAccountPageProps> = ({ onNavigate
             </div>
             <div>
               <label className="block text-[12px] font-semibold text-muted-foreground mb-1.5">
-                Department *
+                Program *
               </label>
               <CustomDropdown
                 value={formDepartment}
                 onChange={setFormDepartment}
                 options={departmentSelectOptions}
                 searchable
-                placeholder="Select Department"
+                placeholder="Select Program"
               />
             </div>
           </div>
@@ -459,7 +457,7 @@ export const CreateAccountPage: React.FC<CreateAccountPageProps> = ({ onNavigate
               </div>
               <div className="flex items-start space-x-2">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 mt-0.5 shrink-0" />
-                <span>You can edit email, role, department, and password later from the accounts table.</span>
+                <span>You can edit email, role, program, and password later from the accounts table.</span>
               </div>
             </div>
           </div>

@@ -25,7 +25,6 @@ const EmptyPage = React.lazy(() => import('./features/system/EmptyPage').then(m 
 const ManageAccountsPage = React.lazy(() => import('./features/accounts/ManageAccountsPage').then(m => ({ default: m.ManageAccountsPage })));
 const AcademicGovernancePage = React.lazy(() => import('./features/accounts/AcademicGovernancePage').then(m => ({ default: m.AcademicGovernancePage })));
 const ProgramDetailsPage = React.lazy(() => import('./features/accounts/ProgramDetailsPage').then(m => ({ default: m.ProgramDetailsPage })));
-const DepartmentDetailsPage = ProgramDetailsPage;
 const EditAccountPage = React.lazy(() => import('./features/accounts/EditAccountPage').then(m => ({ default: m.EditAccountPage })));
 const GabayRAGPage = React.lazy(() => import('./features/rag/GabayRAGPage').then(m => ({ default: m.GabayRAGPage })));
 const SpeedGraderModal = React.lazy(() => import('./features/assessments/components/grading/SpeedGraderModal').then(m => ({ default: m.SpeedGraderModal })));

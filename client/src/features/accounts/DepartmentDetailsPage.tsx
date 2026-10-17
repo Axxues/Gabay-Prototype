@@ -1,5 +1,5 @@
 import React from 'react';
-import { ProgramDetailsPage, ProgramDetailsPageProps } from './ProgramDetailsPage';
+import { ProgramDetailsPage, type ProgramDetailsPageProps } from './ProgramDetailsPage';
 
 export type DepartmentDetailsPageProps = ProgramDetailsPageProps;
 export const DepartmentDetailsPage: React.FC<DepartmentDetailsPageProps> = (props) => {

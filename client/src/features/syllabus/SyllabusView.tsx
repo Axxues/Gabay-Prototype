@@ -168,7 +168,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               : (base?.signatories?.preparedBy || [{ name: (currentCourse?.instructorName || 'Faculty Instructor').toUpperCase(), title: 'Course Lead' }])),
         recommendingApproval: (!Array.isArray(rawData.signatories) && rawData.signatories?.recommendingApproval)
           ? { ...(base?.signatories?.recommendingApproval || {}), ...rawData.signatories.recommendingApproval }
-          : (base?.signatories?.recommendingApproval || { name: 'DR. MARLON R. PERALTA', title: 'Department Chairperson' }),
+          : (base?.signatories?.recommendingApproval || { name: 'DR. MARLON R. PERALTA', title: 'Program Chairperson' }),
         approved: (!Array.isArray(rawData.signatories) && rawData.signatories?.approved)
           ? { ...(base?.signatories?.approved || {}), ...rawData.signatories.approved }
           : (base?.signatories?.approved || { name: 'DR. MARIA TERESA M. ALHAMBRA', title: 'Dean, College of Computer Science' }),
@@ -958,7 +958,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                       <div>
                         <div className="font-bold text-xs text-foreground">{detectedFacultyName}</div>
                         <div className="text-[11px] text-muted-foreground">
-                          {(chosenFaculty as any).title || 'Course Instructor'} • {(chosenFaculty as any).department || 'Department of Computer Science'}
+                          {(chosenFaculty as any).title || 'Course Instructor'} • {(chosenFaculty as any).program || (chosenFaculty as any).department || 'Program in Computer Science'}
                         </div>
                       </div>
                     </div>

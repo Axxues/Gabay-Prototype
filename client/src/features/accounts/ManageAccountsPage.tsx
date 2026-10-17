@@ -201,10 +201,11 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
   const [rejectingReg, setRejectingReg] = useState<PendingRegistration | null>(null);
   const [rejectReason, setRejectReason] = useState<string>('');
 
-  // Scoped Pending Registrations calculation (only show accounts whose email is verified)
+  // Scoped Pending Registrations calculation. Applicants who have not yet confirmed their
+  // email stay in the queue (flagged, and blocked from approval) so leadership can see them.
   const scopedPendingRegistrations = useMemo(() => {
     const list = (pendingRegistrations || []).filter(
-      r => Boolean(r.emailVerified) && (r.status === 'pending' || !r.status)
+      r => r.status === 'pending' || !r.status
     );
 
     // Chancellor / Superadmin sees all registrations across all colleges & departments
@@ -227,13 +228,15 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
       });
     }
 
-    // Chairperson: sees all pending registrations in their department
+    // Chairperson: sees all pending registrations in their program
     if (activeRole === 'admin' && activeUser?.adminSubrole === 'chairperson') {
+      const activeUnit = activeUser?.program || activeUser?.department;
       return list.filter(r => {
+        const regUnit = r.program || r.department;
         if (
-          activeUser?.department &&
-          r.department &&
-          r.department.toLowerCase() === activeUser.department.toLowerCase()
+          activeUnit &&
+          regUnit &&
+          regUnit.toLowerCase() === activeUnit.toLowerCase()
         ) {
           return true;
         }
@@ -242,9 +245,13 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
     }
 
     // Fallbacks for other roles
-    if (activeUser?.department) {
+    const fallbackUnit = activeUser?.program || activeUser?.department;
+    if (fallbackUnit) {
       return list.filter(
-        r => r.department && r.department.toLowerCase() === activeUser.department.toLowerCase()
+        r => {
+          const regUnit = r.program || r.department;
+          return regUnit && regUnit.toLowerCase() === fallbackUnit.toLowerCase();
+        }
       );
     }
     if (activeUser?.collegeId) {
@@ -275,18 +282,19 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
     });
   }, [db?.users, isDean, effectiveDeanCollegeId, deanCollegeName]);
 
-  // Dynamically aggregated departments from registered hierarchy and all active users
+  // Dynamically aggregated programs from registered hierarchy and all active users
   const allDepartments = useMemo(() => {
     const deptSet = new Set<string>();
     (departments || []).forEach(d => {
       if (d.name) deptSet.add(d.name.trim());
     });
     if (deptSet.size === 0) {
-      deptSet.add('Department of Computer Science');
+      deptSet.add('Program in Computer Science');
     }
     (db?.users || []).forEach(u => {
-      if (u?.department && typeof u.department === 'string') {
-        deptSet.add(u.department.trim());
+      const uProg = u?.program || u?.department;
+      if (uProg && typeof uProg === 'string') {
+        deptSet.add(uProg.trim());
       }
     });
     return Array.from(deptSet).sort();
@@ -322,9 +330,12 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
         return false;
       }
 
-      // Department filter
-      if (departmentFilter !== 'all' && (user.department || '') !== departmentFilter) {
-        return false;
+      // Program filter
+      if (departmentFilter !== 'all') {
+        const uProg = user.program || user.department || '';
+        if (uProg !== departmentFilter) {
+          return false;
+        }
       }
 
       // Search query
@@ -332,7 +343,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
         const q = searchQuery.toLowerCase().trim();
         const matchName = (user.name || '').toLowerCase().includes(q);
         const matchEmail = (user.email || '').toLowerCase().includes(q);
-        const matchDept = (user.department || '').toLowerCase().includes(q);
+        const matchDept = (user.program || user.department || '').toLowerCase().includes(q);
         const matchTitle = (user.title || '').toLowerCase().includes(q);
         const matchStudentId = (user.studentId || '').toLowerCase().includes(q);
         const matchRole = getDisplayRoleLabel(user, user.role).toLowerCase().includes(q) || (user.adminSubrole || '').toLowerCase().includes(q);
@@ -347,11 +358,11 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
     return [...filtered].sort(compareUsersByAuthority);
   }, [scopedDirectoryUsers, roleFilter, departmentFilter, searchQuery]);
 
-  // Custom Dropdown option definitions scoped by available departments
+  // Custom Dropdown option definitions scoped by available departments/programs
   const departmentFilterOptions: DropdownOption[] = useMemo(() => {
     if (isDean) {
       return [
-        { value: 'all', label: 'All Departments', icon: <Building className="w-3.5 h-3.5 text-muted-foreground" /> },
+        { value: 'all', label: 'All Programs', icon: <Building className="w-3.5 h-3.5 text-muted-foreground" /> },
         ...availableDepartments.map(d => ({
           value: d.name,
           label: d.name,
@@ -362,7 +373,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
 
     if (availableDepartments && availableDepartments.length > 0) {
       return [
-        { value: 'all', label: 'All Departments', icon: <Building className="w-3.5 h-3.5 text-muted-foreground" /> },
+        { value: 'all', label: 'All Programs', icon: <Building className="w-3.5 h-3.5 text-muted-foreground" /> },
         ...availableDepartments.map(d => ({
           value: d.name,
           label: d.name,
@@ -372,7 +383,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
     }
 
     return [
-      { value: 'all', label: 'All Departments', icon: <Building className="w-3.5 h-3.5 text-muted-foreground" /> },
+      { value: 'all', label: 'All Programs', icon: <Building className="w-3.5 h-3.5 text-muted-foreground" /> },
       ...allDepartments.map(d => ({
         value: d,
         label: d,
@@ -726,7 +737,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
                 type="text"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                placeholder="Search by name, email, student ID, or department..."
+                placeholder="Search by name, email, student ID, or program..."
                 className="w-full pl-10 pr-4 py-2 bg-background border border-border rounded-xl text-foreground text-xs font-sans placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/30 transition-all"
               />
               {searchQuery && (
@@ -807,7 +818,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
                 onChange={setDepartmentFilter}
                 options={departmentFilterOptions}
                 searchable={true}
-                placeholder="All Departments"
+                placeholder="All Programs"
                 className="w-full sm:w-64"
                 buttonClassName="py-2 px-3 bg-muted/60"
               />
@@ -822,7 +833,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
                   <tr className="bg-muted/50 border-b border-border/70 text-muted-foreground font-semibold text-[12px]">
                     <th className="py-3.5 px-4">User Account</th>
                     <th className="py-3.5 px-4">Role</th>
-                    <th className="py-3.5 px-4">Department & Position</th>
+                    <th className="py-3.5 px-4">Program & Position</th>
                     <th className="py-3.5 px-4">Academic ID</th>
                     <th className="py-3.5 px-4">Courses / Attachments</th>
                     <th className="py-3.5 px-4 text-right">Actions</th>
@@ -861,7 +872,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
 
                       const userName = user.name || 'Unnamed Account';
                       const userEmail = user.email || 'no-email@dmmmsu.edu.ph';
-                      const userDept = user.department || 'Department of Computer Science';
+                      const userDept = user.program || user.department || 'Program in Computer Science';
                       const userTitle = user.title || (user.role === 'student' ? 'Student' : 'Faculty Instructor');
 
                       return (
@@ -937,7 +948,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
                                   {courseCount} {courseCount === 1 ? 'enrolled course' : 'enrolled courses'}
                                 </span>
                               ) : (
-                                <span>All Departmental Access</span>
+                                <span>All Institutional Access</span>
                               )}
                             </span>
                           </td>
@@ -1079,7 +1090,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
                           {/* Academic Unit */}
                           <td className="py-3.5 px-4">
                             <div className="font-semibold text-foreground truncate max-w-xs">
-                              {reg.department}
+                              {reg.program || reg.department}
                             </div>
                             <div className="text-[11px] text-muted-foreground truncate">
                               {reg.collegeName || reg.collegeId}
@@ -1181,7 +1192,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
             <div className="font-bold text-foreground">{deletingUser.name}</div>
             <div className="text-muted-foreground">{deletingUser.email}</div>
             <div className="text-[11px] font-semibold text-primary uppercase">
-              {deletingUser.role} • {deletingUser.department}
+              {deletingUser.role} • {deletingUser.program || deletingUser.department}
             </div>
           </div>
         </DialogFrame>
@@ -1240,8 +1251,8 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
                   <span className="font-mono font-semibold text-foreground">{verifyingReg.studentId || '—'}</span>
                 </div>
                 <div>
-                  <span className="text-muted-foreground block">Academic Unit:</span>
-                  <span className="font-semibold text-foreground truncate block">{verifyingReg.department}</span>
+                  <span className="text-muted-foreground block">Academic Program:</span>
+                  <span className="font-semibold text-foreground truncate block">{verifyingReg.program || verifyingReg.department}</span>
                 </div>
                 <div>
                   <span className="text-muted-foreground block">Email Verification:</span>
@@ -1307,7 +1318,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
                   </div>
                   <div className="text-muted-foreground truncate">{rejectingReg.email}</div>
                   <div className="text-[11px] text-muted-foreground mt-0.5">
-                    {rejectingReg.role.toUpperCase()} • {rejectingReg.department}
+                    {rejectingReg.role.toUpperCase()} • {rejectingReg.program || rejectingReg.department}
                   </div>
                 </div>
               </div>
