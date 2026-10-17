@@ -66,6 +66,55 @@ describe('RegisterPage Component', () => {
     expect(screen.getByRole('button', { name: /register|create account/i })).toBeInTheDocument();
   });
 
+  it('marks College and Department as required fields', () => {
+    render(
+      <MemoryRouter initialEntries={['/register']}>
+        <RegisterPage />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByLabelText(/^college/i)).toBeRequired();
+    expect(screen.getByLabelText(/^department/i)).toBeRequired();
+
+    // With nothing selected, College is invalid (required semantics)
+    expect(screen.getByLabelText(/^college/i)).toBeInvalid();
+
+    // Department stays disabled until a college is chosen, then it too is required
+    const departmentSelect = screen.getByLabelText(/^department/i);
+    expect(departmentSelect).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText(/^college/i), { target: { value: 'col-ccs' } });
+    expect(departmentSelect).toBeEnabled();
+    expect(departmentSelect).toBeInvalid();
+
+    // Required markers are shown on both labels
+    expect(screen.getByText('College *')).toBeInTheDocument();
+    expect(screen.getByText('Department *')).toBeInTheDocument();
+  });
+
+  it('blocks submission when College and Department are not selected', async () => {
+    render(
+      <MemoryRouter initialEntries={['/register']}>
+        <RegisterPage />
+      </MemoryRouter>
+    );
+
+    // Fill every other field so only the academic placement is missing
+    fireEvent.change(screen.getByLabelText(/first name/i), { target: { value: 'Maria' } });
+    fireEvent.change(screen.getByLabelText(/last name/i), { target: { value: 'Santos' } });
+    fireEvent.change(screen.getByLabelText(/institutional email/i), {
+      target: { value: 'msantos@dmmmsu.edu.ph' },
+    });
+    fireEvent.change(screen.getByLabelText(/id number/i), { target: { value: '23110823' } });
+    fireEvent.change(screen.getByLabelText(/^password/i), { target: { value: 'password123' } });
+    fireEvent.change(screen.getByLabelText(/confirm password/i), { target: { value: 'password123' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /register|create account/i }));
+
+    expect(mockRegisterAccount).not.toHaveBeenCalled();
+    expect(await screen.findByText(/please select your college/i)).toBeInTheDocument();
+  });
+
   it('filters departments dynamically based on selected college', () => {
     render(
       <MemoryRouter initialEntries={['/register']}>
@@ -117,7 +166,7 @@ describe('RegisterPage Component', () => {
     expect(await screen.findByText(/id number must follow the format xxx-xxxx-x/i)).toBeInTheDocument();
   });
 
-  it('enforces institutional email format (@dmmmsu.edu.ph)', async () => {
+  it('enforces institutional email format (@dmmmsu.edu.ph or @student.dmmmsu.edu.ph)', async () => {
     render(
       <MemoryRouter initialEntries={['/register']}>
         <RegisterPage />
@@ -138,6 +187,52 @@ describe('RegisterPage Component', () => {
 
     expect(mockRegisterAccount).not.toHaveBeenCalled();
     expect(await screen.findByText(/institutional email.*@dmmmsu\.edu\.ph/i)).toBeInTheDocument();
+  });
+
+  it('accepts student accounts registered with a student.dmmmsu.edu.ph address', async () => {
+    mockRegisterAccount.mockResolvedValueOnce({
+      id: 'reg-201',
+      activationToken: 'token-student-1',
+      firstName: 'Juan',
+      lastName: 'Dela Cruz',
+      email: 'jdelacruz@student.dmmmsu.edu.ph',
+      studentId: '231-1082-3',
+      role: 'student',
+      collegeId: 'col-ccs',
+      collegeName: 'College of Computer Science',
+      department: 'Department of Computer Science',
+      emailVerified: false,
+      status: 'pending',
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/register']}>
+        <RegisterPage />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole('radio', { name: /student/i }));
+    fireEvent.change(screen.getByLabelText(/first name/i), { target: { value: 'Juan' } });
+    fireEvent.change(screen.getByLabelText(/last name/i), { target: { value: 'Dela Cruz' } });
+    fireEvent.change(screen.getByLabelText(/institutional email/i), {
+      target: { value: 'jdelacruz@student.dmmmsu.edu.ph' },
+    });
+    fireEvent.change(screen.getByLabelText(/id number/i), { target: { value: '23110823' } });
+    fireEvent.change(screen.getByLabelText(/college/i), { target: { value: 'col-ccs' } });
+    fireEvent.change(screen.getByLabelText(/department/i), { target: { value: 'Department of Computer Science' } });
+    fireEvent.change(screen.getByLabelText(/^password/i), { target: { value: 'secretPass12' } });
+    fireEvent.change(screen.getByLabelText(/confirm password/i), { target: { value: 'secretPass12' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /register|create account/i }));
+
+    await waitFor(() => {
+      expect(mockRegisterAccount).toHaveBeenCalledWith(
+        expect.objectContaining({ email: 'jdelacruz@student.dmmmsu.edu.ph' })
+      );
+    });
+
+    // The domain is accepted, so no validation error is shown
+    expect(screen.queryByText(/institutional email must end with/i)).not.toBeInTheDocument();
   });
 
   it('submits registration successfully and displays email activation modal with simulated link', async () => {

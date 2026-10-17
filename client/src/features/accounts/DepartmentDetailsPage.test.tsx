@@ -294,4 +294,26 @@ describe('DepartmentDetailsPage', () => {
 
     expect(screen.getByText(/department not found/i)).toBeInTheDocument();
   });
+
+  it('filters directory list when user types in the search input', () => {
+    render(<DepartmentDetailsPage />);
+
+    // Initially both Alan and Ada are in the document (Alan appears in chairperson card + roster)
+    expect(screen.getAllByText('Prof. Alan Turing').length).toBe(2);
+    expect(screen.getByText('Prof. Ada Lovelace')).toBeInTheDocument();
+
+    const searchInput = screen.getByPlaceholderText(/filter faculty members/i);
+    fireEvent.change(searchInput, { target: { value: 'lovelace' } });
+
+    // Ada remains, Alan is filtered out of the roster (leaving only 1 in chairperson card)
+    expect(screen.getByText('Prof. Ada Lovelace')).toBeInTheDocument();
+    expect(screen.getAllByText('Prof. Alan Turing').length).toBe(1);
+
+    // Clear search
+    const clearButton = screen.getByRole('button', { name: /clear search/i });
+    fireEvent.click(clearButton);
+
+    expect(screen.getAllByText('Prof. Alan Turing').length).toBe(2);
+    expect(screen.getByText('Prof. Ada Lovelace')).toBeInTheDocument();
+  });
 });

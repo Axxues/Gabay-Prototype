@@ -15,6 +15,9 @@ import {
   AlertCircle,
   UserCheck,
   FolderTree,
+  Search,
+  Mail,
+  X,
 } from 'lucide-react';
 
 interface DepartmentDetailsPageProps {
@@ -37,6 +40,7 @@ export const DepartmentDetailsPage: React.FC<DepartmentDetailsPageProps> = ({ on
 
   // Active Tab state
   const [activeTab, setActiveTab] = useState<'faculty' | 'courses' | 'students'>('faculty');
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Leadership handover modal state
   const [isAppointModalOpen, setIsAppointModalOpen] = useState(false);
@@ -133,6 +137,37 @@ export const DepartmentDetailsPage: React.FC<DepartmentDetailsPageProps> = ({ on
     if (departmentSections.length > 0) return departmentSections.length;
     return departmentCourses.reduce((acc, c) => acc + (c.sectionIds?.length || 1), 0);
   }, [departmentSections, departmentCourses]);
+
+  // Filtered views based on search query
+  const filteredFaculty = useMemo(() => {
+    if (!searchQuery.trim()) return departmentFaculty;
+    const q = searchQuery.toLowerCase().trim();
+    return departmentFaculty.filter(f =>
+      (f.name || '').toLowerCase().includes(q) ||
+      (f.email || '').toLowerCase().includes(q) ||
+      (f.title || '').toLowerCase().includes(q)
+    );
+  }, [departmentFaculty, searchQuery]);
+
+  const filteredCourses = useMemo(() => {
+    if (!searchQuery.trim()) return departmentCourses;
+    const q = searchQuery.toLowerCase().trim();
+    return departmentCourses.filter(c =>
+      (c.code || '').toLowerCase().includes(q) ||
+      (c.title || '').toLowerCase().includes(q) ||
+      (c.instructorName || '').toLowerCase().includes(q)
+    );
+  }, [departmentCourses, searchQuery]);
+
+  const filteredStudents = useMemo(() => {
+    if (!searchQuery.trim()) return departmentStudents;
+    const q = searchQuery.toLowerCase().trim();
+    return departmentStudents.filter(s =>
+      (s.name || '').toLowerCase().includes(q) ||
+      (s.email || '').toLowerCase().includes(q) ||
+      (s.studentId || '').toLowerCase().includes(q)
+    );
+  }, [departmentStudents, searchQuery]);
 
   // Candidates eligible for Chairperson appointment
   const eligibleCandidates = useMemo(() => {
@@ -248,15 +283,15 @@ export const DepartmentDetailsPage: React.FC<DepartmentDetailsPageProps> = ({ on
   }
 
   return (
-    <div className="p-4 sm:p-6 max-w-6xl mx-auto space-y-6 animate-fade-in" data-testid="department-details-page">
+    <div className="w-full space-y-6 animate-fade-in pb-16 font-sans" data-testid="department-details-page">
       {/* Top Breadcrumb Navigation */}
-      <nav aria-label="Breadcrumb" className="flex items-center space-x-2 text-xs text-muted-foreground">
+      <nav aria-label="Breadcrumb" className="flex items-center space-x-2 text-xs text-muted-foreground font-sans">
         <button
           type="button"
           onClick={handleBack}
           className="hover:text-primary transition-colors cursor-pointer flex items-center space-x-1 font-semibold"
         >
-          <FolderTree className="w-3.5 h-3.5" />
+          <FolderTree className="w-3.5 h-3.5 text-primary" />
           <span>Academic Governance</span>
         </button>
         <ChevronRight className="w-3.5 h-3.5 shrink-0 text-muted-foreground/60" />
@@ -270,22 +305,25 @@ export const DepartmentDetailsPage: React.FC<DepartmentDetailsPageProps> = ({ on
       </nav>
 
       {/* Main Header & Context */}
-      <div className="bg-card border border-border rounded-2xl p-5 sm:p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-card border border-border rounded-2xl p-5 sm:p-6 shadow-none flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-start sm:items-center space-x-4">
           <button
             type="button"
             onClick={handleBack}
             aria-label="Back to Academic Governance"
-            className="p-2 rounded-xl bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer shrink-0"
+            className="w-10 h-10 rounded-xl bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground transition-all cursor-pointer flex items-center justify-center shrink-0 border border-border active:scale-[0.98]"
           >
-            <ArrowLeft className="w-5 h-5" />
+            <ArrowLeft className="w-4 h-4" />
           </button>
+          <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20 shadow-xs">
+            <Building className="w-6 h-6" />
+          </div>
           <div>
-            <div className="flex items-center space-x-2.5">
-              <h1 className="text-lg sm:text-xl font-extrabold text-foreground tracking-tight">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h1 className="text-xl sm:text-2xl font-extrabold text-foreground tracking-tight">
                 {dept.name}
               </h1>
-              <span className="px-2.5 py-0.5 text-xs font-mono font-bold bg-primary/10 text-primary rounded-md border border-primary/20">
+              <span className="px-2.5 py-0.5 text-xs font-mono font-bold bg-primary/10 text-primary rounded-lg border border-primary/20">
                 {dept.code}
               </span>
             </div>
@@ -297,19 +335,30 @@ export const DepartmentDetailsPage: React.FC<DepartmentDetailsPageProps> = ({ on
             </div>
           </div>
         </div>
+
+        <div className="flex items-center gap-2 self-start md:self-auto shrink-0">
+          <span className="px-3 py-1.5 text-xs font-bold rounded-xl bg-muted/60 text-muted-foreground border border-border flex items-center space-x-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span>Active Unit</span>
+          </span>
+        </div>
       </div>
 
       {/* Chairperson Leadership Management Card */}
-      <div className="bg-card border border-border rounded-2xl p-5 sm:p-6 shadow-xs space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-extrabold text-foreground flex items-center space-x-2">
-              <UserCheck className="w-4 h-4 text-primary" />
-              <span>Department Leadership</span>
-            </h2>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Supervise the academic chairperson entrusted with curriculum, faculty, and student coordination.
-            </p>
+      <div className="bg-card border border-border rounded-2xl p-5 sm:p-6 shadow-none space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border/70 pb-4">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/15 mt-0.5">
+              <UserCheck className="w-4.5 h-4.5" />
+            </div>
+            <div>
+              <h2 className="text-sm font-extrabold text-foreground flex items-center space-x-2">
+                <span>Department Leadership</span>
+              </h2>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Supervise the academic chairperson entrusted with curriculum, faculty, and student coordination.
+              </p>
+            </div>
           </div>
           <button
             type="button"
@@ -317,38 +366,51 @@ export const DepartmentDetailsPage: React.FC<DepartmentDetailsPageProps> = ({ on
               setSelectedCandidateId('');
               setIsAppointModalOpen(true);
             }}
-            className="px-3.5 py-2 bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground font-bold text-xs rounded-xl shadow-xs transition-all flex items-center justify-center space-x-1.5 cursor-pointer shrink-0"
+            className="px-4 py-2 bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground font-bold text-xs rounded-xl shadow-primary-sm transition-all flex items-center justify-center space-x-1.5 cursor-pointer shrink-0"
           >
             <span>{incumbentChair ? 'Reassign Chairperson' : 'Appoint Chairperson'}</span>
           </button>
         </div>
 
         {incumbentChair ? (
-          <div data-testid="incumbent-chairperson-card" className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-muted/30 border border-border rounded-xl">
-            <div className="flex items-center space-x-3.5">
-              <UserAvatar
-                name={incumbentChair.name}
-                src={incumbentChair.avatar}
-                className="w-11 h-11 rounded-full border border-border shrink-0 shadow-xs"
-              />
-              <div>
-                <div className="flex items-center space-x-2">
-                  <div className="font-bold text-foreground text-sm">{incumbentChair.name}</div>
+          <div data-testid="incumbent-chairperson-card" className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4.5 bg-muted/20 border border-border rounded-xl">
+            <div className="flex items-center space-x-3.5 min-w-0">
+              <div className="relative shrink-0">
+                <UserAvatar
+                  name={incumbentChair.name}
+                  src={incumbentChair.avatar}
+                  className="w-12 h-12 rounded-full border-2 border-border shadow-xs"
+                />
+                <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 border-2 border-card rounded-full" title="Active Chairperson" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="font-extrabold text-foreground text-sm tracking-tight">{incumbentChair.name}</div>
                   <span className="px-2 py-0.5 text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-md border border-emerald-500/20">
                     Active Chairperson
                   </span>
                 </div>
-                <div className="text-xs text-muted-foreground mt-0.5">{incumbentChair.email}</div>
+                <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5">
+                  <Mail className="w-3 h-3 text-muted-foreground/60 shrink-0" />
+                  <span className="truncate">{incumbentChair.email}</span>
+                </div>
                 <div className="text-[11px] font-semibold text-primary mt-0.5">
                   Department Chairperson
                 </div>
               </div>
             </div>
+
+            <div className="flex items-center gap-3 text-xs text-muted-foreground border-t md:border-t-0 md:border-l border-border/70 pt-3 md:pt-0 md:pl-5 shrink-0">
+              <div>
+                <div className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Academic Division</div>
+                <div className="text-foreground font-medium text-xs mt-0.5">{college ? `${college.code} · ${dept.code}` : dept.code}</div>
+              </div>
+            </div>
           </div>
         ) : (
-          <div className="flex items-center space-x-3 p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-700 dark:text-amber-300">
+          <div className="flex items-center space-x-3 p-4.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-700 dark:text-amber-300">
             <AlertCircle className="w-5 h-5 shrink-0" />
-            <div className="text-xs">
+            <div className="text-xs leading-relaxed">
               <span className="font-bold">No Chairperson Appointed.</span> This department currently operates without an appointed executive head. Appoint a faculty member to restore administrative governance.
             </div>
           </div>
@@ -358,150 +420,188 @@ export const DepartmentDetailsPage: React.FC<DepartmentDetailsPageProps> = ({ on
       {/* Key Department Metrics Grid (4 Stat Cards) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total Faculty */}
-        <div className="bg-card border border-border p-4.5 rounded-2xl shadow-xs space-y-1.5">
+        <div className="bg-card border border-border p-5 rounded-2xl shadow-none space-y-3 hover:border-primary/40 transition-colors">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-muted-foreground">Total Faculty</span>
-            <div className="p-2 rounded-xl bg-primary/10 text-primary">
+            <span className="text-xs font-bold text-muted-foreground">Total Faculty</span>
+            <div className="p-2 rounded-xl bg-primary/10 text-primary border border-primary/20">
               <Users className="w-4 h-4" />
             </div>
           </div>
-          <div
-            data-testid="metric-total-faculty"
-            className="text-2xl font-black text-foreground tracking-tight"
-          >
-            {departmentFaculty.length}
-          </div>
-          <div className="text-[11px] text-muted-foreground">
-            Academic teaching staff
+          <div>
+            <div
+              data-testid="metric-total-faculty"
+              className="text-2xl sm:text-3xl font-black text-foreground tracking-tight"
+            >
+              {departmentFaculty.length}
+            </div>
+            <div className="text-xs text-muted-foreground mt-1">
+              Academic teaching staff
+            </div>
           </div>
         </div>
 
         {/* Total Students */}
-        <div className="bg-card border border-border p-4.5 rounded-2xl shadow-xs space-y-1.5">
+        <div className="bg-card border border-border p-5 rounded-2xl shadow-none space-y-3 hover:border-sky-500/40 transition-colors">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-muted-foreground">Total Students</span>
-            <div className="p-2 rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-400">
+            <span className="text-xs font-bold text-muted-foreground">Total Students</span>
+            <div className="p-2 rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20">
               <GraduationCap className="w-4 h-4" />
             </div>
           </div>
-          <div
-            data-testid="metric-total-students"
-            className="text-2xl font-black text-foreground tracking-tight"
-          >
-            {departmentStudents.length}
-          </div>
-          <div className="text-[11px] text-muted-foreground">
-            Enrolled majors
+          <div>
+            <div
+              data-testid="metric-total-students"
+              className="text-2xl sm:text-3xl font-black text-foreground tracking-tight"
+            >
+              {departmentStudents.length}
+            </div>
+            <div className="text-xs text-muted-foreground mt-1">
+              Enrolled majors
+            </div>
           </div>
         </div>
 
         {/* Active Courses */}
-        <div className="bg-card border border-border p-4.5 rounded-2xl shadow-xs space-y-1.5">
+        <div className="bg-card border border-border p-5 rounded-2xl shadow-none space-y-3 hover:border-emerald-500/40 transition-colors">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-muted-foreground">Active Courses</span>
-            <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+            <span className="text-xs font-bold text-muted-foreground">Active Courses</span>
+            <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
               <BookOpen className="w-4 h-4" />
             </div>
           </div>
-          <div
-            data-testid="metric-active-courses"
-            className="text-2xl font-black text-foreground tracking-tight"
-          >
-            {departmentCourses.length}
-          </div>
-          <div className="text-[11px] text-muted-foreground">
-            {departmentCourses.filter(c => c.published).length} published · {departmentCourses.filter(c => !c.published).length} draft
+          <div>
+            <div
+              data-testid="metric-active-courses"
+              className="text-2xl sm:text-3xl font-black text-foreground tracking-tight"
+            >
+              {departmentCourses.length}
+            </div>
+            <div className="text-xs text-muted-foreground mt-1">
+              {departmentCourses.filter(c => c.published).length} published · {departmentCourses.filter(c => !c.published).length} draft
+            </div>
           </div>
         </div>
 
         {/* Class Sections */}
-        <div className="bg-card border border-border p-4.5 rounded-2xl shadow-xs space-y-1.5">
+        <div className="bg-card border border-border p-5 rounded-2xl shadow-none space-y-3 hover:border-purple-500/40 transition-colors">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-muted-foreground">Class Sections</span>
-            <div className="p-2 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400">
+            <span className="text-xs font-bold text-muted-foreground">Class Sections</span>
+            <div className="p-2 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
               <Layers className="w-4 h-4" />
             </div>
           </div>
-          <div
-            data-testid="metric-class-sections"
-            className="text-2xl font-black text-foreground tracking-tight"
-          >
-            {totalSectionsCount}
-          </div>
-          <div className="text-[11px] text-muted-foreground">
-            Scheduled lecture & lab blocks
+          <div>
+            <div
+              data-testid="metric-class-sections"
+              className="text-2xl sm:text-3xl font-black text-foreground tracking-tight"
+            >
+              {totalSectionsCount}
+            </div>
+            <div className="text-xs text-muted-foreground mt-1">
+              Scheduled lecture & lab blocks
+            </div>
           </div>
         </div>
       </div>
 
       {/* Department Directories & Catalog (Tabbed Views) */}
-      <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-xs">
-        {/* Tab Headers */}
-        <div className="flex border-b border-border bg-muted/30 px-3 pt-2" role="tablist">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === 'faculty'}
-            onClick={() => setActiveTab('faculty')}
-            className={`px-4 py-2.5 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center space-x-2 ${
-              activeTab === 'faculty'
-                ? 'border-primary text-primary bg-background/50 rounded-t-xl'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            <Users className="w-4 h-4" />
-            <span>Faculty Roster</span>
-            <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-muted font-mono">
-              {departmentFaculty.length}
-            </span>
-          </button>
+      <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-none">
+        {/* Tab Headers and Search Toolbar */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 p-4 sm:p-5 border-b border-border bg-muted/20">
+          <div className="flex items-center gap-1.5 p-1 bg-background/80 border border-border rounded-xl shrink-0" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'faculty'}
+              onClick={() => setActiveTab('faculty')}
+              className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center space-x-2 ${
+                activeTab === 'faculty'
+                  ? 'bg-card text-foreground shadow-xs font-extrabold border border-border'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>Faculty Roster</span>
+              <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-muted font-mono">
+                {departmentFaculty.length}
+              </span>
+            </button>
 
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === 'courses'}
-            onClick={() => setActiveTab('courses')}
-            className={`px-4 py-2.5 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center space-x-2 ${
-              activeTab === 'courses'
-                ? 'border-primary text-primary bg-background/50 rounded-t-xl'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            <BookOpen className="w-4 h-4" />
-            <span>Course Catalog</span>
-            <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-muted font-mono">
-              {departmentCourses.length}
-            </span>
-          </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'courses'}
+              onClick={() => setActiveTab('courses')}
+              className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center space-x-2 ${
+                activeTab === 'courses'
+                  ? 'bg-card text-foreground shadow-xs font-extrabold border border-border'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              <span>Course Catalog</span>
+              <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-muted font-mono">
+                {departmentCourses.length}
+              </span>
+            </button>
 
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === 'students'}
-            onClick={() => setActiveTab('students')}
-            className={`px-4 py-2.5 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center space-x-2 ${
-              activeTab === 'students'
-                ? 'border-primary text-primary bg-background/50 rounded-t-xl'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            <GraduationCap className="w-4 h-4" />
-            <span>Student Directory</span>
-            <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-muted font-mono">
-              {departmentStudents.length}
-            </span>
-          </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'students'}
+              onClick={() => setActiveTab('students')}
+              className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center space-x-2 ${
+                activeTab === 'students'
+                  ? 'bg-card text-foreground shadow-xs font-extrabold border border-border'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <GraduationCap className="w-3.5 h-3.5" />
+              <span>Student Directory</span>
+              <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-muted font-mono">
+                {departmentStudents.length}
+              </span>
+            </button>
+          </div>
+
+          {/* Quick Search Input */}
+          <div className="relative w-full sm:w-72">
+            <Search className="w-3.5 h-3.5 text-muted-foreground absolute left-3 top-2.5 pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder={`Filter ${activeTab === 'faculty' ? 'faculty members' : activeTab === 'courses' ? 'courses' : 'students'}...`}
+              className="w-full pl-9 pr-8 py-1.5 bg-background border border-border hover:border-primary/40 focus:border-primary rounded-xl text-foreground text-xs font-sans focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all shadow-none"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-2 text-muted-foreground hover:text-foreground cursor-pointer"
+                aria-label="Clear search"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* TAB 1: FACULTY ROSTER */}
         {activeTab === 'faculty' && (
           <div className="divide-y divide-border/60">
-            {departmentFaculty.length === 0 ? (
-              <div className="p-8 text-center text-xs text-muted-foreground">
-                No faculty members affiliated with this department yet.
+            {filteredFaculty.length === 0 ? (
+              <div className="p-12 text-center text-xs text-muted-foreground space-y-1">
+                <Users className="w-6 h-6 mx-auto text-muted-foreground/50 mb-2" />
+                <div className="font-semibold text-foreground">
+                  {searchQuery ? 'No matching faculty members found' : 'No faculty members affiliated with this department yet'}
+                </div>
+                {searchQuery && (
+                  <p className="text-[11px]">Try adjusting your search query.</p>
+                )}
               </div>
             ) : (
-              departmentFaculty.map(faculty => {
+              filteredFaculty.map(faculty => {
                 const isCurrentChair = faculty.id === dept.chairpersonId;
                 const assignedCoursesCount = departmentCourses.filter(
                   c => c.instructorId === faculty.id
@@ -510,42 +610,42 @@ export const DepartmentDetailsPage: React.FC<DepartmentDetailsPageProps> = ({ on
                 return (
                   <div
                     key={faculty.id}
-                    className="p-4 sm:px-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-muted/20 transition-colors"
+                    className="p-4 sm:px-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-muted/30 transition-colors"
                   >
-                    <div className="flex items-center space-x-3.5">
+                    <div className="flex items-center space-x-3.5 min-w-0">
                       <UserAvatar
                         name={faculty.name}
                         src={faculty.avatar}
-                        className="w-9 h-9 rounded-full border border-border shrink-0"
+                        className="w-10 h-10 rounded-full border border-border shrink-0 shadow-xs"
                       />
-                      <div>
+                      <div className="min-w-0">
                         <div className="flex items-center space-x-2">
-                          <span className="font-bold text-foreground text-xs">{faculty.name}</span>
+                          <span className="font-bold text-foreground text-xs truncate">{faculty.name}</span>
                           {isCurrentChair && (
-                            <span className="px-2 py-0.5 text-[9px] font-bold bg-primary/10 text-primary rounded-md border border-primary/20">
+                            <span className="px-2 py-0.5 text-[9px] font-bold bg-primary/10 text-primary rounded-md border border-primary/20 shrink-0">
                               Chairperson
                             </span>
                           )}
                         </div>
-                        <div className="text-[11px] text-muted-foreground mt-0.5">
+                        <div className="text-[11px] text-muted-foreground mt-0.5 truncate">
                           {faculty.email}
                         </div>
                       </div>
                     </div>
-                    <div className="flex items-center space-x-4 text-xs">
+                    <div className="flex items-center space-x-6 text-xs shrink-0 self-end sm:self-center">
                       <div className="text-right">
-                        <div className="text-muted-foreground text-[10px] uppercase font-bold">
+                        <div className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider">
                           Designation
                         </div>
-                        <div className="font-medium text-foreground">
+                        <div className="font-medium text-foreground mt-0.5">
                           {faculty.title || (isCurrentChair ? 'Department Chairperson' : 'Faculty Member')}
                         </div>
                       </div>
-                      <div className="text-right min-w-[70px]">
-                        <div className="text-muted-foreground text-[10px] uppercase font-bold">
+                      <div className="text-right min-w-[80px]">
+                        <div className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider">
                           Courses
                         </div>
-                        <div className="font-bold text-primary">
+                        <div className={`font-bold mt-0.5 ${assignedCoursesCount > 0 ? 'text-primary' : 'text-muted-foreground'}`}>
                           {assignedCoursesCount} {assignedCoursesCount === 1 ? 'course' : 'courses'}
                         </div>
                       </div>
@@ -560,12 +660,18 @@ export const DepartmentDetailsPage: React.FC<DepartmentDetailsPageProps> = ({ on
         {/* TAB 2: COURSE CATALOG */}
         {activeTab === 'courses' && (
           <div className="divide-y divide-border/60">
-            {departmentCourses.length === 0 ? (
-              <div className="p-8 text-center text-xs text-muted-foreground">
-                No courses registered under this department yet.
+            {filteredCourses.length === 0 ? (
+              <div className="p-12 text-center text-xs text-muted-foreground space-y-1">
+                <BookOpen className="w-6 h-6 mx-auto text-muted-foreground/50 mb-2" />
+                <div className="font-semibold text-foreground">
+                  {searchQuery ? 'No matching courses found' : 'No courses registered under this department yet'}
+                </div>
+                {searchQuery && (
+                  <p className="text-[11px]">Try searching for another course code or title.</p>
+                )}
               </div>
             ) : (
-              departmentCourses.map(course => {
+              filteredCourses.map(course => {
                 const instructor = (db?.users || []).find(u => u.id === course.instructorId);
                 const sections = departmentSections.filter(s => s.courseId === course.id);
                 const sectionsCount = sections.length > 0 ? sections.length : (course.sectionIds?.length || 1);
@@ -573,48 +679,48 @@ export const DepartmentDetailsPage: React.FC<DepartmentDetailsPageProps> = ({ on
                 return (
                   <div
                     key={course.id}
-                    className="p-4 sm:px-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-muted/20 transition-colors"
+                    className="p-4 sm:px-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-muted/30 transition-colors"
                   >
-                    <div className="flex items-center space-x-3.5">
-                      <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0 border border-primary/20">
-                        <BookOpen className="w-4 h-4" />
+                    <div className="flex items-center space-x-3.5 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0 border border-primary/20">
+                        <BookOpen className="w-4.5 h-4.5" />
                       </div>
-                      <div>
-                        <div className="flex items-center space-x-2">
-                          <span className="font-bold text-foreground text-xs">{course.code}</span>
-                          <span className="text-xs text-foreground font-semibold">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono font-bold text-foreground text-xs">{course.code}</span>
+                          <span className="text-xs text-foreground font-semibold truncate">
                             {course.title}
                           </span>
                         </div>
-                        <div className="text-[11px] text-muted-foreground mt-0.5">
+                        <div className="text-[11px] text-muted-foreground mt-0.5 truncate">
                           Instructor: {instructor ? instructor.name : course.instructorName || 'Unassigned'}
                         </div>
                       </div>
                     </div>
-                    <div className="flex items-center space-x-4 text-xs">
+                    <div className="flex items-center space-x-5 text-xs shrink-0 self-end sm:self-center">
                       <div className="text-right">
-                        <div className="text-muted-foreground text-[10px] uppercase font-bold">
+                        <div className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider">
                           Sections
                         </div>
-                        <div className="font-medium text-foreground">
+                        <div className="font-medium text-foreground mt-0.5">
                           {sectionsCount} {sectionsCount === 1 ? 'Section' : 'Sections'}
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="text-muted-foreground text-[10px] uppercase font-bold">
+                        <div className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider">
                           Enrolled
                         </div>
-                        <div className="font-medium text-foreground">
+                        <div className="font-medium text-foreground mt-0.5">
                           {course.enrolledCount || 0} students
                         </div>
                       </div>
-                      <div className="min-w-[80px] text-right">
+                      <div className="min-w-[85px] text-right">
                         {course.published ? (
-                          <span className="px-2 py-0.5 text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-md border border-emerald-500/20">
+                          <span className="px-2.5 py-1 text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-lg border border-emerald-500/20">
                             Published
                           </span>
                         ) : (
-                          <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-md border border-amber-500/20">
+                          <span className="px-2.5 py-1 text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-lg border border-amber-500/20">
                             Draft
                           </span>
                         )}
@@ -630,38 +736,44 @@ export const DepartmentDetailsPage: React.FC<DepartmentDetailsPageProps> = ({ on
         {/* TAB 3: STUDENT DIRECTORY */}
         {activeTab === 'students' && (
           <div className="divide-y divide-border/60">
-            {departmentStudents.length === 0 ? (
-              <div className="p-8 text-center text-xs text-muted-foreground">
-                No students currently enrolled in this department.
+            {filteredStudents.length === 0 ? (
+              <div className="p-12 text-center text-xs text-muted-foreground space-y-1">
+                <GraduationCap className="w-6 h-6 mx-auto text-muted-foreground/50 mb-2" />
+                <div className="font-semibold text-foreground">
+                  {searchQuery ? 'No matching students found' : 'No students currently enrolled in this department'}
+                </div>
+                {searchQuery && (
+                  <p className="text-[11px]">Try searching by student name, ID, or email.</p>
+                )}
               </div>
             ) : (
-              departmentStudents.map(student => (
+              filteredStudents.map(student => (
                 <div
                   key={student.id}
-                  className="p-4 sm:px-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-muted/20 transition-colors"
+                  className="p-4 sm:px-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-muted/30 transition-colors"
                 >
-                  <div className="flex items-center space-x-3.5">
+                  <div className="flex items-center space-x-3.5 min-w-0">
                     <UserAvatar
                       name={student.name}
                       src={student.avatar}
-                      className="w-9 h-9 rounded-full border border-border shrink-0"
+                      className="w-10 h-10 rounded-full border border-border shrink-0 shadow-xs"
                     />
-                    <div>
-                      <div className="flex items-center space-x-2">
-                        <span className="font-bold text-foreground text-xs">{student.name}</span>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-bold text-foreground text-xs truncate">{student.name}</span>
                         {student.studentId && (
-                          <span className="px-1.5 py-0.5 text-[9px] font-mono font-bold bg-muted text-muted-foreground rounded border border-border">
+                          <span className="px-2 py-0.5 text-[9px] font-mono font-bold bg-muted text-muted-foreground rounded-md border border-border">
                             {student.studentId}
                           </span>
                         )}
                       </div>
-                      <div className="text-[11px] text-muted-foreground mt-0.5">
+                      <div className="text-[11px] text-muted-foreground mt-0.5 truncate">
                         {student.email}
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-3 text-xs">
-                    <span className="px-2 py-0.5 text-[10px] font-bold bg-sky-500/10 text-sky-600 dark:text-sky-400 rounded-md border border-sky-500/20">
+                  <div className="flex items-center space-x-3 text-xs shrink-0 self-end sm:self-center">
+                    <span className="px-2.5 py-1 text-[10px] font-bold bg-sky-500/10 text-sky-600 dark:text-sky-400 rounded-lg border border-sky-500/20">
                       {student.verificationStatus || 'Active'}
                     </span>
                   </div>

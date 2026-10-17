@@ -859,8 +859,12 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
 
                           {/* Department & Title */}
                           <td className="py-3.5 px-4">
-                            <div className="font-medium text-foreground truncate max-w-xs">{userDept}</div>
-                            <div className="text-[11px] text-muted-foreground truncate">{userTitle}</div>
+                            <div className="font-medium text-foreground truncate max-w-xs">
+                              {roleMeta.label === 'Admin' ? 'Admin' : userDept}
+                            </div>
+                            {roleMeta.label !== 'Admin' && (
+                              <div className="text-[11px] text-muted-foreground truncate">{userTitle}</div>
+                            )}
                           </td>
 
                           {/* Student ID / Identifier */}

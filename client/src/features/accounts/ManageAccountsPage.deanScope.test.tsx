@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import React from 'react';
 import { ManageAccountsPage } from './ManageAccountsPage';
 import type { User, College, Department, PendingRegistration } from '../../shared/types/lms';
@@ -275,6 +275,34 @@ describe('ManageAccountsPage - Dean Access & Full Collegiate Scoping', () => {
       expect(screen.getByText('Prof. John Dewey')).toBeInTheDocument();
       expect(screen.getByText('Grace Hopper')).toBeInTheDocument();
       expect(screen.getByText('Maria Montessori')).toBeInTheDocument();
+    });
+
+    it('shows just "Admin" in Department & Position for admin accounts', () => {
+      mocks.mockState.db = {
+        users: [
+          ...mocks.mockUsers,
+          {
+            id: 'u-admin',
+            name: 'Jayvee Admin',
+            email: 'jayvee.admin@dmmmsu.edu.ph',
+            role: 'admin',
+            department: 'College of Information Technology',
+            title: 'University Chancellor',
+            avatar: '',
+          } as User,
+        ],
+        courses: [],
+      };
+
+      render(<ManageAccountsPage />);
+
+      const adminRow = screen.getByText('Jayvee Admin').closest('tr') as HTMLTableRowElement;
+
+      // The admin row reads just "Admin" (role badge + department cell)
+      expect(within(adminRow).getAllByText('Admin')).toHaveLength(2);
+
+      // Its college and position are no longer shown
+      expect(adminRow).not.toHaveTextContent(/College of Information Technology|University Chancellor/);
     });
 
     it('reflects university-wide counts in summary metric cards', () => {

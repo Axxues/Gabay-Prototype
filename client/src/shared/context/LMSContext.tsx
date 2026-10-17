@@ -52,12 +52,14 @@ import { SessionExpiredModal } from '../components/common/SessionExpiredModal';
 import type { AssetTransformOptions } from '../utils/avatar';
 import { canPickSection } from '../utils/sections';
 import type { OfficialSyllabusData } from '../data/syllabusData';
-import { ApiError, getToken, setToken, clearToken, likhaLmsApi, LIKHA_URL, SESSION_EXPIRED_EVENT } from '../api/client';
+import { ApiError, getToken, setToken, clearToken, likhaLmsApi, LIKHA_URL } from '../api/client';
+const SESSION_EXPIRED_EVENT = 'gabay:session-expired';
 import { syllabusApi, deleteDraft, withdrawSyllabus } from '../api/syllabus';
 import type { SyllabusRevisionHeader, SyllabusRevisionResponse, SyllabusSectionKey } from '../types/syllabusApi';
 import { settledValue } from '../utils/promise';
 import { formatFileSize, toShortFileType } from '../utils/fileUploader';
 import { generateSecureActivationToken } from '../utils/cryptoToken';
+import { isChairRole, isDeanRole } from '../utils/roles';
 
 export interface LMSContextType {
   theme: 'dark' | 'light';
@@ -4013,6 +4015,20 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addCollege = async (college: College, initialDeanId?: string): Promise<College> => {
+    if (currentUser) {
+      const isSuperadminOrChancellor = activeRole === 'superadmin' || currentUser.adminSubrole === 'chancellor';
+      if (!isSuperadminOrChancellor) {
+        const isChair =
+          (currentUser.role === 'admin' && currentUser.adminSubrole === 'chairperson') ||
+          isChairRole(currentUser, activeRole);
+        const isDean =
+          (currentUser.role === 'admin' && currentUser.adminSubrole === 'dean') ||
+          isDeanRole(currentUser, activeRole);
+        if (isChair || isDean) {
+          throw new Error('Permission denied: Chairpersons and Deans cannot create academic colleges.');
+        }
+      }
+    }
     const effectiveDeanId = (initialDeanId && initialDeanId.trim() !== '' && initialDeanId !== 'none')
       ? initialDeanId.trim()
       : (initialDeanId === 'none' ? undefined : (college.deanId && college.deanId !== 'none' ? college.deanId : undefined));
@@ -4145,6 +4161,17 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addDepartment = async (department: Department, initialChairId?: string): Promise<Department> => {
+    if (currentUser) {
+      const isSuperadminOrChancellor = activeRole === 'superadmin' || currentUser.adminSubrole === 'chancellor';
+      if (!isSuperadminOrChancellor) {
+        const isChair =
+          (currentUser.role === 'admin' && currentUser.adminSubrole === 'chairperson') ||
+          isChairRole(currentUser, activeRole);
+        if (isChair) {
+          throw new Error('Permission denied: Department Chairpersons cannot create academic departments.');
+        }
+      }
+    }
     const effectiveChairId = (initialChairId && initialChairId.trim() !== '' && initialChairId !== 'none')
       ? initialChairId.trim()
       : (initialChairId === 'none' ? undefined : (department.chairpersonId && department.chairpersonId !== 'none' ? department.chairpersonId : undefined));

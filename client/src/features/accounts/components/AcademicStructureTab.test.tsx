@@ -438,4 +438,36 @@ describe('AcademicStructureTab Scoping and Leader Appointments', () => {
     expect(optionValues).not.toContain('u-dean-cet');
     expect(optionValues).toContain('u-fac-cet');
   });
+
+  test('8. Chairperson view hides "+ Add College", hides "+ Add Department", and hides Dean Reassign/Appoint actions', () => {
+    mockActiveRole = 'admin';
+    mockActiveUser = {
+      id: 'u-chair-it',
+      name: 'Prof. Charlie IT',
+      email: 'charlie.it@dmmmsu.edu.ph',
+      role: 'admin',
+      adminSubrole: 'chairperson',
+      collegeId: 'col-cet',
+      collegeName: 'College of Engineering and Technology',
+      department: 'Information Technology',
+      title: 'Department Chairperson',
+    };
+
+    render(<AcademicStructureTab />);
+
+    // Chair MUST NOT see + Add College
+    expect(screen.queryByRole('button', { name: /add college/i })).not.toBeInTheDocument();
+
+    // Chair MUST NOT see + Add Department
+    expect(screen.queryByRole('button', { name: /add department/i })).not.toBeInTheDocument();
+
+    // Chair MUST NOT see Reassign/Appoint for Deans
+    expect(screen.queryByRole('button', { name: /reassign/i })).not.toBeInTheDocument();
+
+    // Chairperson console description is shown
+    expect(screen.getByText(/Chairperson console: view academic structure/i)).toBeInTheDocument();
+
+    // Scoped to their college
+    expect(screen.getByText('College of Engineering and Technology')).toBeInTheDocument();
+  });
 });

@@ -17,6 +17,7 @@ vi.mock('../api/client', () => ({
     status = 500;
     code = 'request_failed';
   },
+  SESSION_EXPIRED_EVENT: 'gabay:session-expired',
   getToken: () => null,
   setToken: vi.fn(),
   clearToken: vi.fn(),

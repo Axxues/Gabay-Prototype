@@ -13,6 +13,7 @@ import {
   FolderTree,
   AlertCircle
 } from 'lucide-react';
+import { isDeanRole, isChairRole } from '../../../shared/utils/roles';
 
 export const AcademicStructureTab: React.FC = () => {
   const navigate = useNavigate();
@@ -38,7 +39,39 @@ export const AcademicStructureTab: React.FC = () => {
   } = useLMS();
 
   // Role & scope derivation
-  const isDean = activeRole === 'admin' && activeUser?.adminSubrole === 'dean';
+  const isSuperadminOrChancellor =
+    activeRole === 'superadmin' || activeUser?.adminSubrole === 'chancellor';
+
+  const isDean =
+    !isSuperadminOrChancellor &&
+    ((activeRole === 'admin' && activeUser?.adminSubrole === 'dean') ||
+      isDeanRole(activeUser, activeRole));
+
+  const isChair =
+    !isSuperadminOrChancellor &&
+    ((activeRole === 'admin' && activeUser?.adminSubrole === 'chairperson') ||
+      isChairRole(activeUser, activeRole));
+
+  // Permissions
+  const canAddCollege =
+    !isDean &&
+    !isChair &&
+    (isSuperadminOrChancellor || (activeRole === 'admin' && !activeUser?.adminSubrole));
+
+  const canAddDepartment =
+    !isChair &&
+    (isSuperadminOrChancellor ||
+      (activeRole === 'admin' && (isDean || !activeUser?.adminSubrole)));
+
+  const canManageDeans =
+    !isDean &&
+    !isChair &&
+    (isSuperadminOrChancellor || (activeRole === 'admin' && !activeUser?.adminSubrole));
+
+  const canAppointChairs =
+    !isChair &&
+    (isSuperadminOrChancellor || isDean || (activeRole === 'admin' && !activeUser?.adminSubrole));
+
   const viewerCollegeId = activeUser?.collegeId;
   const viewerCollegeName = activeUser?.collegeName?.toLowerCase();
 
@@ -47,14 +80,26 @@ export const AcademicStructureTab: React.FC = () => {
          (viewerCollegeName && c.name?.toLowerCase() === viewerCollegeName) ||
          (activeUser?.id && c.deanId === activeUser.id)
   );
-  const effectiveCollegeId = viewerCollegeId || deanCollege?.id;
+
+  const chairDept = isChair
+    ? (departments || []).find(
+        d => (activeUser?.id && d.chairpersonId === activeUser.id) ||
+             (activeUser?.department &&
+               (d.id === activeUser.department ||
+                d.name?.toLowerCase() === activeUser.department.toLowerCase() ||
+                d.code?.toLowerCase() === activeUser.department.toLowerCase()))
+      )
+    : undefined;
+
+  const effectiveCollegeId = viewerCollegeId || deanCollege?.id || chairDept?.collegeId;
   const effectiveCollegeName = viewerCollegeName || deanCollege?.name?.toLowerCase();
 
-  const displayedColleges = isDean
+  const displayedColleges = (isDean || isChair)
     ? (colleges || []).filter(
         c => (effectiveCollegeId && c.id === effectiveCollegeId) ||
              (effectiveCollegeName && c.name?.toLowerCase() === effectiveCollegeName) ||
-             (activeUser?.id && c.deanId === activeUser.id)
+             (activeUser?.id && c.deanId === activeUser.id) ||
+             (chairDept && c.id === chairDept.collegeId)
       )
     : (colleges || []);
 
@@ -97,6 +142,14 @@ export const AcademicStructureTab: React.FC = () => {
   // Submit new college
   const handleCreateCollege = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canAddCollege) {
+      showAlert({
+        title: 'Permission Denied',
+        message: 'Chairpersons and Deans cannot create academic colleges.',
+        type: 'error',
+      });
+      return;
+    }
     if (!collegeName.trim() || !collegeCode.trim() || isSubmittingCollege) return;
 
     setIsSubmittingCollege(true);
@@ -124,6 +177,14 @@ export const AcademicStructureTab: React.FC = () => {
   // Submit new department
   const handleCreateDepartment = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canAddDepartment) {
+      showAlert({
+        title: 'Permission Denied',
+        message: 'Department Chairpersons cannot create academic departments.',
+        type: 'error',
+      });
+      return;
+    }
     const targetCollegeId = isDean ? (effectiveCollegeId || deptCollegeId) : deptCollegeId;
     if (!targetCollegeId || !deptName.trim() || !deptCode.trim() || isSubmittingDept) return;
 
@@ -228,12 +289,14 @@ export const AcademicStructureTab: React.FC = () => {
             <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
               {isDean
                 ? 'Dean collegiate console: manage departments and designate department chairpersons within your college.'
+                : isChair
+                ? 'Chairperson console: view academic structure, faculty, and department operations.'
                 : 'Administrator console: dynamically provision colleges, academic departments, and designate unit leadership seats.'}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2.5 shrink-0 self-start md:self-auto">
-          {!isDean && (
+          {canAddCollege && (
             <button
               type="button"
               onClick={() => setIsAddCollegeOpen(true)}
@@ -243,25 +306,27 @@ export const AcademicStructureTab: React.FC = () => {
               <span>Add College</span>
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => {
-              if (isDean) {
-                setDeptCollegeId(effectiveCollegeId || '');
-              } else if (colleges.length > 0) {
-                setDeptCollegeId(colleges[0].id);
-              }
-              setIsAddDeptOpen(true);
-            }}
-            className={`px-4 py-2 ${
-              isDean
-                ? 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-primary-sm'
-                : 'bg-muted hover:bg-muted/80 text-foreground border border-border hover:border-primary/40'
-            } active:scale-[0.98] font-bold text-xs rounded-xl transition-all flex items-center space-x-1.5 cursor-pointer`}
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add Department</span>
-          </button>
+          {canAddDepartment && (
+            <button
+              type="button"
+              onClick={() => {
+                if (isDean) {
+                  setDeptCollegeId(effectiveCollegeId || '');
+                } else if (colleges.length > 0) {
+                  setDeptCollegeId(colleges[0].id);
+                }
+                setIsAddDeptOpen(true);
+              }}
+              className={`px-4 py-2 ${
+                isDean
+                  ? 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-primary-sm'
+                  : 'bg-muted hover:bg-muted/80 text-foreground border border-border hover:border-primary/40'
+              } active:scale-[0.98] font-bold text-xs rounded-xl transition-all flex items-center space-x-1.5 cursor-pointer`}
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add Department</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -336,7 +401,7 @@ export const AcademicStructureTab: React.FC = () => {
                           {dean.name}
                         </div>
                       </div>
-                      {!isDean && (
+                      {canManageDeans && (
                         <button
                           type="button"
                           onClick={(e) => {
@@ -367,7 +432,7 @@ export const AcademicStructureTab: React.FC = () => {
                           Not Appointed
                         </div>
                       </div>
-                      {!isDean && (
+                      {canManageDeans && (
                         <button
                           type="button"
                           onClick={(e) => {
@@ -395,16 +460,18 @@ export const AcademicStructureTab: React.FC = () => {
                   {collegeDepts.length === 0 ? (
                     <div className="p-6 text-center text-xs text-muted-foreground">
                       No departments added yet for this college.{' '}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDeptCollegeId(college.id);
-                          setIsAddDeptOpen(true);
-                        }}
-                        className="text-primary font-bold hover:underline ml-1 cursor-pointer"
-                      >
-                        Add one now
-                      </button>
+                      {canAddDepartment && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDeptCollegeId(college.id);
+                            setIsAddDeptOpen(true);
+                          }}
+                          className="text-primary font-bold hover:underline ml-1 cursor-pointer"
+                        >
+                          Add one now
+                        </button>
+                      )}
                     </div>
                   ) : (
                     collegeDepts.map(dept => {
@@ -451,21 +518,23 @@ export const AcademicStructureTab: React.FC = () => {
                                 <span className="text-xs text-amber-700 dark:text-amber-300 font-semibold">
                                   No Chair Appointed
                                 </span>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setAppointModalData({
-                                      roleType: 'chairperson',
-                                      unitId: dept.id,
-                                      unitName: dept.name,
-                                      currentLeaderId: dept.chairpersonId,
-                                    });
-                                  }}
-                                  className="text-xs text-primary font-bold hover:underline ml-1 cursor-pointer"
-                                >
-                                  Appoint
-                                </button>
+                                {canAppointChairs && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setAppointModalData({
+                                        roleType: 'chairperson',
+                                        unitId: dept.id,
+                                        unitName: dept.name,
+                                        currentLeaderId: dept.chairpersonId,
+                                      });
+                                    }}
+                                    className="text-xs text-primary font-bold hover:underline ml-1 cursor-pointer"
+                                  >
+                                    Appoint
+                                  </button>
+                                )}
                               </div>
                             )}
                           </div>

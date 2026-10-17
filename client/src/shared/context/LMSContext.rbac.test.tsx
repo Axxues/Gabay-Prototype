@@ -43,6 +43,7 @@ vi.mock('../api/client', () => ({
     status = 500;
     code = 'request_failed';
   },
+  SESSION_EXPIRED_EVENT: 'gabay:session-expired',
   getToken: () => null,
   setToken: vi.fn(),
   clearToken: vi.fn(),
@@ -632,6 +633,52 @@ describe('LMSContext RBAC: Registration Staging, Verification Queue & Leadership
     expect(ctx!.currentUser?.adminSubrole).toBe('chairperson');
     expect(ctx!.currentUser?.title).toBe('Department Chairperson');
     expect(ctx!.currentUser?.department).toBe('Computer Science');
+  });
+
+  test('chairperson cannot create college or department (throws permission denied)', async () => {
+    loginLikhaMock.mockResolvedValueOnce({
+      token: 't-chair',
+      user: {
+        id: 'u-chair-directus',
+        first_name: 'Roberto',
+        last_name: 'Cruz',
+        email: 'chair.cruz@dmmmsu.edu.ph',
+        role: { name: 'Chairperson' },
+        department: 'Computer Science',
+      },
+    } as any);
+
+    render(
+      <LMSProvider>
+        <ContextProbe />
+      </LMSProvider>
+    );
+
+    await act(async () => {
+      await ctx!.login('chair.cruz@dmmmsu.edu.ph', 'password123');
+    });
+
+    expect(ctx!.activeRole).toBe('admin');
+    expect(ctx!.currentUser?.adminSubrole).toBe('chairperson');
+
+    // Chair attempting to add college must throw
+    await expect(
+      ctx!.addCollege({
+        id: 'col-illegal',
+        name: 'Illegal College',
+        code: 'ILL',
+      })
+    ).rejects.toThrow(/Permission denied/i);
+
+    // Chair attempting to add department must throw
+    await expect(
+      ctx!.addDepartment({
+        id: 'dept-illegal',
+        collegeId: 'col-ccs',
+        name: 'Illegal Department',
+        code: 'ILLD',
+      })
+    ).rejects.toThrow(/Permission denied/i);
   });
 });
 

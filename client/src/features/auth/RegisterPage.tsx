@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { useLMS } from '../../shared/context/LMSContext';
 import { formatIdNumber, isValidIdNumber, ID_NUMBER_EXAMPLE } from '../../shared/utils/idNumber';
+import { isValidInstitutionalEmail, INSTITUTIONAL_EMAIL_REQUIREMENT } from '../../shared/utils/institutionalEmail';
 import type { PendingRegistration } from '../../shared/types/lms';
 import {
   Lock,
@@ -88,12 +89,6 @@ export const RegisterPage: React.FC = () => {
     };
   }, [tokenFromUrl, activateEmail]);
 
-  const validateInstitutionalEmail = (val: string): boolean => {
-    const trimmed = val.trim().toLowerCase();
-    const pattern = /^[a-zA-Z0-9._%+-]+@dmmmsu\.edu\.ph$/i;
-    return pattern.test(trimmed);
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
@@ -112,8 +107,8 @@ export const RegisterPage: React.FC = () => {
       setErrorMessage('Please enter your institutional email.');
       return;
     }
-    if (!validateInstitutionalEmail(cleanEmail)) {
-      setErrorMessage('Institutional email must end with @dmmmsu.edu.ph.');
+    if (!isValidInstitutionalEmail(cleanEmail)) {
+      setErrorMessage(INSTITUTIONAL_EMAIL_REQUIREMENT);
       return;
     }
 
@@ -364,7 +359,7 @@ export const RegisterPage: React.FC = () => {
             </div>
           )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} noValidate className="space-y-4">
           {/* Role Selector */}
           <div className="space-y-1.5">
             <label className="text-[12px] font-semibold text-muted-foreground block">
@@ -508,10 +503,11 @@ export const RegisterPage: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
               <label htmlFor="reg-college" className="text-[12px] font-semibold text-muted-foreground">
-                College
+                College *
               </label>
               <select
                 id="reg-college"
+                required
                 value={collegeId}
                 onChange={e => {
                   const nextCol = e.target.value;
@@ -533,10 +529,11 @@ export const RegisterPage: React.FC = () => {
 
             <div className="space-y-1">
               <label htmlFor="reg-department" className="text-[12px] font-semibold text-muted-foreground">
-                Department
+                Department *
               </label>
               <select
                 id="reg-department"
+                required
                 value={department}
                 disabled={!collegeId || isSubmitting}
                 onChange={e => {
