@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import React from 'react';
 import { ManageAccountsPage } from './ManageAccountsPage';
 import { AcademicGovernancePage } from './AcademicGovernancePage';
@@ -454,5 +454,62 @@ describe('ManageAccountsPage RBAC & Verification Queue', () => {
     await waitFor(() => {
       expect(mocks.transferLeadership).toHaveBeenCalledWith('dean', 'admin-1', 'fac-1', 'col-ccs');
     });
+  });
+
+  it('8. displays Dean and Chair badges for admin(dean) and admin(chair) accounts in directory table', () => {
+    mocks.mockState.activeRole = 'superadmin';
+    mocks.mockState.activeUser = {
+      id: 'chancellor-1',
+      name: 'Chancellor Jayvee',
+      role: 'superadmin',
+      adminSubrole: 'chancellor',
+    };
+    mocks.mockState.db.users = [
+      {
+        id: 'user-dean',
+        name: 'Eleanor Vance',
+        email: 'dean1@dmmmsu.edu.ph',
+        role: 'admin',
+        adminSubrole: 'dean',
+        collegeId: 'col-ccs',
+        department: 'College of Computer Science',
+        title: 'College Dean',
+      },
+      {
+        id: 'user-chair',
+        name: 'Marcus Brody',
+        email: 'chair1@dmmmsu.edu.ph',
+        role: 'admin',
+        adminSubrole: 'chairperson',
+        collegeId: 'col-ccs',
+        department: 'Department of Computer Science',
+        title: 'Department Chairperson',
+      },
+      {
+        id: 'user-fac',
+        name: 'Faculty User',
+        email: 'fac@dmmmsu.edu.ph',
+        role: 'faculty',
+        collegeId: 'col-ccs',
+        department: 'Department of Computer Science',
+        title: 'Instructor',
+      },
+    ];
+
+    render(<ManageAccountsPage />);
+
+    // Row for Eleanor Vance should display "Dean"
+    const deanRow = screen.getByText('Eleanor Vance').closest('tr');
+    expect(within(deanRow!).getByText('Dean')).toBeInTheDocument();
+    expect(within(deanRow!).queryByText('Admin')).not.toBeInTheDocument();
+
+    // Row for Marcus Brody should display "Chair"
+    const chairRow = screen.getByText('Marcus Brody').closest('tr');
+    expect(within(chairRow!).getByText('Chair')).toBeInTheDocument();
+    expect(within(chairRow!).queryByText('Admin')).not.toBeInTheDocument();
+
+    // Row for Faculty should display "Faculty"
+    const facRow = screen.getByText('Faculty User').closest('tr');
+    expect(within(facRow!).getByText('Faculty')).toBeInTheDocument();
   });
 });
