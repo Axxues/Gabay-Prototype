@@ -32,15 +32,17 @@ export const AcademicStructureTab: React.FC = () => {
 
   const deanCollege = (colleges || []).find(
     c => (viewerCollegeId && c.id === viewerCollegeId) ||
-         (viewerCollegeName && c.name?.toLowerCase() === viewerCollegeName)
+         (viewerCollegeName && c.name?.toLowerCase() === viewerCollegeName) ||
+         (activeUser?.id && c.deanId === activeUser.id)
   );
   const effectiveCollegeId = viewerCollegeId || deanCollege?.id;
   const effectiveCollegeName = viewerCollegeName || deanCollege?.name?.toLowerCase();
 
   const displayedColleges = isDean
     ? (colleges || []).filter(
-        c => (viewerCollegeId && c.id === viewerCollegeId) ||
-             (viewerCollegeName && c.name?.toLowerCase() === viewerCollegeName)
+        c => (effectiveCollegeId && c.id === effectiveCollegeId) ||
+             (effectiveCollegeName && c.name?.toLowerCase() === effectiveCollegeName) ||
+             (activeUser?.id && c.deanId === activeUser.id)
       )
     : (colleges || []);
 

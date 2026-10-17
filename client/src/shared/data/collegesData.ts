@@ -9,6 +9,7 @@ export const DEFAULT_COLLEGES: College[] = [
     id: 'col-ccs',
     name: 'College of Computer Science',
     code: 'CCS',
+    deanId: '6a52a8c6-5a15-4620-8a16-d06a5b269fc3',
   },
   {
     id: 'col-coe',
@@ -32,6 +33,7 @@ export const DEFAULT_DEPARTMENTS: Department[] = [
     collegeId: 'col-ccs',
     name: 'Department of Computer Science',
     code: 'CS',
+    chairpersonId: '3281e224-fc7d-4c7e-b4c9-bcb7bca2ab89',
   },
   {
     id: 'dept-it',

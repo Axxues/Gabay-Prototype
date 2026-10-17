@@ -1431,6 +1431,43 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         department: u.department || 'Office of the Chancellor',
       };
     }
+    if (mapped.adminSubrole === 'dean') {
+      const assignedCol = (colleges || []).find(
+        c => (u.id && c.deanId === u.id) ||
+             (u.collegeId && c.id === u.collegeId) ||
+             (u.department && (c.name?.toLowerCase() === u.department?.toLowerCase() || c.name?.toLowerCase().includes('computer science')))
+      );
+      const colId = u.collegeId || assignedCol?.id || 'col-ccs';
+      const colName = u.collegeName || assignedCol?.name || 'College of Computer Science';
+      return {
+        ...u,
+        role: mapped.role,
+        adminSubrole: mapped.adminSubrole,
+        title: u.title || mapped.title,
+        collegeId: colId,
+        collegeName: colName,
+        department: u.department || colName,
+      };
+    }
+    if (mapped.adminSubrole === 'chairperson') {
+      const assignedDept = (departments || []).find(
+        d => (u.id && d.chairpersonId === u.id) ||
+             (u.department && (d.name?.toLowerCase().includes(u.department?.toLowerCase()) || u.department?.toLowerCase().includes(d.name?.toLowerCase()) || d.name?.toLowerCase().includes('computer science')))
+      );
+      const parentCol = (colleges || []).find(c => c.id === (assignedDept?.collegeId || u.collegeId || 'col-ccs'));
+      const colId = u.collegeId || assignedDept?.collegeId || parentCol?.id || 'col-ccs';
+      const colName = u.collegeName || parentCol?.name || 'College of Computer Science';
+      const deptName = u.department || assignedDept?.name || 'Department of Computer Science';
+      return {
+        ...u,
+        role: mapped.role,
+        adminSubrole: mapped.adminSubrole,
+        title: u.title || mapped.title,
+        collegeId: colId,
+        collegeName: colName,
+        department: deptName,
+      };
+    }
     return {
       ...u,
       role: mapped.role,
@@ -1703,7 +1740,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             .filter((u: any) => u.id !== user.id)
             .map((u: any) => {
               const mapped = mapDirectusRole(u.role, u.email, u.adminSubrole);
-              return {
+              const baseUser: User = {
                 id: u.id,
                 name: `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email,
                 email: u.email,
@@ -1717,6 +1754,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 collegeId: u.college_id || u.collegeId,
                 collegeName: u.college_name || u.collegeName,
               };
+              return normalizeChancellorUser(baseUser);
             });
           fresh.users = [normalizeChancellorUser(user), ...others];
         } else {
@@ -2393,7 +2431,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             likhaAuth.user.email,
             likhaAuth.user.adminSubrole
           );
-          const mappedUser: User = {
+          const rawMappedUser: User = {
             id: likhaAuth.user.id,
             name: `${likhaAuth.user.first_name || ''} ${likhaAuth.user.last_name || ''}`.trim() || likhaAuth.user.email,
             email: likhaAuth.user.email,
@@ -2407,6 +2445,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             collegeId: likhaAuth.user.college_id || likhaAuth.user.collegeId,
             collegeName: likhaAuth.user.college_name || likhaAuth.user.collegeName,
           };
+          const mappedUser = normalizeChancellorUser(rawMappedUser);
           setToken(likhaAuth.token);
           const essentialLikha = await refreshEssential(mappedUser);
           void refreshDeferred(essentialLikha.fresh, essentialLikha.courses, essentialLikha.run);
