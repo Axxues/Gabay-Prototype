@@ -1386,12 +1386,6 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return (email || '').trim().toLowerCase() === 'jayveegenetareyes@gmail.com';
   };
 
-  const isTrinmarBoado = (u?: { email?: string | null; name?: string | null } | null): boolean => {
-    const email = (u?.email || '').toLowerCase().trim();
-    const name = (u?.name || '').toLowerCase().trim();
-    return email.includes('trinmar.boado') || name.includes('trinmar boado') || email.includes('trinmar');
-  };
-
   const mapDirectusRole = (
     rawRole: any,
     email?: string | null,
@@ -1427,10 +1421,6 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const normalizeChancellorUser = (u: User): User => {
-    if (isTrinmarBoado(u)) {
-      return u;
-    }
-
     const mapped = mapDirectusRole(u.role, u.email, u.adminSubrole);
     if (mapped.role === 'superadmin' || isChancellorEmail(u.email)) {
       return {

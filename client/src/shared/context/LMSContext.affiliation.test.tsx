@@ -23,15 +23,6 @@ const directoryRows = [
     title: 'College Dean',
   },
   {
-    id: 'u-trinmar',
-    first_name: 'Trinmar',
-    last_name: 'Boado',
-    email: 'trinmar.boado@gmail.com',
-    role: { name: 'Administrator' },
-    department: 'Office of System Architecture',
-    title: 'System Administrator',
-  },
-  {
     id: 'u-fac1',
     first_name: 'Faculty',
     last_name: 'Instructor 1',
@@ -133,7 +124,7 @@ describe('Institutional Academic Hierarchy Affiliations', () => {
     } catch {}
   });
 
-  test('affiliates accounts with College of Computer Science & Department of Computer Science while leaving Trinmar Boado alone', async () => {
+  test('affiliates accounts with College of Computer Science & Department of Computer Science', async () => {
     render(
       <LMSProvider>
         <Probe />
@@ -145,48 +136,42 @@ describe('Institutional Academic Hierarchy Affiliations', () => {
     });
 
     await waitFor(() => {
-      expect((seenUsers || []).length).toBe(7); // chancellor + 6 directory rows
+      expect((seenUsers || []).length).toBe(6); // chancellor + 5 directory rows
     });
 
     const userByEmail = Object.fromEntries(
       (seenUsers || []).map((u: any) => [u.email, u])
     );
 
-    // 1. Trinmar Boado: left alone!
-    const trinmar = userByEmail['trinmar.boado@gmail.com'];
-    expect(trinmar).toBeDefined();
-    expect(trinmar.department).toBe('Office of System Architecture');
-    expect(trinmar.title).toBe('System Administrator');
-
-    // 2. Chancellor: Office of the Chancellor
+    // 1. Chancellor: Office of the Chancellor
     const chancellor = userByEmail['jayveegenetareyes@gmail.com'];
     expect(chancellor).toBeDefined();
     expect(chancellor.department).toBe('Office of the Chancellor');
 
-    // 3. Demo Dean: College of Computer Science
+    // 2. Demo Dean: College of Computer Science
     const dean = userByEmail['dean1@dmmmsu.edu.ph'];
     expect(dean).toBeDefined();
     expect(dean.collegeName).toBe('College of Computer Science');
 
-    // 4. Demo Chair: Department of Computer Science
+    // 3. Demo Chair: Department of Computer Science
     const chair = userByEmail['chair1@dmmmsu.edu.ph'];
     expect(chair).toBeDefined();
     expect(chair.collegeName).toBe('College of Computer Science');
     expect(chair.department).toBe('Department of Computer Science');
 
-    // 5. Faculty: bound to College of Computer Science & Department of Computer Science
+    // 4. Faculty: bound to College of Computer Science & Department of Computer Science
     const faculty = userByEmail['faculty1@dmmmsu.edu.ph'];
     expect(faculty).toBeDefined();
     expect(faculty.collegeName).toBe('College of Computer Science');
     expect(faculty.department).toBe('Department of Computer Science');
 
-    // 6. Student: bound to College of Computer Science & Department of Computer Science
+    // 5. Student: bound to College of Computer Science & Department of Computer Science
     const student = userByEmail['student1@dmmmsu.edu.ph'];
     expect(student).toBeDefined();
     expect(student.collegeName).toBe('College of Computer Science');
     expect(student.department).toBe('Department of Computer Science');
 
-    // 7. Staff: bound to College of Computer Science & Department of Computer Science
+    // 6. Staff: bound to College of Computer Science & Department of Computer Science
     const staff = userByEmail['staff1@dmmmsu.edu.ph'];
     expect(staff).toBeDefined();
     expect(staff.collegeName).toBe('College of Computer Science');
