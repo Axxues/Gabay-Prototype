@@ -56,6 +56,7 @@ import { syllabusApi, deleteDraft, withdrawSyllabus } from '../api/syllabus';
 import type { SyllabusRevisionHeader, SyllabusRevisionResponse, SyllabusSectionKey } from '../types/syllabusApi';
 import { settledValue } from '../utils/promise';
 import { formatFileSize, toShortFileType } from '../utils/fileUploader';
+import { generateSecureActivationToken } from '../utils/cryptoToken';
 
 export interface LMSContextType {
   theme: 'dark' | 'light';
@@ -3629,7 +3630,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const collegeName = payload.collegeName || matchedCollege?.name || payload.collegeId;
     const activationToken =
       payload.activationToken ||
-      (Math.random().toString(36).substring(2) + Date.now().toString(36));
+      generateSecureActivationToken();
     const registeredAt = payload.registeredAt || new Date().toISOString();
     const expiresAt =
       payload.expiresAt || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
