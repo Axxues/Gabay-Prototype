@@ -113,6 +113,37 @@ describe('CreateCoursePage', () => {
       section: 'M1',
       title: 'Calculus I',
       joinCode: 'MATH 101-TEST',
+      schoolYear: '2025-2026',
+    }));
+  });
+
+  test('renders School Year selector with active default and allows changing school year', async () => {
+    const { fireEvent, act } = await import('@testing-library/react');
+    const onNavigateCourse = vi.fn();
+
+    render(
+      <CreateCoursePage
+        onNavigateCourse={onNavigateCourse}
+        onNavigateTab={vi.fn()}
+      />
+    );
+
+    const syBtn = screen.getByTestId('create-course-school-year');
+    expect(syBtn).toHaveTextContent(/2025-2026/);
+
+    fireEvent.change(screen.getByPlaceholderText(/CMSC 180/i), { target: { value: 'CS 201' } });
+    fireEvent.change(screen.getByPlaceholderText(/4-E/i), { target: { value: '2-A' } });
+    fireEvent.change(screen.getByPlaceholderText(/Artificial Intelligence/i), { target: { value: 'Data Structures' } });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Create course shell/i }));
+    });
+
+    expect(createCourseMock).toHaveBeenCalledWith(expect.objectContaining({
+      code: 'CS 201',
+      section: '2-A',
+      title: 'Data Structures',
+      schoolYear: '2025-2026',
     }));
   });
 

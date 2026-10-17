@@ -69,11 +69,31 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
   onNavigateCourse,
   onNavigateTab
 }) => {
-  const { activeUser, db, createCourse, showAlert } = useLMS();
+  const {
+    activeUser,
+    db,
+    createCourse,
+    showAlert,
+    schoolYears,
+    getActiveSchoolYearForCollege,
+    getSchoolYearsByCollege
+  } = useLMS();
+
+  const userCollegeId = activeUser?.collegeId || 'col-ccs';
+  const defaultSchoolYear = useMemo(() => {
+    if (getActiveSchoolYearForCollege) {
+      const activeSy = getActiveSchoolYearForCollege(userCollegeId);
+      if (activeSy?.year) return activeSy.year;
+    }
+    const list = getSchoolYearsByCollege ? getSchoolYearsByCollege(userCollegeId) : [];
+    const active = list.find(sy => sy.isActive);
+    return active?.year || '2025-2026';
+  }, [getActiveSchoolYearForCollege, getSchoolYearsByCollege, userCollegeId]);
 
   const [courseCode, setCourseCode] = useState('');
   const [courseTitle, setCourseTitle] = useState('');
   const [courseSection, setCourseSection] = useState('');
+  const [courseSchoolYear, setCourseSchoolYear] = useState(() => defaultSchoolYear);
   const [courseColor, setCourseColor] = useState('');
   const [courseImage, setCourseImage] = useState<string>('');
   const [imageMode, setImageMode] = useState<'presets' | 'upload' | 'url'>('presets');
@@ -92,6 +112,38 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
   const handleRegenerateCode = () => {
     setCourseJoinCode(generateCourseJoinCode(db.courses, courseCode));
   };
+
+  // Distinct collegiate school year options
+  const schoolYearOptions = useMemo(() => {
+    const years = new Set<string>();
+    const list = getSchoolYearsByCollege ? getSchoolYearsByCollege(userCollegeId) : (schoolYears || []);
+    list.forEach(sy => {
+      if (sy.year) years.add(sy.year.trim());
+    });
+    years.add('2025-2026');
+    return Array.from(years).sort((a, b) => b.localeCompare(a));
+  }, [getSchoolYearsByCollege, userCollegeId, schoolYears]);
+
+  const [isSchoolYearOpen, setIsSchoolYearOpen] = useState(false);
+  const schoolYearDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isSchoolYearOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (schoolYearDropdownRef.current && !schoolYearDropdownRef.current.contains(e.target as Node)) {
+        setIsSchoolYearOpen(false);
+      }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsSchoolYearOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [isSchoolYearOpen]);
 
   // Dynamic academic terms: current AY always on top, short terms below, then history
   const termOptions = useMemo(() => getAcademicTermOptions(new Date()), []);
@@ -113,7 +165,6 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
     document.addEventListener('keydown', onKeyDown);
     return () => {
       document.removeEventListener('pointerdown', onPointerDown);
-      document.removeEventListener('keydown', onKeyDown);
     };
   }, [isTermOpen]);
 
@@ -212,6 +263,7 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
         instructorId: activeUser.id,
         instructorName: activeUser.name,
         term: courseTerm,
+        schoolYear: courseSchoolYear.trim() || defaultSchoolYear,
         published: true,
         joinCode: courseJoinCode.trim() || generateCourseJoinCode(db.courses, courseCode.trim())
       });
@@ -343,6 +395,69 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
                   placeholder="e.g. Artificial Intelligence & Expert Systems"
                   className="w-full p-2.5 bg-background border border-border focus:ring-2 focus:ring-primary/20 focus:border-primary/40 rounded-xl text-foreground text-[13px] outline-none"
                 />
+              </div>
+
+              <div>
+                <label className="block text-[12px] font-semibold text-muted-foreground mb-1.5">
+                  School year <span className="text-destructive">*</span>
+                </label>
+                <div ref={schoolYearDropdownRef} className="relative">
+                  <button
+                    type="button"
+                    aria-label="Select School Year"
+                    data-testid="create-course-school-year"
+                    onClick={() => setIsSchoolYearOpen(v => !v)}
+                    className={`w-full p-2.5 bg-background border rounded-xl text-left outline-none transition-all flex items-center gap-3 cursor-pointer ${
+                      isSchoolYearOpen
+                        ? 'border-primary/40 ring-2 ring-primary/20'
+                        : 'border-border hover:border-primary/40'
+                    }`}
+                  >
+                    <span className="w-9 h-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                      <CalendarDays className="w-4 h-4" />
+                    </span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-xs font-bold text-foreground truncate">
+                        AY {courseSchoolYear || defaultSchoolYear}
+                      </span>
+                    </span>
+                    {courseSchoolYear === defaultSchoolYear && (
+                      <span className="px-2 py-0.5 text-[10px] font-semibold bg-primary/10 text-primary border border-primary/20 rounded-md shrink-0">
+                        Active
+                      </span>
+                    )}
+                    <ChevronDown className={`w-4 h-4 text-muted-foreground shrink-0 transition-transform ${isSchoolYearOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {isSchoolYearOpen && (
+                    <div className="absolute z-30 mt-2 w-full bg-card border border-border rounded-2xl shadow-elevated overflow-hidden animate-fade-in p-1.5 max-h-60 overflow-y-auto custom-scrollbar">
+                      {schoolYearOptions.map(sy => {
+                        const active = sy === courseSchoolYear;
+                        return (
+                          <button
+                            key={sy}
+                            type="button"
+                            onClick={() => {
+                              setCourseSchoolYear(sy);
+                              setIsSchoolYearOpen(false);
+                            }}
+                            className={`w-full flex items-center justify-between p-2.5 rounded-xl text-left transition-colors cursor-pointer ${
+                              active ? 'bg-primary/10 text-primary font-bold' : 'hover:bg-muted/60 text-foreground'
+                            }`}
+                          >
+                            <span className="text-xs font-bold truncate">AY {sy}</span>
+                            {sy === defaultSchoolYear && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border">
+                                Active Year
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+                <span className="text-[10px] text-muted-foreground">Scoping this course to the college's academic calendar year.</span>
               </div>
 
               <div>
@@ -958,6 +1073,12 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
                 <div className="flex justify-between items-center text-muted-foreground">
                   <span>Instructor</span>
                   <span className="font-semibold text-foreground truncate max-w-[150px]">{activeUser.name}</span>
+                </div>
+                <div className="flex justify-between items-center text-muted-foreground">
+                  <span>School Year</span>
+                  <span className="font-semibold text-foreground truncate max-w-[150px]">
+                    AY {courseSchoolYear || defaultSchoolYear}
+                  </span>
                 </div>
                 <div className="flex justify-between items-center text-muted-foreground">
                   <span>Academic Term</span>
