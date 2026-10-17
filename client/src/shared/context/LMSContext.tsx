@@ -83,6 +83,7 @@ export interface LMSContextType {
 
   activeCourseId: string | null;
   setActiveCourseId: (id: string | null) => void;
+  hydrateCourse: (courseId: string) => Promise<void>;
   db: LMSDatabase;
   
   // SpeedGrader modal state
@@ -1506,6 +1507,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     syllabusRevisionsRef.current = syllabusRevisions;
   }, [syllabusRevisions]);
   const activeCourseIdRef = useRef<string | null>('crs-cmsc131');
+  const currentUserRef = useRef<User | null>(null);
+  useEffect(() => {
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
+  const hydratedCourseIdsRef = useRef<Set<string>>(new Set());
+  const hydratingCourseIdsRef = useRef<Set<string>>(new Set());
 
   // ponytail: two-phase bootstrap — essential paints the shell fast,
   // deferred fills per-course details in the background without blocking authReady.
@@ -1516,6 +1523,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsLoading(true);
     setLastError(null);
     sprHydratedRef.current.clear();
+    hydratedCourseIdsRef.current.clear();
+    hydratingCourseIdsRef.current.clear();
     try {
       // Likha-primary bootstrap: courses, notifications, messages, and
       // calendar events all come from Likha ERP (no Express fallback on
@@ -1848,13 +1857,42 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       fresh.courseSections = [...sectionMap.values()];
       fresh.enrollmentRequests = [...requestMap.values()];
+
+      // Scoped Course Hydration: Prioritize the viewer's active course,
+      // courses taught, courses with user enrollments or requests, plus the first 2 courses
+      // to maintain instant responsiveness and preserve existing test contracts without
+      // fetching all courses in the catalog.
+      const user = currentUserRef.current;
+      const relevantCourseIds = new Set<string>();
+      if (activeCourseIdRef.current) relevantCourseIds.add(activeCourseIdRef.current);
+      if (user) {
+        for (const c of coursesRes.courses) {
+          if (c.instructorId === user.id || (c as any).instructor_id === user.id) {
+            relevantCourseIds.add(c.id);
+          }
+        }
+        for (const req of requestMap.values()) {
+          if (req.studentId === user.id && req.courseId) {
+            relevantCourseIds.add(req.courseId);
+          }
+        }
+      }
+      for (const c of coursesRes.courses.slice(0, 2)) {
+        relevantCourseIds.add(c.id);
+      }
+
+      const coursesToHydrate = coursesRes.courses.filter(c => relevantCourseIds.has(c.id));
+      for (const c of coursesToHydrate) {
+        hydratedCourseIdsRef.current.add(c.id);
+      }
+
       // Course-content bootstrap: modules (with items + comments incl.
       // likedBy arrays), announcements (with replies/attachments/likedBy/
       // readBy), discussions (with replies) for each of the user's courses
       // (enrolled + taught — the same course set resolved above). Per-course
       // failures are tolerated (403-tolerant); sync getters read the cache.
       const contentResults = await mapConcurrent(
-        coursesRes.courses,
+        coursesToHydrate,
         3,
         course =>
           (async () => {
@@ -1907,7 +1945,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // + SPR config ride the same Likha path. Per-course failures are
       // tolerated (403-tolerant); sync getters read the cache.
       const assessmentResults = await mapConcurrent(
-        coursesRes.courses,
+        coursesToHydrate,
         3,
         course =>
           (async () => {
@@ -1995,7 +2033,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // spr_cells split per course here so column ids bucket against the
       // freshly loaded config (cells survive reload with no extra round-trip).
       const sprConfigResults = await mapConcurrent(
-        coursesRes.courses,
+        coursesToHydrate,
         4,
         course =>
           (async () => {
@@ -2073,7 +2111,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // rows plus module/announcement/activity sources). Per-course
       // failures are tolerated (403-tolerant); sync getters read the cache.
       const fileResults = await mapConcurrent(
-        coursesRes.courses,
+        coursesToHydrate,
         3,
         course =>
           (async () => {
@@ -2327,12 +2365,142 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // On-demand Course Hydration (Priority 1 Optimization)
+  const hydrateCourse = useCallback(async (courseId: string): Promise<void> => {
+    if (!courseId) return;
+    if (hydratedCourseIdsRef.current.has(courseId) || hydratingCourseIdsRef.current.has(courseId)) {
+      return;
+    }
+    hydratingCourseIdsRef.current.add(courseId);
+    try {
+      const [
+        sectionsSettled,
+        requestsSettled,
+        approvedSettled,
+        modulesSettled,
+        announcementsSettled,
+        discussionsSettled,
+        quizzesSettled,
+        examsSettled,
+        activitiesSettled,
+        gradesSettled,
+        sprConfigSettled,
+        foldersSettled,
+        filesSettled,
+      ] = await Promise.allSettled([
+        Promise.resolve().then(() => likhaLmsApi?.sections?.getSections?.(courseId) ?? []),
+        Promise.resolve().then(() => likhaLmsApi?.requests?.getRequests?.(courseId, 'pending') ?? []),
+        Promise.resolve().then(() => likhaLmsApi?.requests?.getRequests?.(courseId, 'approved') ?? []),
+        Promise.resolve().then(() => likhaLmsApi?.modules?.getModulesWithItems?.(courseId) ?? []),
+        Promise.resolve().then(() => likhaLmsApi?.communications?.getAnnouncements?.(courseId) ?? []),
+        Promise.resolve().then(() => likhaLmsApi?.communications?.getDiscussions?.(courseId) ?? []),
+        Promise.resolve().then(() => likhaLmsApi?.assessments?.getQuizzes?.(courseId) ?? []),
+        Promise.resolve().then(() => likhaLmsApi?.assessments?.getExams?.(courseId) ?? []),
+        Promise.resolve().then(() => likhaLmsApi?.assessments?.getActivities?.(courseId) ?? []),
+        Promise.resolve().then(() => likhaLmsApi?.grades?.getCourseGrades?.(courseId) ?? []),
+        Promise.resolve().then(() => likhaLmsApi?.grades?.getSPRConfig?.(courseId) ?? null),
+        Promise.resolve().then(() => likhaLmsApi?.files?.getCourseFolders?.(courseId) ?? []),
+        Promise.resolve().then(() => likhaLmsApi?.files?.getCourseFiles?.(courseId) ?? []),
+      ]);
+
+      const newSections = sectionsSettled.status === 'fulfilled' && Array.isArray(sectionsSettled.value)
+        ? (sectionsSettled.value as any[]).map(mapLikhaSectionRow)
+        : [];
+      const newRequests = [
+        ...(requestsSettled.status === 'fulfilled' && Array.isArray(requestsSettled.value) ? (requestsSettled.value as any[]).map(mapLikhaRequestRow) : []),
+        ...(approvedSettled.status === 'fulfilled' && Array.isArray(approvedSettled.value) ? (approvedSettled.value as any[]).map(mapLikhaRequestRow) : []),
+      ];
+      const newModules = modulesSettled.status === 'fulfilled' && Array.isArray(modulesSettled.value)
+        ? (modulesSettled.value as any[]).map(mapLikhaModuleRow)
+        : [];
+      const newAnnouncements = announcementsSettled.status === 'fulfilled' && Array.isArray(announcementsSettled.value)
+        ? (announcementsSettled.value as any[]).map(r => mapLikhaAnnouncementRow(r, courseId))
+        : [];
+      const newDiscussions = discussionsSettled.status === 'fulfilled' && Array.isArray(discussionsSettled.value)
+        ? (discussionsSettled.value as any[]).map(r => mapLikhaDiscussionRow(r, courseId))
+        : [];
+      const newQuizzes = quizzesSettled.status === 'fulfilled' && Array.isArray(quizzesSettled.value)
+        ? (quizzesSettled.value as any[]).map(r => normalizeQuiz(mapLikhaQuizRow(r)))
+        : [];
+      const newExams = examsSettled.status === 'fulfilled' && Array.isArray(examsSettled.value)
+        ? (examsSettled.value as any[]).map(r => normalizeExam(mapLikhaExamRow(r)))
+        : [];
+      const newActivities = activitiesSettled.status === 'fulfilled' && Array.isArray(activitiesSettled.value)
+        ? (activitiesSettled.value as any[]).map(r => normalizeActivity(mapLikhaActivityRow(r)))
+        : [];
+      const newGrades = gradesSettled.status === 'fulfilled' && Array.isArray(gradesSettled.value)
+        ? (gradesSettled.value as any[]).map(r => normalizeCourseGrade(mapLikhaGradeRow(r, courseId)))
+        : [];
+      const sprConfig = sprConfigSettled.status === 'fulfilled' && sprConfigSettled.value
+        ? mapLikhaSPRConfigRow(sprConfigSettled.value, courseId)
+        : null;
+      const newFolders = foldersSettled.status === 'fulfilled' && Array.isArray(foldersSettled.value)
+        ? (foldersSettled.value as any[]).map(f => mapLikhaCourseFolderRow(f, courseId))
+        : [];
+      const newFiles = filesSettled.status === 'fulfilled' && Array.isArray(filesSettled.value)
+        ? (filesSettled.value as any[]).map(f => mapLikhaCourseFileRow(f, courseId))
+        : [];
+
+      // Fetch submissions for assessments in this course
+      const assessments: Array<{ id: string; type: 'quiz' | 'activity' | 'exam' }> = [
+        ...newQuizzes.map(q => ({ id: q.id, type: 'quiz' as const })),
+        ...newActivities.map(a => ({ id: a.id, type: 'activity' as const })),
+        ...newExams.map(e => ({ id: e.id, type: 'exam' as const })),
+      ];
+      let newSubmissions: Submission[] = [];
+      if (assessments.length > 0 && likhaLmsApi?.submissions?.getSubmissions) {
+        const subSettled = await Promise.allSettled(
+          assessments.map(async item => {
+            const rows = (await likhaLmsApi.submissions.getSubmissions(item.id, item.type)) ?? [];
+            return (Array.isArray(rows) ? rows : []).map((s: any) =>
+              normalizeSubmission(mapLikhaSubmissionRow(s, courseId))
+            );
+          })
+        );
+        for (const res of subSettled) {
+          if (res.status === 'fulfilled') {
+            newSubmissions.push(...res.value);
+          }
+        }
+      }
+
+      setDb(prev => ({
+        ...prev,
+        courseSections: [...(prev.courseSections || []).filter(s => s.courseId !== courseId), ...newSections],
+        enrollmentRequests: [...(prev.enrollmentRequests || []).filter(r => r.courseId !== courseId), ...newRequests],
+        modules: [...(prev.modules || []).filter(m => m.courseId !== courseId), ...newModules],
+        announcements: [...(prev.announcements || []).filter(a => a.courseId !== courseId), ...newAnnouncements],
+        discussions: [...(prev.discussions || []).filter(d => d.courseId !== courseId), ...newDiscussions],
+        quizzes: [...(prev.quizzes || []).filter(q => q.courseId !== courseId), ...newQuizzes],
+        exams: [...(prev.exams || []).filter(e => e.courseId !== courseId), ...newExams],
+        activities: [...(prev.activities || []).filter(a => a.courseId !== courseId), ...newActivities],
+        courseGrades: [...(prev.courseGrades || []).filter(g => g.courseId !== courseId), ...newGrades],
+        courseFolders: [...(prev.courseFolders || []).filter(f => f.courseId !== courseId), ...newFolders],
+        courseFiles: [...(prev.courseFiles || []).filter(f => f.courseId !== courseId), ...newFiles],
+        submissions: [
+          ...(prev.submissions || []).filter(s => s.courseId !== courseId),
+          ...newSubmissions,
+        ],
+        sprConfigs: sprConfig ? { ...prev.sprConfigs, [courseId]: sprConfig } : prev.sprConfigs,
+      }));
+
+      hydratedCourseIdsRef.current.add(courseId);
+    } catch (err) {
+      console.warn(`[hydrateCourse] Failed to hydrate course ${courseId}:`, err);
+    } finally {
+      hydratingCourseIdsRef.current.delete(courseId);
+    }
+  }, []);
+
   // Course state
   const [activeCourseId, setActiveCourseIdState] = useState<string | null>('crs-cmsc131');
   const setActiveCourseId = useCallback((id: string | null) => {
     activeCourseIdRef.current = id;
     setActiveCourseIdState(id);
-  }, []);
+    if (id) {
+      void hydrateCourse(id);
+    }
+  }, [hydrateCourse]);
 
   // UI Drawers & Modals
   const [isHistoryDrawerOpen, setIsHistoryDrawerOpen] = useState(false);
@@ -3520,7 +3688,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: false, message: 'Predecessor and successor cannot be the same user.' };
     }
 
-    // Atomically update db.users: predecessor to faculty, successor to admin with adminSubrole
+    const targetCol = roleType === 'dean' ? colleges.find(c => c.id === unitId) : undefined;
+    const targetDept = roleType === 'chairperson' ? departments.find(d => d.id === unitId) : undefined;
+
+    // Atomically update db.users: predecessor to faculty, successor to admin with adminSubrole & unit metadata
     setDb(prev => ({
       ...prev,
       users: prev.users.map(u => {
@@ -3536,6 +3707,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             ...u,
             role: 'admin' as UserRole,
             adminSubrole: roleType,
+            ...(roleType === 'dean'
+              ? { collegeId: unitId, collegeName: targetCol?.name }
+              : { department: targetDept?.name || u.department || '', collegeId: targetDept?.collegeId }),
           };
         }
         return u;
@@ -3549,7 +3723,14 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return { ...prev, role: 'faculty' as UserRole, adminSubrole: undefined };
       }
       if (prev.id === successorId) {
-        return { ...prev, role: 'admin' as UserRole, adminSubrole: roleType };
+        return {
+          ...prev,
+          role: 'admin' as UserRole,
+          adminSubrole: roleType,
+          ...(roleType === 'dean'
+            ? { collegeId: unitId, collegeName: targetCol?.name }
+            : { department: targetDept?.name || prev.department || '', collegeId: targetDept?.collegeId }),
+        };
       }
       return prev;
     });
@@ -3615,20 +3796,20 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addCollege = async (college: College, initialDeanId?: string): Promise<College> => {
-    const hasInitialDean = Boolean(initialDeanId && initialDeanId.trim() !== '' && initialDeanId !== 'none');
-    const deanCandidateId = hasInitialDean
-      ? initialDeanId!.trim()
-      : (college.deanId && college.deanId !== 'none' ? college.deanId : undefined);
+    const effectiveDeanId = (initialDeanId && initialDeanId.trim() !== '' && initialDeanId !== 'none')
+      ? initialDeanId.trim()
+      : (initialDeanId === 'none' ? undefined : (college.deanId && college.deanId !== 'none' ? college.deanId : undefined));
+    const hasDean = Boolean(effectiveDeanId);
 
     const existingInState = colleges.find(
       c => c.id === college.id || (c.code && college.code && c.code.toLowerCase() === college.code.toLowerCase())
     );
-    let predecessorId = existingInState?.deanId && existingInState.deanId !== deanCandidateId ? existingInState.deanId : undefined;
+    let predecessorId = existingInState?.deanId && existingInState.deanId !== effectiveDeanId ? existingInState.deanId : undefined;
 
     const targetCollege: College = { ...college };
-    if (hasInitialDean) {
-      targetCollege.deanId = initialDeanId!.trim();
-    } else if (initialDeanId === 'none' || college.deanId === 'none') {
+    if (hasDean && effectiveDeanId) {
+      targetCollege.deanId = effectiveDeanId;
+    } else {
       delete targetCollege.deanId;
     }
 
@@ -3636,7 +3817,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const existing = prev.find(
         c => c.id === college.id || (c.code && college.code && c.code.toLowerCase() === college.code.toLowerCase())
       );
-      if (existing?.deanId && existing.deanId !== deanCandidateId) {
+      if (existing?.deanId && existing.deanId !== effectiveDeanId) {
         predecessorId = existing.deanId;
       }
 
@@ -3646,25 +3827,25 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (c.id === college.id || (c.code && college.code && c.code.toLowerCase() === college.code.toLowerCase())) {
             return { ...c, ...targetCollege };
           }
-          if (hasInitialDean && c.deanId === deanCandidateId) {
+          if (hasDean && c.deanId === effectiveDeanId) {
             return { ...c, deanId: undefined };
           }
           return c;
         });
       } else {
-        const cleanedPrev = prev.map(c => (hasInitialDean && c.deanId === deanCandidateId ? { ...c, deanId: undefined } : c));
+        const cleanedPrev = prev.map(c => (hasDean && c.deanId === effectiveDeanId ? { ...c, deanId: undefined } : c));
         nextColleges = [...cleanedPrev, targetCollege];
       }
       safeSetLocalStorage(STORAGE_KEY_COLLEGES, JSON.stringify(nextColleges));
       return nextColleges;
     });
 
-    if (hasInitialDean && deanCandidateId) {
-      // Vacate any prior leadership seat held by initialDeanId in any department
+    if (hasDean && effectiveDeanId) {
+      // Vacate any prior leadership seat held by effectiveDeanId in any department
       setDepartments(prev => {
-        const hasMatch = prev.some(d => d.chairpersonId === deanCandidateId);
+        const hasMatch = prev.some(d => d.chairpersonId === effectiveDeanId);
         if (!hasMatch) return prev;
-        const nextDepts = prev.map(d => (d.chairpersonId === deanCandidateId ? { ...d, chairpersonId: undefined } : d));
+        const nextDepts = prev.map(d => (d.chairpersonId === effectiveDeanId ? { ...d, chairpersonId: undefined } : d));
         safeSetLocalStorage(STORAGE_KEY_DEPARTMENTS, JSON.stringify(nextDepts));
         return nextDepts;
       });
@@ -3680,7 +3861,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               adminSubrole: undefined,
             };
           }
-          if (u.id === deanCandidateId) {
+          if (u.id === effectiveDeanId) {
             return {
               ...u,
               role: 'admin' as UserRole,
@@ -3699,7 +3880,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (predecessorId && prev.id === predecessorId) {
           return { ...prev, role: 'faculty' as UserRole, adminSubrole: undefined };
         }
-        if (prev.id === deanCandidateId) {
+        if (prev.id === effectiveDeanId) {
           return {
             ...prev,
             role: 'admin' as UserRole,
@@ -3714,7 +3895,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // Best effort API sync if reachable
       try {
         const syncPromises = [
-          likhaLmsApi.users.updateUser(deanCandidateId, { role: 'admin' }),
+          likhaLmsApi.users.updateUser(effectiveDeanId, { role: 'admin' }),
         ];
         if (predecessorId) {
           syncPromises.push(likhaLmsApi.users.updateUser(predecessorId, { role: 'faculty' }));
@@ -3727,20 +3908,20 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addDepartment = async (department: Department, initialChairId?: string): Promise<Department> => {
-    const hasInitialChair = Boolean(initialChairId && initialChairId.trim() !== '' && initialChairId !== 'none');
-    const chairCandidateId = hasInitialChair
-      ? initialChairId!.trim()
-      : (department.chairpersonId && department.chairpersonId !== 'none' ? department.chairpersonId : undefined);
+    const effectiveChairId = (initialChairId && initialChairId.trim() !== '' && initialChairId !== 'none')
+      ? initialChairId.trim()
+      : (initialChairId === 'none' ? undefined : (department.chairpersonId && department.chairpersonId !== 'none' ? department.chairpersonId : undefined));
+    const hasChair = Boolean(effectiveChairId);
 
     const existingInState = departments.find(
       d => d.id === department.id || (d.collegeId === department.collegeId && d.code && department.code && d.code.toLowerCase() === department.code.toLowerCase())
     );
-    let predecessorId = existingInState?.chairpersonId && existingInState.chairpersonId !== chairCandidateId ? existingInState.chairpersonId : undefined;
+    let predecessorId = existingInState?.chairpersonId && existingInState.chairpersonId !== effectiveChairId ? existingInState.chairpersonId : undefined;
 
     const targetDept: Department = { ...department };
-    if (hasInitialChair) {
-      targetDept.chairpersonId = initialChairId!.trim();
-    } else if (initialChairId === 'none' || department.chairpersonId === 'none') {
+    if (hasChair && effectiveChairId) {
+      targetDept.chairpersonId = effectiveChairId;
+    } else {
       delete targetDept.chairpersonId;
     }
 
@@ -3748,7 +3929,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const existing = prev.find(
         d => d.id === department.id || (d.collegeId === department.collegeId && d.code && department.code && d.code.toLowerCase() === department.code.toLowerCase())
       );
-      if (existing?.chairpersonId && existing.chairpersonId !== chairCandidateId) {
+      if (existing?.chairpersonId && existing.chairpersonId !== effectiveChairId) {
         predecessorId = existing.chairpersonId;
       }
 
@@ -3758,25 +3939,25 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (d.id === department.id || (d.collegeId === department.collegeId && d.code && department.code && d.code.toLowerCase() === department.code.toLowerCase())) {
             return { ...d, ...targetDept };
           }
-          if (hasInitialChair && d.chairpersonId === chairCandidateId) {
+          if (hasChair && d.chairpersonId === effectiveChairId) {
             return { ...d, chairpersonId: undefined };
           }
           return d;
         });
       } else {
-        const cleanedPrev = prev.map(d => (hasInitialChair && d.chairpersonId === chairCandidateId ? { ...d, chairpersonId: undefined } : d));
+        const cleanedPrev = prev.map(d => (hasChair && d.chairpersonId === effectiveChairId ? { ...d, chairpersonId: undefined } : d));
         nextDepts = [...cleanedPrev, targetDept];
       }
       safeSetLocalStorage(STORAGE_KEY_DEPARTMENTS, JSON.stringify(nextDepts));
       return nextDepts;
     });
 
-    if (hasInitialChair && chairCandidateId) {
-      // Vacate any prior leadership seat held by initialChairId in any college
+    if (hasChair && effectiveChairId) {
+      // Vacate any prior leadership seat held by effectiveChairId in any college
       setColleges(prev => {
-        const hasMatch = prev.some(c => c.deanId === chairCandidateId);
+        const hasMatch = prev.some(c => c.deanId === effectiveChairId);
         if (!hasMatch) return prev;
-        const nextColleges = prev.map(c => (c.deanId === chairCandidateId ? { ...c, deanId: undefined } : c));
+        const nextColleges = prev.map(c => (c.deanId === effectiveChairId ? { ...c, deanId: undefined } : c));
         safeSetLocalStorage(STORAGE_KEY_COLLEGES, JSON.stringify(nextColleges));
         return nextColleges;
       });
@@ -3792,7 +3973,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               adminSubrole: undefined,
             };
           }
-          if (u.id === chairCandidateId) {
+          if (u.id === effectiveChairId) {
             return {
               ...u,
               role: 'admin' as UserRole,
@@ -3811,7 +3992,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (predecessorId && prev.id === predecessorId) {
           return { ...prev, role: 'faculty' as UserRole, adminSubrole: undefined };
         }
-        if (prev.id === chairCandidateId) {
+        if (prev.id === effectiveChairId) {
           return {
             ...prev,
             role: 'admin' as UserRole,
@@ -3826,7 +4007,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // Best effort API sync if reachable
       try {
         const syncPromises = [
-          likhaLmsApi.users.updateUser(chairCandidateId, { role: 'admin' }),
+          likhaLmsApi.users.updateUser(effectiveChairId, { role: 'admin' }),
         ];
         if (predecessorId) {
           syncPromises.push(likhaLmsApi.users.updateUser(predecessorId, { role: 'faculty' }));
@@ -6572,6 +6753,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         lastError,
         activeCourseId,
         setActiveCourseId,
+        hydrateCourse,
         db,
         activeSpeedGraderSubmissionId,
         openSpeedGrader,

@@ -213,6 +213,56 @@ describe('ManageAccountsPage - Dean Access & Full Collegiate Scoping', () => {
       // COED departments must NOT be in the dropdown
       expect(screen.queryByRole('button', { name: /Department of Elementary Education/i })).not.toBeInTheDocument();
     });
+
+    it('scopes departments and resolves badge even when activeUser.collegeId is empty but collegeName matches', () => {
+      // Clear activeUser.collegeId, rely on deanCollegeName matching
+      mocks.mockState.activeUser = {
+        ...mocks.mockUsers[0],
+        collegeId: undefined,
+        collegeName: 'College of Computer Science',
+      };
+
+      render(<ManageAccountsPage />);
+
+      // Tab badge shows 'CCS' resolved via effectiveDeanCollegeId fallback
+      const academicStructureTab = screen.getByRole('tab', { name: /academic structure/i });
+      expect(academicStructureTab).toBeInTheDocument();
+      expect(academicStructureTab).toHaveTextContent('CCS');
+
+      // Open department dropdown
+      const dropdownButton = screen.getByRole('button', { name: /all departments/i });
+      fireEvent.click(dropdownButton);
+
+      // CCS departments are scoped
+      expect(screen.getByRole('button', { name: /Department of Computer Science/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Department of Information Technology/i })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Department of Elementary Education/i })).not.toBeInTheDocument();
+    });
+
+    it('scopes departments even when activeUser.collegeId and collegeName are undefined but college.deanId matches', () => {
+      // Clear activeUser.collegeId and collegeName, rely solely on college.deanId === activeUser.id ('u-dean')
+      mocks.mockState.activeUser = {
+        ...mocks.mockUsers[0],
+        collegeId: undefined,
+        collegeName: undefined,
+      };
+
+      render(<ManageAccountsPage />);
+
+      // Tab badge shows 'CCS' resolved via c.deanId === activeUser.id
+      const academicStructureTab = screen.getByRole('tab', { name: /academic structure/i });
+      expect(academicStructureTab).toBeInTheDocument();
+      expect(academicStructureTab).toHaveTextContent('CCS');
+
+      // Open department dropdown
+      const dropdownButton = screen.getByRole('button', { name: /all departments/i });
+      fireEvent.click(dropdownButton);
+
+      // CCS departments are scoped
+      expect(screen.getByRole('button', { name: /Department of Computer Science/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Department of Information Technology/i })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Department of Elementary Education/i })).not.toBeInTheDocument();
+    });
   });
 
   describe('When viewing as Chancellor (superadmin)', () => {

@@ -438,4 +438,136 @@ describe('LMSContext Academic Structure & In-Place Leadership Appointments', () 
     expect(ctx!.colleges.find(c => c.id === 'col-headless')?.deanId).toBeUndefined();
     expect(ctx!.departments.find(d => d.id === 'dept-headless')?.chairpersonId).toBeUndefined();
   });
+
+  test('addCollege with college.deanId (without 2nd param) promotes candidate to Dean and vacates prior seats', async () => {
+    render(
+      <LMSProvider>
+        <ContextProbe />
+      </LMSProvider>
+    );
+
+    await act(async () => {
+      await ctx!.createUser({
+        id: 'u-prop-dean-1',
+        name: 'Dr. Prop Dean',
+        email: 'prop.dean@dmmmsu.edu.ph',
+        role: 'faculty',
+      });
+      // Set as chairperson of an existing department first
+      await ctx!.addDepartment(
+        {
+          id: 'dept-prior-chair',
+          collegeId: 'col-other',
+          name: 'Department Prior',
+          code: 'DP',
+        },
+        'u-prop-dean-1'
+      );
+    });
+
+    expect(ctx!.departments.find(d => d.id === 'dept-prior-chair')?.chairpersonId).toBe('u-prop-dean-1');
+
+    // Call addCollege passing deanId on the college object WITHOUT 2nd parameter
+    let createdCollege: any;
+    await act(async () => {
+      createdCollege = await ctx!.addCollege({
+        id: 'col-prop-test',
+        name: 'College of Autonomous Systems',
+        code: 'CAS',
+        deanId: 'u-prop-dean-1',
+      });
+    });
+
+    expect(createdCollege.deanId).toBe('u-prop-dean-1');
+    const storedCollege = ctx!.colleges.find(c => c.id === 'col-prop-test');
+    expect(storedCollege?.deanId).toBe('u-prop-dean-1');
+
+    // u-prop-dean-1 is promoted to admin/dean with collegeId and collegeName
+    const updatedUser = ctx!.db.users.find(u => u.id === 'u-prop-dean-1');
+    expect(updatedUser?.role).toBe('admin');
+    expect(updatedUser?.adminSubrole).toBe('dean');
+    expect(updatedUser?.collegeId).toBe('col-prop-test');
+    expect(updatedUser?.collegeName).toBe('College of Autonomous Systems');
+
+    // Prior chairperson seat must be vacated
+    expect(ctx!.departments.find(d => d.id === 'dept-prior-chair')?.chairpersonId).toBeUndefined();
+  });
+
+  test('transferLeadership updates successor collegeId, collegeName, and department', async () => {
+    render(
+      <LMSProvider>
+        <ContextProbe />
+      </LMSProvider>
+    );
+
+    await act(async () => {
+      await ctx!.createUser({
+        id: 'u-pred-dean',
+        name: 'Dr. Predecessor Dean',
+        email: 'pred.dean@dmmmsu.edu.ph',
+        role: 'admin',
+        adminSubrole: 'dean',
+        collegeId: 'col-transfer-test',
+        collegeName: 'Transfer College',
+      });
+      await ctx!.createUser({
+        id: 'u-succ-dean',
+        name: 'Dr. Successor Dean',
+        email: 'succ.dean@dmmmsu.edu.ph',
+        role: 'faculty',
+      });
+      await ctx!.createUser({
+        id: 'u-pred-chair',
+        name: 'Dr. Predecessor Chair',
+        email: 'pred.chair@dmmmsu.edu.ph',
+        role: 'admin',
+        adminSubrole: 'chairperson',
+      });
+      await ctx!.createUser({
+        id: 'u-succ-chair',
+        name: 'Dr. Successor Chair',
+        email: 'succ.chair@dmmmsu.edu.ph',
+        role: 'faculty',
+      });
+
+      await ctx!.addCollege({
+        id: 'col-transfer-test',
+        name: 'Transfer College',
+        code: 'TC',
+        deanId: 'u-pred-dean',
+      });
+
+      await ctx!.addDepartment({
+        id: 'dept-transfer-test',
+        collegeId: 'col-transfer-test',
+        name: 'Transfer Department',
+        code: 'TD',
+        chairpersonId: 'u-pred-chair',
+      });
+    });
+
+    // 1. Transfer Dean leadership
+    await act(async () => {
+      const res = await ctx!.transferLeadership('dean', 'u-pred-dean', 'u-succ-dean', 'col-transfer-test');
+      expect(res.success).toBe(true);
+    });
+
+    const succDeanUser = ctx!.db.users.find(u => u.id === 'u-succ-dean');
+    expect(succDeanUser?.role).toBe('admin');
+    expect(succDeanUser?.adminSubrole).toBe('dean');
+    expect(succDeanUser?.collegeId).toBe('col-transfer-test');
+    expect(succDeanUser?.collegeName).toBe('Transfer College');
+
+    // 2. Transfer Chairperson leadership
+    await act(async () => {
+      const res = await ctx!.transferLeadership('chairperson', 'u-pred-chair', 'u-succ-chair', 'dept-transfer-test');
+      expect(res.success).toBe(true);
+    });
+
+    const succChairUser = ctx!.db.users.find(u => u.id === 'u-succ-chair');
+    expect(succChairUser?.role).toBe('admin');
+    expect(succChairUser?.adminSubrole).toBe('chairperson');
+    expect(succChairUser?.department).toBe('Transfer Department');
+    expect(succChairUser?.collegeId).toBe('col-transfer-test');
+  });
 });

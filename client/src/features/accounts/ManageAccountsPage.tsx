@@ -267,6 +267,11 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
   const isDean = activeRole === 'admin' && activeUser?.adminSubrole === 'dean';
   const deanCollegeId = activeUser?.collegeId;
   const deanCollegeName = activeUser?.collegeName?.toLowerCase();
+  const effectiveDeanCollegeId =
+    deanCollegeId ||
+    colleges?.find(
+      c => (deanCollegeName && c.name?.toLowerCase() === deanCollegeName) || c.deanId === activeUser?.id
+    )?.id;
 
   const canAccessAcademicStructure =
     activeRole === 'superadmin' || (activeRole === 'admin' && activeUser?.adminSubrole === 'dean');
@@ -276,11 +281,11 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
     const allUsers = db?.users || [];
     if (!isDean) return allUsers;
     return allUsers.filter(u => {
-      if (deanCollegeId && u.collegeId === deanCollegeId) return true;
+      if (effectiveDeanCollegeId && u.collegeId === effectiveDeanCollegeId) return true;
       if (deanCollegeName && u.collegeName && u.collegeName.toLowerCase() === deanCollegeName) return true;
       return false;
     });
-  }, [db?.users, isDean, deanCollegeId, deanCollegeName]);
+  }, [db?.users, isDean, effectiveDeanCollegeId, deanCollegeName]);
 
   // Dynamically aggregated departments from base list and all active users
   const allDepartments = useMemo(() => {
@@ -295,11 +300,11 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
 
   // Available departments scoped to Dean's college when viewing as Dean
   const availableDepartments = useMemo(() => {
-    if (isDean && deanCollegeId) {
-      return (departments || []).filter(d => d.collegeId === deanCollegeId);
+    if (isDean && effectiveDeanCollegeId) {
+      return (departments || []).filter(d => d.collegeId === effectiveDeanCollegeId);
     }
     return departments || [];
-  }, [departments, isDean, deanCollegeId]);
+  }, [departments, isDean, effectiveDeanCollegeId]);
 
   // Computed summary metrics - scoped to college for Deans, university-wide for Chancellor
   const stats = useMemo(() => {
@@ -602,9 +607,9 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
           >
             <FolderTree className="w-3.5 h-3.5" />
             <span>Academic Structure</span>
-            {activeUser?.adminSubrole === 'dean' && (activeUser.collegeName || activeUser.collegeId) && (
-              <span className="px-1.5 py-0.2 text-[9px] font-bold bg-primary/20 text-primary rounded-md">
-                {colleges?.find(c => c.id === activeUser.collegeId)?.code || 'College'}
+            {activeUser?.adminSubrole === 'dean' && (activeUser.collegeName || activeUser.collegeId || effectiveDeanCollegeId) && (
+              <span className="px-1.5 py-0.5 text-[9px] font-bold bg-primary/20 text-primary rounded-md">
+                {colleges?.find(c => c.id === effectiveDeanCollegeId || (deanCollegeName && c.name?.toLowerCase() === deanCollegeName))?.code || 'College'}
               </span>
             )}
           </button>
