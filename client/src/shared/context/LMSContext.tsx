@@ -294,6 +294,10 @@ export interface LMSContextType {
   ) => Promise<{ success: boolean; message: string }>;
   addCollege: (college: College, initialDeanId?: string) => Promise<College>;
   addDepartment: (department: Department, initialChairId?: string) => Promise<Department>;
+  deleteCollege: (collegeId: string) => Promise<{ success: boolean; message: string; blockers?: string[] }>;
+  deleteDepartment: (departmentId: string) => Promise<{ success: boolean; message: string; blockers?: string[] }>;
+  getCollegeDeleteBlockers: (collegeId: string) => string[];
+  getDepartmentDeleteBlockers: (departmentId: string) => string[];
 
   logHistory: (path: string, title: string) => void;
   clearHistory: () => void;
@@ -4414,6 +4418,224 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return targetDept;
   };
 
+  const getDepartmentDeleteBlockers = (departmentId: string): string[] => {
+    const dept = departments.find(d => d.id === departmentId);
+    if (!dept) return ['Department not found.'];
+    const blockers: string[] = [];
+
+    // 1. Leader check
+    if (dept.chairpersonId && dept.chairpersonId !== 'none') {
+      const chair = db.users.find(u => u.id === dept.chairpersonId);
+      const chairName = chair?.name || chair?.email || 'an active chairperson';
+      blockers.push(`Department has an assigned Chairperson (${chairName}).`);
+    }
+
+    // 2. Affiliated users check
+    const affiliatedUsers = db.users.filter(u => {
+      const uDept = u.department?.trim().toLowerCase();
+      const deptName = dept.name?.trim().toLowerCase();
+      const deptCode = dept.code?.trim().toLowerCase();
+      return (
+        (uDept && (uDept === deptName || uDept === deptCode)) ||
+        (u as any).departmentId === dept.id
+      );
+    });
+    if (affiliatedUsers.length > 0) {
+      blockers.push(`Department has ${affiliatedUsers.length} affiliated or enrolled user(s).`);
+    }
+
+    // 3. Pending registrations check
+    const pendingList = pendingRegistrationsRef.current || pendingRegistrations;
+    const affiliatedPending = pendingList.filter(p => {
+      const pDept = p.department?.trim().toLowerCase();
+      const deptName = dept.name?.trim().toLowerCase();
+      const deptCode = dept.code?.trim().toLowerCase();
+      return (
+        p.status !== 'rejected' &&
+        p.status !== 'expired' &&
+        pDept &&
+        (pDept === deptName || pDept === deptCode)
+      );
+    });
+    if (affiliatedPending.length > 0) {
+      blockers.push(`Department has ${affiliatedPending.length} pending user registration(s).`);
+    }
+
+    return blockers;
+  };
+
+  const getCollegeDeleteBlockers = (collegeId: string): string[] => {
+    const col = colleges.find(c => c.id === collegeId);
+    if (!col) return ['College not found.'];
+    const blockers: string[] = [];
+
+    // 1. Dean check
+    if (col.deanId && col.deanId !== 'none') {
+      const dean = db.users.find(u => u.id === col.deanId);
+      const deanName = dean?.name || dean?.email || 'an active Dean';
+      blockers.push(`College has an assigned Dean (${deanName}).`);
+    }
+
+    // 2. Child departments chairperson check
+    const childDepts = departments.filter(d => d.collegeId === collegeId);
+    for (const d of childDepts) {
+      if (d.chairpersonId && d.chairpersonId !== 'none') {
+        const chair = db.users.find(u => u.id === d.chairpersonId);
+        const chairName = chair?.name || chair?.email || d.chairpersonId;
+        blockers.push(`Department "${d.name}" has an assigned Chairperson (${chairName}).`);
+      }
+    }
+
+    // 3. Affiliated users check across college and child departments
+    const colName = col.name?.trim().toLowerCase();
+    const colCode = col.code?.trim().toLowerCase();
+    const childDeptNames = childDepts.map(d => d.name?.trim().toLowerCase()).filter(Boolean);
+    const childDeptCodes = childDepts.map(d => d.code?.trim().toLowerCase()).filter(Boolean);
+
+    const affiliatedUsers = db.users.filter(u => {
+      if (u.collegeId === col.id) return true;
+      if (u.collegeName && u.collegeName.trim().toLowerCase() === colName) return true;
+      const uDept = u.department?.trim().toLowerCase();
+      if (uDept) {
+        if (uDept === colName || uDept === colCode) return true;
+        if (childDeptNames.includes(uDept) || childDeptCodes.includes(uDept)) return true;
+      }
+      if ((u as any).departmentId && childDepts.some(d => d.id === (u as any).departmentId)) return true;
+      return false;
+    });
+
+    if (affiliatedUsers.length > 0) {
+      blockers.push(`College or its departments have ${affiliatedUsers.length} affiliated or enrolled user(s).`);
+    }
+
+    // 4. Pending registrations check
+    const pendingList = pendingRegistrationsRef.current || pendingRegistrations;
+    const affiliatedPending = pendingList.filter(p => {
+      if (p.status === 'rejected' || p.status === 'expired') return false;
+      if (p.collegeId === col.id) return true;
+      if (p.collegeName && p.collegeName.trim().toLowerCase() === colName) return true;
+      const pDept = p.department?.trim().toLowerCase();
+      if (pDept) {
+        if (pDept === colName || pDept === colCode) return true;
+        if (childDeptNames.includes(pDept) || childDeptCodes.includes(pDept)) return true;
+      }
+      return false;
+    });
+
+    if (affiliatedPending.length > 0) {
+      blockers.push(`College has ${affiliatedPending.length} pending user registration(s).`);
+    }
+
+    return blockers;
+  };
+
+  const deleteDepartment = async (departmentId: string): Promise<{ success: boolean; message: string; blockers?: string[] }> => {
+    const targetDept = departments.find(d => d.id === departmentId);
+    if (!targetDept) {
+      return { success: false, message: 'Department not found.' };
+    }
+
+    if (currentUser) {
+      const isSuperadminOrChancellor = activeRole === 'superadmin' || currentUser.adminSubrole === 'chancellor';
+      const isDean = (currentUser.role === 'admin' && currentUser.adminSubrole === 'dean') || isDeanRole(currentUser, activeRole);
+
+      if (!isSuperadminOrChancellor && !isDean) {
+        return { success: false, message: 'Permission denied: Only Administrators and Deans can delete academic departments.' };
+      }
+
+      if (isDean && !isSuperadminOrChancellor) {
+        const deanColId = currentUser.collegeId || colleges.find(c => c.deanId === currentUser.id || (currentUser.collegeName && c.name?.toLowerCase() === currentUser.collegeName.toLowerCase()))?.id;
+        if (!deanColId || targetDept.collegeId !== deanColId) {
+          return { success: false, message: 'Permission denied: Deans can only delete departments within their assigned college.' };
+        }
+      }
+    }
+
+    const blockers = getDepartmentDeleteBlockers(departmentId);
+    if (blockers.length > 0) {
+      return {
+        success: false,
+        message: 'Cannot delete department while it has assigned leaders or affiliated users.',
+        blockers,
+      };
+    }
+
+    setDepartments(prev => {
+      const next = prev.filter(d => d.id !== departmentId);
+      safeSetLocalStorage(STORAGE_KEY_DEPARTMENTS, JSON.stringify(next));
+      return next;
+    });
+
+    try {
+      if (likhaLmsApi?.academicStructure?.deleteDepartment) {
+        await likhaLmsApi.academicStructure.deleteDepartment(targetDept.id).catch(() => {});
+      }
+    } catch (_) {}
+
+    return {
+      success: true,
+      message: `Department "${targetDept.name}" (${targetDept.code}) was deleted successfully.`,
+    };
+  };
+
+  const deleteCollege = async (collegeId: string): Promise<{ success: boolean; message: string; blockers?: string[] }> => {
+    const targetCollege = colleges.find(c => c.id === collegeId);
+    if (!targetCollege) {
+      return { success: false, message: 'College not found.' };
+    }
+
+    if (currentUser) {
+      const isSuperadminOrChancellor = activeRole === 'superadmin' || currentUser.adminSubrole === 'chancellor';
+      if (!isSuperadminOrChancellor) {
+        return { success: false, message: 'Permission denied: Only University Administrators and the Chancellor can delete academic colleges.' };
+      }
+    }
+
+    const blockers = getCollegeDeleteBlockers(collegeId);
+    if (blockers.length > 0) {
+      return {
+        success: false,
+        message: 'Cannot delete college while it or its departments have assigned leaders or affiliated users.',
+        blockers,
+      };
+    }
+
+    const childDepts = departments.filter(d => d.collegeId === collegeId);
+
+    setColleges(prev => {
+      const next = prev.filter(c => c.id !== collegeId);
+      safeSetLocalStorage(STORAGE_KEY_COLLEGES, JSON.stringify(next));
+      return next;
+    });
+
+    if (childDepts.length > 0) {
+      setDepartments(prev => {
+        const next = prev.filter(d => d.collegeId !== collegeId);
+        safeSetLocalStorage(STORAGE_KEY_DEPARTMENTS, JSON.stringify(next));
+        return next;
+      });
+    }
+
+    try {
+      if (likhaLmsApi?.academicStructure) {
+        for (const child of childDepts) {
+          if (likhaLmsApi.academicStructure.deleteDepartment) {
+            await likhaLmsApi.academicStructure.deleteDepartment(child.id).catch(() => {});
+          }
+        }
+        if (likhaLmsApi.academicStructure.deleteCollege) {
+          await likhaLmsApi.academicStructure.deleteCollege(targetCollege.id).catch(() => {});
+        }
+      }
+    } catch (_) {}
+
+    const deptSuffix = childDepts.length > 0 ? ` along with ${childDepts.length} department(s)` : '';
+    return {
+      success: true,
+      message: `College "${targetCollege.name}" (${targetCollege.code})${deptSuffix} was deleted successfully.`,
+    };
+  };
+
   const joinCourseByCode = async (code: string): Promise<{ success: boolean; message: string; course?: Course }> => {
     const cleanCode = code.trim().toUpperCase();
     // Likha rows carry join_code (cached courses may predate the joinCode
@@ -7192,6 +7414,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         transferLeadership,
         addCollege,
         addDepartment,
+        deleteCollege,
+        deleteDepartment,
+        getCollegeDeleteBlockers,
+        getDepartmentDeleteBlockers,
         logHistory,
         clearHistory,
         isSessionExpired,
