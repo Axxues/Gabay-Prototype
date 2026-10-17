@@ -107,3 +107,39 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
         category=result.get("category", "student_support"),
         sources=result.get("sources", []),
     )
+
+
+from app.services.email_service import send_activation_email
+
+
+class ActivationEmailRequest(BaseModel):
+    """Payload to send an account activation link to a registered user."""
+
+    email: str = Field(..., min_length=3, max_length=254)
+    recipient_name: Optional[str] = Field(None, max_length=150)
+    activation_url: str = Field(..., min_length=1, max_length=2000)
+
+
+class ActivationEmailResponse(BaseModel):
+    """Response returned when an activation email is requested."""
+
+    success: bool
+    delivered: Optional[bool] = False
+    simulated: Optional[bool] = False
+    message: Optional[str] = None
+    recipient: Optional[str] = None
+    error: Optional[str] = None
+
+
+@app.post("/api/auth/send-activation-email", response_model=ActivationEmailResponse)
+async def send_activation_email_endpoint(request: ActivationEmailRequest) -> ActivationEmailResponse:
+    """Send an account activation link to user's institutional email address."""
+    if "@" not in request.email:
+        raise HTTPException(status_code=422, detail="Invalid email address.")
+    result = send_activation_email(
+        to_email=request.email,
+        recipient_name=request.recipient_name or "",
+        activation_url=request.activation_url,
+    )
+    return ActivationEmailResponse(**result)
+

@@ -29,6 +29,11 @@ class Settings(BaseModel):
     cors_allowed_origins: str = "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,https://gabay.zyberlab.com"
     rag_client_key: Optional[str] = None
     port: int = 8000
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 465
+    smtp_user: Optional[str] = None
+    smtp_password: Optional[str] = None
+    smtp_from: Optional[str] = "GABAY LMS <no-reply@gabay.edu.ph>"
 
     model_config = {
         "extra": "ignore",
@@ -53,4 +58,10 @@ def get_settings() -> Settings:
         ),
         rag_client_key=os.getenv("RAG_CLIENT_KEY"),
         port=int(os.getenv("PORT", "8000")),
+        smtp_host=os.getenv("SMTP_HOST", "smtp.gmail.com"),
+        smtp_port=int(os.getenv("SMTP_PORT", "465")),
+        smtp_user=os.getenv("SMTP_USER") or os.getenv("GMAIL_USER"),
+        smtp_password=os.getenv("SMTP_PASSWORD") or os.getenv("GMAIL_APP_PASSWORD"),
+        smtp_from=os.getenv("SMTP_FROM", "GABAY LMS <no-reply@gabay.edu.ph>"),
     )
+
