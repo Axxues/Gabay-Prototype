@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLMS } from '../../../shared/context/LMSContext';
-import type { College, Department, User } from '../../../shared/types/lms';
+import type { College, Department, SchoolYear, User } from '../../../shared/types/lms';
 import { DialogFrame } from '../../../shared/components/common/DialogFrame';
 import { UserAvatar } from '../../../shared/components/common/UserAvatar';
 import {
@@ -12,7 +12,9 @@ import {
   ChevronDown,
   FolderTree,
   AlertCircle,
-  Trash2
+  Trash2,
+  Calendar,
+  CheckCircle2
 } from 'lucide-react';
 import { isDeanRole, isChairRole } from '../../../shared/utils/roles';
 import { generateUuid } from '../../../shared/utils/cryptoToken';
@@ -42,7 +44,19 @@ export const AcademicStructureTab: React.FC = () => {
     showAlert,
     activeRole,
     activeUser,
+    schoolYears = [],
+    addSchoolYear,
+    setActiveSchoolYear,
+    getSchoolYearsByCollege,
+    getActiveSchoolYearForCollege,
   } = useLMS();
+
+  const getColYears = (collegeId: string): SchoolYear[] => {
+    if (typeof getSchoolYearsByCollege === 'function') {
+      return getSchoolYearsByCollege(collegeId);
+    }
+    return (schoolYears || []).filter(sy => sy.collegeId === collegeId);
+  };
 
   // Role & scope derivation
   const isSuperadminOrChancellor =
@@ -142,6 +156,83 @@ export const AcademicStructureTab: React.FC = () => {
   } | null>(null);
   const [selectedCandidateId, setSelectedCandidateId] = useState<string>('');
   const [isSubmittingLeader, setIsSubmittingLeader] = useState(false);
+
+  // Helper to check if current user can manage school years for a specific college
+  const canManageSchoolYearsForCollege = (college: College) => {
+    if (isSuperadminOrChancellor) return true;
+    if (activeRole === 'admin' && activeUser?.adminSubrole === 'dean') {
+      return (
+        (activeUser.collegeId && activeUser.collegeId === college.id) ||
+        (deanCollege && deanCollege.id === college.id) ||
+        (college.deanId && activeUser.id === college.deanId)
+      );
+    }
+    return false;
+  };
+
+  // School Year modal states
+  const [isAddSchoolYearOpen, setIsAddSchoolYearOpen] = useState(false);
+  const [selectedCollegeForSY, setSelectedCollegeForSY] = useState<College | null>(null);
+  const [schoolYearInput, setSchoolYearInput] = useState('');
+  const [isSubmittingSY, setIsSubmittingSY] = useState(false);
+  const [syError, setSyError] = useState<string | null>(null);
+
+  // Submit new school year
+  const handleCreateSchoolYear = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCollegeForSY || isSubmittingSY) return;
+
+    const trimmed = schoolYearInput.trim();
+    // Validate format YYYY-YYYY, e.g. 2026-2027
+    const syRegex = /^\d{4}-\d{4}$/;
+    if (!syRegex.test(trimmed)) {
+      setSyError('Please enter a valid school year format like YYYY-YYYY (e.g., 2026-2027).');
+      return;
+    }
+
+    const [startYear, endYear] = trimmed.split('-').map(Number);
+    if (endYear !== startYear + 1) {
+      setSyError('The end year must be exactly one year after the start year (e.g., 2026-2027).');
+      return;
+    }
+
+    setIsSubmittingSY(true);
+    setSyError(null);
+    try {
+      const res = await addSchoolYear(selectedCollegeForSY.id, trimmed);
+      if (res.success) {
+        showAlert({
+          title: 'School Year Added',
+          message: res.message || `School year ${trimmed} added successfully.`,
+          type: 'success',
+        });
+        setIsAddSchoolYearOpen(false);
+        setSchoolYearInput('');
+        setSelectedCollegeForSY(null);
+      } else {
+        setSyError(res.message || 'Failed to add school year.');
+      }
+    } finally {
+      setIsSubmittingSY(false);
+    }
+  };
+
+  const handleSetActiveSchoolYear = async (collegeId: string, schoolYearId: string) => {
+    const res = await setActiveSchoolYear(collegeId, schoolYearId);
+    if (res.success) {
+      showAlert({
+        title: 'Active School Year Updated',
+        message: res.message || 'Active school year updated successfully.',
+        type: 'success',
+      });
+    } else {
+      showAlert({
+        title: 'Update Failed',
+        message: res.message || 'Failed to update active school year.',
+        type: 'error',
+      });
+    }
+  };
 
   // Helper to find a user by ID
   const getUserById = (id?: string): User | undefined => {
@@ -673,6 +764,83 @@ export const AcademicStructureTab: React.FC = () => {
                   )}
                 </div>
               )}
+
+              {/* Collegiate School Years & Academic Cycles Section */}
+              <div className="p-4 sm:p-5 bg-card/60 border-t border-border">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-6 h-6 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20">
+                      <Calendar className="w-3.5 h-3.5" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-foreground">School Years & Academic Cycles</h4>
+                      <p className="text-[11px] text-muted-foreground">
+                        Manage active academic governance cycles and course/student scoping.
+                      </p>
+                    </div>
+                  </div>
+                  {canManageSchoolYearsForCollege(college) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedCollegeForSY(college);
+                        setSchoolYearInput('');
+                        setSyError(null);
+                        setIsAddSchoolYearOpen(true);
+                      }}
+                      className="px-3 py-1.5 bg-primary/10 hover:bg-primary/20 active:scale-[0.98] text-primary font-bold text-xs rounded-xl border border-primary/20 transition-all flex items-center space-x-1.5 cursor-pointer shrink-0 self-start sm:self-auto"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add School Year</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* School Year pills / list */}
+                {(() => {
+                  const collegeYears = getColYears(college.id);
+                  if (collegeYears.length === 0) {
+                    return (
+                      <div className="p-3 bg-muted/20 border border-dashed border-border rounded-xl text-center text-xs text-muted-foreground">
+                        No school years registered for this college.
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {collegeYears.map((sy: SchoolYear) => (
+                        <div
+                          key={sy.id}
+                          className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs transition-all ${
+                            sy.isActive
+                              ? 'bg-primary/10 border-primary/30 text-primary font-bold shadow-xs'
+                              : 'bg-muted/40 border-border text-foreground hover:bg-muted/60'
+                          }`}
+                        >
+                          <span className="font-semibold">{sy.year}</span>
+                          {sy.isActive ? (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-primary text-primary-foreground">
+                              <CheckCircle2 className="w-3 h-3" />
+                              Active
+                            </span>
+                          ) : (
+                            canManageSchoolYearsForCollege(college) && (
+                              <button
+                                type="button"
+                                onClick={() => handleSetActiveSchoolYear(college.id, sy.id)}
+                                className="text-[11px] font-semibold text-muted-foreground hover:text-primary transition-colors cursor-pointer ml-1"
+                              >
+                                Set as Active
+                              </button>
+                            )
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
             </div>
           );
         })}
@@ -1020,6 +1188,75 @@ export const AcademicStructureTab: React.FC = () => {
               </button>
             </div>
           </div>
+        </DialogFrame>
+      )}
+
+      {/* ADD SCHOOL YEAR MODAL */}
+      {isAddSchoolYearOpen && selectedCollegeForSY && (
+        <DialogFrame
+          title="Add School Year"
+          subtitle={`Register a new academic year for ${selectedCollegeForSY.name} (${selectedCollegeForSY.code}).`}
+          onClose={() => {
+            if (!isSubmittingSY) {
+              setIsAddSchoolYearOpen(false);
+              setSchoolYearInput('');
+              setSelectedCollegeForSY(null);
+              setSyError(null);
+            }
+          }}
+        >
+          <form onSubmit={handleCreateSchoolYear} className="space-y-4">
+            <div>
+              <label htmlFor="new-school-year" className="block text-xs font-bold text-foreground mb-1">
+                School Year (e.g., 2026-2027)
+              </label>
+              <input
+                id="new-school-year"
+                type="text"
+                required
+                placeholder="2026-2027"
+                value={schoolYearInput}
+                onChange={e => {
+                  setSchoolYearInput(e.target.value);
+                  if (syError) setSyError(null);
+                }}
+                className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs font-sans text-foreground outline-none focus:ring-2 focus:ring-primary/30"
+              />
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Format must be two consecutive 4-digit calendar years separated by a hyphen (e.g. 2026-2027).
+              </p>
+            </div>
+
+            {syError && (
+              <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-xs flex items-center space-x-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{syError}</span>
+              </div>
+            )}
+
+            <div className="flex justify-end space-x-2 pt-2 border-t border-border">
+              <button
+                type="button"
+                disabled={isSubmittingSY}
+                onClick={() => {
+                  setIsAddSchoolYearOpen(false);
+                  setSchoolYearInput('');
+                  setSelectedCollegeForSY(null);
+                  setSyError(null);
+                }}
+                className="px-3.5 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted rounded-xl cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmittingSY || !schoolYearInput.trim()}
+                className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-xs rounded-xl shadow-xs cursor-pointer disabled:opacity-50"
+              >
+                {isSubmittingSY ? 'Adding...' : 'Add School Year'}
+              </button>
+            </div>
+          </form>
         </DialogFrame>
       )}
     </div>
