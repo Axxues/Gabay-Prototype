@@ -442,7 +442,84 @@ describe('Likha LMS Direct API Client', () => {
       );
     });
   });
+
+  it('updates a module comment via Directus items endpoint', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: { id: 'mc-1', content: 'Edited comment' } }),
+    } as any);
+    const result = await likhaLmsApi.modules.updateComment('mc-1', { content: 'Edited comment' });
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining('/items/module_comments/mc-1'),
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ content: 'Edited comment' }),
+      })
+    );
+    expect(result.content).toBe('Edited comment');
+  });
+
+  it('deletes a module comment via Directus items endpoint', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({}),
+    } as any);
+    await likhaLmsApi.modules.deleteComment('mc-1');
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining('/items/module_comments/mc-1'),
+      expect.objectContaining({ method: 'DELETE' })
+    );
+  });
+
+  it('updates a message reaction via Directus items endpoint', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: { id: 'msg-1', reaction: '👍' } }),
+    } as any);
+    const result = await likhaLmsApi.communications.updateMessageReaction('msg-1', '👍');
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining('/items/messages/msg-1'),
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ reaction: '👍' }),
+      })
+    );
+    expect(result.reaction).toBe('👍');
+  });
+
+  it('updates an announcement via Directus items endpoint', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: { id: 'ann-1', pinned: true } }),
+    } as any);
+    const result = await likhaLmsApi.communications.updateAnnouncement('ann-1', { pinned: true });
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining('/items/announcements/ann-1'),
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ pinned: true }),
+      })
+    );
+    expect(result.pinned).toBe(true);
+  });
+
+  it('updates a discussion reply via Directus items endpoint', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: { id: 'dr-1', likes: 5 } }),
+    } as any);
+    const result = await likhaLmsApi.communications.updateDiscussionReply('dr-1', { likes: 5 });
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining('/items/discussion_replies/dr-1'),
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ likes: 5 }),
+      })
+    );
+    expect(result.likes).toBe(5);
+  });
 });
+
 
 
 

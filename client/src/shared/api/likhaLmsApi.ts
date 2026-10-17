@@ -607,6 +607,17 @@ export const likhaLmsApi = {
         body: JSON.stringify(comment),
       });
     },
+
+    async updateComment(id: string, updates: any): Promise<any> {
+      return likhaRequest(`/items/module_comments/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(updates),
+      });
+    },
+
+    async deleteComment(id: string): Promise<void> {
+      await likhaRequest(`/items/module_comments/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    },
   },
 
   // =========================================================================
@@ -877,6 +888,13 @@ export const likhaLmsApi = {
       });
     },
 
+    async updateDiscussionReply(id: string, updates: any): Promise<any> {
+      return likhaRequest(`/items/discussion_replies/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(updates),
+      });
+    },
+
     async getNotifications(_userId?: string): Promise<any[]> {
       return likhaRequest('/notifications?limit=50').catch(() => []);
     },
@@ -915,6 +933,13 @@ export const likhaLmsApi = {
       return likhaRequest('/items/messages', {
         method: 'POST',
         body: JSON.stringify(data),
+      });
+    },
+
+    async updateMessageReaction(id: string, reaction: string | null): Promise<any> {
+      return likhaRequest(`/items/messages/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ reaction }),
       });
     },
 
