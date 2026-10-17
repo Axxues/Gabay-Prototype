@@ -33,7 +33,8 @@ import type {
   Department,
   Program,
   PendingRegistration,
-  AdminSubrole
+  AdminSubrole,
+  SchoolYear
 } from '../types/lms';
 import type { Activity } from '../types/lms';
 import { activityPointsPossible } from '../utils/activities';
@@ -45,7 +46,7 @@ import {
   termGrade,
 } from '../utils/spr';
 import { commonsTemplates } from '../data/commonsTemplates';
-import { DEFAULT_COLLEGES, DEFAULT_DEPARTMENTS } from '../data/collegesData';
+import { DEFAULT_COLLEGES, DEFAULT_DEPARTMENTS, DEFAULT_SCHOOL_YEARS } from '../data/collegesData';
 import { effectiveTerms, normalizeGradesReleased, normalizeTermId } from '../utils/gradingTerms';
 import { isSyllabusGradeReady } from '../utils/syllabusGradeGate';
 import { AlertModal, type AlertModalOptions } from '../components/common/AlertModal';
@@ -304,6 +305,13 @@ export interface LMSContextType {
   getDepartmentDeleteBlockers: (departmentId: string) => string[];
   getProgramDeleteBlockers: (programId: string) => string[];
 
+  // School Year Management
+  schoolYears: SchoolYear[];
+  addSchoolYear: (collegeId: string, year: string) => Promise<{ success: boolean; message?: string }>;
+  setActiveSchoolYear: (collegeId: string, schoolYearId: string) => Promise<{ success: boolean; message?: string }>;
+  getSchoolYearsByCollege: (collegeId: string) => SchoolYear[];
+  getActiveSchoolYearForCollege: (collegeId: string) => SchoolYear | undefined;
+
   logHistory: (path: string, title: string) => void;
   clearHistory: () => void;
 }
@@ -312,6 +320,7 @@ const STORAGE_KEY_THEME = 'gabay_theme_v1';
 const STORAGE_KEY_COLLEGES = 'gabay_colleges';
 const STORAGE_KEY_DEPARTMENTS = 'gabay_departments';
 const STORAGE_KEY_PENDING_REGISTRATIONS = 'gabay_pending_registrations';
+const STORAGE_KEY_SCHOOL_YEARS = 'gabay_school_years';
 
 const safeSetLocalStorage = (key: string, value: string): boolean => {
   try {
@@ -1614,6 +1623,23 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     safeSetLocalStorage(STORAGE_KEY_DEPARTMENTS, JSON.stringify(departments));
   }, [departments]);
 
+  const [schoolYears, setSchoolYears] = useState<SchoolYear[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_SCHOOL_YEARS);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (_) {}
+    return DEFAULT_SCHOOL_YEARS;
+  });
+
+  const schoolYearsRef = useRef(schoolYears);
+  useEffect(() => {
+    schoolYearsRef.current = schoolYears;
+    safeSetLocalStorage(STORAGE_KEY_SCHOOL_YEARS, JSON.stringify(schoolYears));
+  }, [schoolYears]);
+
   // Synchronize academic hierarchy with Likha ERP backend (Directus)
   useEffect(() => {
     let cancelled = false;
@@ -1864,18 +1890,44 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 title: (mapped.role === 'student' ? 'Undergraduate Student' : (u.title || mapped.title)),
                 collegeId: u.college_id || u.collegeId,
                 collegeName: u.college_name || u.collegeName,
+                schoolYear: u.school_year || u.schoolYear,
               };
               return normalizeChancellorUser(baseUser);
             });
-          fresh.users = [normalizeChancellorUser(effectiveActiveUser), ...others];
+          fresh.users = [normalizeChancellorUser(effectiveActiveUser), ...others].map(u => {
+            if (u.schoolYear) return u;
+            const activeSY = u.collegeId ? getActiveSchoolYearForCollege(u.collegeId) : getActiveSchoolYearForCollege('col-ccs');
+            return {
+              ...u,
+              schoolYear: activeSY?.year || '2025-2026',
+            };
+          });
         } else {
-          fresh.users = [normalizeChancellorUser(user)];
+          const norm = normalizeChancellorUser(user);
+          const activeSY = norm.collegeId ? getActiveSchoolYearForCollege(norm.collegeId) : getActiveSchoolYearForCollege('col-ccs');
+          fresh.users = [{
+            ...norm,
+            schoolYear: norm.schoolYear || activeSY?.year || '2025-2026',
+          }];
         }
       } catch {
-        fresh.users = [normalizeChancellorUser(user)];
+        const norm = normalizeChancellorUser(user);
+        const activeSY = norm.collegeId ? getActiveSchoolYearForCollege(norm.collegeId) : getActiveSchoolYearForCollege('col-ccs');
+        fresh.users = [{
+          ...norm,
+          schoolYear: norm.schoolYear || activeSY?.year || '2025-2026',
+        }];
       }
 
-      fresh.courses = coursesRes.courses.map(normalizeCourseSyllabus);
+      fresh.courses = coursesRes.courses.map(normalizeCourseSyllabus).map(c => {
+        if (c.schoolYear) return c;
+        const colId = (c as any).collegeId || (c as any).college_id || 'col-ccs';
+        const activeSY = getActiveSchoolYearForCollege(colId) || getActiveSchoolYearForCollege('col-ccs');
+        return {
+          ...c,
+          schoolYear: activeSY?.year || '2025-2026',
+        };
+      });
       fresh.notifications = notificationsRes.notifications;
 
       try {
@@ -2946,7 +2998,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         enrolledCount: 0,
         credits: (row as any)?.credits || courseData.credits || 3,
         chedComplianceCode: (row as any)?.ched_compliance_code || courseData.chedComplianceCode || 'CMO-25-2015',
-        joinCode: (row as any)?.join_code || uniqueJoinCode
+        joinCode: (row as any)?.join_code || uniqueJoinCode,
+        schoolYear: courseData.schoolYear || (activeUser?.collegeId ? getActiveSchoolYearForCollege(activeUser.collegeId)?.year : undefined) || getActiveSchoolYearForCollege('col-ccs')?.year || '2025-2026',
       };
 
       setDb(prev => ({
@@ -3704,6 +3757,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         emailVerified: userData.emailVerified,
         registeredAt: userData.registeredAt,
         verificationExpiresAt: userData.verificationExpiresAt,
+        schoolYear: userData.schoolYear || (userData.collegeId ? getActiveSchoolYearForCollege(userData.collegeId)?.year : undefined) || getActiveSchoolYearForCollege('col-ccs')?.year || '2025-2026',
       };
       setDb(prev => ({
         ...prev,
@@ -3858,6 +3912,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       registeredAt,
       expiresAt,
       status: payload.status || 'pending',
+      schoolYear: payload.schoolYear || (payload.collegeId ? getActiveSchoolYearForCollege(payload.collegeId)?.year : undefined) || getActiveSchoolYearForCollege('col-ccs')?.year || '2025-2026',
     };
 
     const currentList = pendingRegistrationsRef.current || pendingRegistrations;
@@ -3971,6 +4026,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         emailVerified: true,
         registeredAt: target.registeredAt,
         verificationExpiresAt: target.expiresAt,
+        schoolYear: target.schoolYear || (target.collegeId ? getActiveSchoolYearForCollege(target.collegeId)?.year : undefined) || getActiveSchoolYearForCollege('col-ccs')?.year || '2025-2026',
         enrolledCourseIds: [],
       };
       setDb(prev => ({
@@ -4708,6 +4764,77 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       success: true,
       message: `College "${targetCollege.name}" (${targetCollege.code})${deptSuffix} was deleted successfully.`,
     };
+  };
+
+  const getSchoolYearsByCollege = useCallback(
+    (collegeId: string): SchoolYear[] => {
+      const list = schoolYearsRef.current || schoolYears;
+      return list.filter(sy => sy.collegeId === collegeId);
+    },
+    [schoolYears]
+  );
+
+  const getActiveSchoolYearForCollege = useCallback(
+    (collegeId: string): SchoolYear | undefined => {
+      const list = schoolYearsRef.current || schoolYears;
+      return list.find(sy => sy.collegeId === collegeId && sy.isActive);
+    },
+    [schoolYears]
+  );
+
+  const addSchoolYear = async (
+    collegeId: string,
+    year: string
+  ): Promise<{ success: boolean; message?: string }> => {
+    const list = schoolYearsRef.current || schoolYears;
+    const cleanYear = year.trim();
+    const existing = list.find(
+      sy => sy.collegeId === collegeId && sy.year.toLowerCase() === cleanYear.toLowerCase()
+    );
+    if (existing) {
+      return { success: false, message: `School year "${cleanYear}" already exists for this college.` };
+    }
+
+    const hasActive = list.some(sy => sy.collegeId === collegeId && sy.isActive);
+    const newSY: SchoolYear = {
+      id: `sy-${collegeId}-${cleanYear.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now().toString(36)}`,
+      collegeId,
+      year: cleanYear,
+      isActive: !hasActive, // Make active if no active school year exists yet
+      createdAt: new Date().toISOString(),
+    };
+
+    setSchoolYears(prev => {
+      const next = [...prev, newSY];
+      safeSetLocalStorage(STORAGE_KEY_SCHOOL_YEARS, JSON.stringify(next));
+      return next;
+    });
+
+    return { success: true, message: `School year "${cleanYear}" added successfully.` };
+  };
+
+  const setActiveSchoolYear = async (
+    collegeId: string,
+    schoolYearId: string
+  ): Promise<{ success: boolean; message?: string }> => {
+    const list = schoolYearsRef.current || schoolYears;
+    const target = list.find(sy => sy.collegeId === collegeId && sy.id === schoolYearId);
+    if (!target) {
+      return { success: false, message: 'School year not found for this college.' };
+    }
+
+    setSchoolYears(prev => {
+      const next = prev.map(sy => {
+        if (sy.collegeId === collegeId) {
+          return { ...sy, isActive: sy.id === schoolYearId };
+        }
+        return sy;
+      });
+      safeSetLocalStorage(STORAGE_KEY_SCHOOL_YEARS, JSON.stringify(next));
+      return next;
+    });
+
+    return { success: true, message: `School year "${target.year}" is now active.` };
   };
 
   const joinCourseByCode = async (code: string): Promise<{ success: boolean; message: string; course?: Course }> => {
@@ -7496,6 +7623,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         getCollegeDeleteBlockers,
         getDepartmentDeleteBlockers,
         getProgramDeleteBlockers,
+        schoolYears,
+        addSchoolYear,
+        setActiveSchoolYear,
+        getSchoolYearsByCollege,
+        getActiveSchoolYearForCollege,
         logHistory,
         clearHistory,
         isSessionExpired,

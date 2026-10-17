@@ -38,9 +38,18 @@ export interface PendingRegistration {
   registeredAt: string;
   expiresAt: string;
   status: VerificationStatus;
+  schoolYear?: string;
 }
 
 export type TermId = 'prelim' | 'midterm' | 'finals';
+
+export interface SchoolYear {
+  id: string;
+  collegeId: string;
+  year: string;
+  isActive: boolean;
+  createdAt?: string;
+}
 
 export interface User {
   id: string;
@@ -67,6 +76,7 @@ export interface User {
   emailVerified?: boolean;
   registeredAt?: string;
   verificationExpiresAt?: string;
+  schoolYear?: string;
 }
 
 // Runtime export stubs to guarantee Vite ESM dev imports and browser runtime never fail
@@ -75,6 +85,7 @@ export const College = {} as unknown as College;
 export const Program = {} as unknown as Program;
 export const Department = {} as unknown as Department;
 export const PendingRegistration = {} as unknown as PendingRegistration;
+export const SchoolYear = {} as unknown as SchoolYear;
 
 import type { OfficialSyllabusData } from '../data/syllabusData';
 
@@ -97,6 +108,7 @@ export interface Course {
   gradesReleased?: Partial<Record<TermId, boolean>> | null;
   joinCode?: string;
   sectionIds?: string[];
+  schoolYear?: string;
 }
 
 export const Course = {} as unknown as Course;

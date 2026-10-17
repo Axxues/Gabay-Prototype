@@ -1,4 +1,4 @@
-import type { College, Department, Program } from '../types/lms';
+import type { College, Department, Program, SchoolYear } from '../types/lms';
 
 /**
  * Initial Default University Colleges
@@ -10,6 +10,19 @@ export const DEFAULT_COLLEGES: College[] = [
     name: 'College of Computer Science',
     code: 'CCS',
     deanId: '6a52a8c6-5a15-4620-8a16-d06a5b269fc3',
+  },
+];
+
+/**
+ * Initial Default University School Years per College
+ */
+export const DEFAULT_SCHOOL_YEARS: SchoolYear[] = [
+  {
+    id: 'sy-col-ccs-2025-2026',
+    collegeId: 'col-ccs',
+    year: '2025-2026',
+    isActive: true,
+    createdAt: '2025-06-01T00:00:00.000Z',
   },
 ];
 
