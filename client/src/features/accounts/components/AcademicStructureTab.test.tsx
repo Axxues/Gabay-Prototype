@@ -16,6 +16,10 @@ vi.mock('react-router-dom', async () => {
 const mockAddCollege = vi.fn().mockResolvedValue({ id: 'col-new', name: 'New Col', code: 'NC' });
 const mockAddDepartment = vi.fn().mockResolvedValue({ id: 'dept-new', collegeId: 'col-cet', name: 'New Dept', code: 'ND' });
 const mockTransferLeadership = vi.fn().mockResolvedValue({ success: true, message: 'Leadership appointed' });
+const mockDeleteCollege = vi.fn().mockResolvedValue({ success: true, message: 'College deleted' });
+const mockDeleteDepartment = vi.fn().mockResolvedValue({ success: true, message: 'Department deleted' });
+const mockGetCollegeDeleteBlockers = vi.fn().mockReturnValue([]);
+const mockGetDepartmentDeleteBlockers = vi.fn().mockReturnValue([]);
 const mockShowAlert = vi.fn();
 
 let mockActiveRole: string = 'superadmin';
@@ -163,6 +167,10 @@ vi.mock('../../../shared/context/LMSContext', () => ({
     addCollege: mockAddCollege,
     addDepartment: mockAddDepartment,
     transferLeadership: mockTransferLeadership,
+    deleteCollege: mockDeleteCollege,
+    deleteDepartment: mockDeleteDepartment,
+    getCollegeDeleteBlockers: mockGetCollegeDeleteBlockers,
+    getDepartmentDeleteBlockers: mockGetDepartmentDeleteBlockers,
     db: {
       users: sampleUsers,
     },
@@ -177,6 +185,10 @@ import { AcademicStructureTab } from './AcademicStructureTab';
 describe('AcademicStructureTab Scoping and Leader Appointments', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockDeleteCollege.mockResolvedValue({ success: true, message: 'College deleted' });
+    mockDeleteDepartment.mockResolvedValue({ success: true, message: 'Department deleted' });
+    mockGetCollegeDeleteBlockers.mockReturnValue([]);
+    mockGetDepartmentDeleteBlockers.mockReturnValue([]);
     mockActiveRole = 'superadmin';
     mockActiveUser = {
       id: 'u-chancellor',
@@ -469,5 +481,85 @@ describe('AcademicStructureTab Scoping and Leader Appointments', () => {
 
     // Scoped to their college
     expect(screen.getByText('College of Engineering and Technology')).toBeInTheDocument();
+
+    // Chair MUST NOT see delete buttons for colleges or departments
+    expect(screen.queryByRole('button', { name: /^delete /i })).not.toBeInTheDocument();
+  });
+
+  test('9. Chancellor sees delete controls on colleges and departments; Dean sees delete only on departments in their college', () => {
+    // 1. As Chancellor
+    mockActiveRole = 'superadmin';
+    mockActiveUser = { id: 'u-chancellor', role: 'superadmin', adminSubrole: 'chancellor' };
+    const { unmount } = render(<AcademicStructureTab />);
+
+    expect(screen.getByRole('button', { name: /delete college of engineering and technology/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /delete information technology/i })).toBeInTheDocument();
+    unmount();
+
+    // 2. As Dean of CET
+    mockActiveRole = 'admin';
+    mockActiveUser = {
+      id: 'u-dean-cet',
+      role: 'admin',
+      adminSubrole: 'dean',
+      collegeId: 'col-cet',
+      collegeName: 'College of Engineering and Technology',
+    };
+    render(<AcademicStructureTab />);
+
+    // Dean MUST NOT see college delete button
+    expect(screen.queryByRole('button', { name: /delete college of engineering and technology/i })).not.toBeInTheDocument();
+    // Dean MUST see department delete button for CET department
+    expect(screen.getByRole('button', { name: /delete information technology/i })).toBeInTheDocument();
+  });
+
+  test('10. Clicking delete on a blocked unit opens the Blocker Modal displaying the reasons', () => {
+    mockActiveRole = 'superadmin';
+    mockActiveUser = { id: 'u-chancellor', role: 'superadmin', adminSubrole: 'chancellor' };
+    mockGetCollegeDeleteBlockers.mockReturnValueOnce([
+      'College has an assigned Dean (Dean Alice CET).',
+      'Department "Information Technology" has an assigned Chairperson (Prof. Charlie IT).',
+    ]);
+
+    render(<AcademicStructureTab />);
+
+    const deleteCetBtn = screen.getByRole('button', { name: /delete college of engineering and technology/i });
+    fireEvent.click(deleteCetBtn);
+
+    expect(screen.getByText('Cannot Delete College')).toBeInTheDocument();
+    expect(screen.getByText(/College has an assigned Dean/i)).toBeInTheDocument();
+    expect(screen.getByText(/Information Technology.*assigned Chairperson/i)).toBeInTheDocument();
+
+    // Dismiss blocker modal
+    fireEvent.click(screen.getByRole('button', { name: /^close$/i }));
+    expect(screen.queryByText('Cannot Delete College')).not.toBeInTheDocument();
+  });
+
+  test('11. Clicking delete on an eligible college opens the Confirmation Modal and confirms deletion', async () => {
+    mockActiveRole = 'superadmin';
+    mockActiveUser = { id: 'u-chancellor', role: 'superadmin', adminSubrole: 'chancellor' };
+    mockGetCollegeDeleteBlockers.mockReturnValue([]);
+
+    render(<AcademicStructureTab />);
+
+    const deleteCetBtn = screen.getByRole('button', { name: /delete college of engineering and technology/i });
+    fireEvent.click(deleteCetBtn);
+
+    // Confirmation modal is open
+    expect(screen.getByText('Delete Academic College')).toBeInTheDocument();
+    expect(screen.getByText(/Are you sure you want to permanently delete/i)).toBeInTheDocument();
+
+    // Confirms deletion
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /delete college & departments/i }));
+    });
+
+    expect(mockDeleteCollege).toHaveBeenCalledWith('col-cet');
+    expect(mockShowAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: expect.stringMatching(/College Deleted/i),
+        type: 'success',
+      })
+    );
   });
 });

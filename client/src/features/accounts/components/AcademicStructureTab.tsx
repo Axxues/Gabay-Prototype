@@ -11,7 +11,8 @@ import {
   ChevronRight,
   ChevronDown,
   FolderTree,
-  AlertCircle
+  AlertCircle,
+  Trash2
 } from 'lucide-react';
 import { isDeanRole, isChairRole } from '../../../shared/utils/roles';
 import { generateUuid } from '../../../shared/utils/cryptoToken';
@@ -33,6 +34,10 @@ export const AcademicStructureTab: React.FC = () => {
     addCollege,
     addDepartment,
     transferLeadership,
+    deleteCollege,
+    deleteDepartment,
+    getCollegeDeleteBlockers,
+    getDepartmentDeleteBlockers,
     db,
     showAlert,
     activeRole,
@@ -72,6 +77,16 @@ export const AcademicStructureTab: React.FC = () => {
   const canAppointChairs =
     !isChair &&
     (isSuperadminOrChancellor || isDean || (activeRole === 'admin' && !activeUser?.adminSubrole));
+
+  const canDeleteCollege =
+    !isDean &&
+    !isChair &&
+    (isSuperadminOrChancellor || (activeRole === 'admin' && !activeUser?.adminSubrole));
+
+  const canDeleteDepartment =
+    !isChair &&
+    (isSuperadminOrChancellor ||
+      (activeRole === 'admin' && (isDean || !activeUser?.adminSubrole)));
 
   const viewerCollegeId = activeUser?.collegeId;
   const viewerCollegeName = activeUser?.collegeName?.toLowerCase();
@@ -243,6 +258,89 @@ export const AcademicStructureTab: React.FC = () => {
       }
     } finally {
       setIsSubmittingLeader(false);
+    }
+  };
+
+  // Deletion modal states & handlers
+  const [blockerModalData, setBlockerModalData] = useState<{
+    title: string;
+    unitName: string;
+    blockers: string[];
+  } | null>(null);
+
+  const [deleteConfirmModalData, setDeleteConfirmModalData] = useState<{
+    type: 'college' | 'department';
+    id: string;
+    name: string;
+    code: string;
+    childDepartments?: Department[];
+  } | null>(null);
+
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleInitiateDeleteCollege = (college: College) => {
+    const blockers = getCollegeDeleteBlockers(college.id);
+    if (blockers.length > 0) {
+      setBlockerModalData({
+        title: 'Cannot Delete College',
+        unitName: `${college.name} (${college.code})`,
+        blockers,
+      });
+      return;
+    }
+    const childDepts = (departments || []).filter(d => d.collegeId === college.id);
+    setDeleteConfirmModalData({
+      type: 'college',
+      id: college.id,
+      name: college.name,
+      code: college.code,
+      childDepartments: childDepts,
+    });
+  };
+
+  const handleInitiateDeleteDepartment = (dept: Department) => {
+    const blockers = getDepartmentDeleteBlockers(dept.id);
+    if (blockers.length > 0) {
+      setBlockerModalData({
+        title: 'Cannot Delete Department',
+        unitName: `${dept.name} (${dept.code})`,
+        blockers,
+      });
+      return;
+    }
+    setDeleteConfirmModalData({
+      type: 'department',
+      id: dept.id,
+      name: dept.name,
+      code: dept.code,
+    });
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteConfirmModalData || isDeleting) return;
+    setIsDeleting(true);
+    try {
+      const res =
+        deleteConfirmModalData.type === 'college'
+          ? await deleteCollege(deleteConfirmModalData.id)
+          : await deleteDepartment(deleteConfirmModalData.id);
+
+      if (res.success) {
+        showAlert({
+          title: `${deleteConfirmModalData.type === 'college' ? 'College' : 'Department'} Deleted`,
+          message: res.message,
+          type: 'success',
+        });
+        setDeleteConfirmModalData(null);
+      } else {
+        showAlert({
+          title: 'Deletion Failed',
+          message: res.message,
+          type: 'error',
+        });
+      }
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -453,6 +551,21 @@ export const AcademicStructureTab: React.FC = () => {
                     </>
                   )}
                 </div>
+
+                {canDeleteCollege && (
+                  <button
+                    type="button"
+                    aria-label={`Delete ${college.name}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleInitiateDeleteCollege(college);
+                    }}
+                    className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-xl transition-colors cursor-pointer shrink-0 self-center"
+                    title="Delete College"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
               </div>
 
               {/* Department Listing Table */}
@@ -537,6 +650,21 @@ export const AcademicStructureTab: React.FC = () => {
                                   </button>
                                 )}
                               </div>
+                            )}
+
+                            {canDeleteDepartment && (!isDean || (effectiveCollegeId && dept.collegeId === effectiveCollegeId)) && (
+                              <button
+                                type="button"
+                                aria-label={`Delete ${dept.name}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleInitiateDeleteDepartment(dept);
+                                }}
+                                className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors cursor-pointer shrink-0"
+                                title="Delete Department"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
                             )}
                           </div>
                         </div>
@@ -812,6 +940,84 @@ export const AcademicStructureTab: React.FC = () => {
                 Appointing a new leader automatically steps down any previous incumbent to faculty,
                 strictly adhering to the single-seat leadership invariant.
               </span>
+            </div>
+          </div>
+        </DialogFrame>
+      )}
+
+      {/* DELETION BLOCKER MODAL */}
+      {blockerModalData && (
+        <DialogFrame
+          title={blockerModalData.title}
+          subtitle={`Deletion is blocked for ${blockerModalData.unitName}`}
+          onClose={() => setBlockerModalData(null)}
+        >
+          <div className="space-y-4">
+            <div className="flex items-start space-x-3 p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-700 dark:text-amber-300 text-xs">
+              <AlertCircle className="w-5 h-5 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+              <div className="space-y-1">
+                <p className="font-bold">This academic unit cannot be deleted:</p>
+                <ul className="list-disc list-inside space-y-1 mt-1 text-muted-foreground font-medium">
+                  {blockerModalData.blockers.map((b, idx) => (
+                    <li key={idx}>{b}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Please clear or reassign all active leadership positions and ensure no users or pending registrations are assigned to this unit before deleting.
+            </p>
+            <div className="flex justify-end pt-2 border-t border-border">
+              <button
+                type="button"
+                onClick={() => setBlockerModalData(null)}
+                className="px-4 py-2 bg-muted hover:bg-muted/80 text-foreground text-xs font-bold rounded-xl cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </DialogFrame>
+      )}
+
+      {/* CONFIRM DELETION MODAL */}
+      {deleteConfirmModalData && (
+        <DialogFrame
+          title={`Delete ${deleteConfirmModalData.type === 'college' ? 'Academic College' : 'Academic Department'}`}
+          subtitle="This destructive action cannot be undone."
+          onClose={() => !isDeleting && setDeleteConfirmModalData(null)}
+        >
+          <div className="space-y-4">
+            <div className="flex items-start space-x-3 p-3.5 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-xs">
+              <ShieldAlert className="w-5 h-5 shrink-0 text-destructive mt-0.5" />
+              <div className="space-y-1.5">
+                <p className="font-bold">
+                  Are you sure you want to permanently delete {deleteConfirmModalData.name} ({deleteConfirmModalData.code})?
+                </p>
+                {deleteConfirmModalData.type === 'college' && (deleteConfirmModalData.childDepartments?.length ?? 0) > 0 && (
+                  <p className="text-muted-foreground">
+                    This college contains <strong className="text-foreground">{deleteConfirmModalData.childDepartments!.length} department(s)</strong> ({deleteConfirmModalData.childDepartments!.map(d => d.name).join(', ')}), which have no enrolled users. Deleting this college will also permanently delete these departments.
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="flex justify-end space-x-2 pt-2 border-t border-border">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setDeleteConfirmModalData(null)}
+                className="px-3.5 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted rounded-xl cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleConfirmDelete}
+                className="px-4 py-2 bg-destructive hover:bg-destructive/90 text-destructive-foreground font-bold text-xs rounded-xl shadow-xs cursor-pointer disabled:opacity-50"
+              >
+                {isDeleting ? 'Deleting...' : deleteConfirmModalData.type === 'college' && (deleteConfirmModalData.childDepartments?.length ?? 0) > 0 ? 'Delete College & Departments' : 'Delete'}
+              </button>
             </div>
           </div>
         </DialogFrame>
