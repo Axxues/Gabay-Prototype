@@ -184,7 +184,7 @@ describe('ManageAccountsPage RBAC & Verification Queue', () => {
     expect(screen.getByText(/expires in 25 days/i)).toBeInTheDocument();
   });
 
-  it('2b. only displays applicants whose email has already been verified', () => {
+  it('2b. displays all pending applicants but disables verify button for accounts with unverified email', () => {
     const futureDate = new Date(Date.now() + 25 * 24 * 60 * 60 * 1000).toISOString();
     mocks.mockState.pendingRegistrations = [
       {
@@ -230,13 +230,27 @@ describe('ManageAccountsPage RBAC & Verification Queue', () => {
     const queueTab = screen.getByRole('tab', { name: /pending verifications|verification queue/i });
     fireEvent.click(queueTab);
 
-    // Verified applicant MUST be in the document
+    // Both applicants MUST be in the document
     expect(screen.getByText('Verified Applicant')).toBeInTheDocument();
     expect(screen.getByText('verified@dmmmsu.edu.ph')).toBeInTheDocument();
+    expect(screen.getByText('Unverified Applicant')).toBeInTheDocument();
+    expect(screen.getByText('unverified@dmmmsu.edu.ph')).toBeInTheDocument();
 
-    // Unverified applicant MUST NOT be in the document
-    expect(screen.queryByText('Unverified Applicant')).not.toBeInTheDocument();
-    expect(screen.queryByText('unverified@dmmmsu.edu.ph')).not.toBeInTheDocument();
+    // Verification button for verified applicant is enabled
+    const verifiedRow = screen.getByText('Verified Applicant').closest('tr')!;
+    expect(within(verifiedRow).getByText(/email verified/i)).toBeInTheDocument();
+    const verifiedVerifyBtn = within(verifiedRow).getByRole('button', { name: /verify/i });
+    expect(verifiedVerifyBtn).not.toBeDisabled();
+
+    // Verification button for unverified applicant is disabled
+    const unverifiedRow = screen.getByText('Unverified Applicant').closest('tr')!;
+    expect(within(unverifiedRow).getByText(/email unverified/i)).toBeInTheDocument();
+    const unverifiedVerifyBtn = within(unverifiedRow).getByRole('button', { name: /verify/i });
+    expect(unverifiedVerifyBtn).toBeDisabled();
+
+    // Reject button is still accessible for administrative cleanup
+    const unverifiedRejectBtn = within(unverifiedRow).getByRole('button', { name: /reject/i });
+    expect(unverifiedRejectBtn).not.toBeDisabled();
   });
 
   it('3. verifies Chairperson only sees pending applicants from their department', () => {

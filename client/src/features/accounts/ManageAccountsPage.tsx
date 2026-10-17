@@ -198,11 +198,9 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
   const [isVerifyingId, setIsVerifyingId] = useState<string | null>(null);
   const [isRejectingId, setIsRejectingId] = useState<string | null>(null);
 
-  // Scoped Pending Registrations calculation (only show accounts whose email is already verified)
+  // Scoped Pending Registrations calculation
   const scopedPendingRegistrations = useMemo(() => {
-    const list = (pendingRegistrations || []).filter(
-      r => (r.status === 'pending' || !r.status) && Boolean(r.emailVerified)
-    );
+    const list = (pendingRegistrations || []).filter(r => r.status === 'pending' || !r.status);
 
     // Chancellor / Superadmin sees all registrations across all colleges & departments
     if (activeRole === 'superadmin' || activeUser?.adminSubrole === 'chancellor') {
@@ -416,6 +414,15 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
   // Handle Verify Registration
   const handleVerify = async (id: string) => {
     if (isVerifyingId) return;
+    const target = (pendingRegistrations || []).find(r => r.id === id);
+    if (target && !target.emailVerified) {
+      showAlert({
+        title: 'Email Verification Required',
+        message: 'Cannot verify registration: applicant must verify their email address before approval.',
+        type: 'error'
+      });
+      return;
+    }
     setIsVerifyingId(id);
     try {
       const res = await verifyRegistration(id);
@@ -985,6 +992,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
                         (new Date(reg.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
                       );
                       const isExpired = daysRemaining <= 0 || reg.status === 'expired';
+                      const isEmailVerified = Boolean(reg.emailVerified);
                       const applicantName = reg.fullName || `${reg.firstName} ${reg.lastName}`;
 
                       return (
@@ -1005,6 +1013,17 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
                                   <Mail className="w-3 h-3 shrink-0" />
                                   <span className="truncate">{reg.email}</span>
                                 </div>
+                                {isEmailVerified ? (
+                                  <div className="inline-flex items-center space-x-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 mt-0.5">
+                                    <CheckCircle2 className="w-2.5 h-2.5" />
+                                    <span>Email verified</span>
+                                  </div>
+                                ) : (
+                                  <div className="inline-flex items-center space-x-1 text-[10px] font-semibold text-amber-600 dark:text-amber-400 mt-0.5">
+                                    <Clock className="w-2.5 h-2.5" />
+                                    <span>Email unverified</span>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </td>
@@ -1057,9 +1076,16 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
                             <div className="flex items-center justify-end space-x-2">
                               <button
                                 type="button"
-                                disabled={isExpired || isVerifyingId === reg.id}
+                                disabled={isExpired || !isEmailVerified || isVerifyingId === reg.id}
                                 onClick={() => handleVerify(reg.id)}
-                                className="px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-xs rounded-xl shadow-xs transition-all flex items-center space-x-1 cursor-pointer disabled:opacity-50"
+                                title={
+                                  !isEmailVerified
+                                    ? 'Cannot approve: applicant email is unverified'
+                                    : isExpired
+                                    ? 'Cannot approve: registration has expired'
+                                    : 'Verify and activate account'
+                                }
+                                className="px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-xs rounded-xl shadow-xs transition-all flex items-center space-x-1 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                               >
                                 <CheckCircle2 className="w-3.5 h-3.5" />
                                 <span>{isVerifyingId === reg.id ? 'Verifying...' : 'Verify'}</span>
