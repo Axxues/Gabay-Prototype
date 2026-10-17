@@ -20,6 +20,23 @@ def test_chat_endpoint_missing_message(client):
     assert response.status_code == 422
 
 
+def test_chat_endpoint_empty_message(client):
+    """Verify endpoint rejects empty string message with 422."""
+    response = client.post("/api/chat", json={"message": ""})
+    assert response.status_code == 422
+
+
+@patch("app.main.rag_graph.ainvoke", side_effect=RuntimeError("Groq upstream connection timeout"))
+def test_chat_endpoint_exception_fallback(mock_ainvoke, client):
+    """Verify endpoint catches pipeline exceptions and returns friendly academic fallback."""
+    response = client.post("/api/chat", json={"message": "What is CMSC 11?"})
+    assert response.status_code == 200
+    data = response.json()
+    assert "technical difficulties" in data["reply"]
+    assert data["category"] == "student_support"
+    assert data["sources"] == []
+
+
 @patch("app.main.rag_graph.ainvoke")
 def test_chat_endpoint_active_query(mock_ainvoke, client):
     """Verify endpoint delegates to rag_graph and formats ChatResponse contract."""

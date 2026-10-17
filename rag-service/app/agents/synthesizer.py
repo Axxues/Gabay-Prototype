@@ -5,6 +5,7 @@ personalized responses based on retrieved domain documents with bracketed citati
 and clean markdown formatting.
 """
 
+from functools import lru_cache
 import inspect
 import logging
 import os
@@ -35,6 +36,7 @@ STRICT INSTRUCTIONS:
 """
 
 
+@lru_cache(maxsize=4)
 def get_gemini_synthesizer(
     model: str = "gemini-2.0-flash",
     temperature: float = 0.2,

@@ -181,3 +181,20 @@ def test_format_context_docs_empty():
     """Verify format_context_docs handles empty retrieved documents gracefully."""
     res = format_context_docs([])
     assert "No reference documents found" in res
+
+
+@patch("app.agents.graph.query_vector_store")
+def test_retriever_node_sanitizes_course_code(mock_vector):
+    """Verify retriever_node strips dangerous characters or quotes from active_course."""
+    from app.agents.graph import retriever_node
+
+    state = {
+        "message": "When is exam?",
+        "category": "curriculum_and_instruction",
+        "active_course": "CMSC'131; SELECT *",
+    }
+    retriever_node(state)
+    mock_vector.assert_called_once()
+    called_filter = mock_vector.call_args.kwargs.get("filter_str") or mock_vector.call_args[1].get("filter_str")
+    assert "course_code = 'CMSC131 SELECT'" in called_filter
+    assert "'" not in called_filter.split("course_code = '")[1][:-1]

@@ -6,6 +6,7 @@ response synthesis.
 """
 
 import logging
+import re
 from typing import Any, Dict, List, Optional, TypedDict
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
@@ -113,7 +114,9 @@ def retriever_node(state: RagState) -> Dict[str, Any]:
     if category:
         filter_clauses.append(f"category = '{category}'")
     if category == "curriculum_and_instruction" and active_course:
-        filter_clauses.append(f"course_code = '{active_course}'")
+        clean_course = re.sub(r"[^a-zA-Z0-9_\-\s]", "", str(active_course)).strip()
+        if clean_course:
+            filter_clauses.append(f"course_code = '{clean_course}'")
 
     filter_str = " AND ".join(filter_clauses) if filter_clauses else None
 
