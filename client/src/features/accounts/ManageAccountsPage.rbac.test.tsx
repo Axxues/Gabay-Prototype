@@ -6,6 +6,15 @@ import { ManageAccountsPage } from './ManageAccountsPage';
 import { AcademicGovernancePage } from './AcademicGovernancePage';
 import type { User, College, Department, PendingRegistration } from '../../shared/types/lms';
 
+const mockNavigate = vi.fn();
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual('react-router-dom');
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+  };
+});
+
 const mocks = vi.hoisted(() => ({
   verifyRegistration: vi.fn(),
   rejectRegistration: vi.fn(),

@@ -301,7 +301,7 @@ class AppErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundary
     try {
       localStorage.clear();
       window.location.reload();
-    } catch (_) {
+    } catch {
       window.location.reload();
     }
   };
