@@ -16,7 +16,8 @@ import {
   UserCheck,
   GraduationCap,
   ShieldCheck,
-  CheckCircle2
+  CheckCircle2,
+  Calendar
 } from 'lucide-react';
 
 interface DropdownOption {
@@ -141,15 +142,77 @@ interface CreateAccountPageProps {
 }
 
 export const CreateAccountPage: React.FC<CreateAccountPageProps> = ({ onNavigateTab }) => {
-  const { createUser, showAlert, programs, departments } = useLMS();
+  const {
+    createUser,
+    showAlert,
+    programs,
+    departments,
+    colleges,
+    schoolYears,
+    activeUser,
+    activeRole,
+    getActiveSchoolYearForCollege,
+    getSchoolYearsByCollege
+  } = useLMS();
+
+  // Determine current college
+  const currentCollegeId = useMemo(() => {
+    if (activeUser?.collegeId) return activeUser.collegeId;
+    if (activeUser?.collegeName && colleges) {
+      const match = colleges.find(c => c.name.toLowerCase() === activeUser.collegeName?.toLowerCase());
+      if (match) return match.id;
+    }
+    return colleges?.[0]?.id || 'col-ccs';
+  }, [activeUser, colleges]);
+
+  // Initial active school year
+  const defaultSchoolYear = useMemo(() => {
+    if (currentCollegeId) {
+      const activeSy = getActiveSchoolYearForCollege?.(currentCollegeId);
+      if (activeSy?.year) return activeSy.year;
+      const list = getSchoolYearsByCollege?.(currentCollegeId) || (schoolYears || []).filter(sy => sy.collegeId === currentCollegeId);
+      const active = list.find(s => s.isActive);
+      if (active?.year) return active.year;
+      if (list[0]?.year) return list[0].year;
+    }
+    const ccsActive = getActiveSchoolYearForCollege?.('col-ccs');
+    return ccsActive?.year || '2025-2026';
+  }, [currentCollegeId, getActiveSchoolYearForCollege, getSchoolYearsByCollege, schoolYears]);
 
   const [formEmail, setFormEmail] = useState('');
   const [formIdNumber, setFormIdNumber] = useState('');
   const [formRole, setFormRole] = useState<UserRole>('faculty');
   const [formDepartment, setFormDepartment] = useState('Program in Computer Science');
+  const [formSchoolYear, setFormSchoolYear] = useState(defaultSchoolYear);
   const [formPassword, setFormPassword] = useState('gabay2026');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Sync default school year if it loads asynchronously
+  useEffect(() => {
+    if (!formSchoolYear && defaultSchoolYear) {
+      setFormSchoolYear(defaultSchoolYear);
+    }
+  }, [defaultSchoolYear, formSchoolYear]);
+
+  // School Year options
+  const schoolYearSelectOptions: DropdownOption[] = useMemo(() => {
+    const list = new Set<string>();
+    if (currentCollegeId) {
+      const cList = getSchoolYearsByCollege?.(currentCollegeId) || (schoolYears || []).filter(sy => sy.collegeId === currentCollegeId);
+      cList.forEach(sy => { if (sy.year) list.add(sy.year.trim()); });
+    }
+    (schoolYears || []).forEach(sy => { if (sy.year) list.add(sy.year.trim()); });
+    list.add('2024-2025');
+    list.add('2025-2026');
+    list.add('2026-2027');
+
+    return Array.from(list).sort((a, b) => b.localeCompare(a)).map(yr => ({
+      value: yr,
+      label: yr,
+      icon: <Calendar className="w-3.5 h-3.5 text-muted-foreground" />
+    }));
+  }, [currentCollegeId, getSchoolYearsByCollege, schoolYears]);
 
   const departmentSelectOptions: DropdownOption[] = useMemo(() => {
     const list = (programs || departments || []).map(p => p.name);
@@ -214,6 +277,8 @@ export const CreateAccountPage: React.FC<CreateAccountPageProps> = ({ onNavigate
         role: formRole,
         department: formDepartment,
         program: formDepartment,
+        schoolYear: formSchoolYear || undefined,
+        collegeId: currentCollegeId,
         title: previewMeta.defaultTitle,
         studentId: cleanIdNumber,
         password: formPassword.trim() || 'gabay2026',
@@ -369,6 +434,17 @@ export const CreateAccountPage: React.FC<CreateAccountPageProps> = ({ onNavigate
                 placeholder="Select Program"
               />
             </div>
+            <div>
+              <label className="block text-[12px] font-semibold text-muted-foreground mb-1.5">
+                School Year *
+              </label>
+              <CustomDropdown
+                value={formSchoolYear}
+                onChange={setFormSchoolYear}
+                options={schoolYearSelectOptions}
+                placeholder="Select School Year"
+              />
+            </div>
           </div>
 
           <div className="bg-card border border-border rounded-2xl p-5 sm:p-6 shadow-none space-y-4">
@@ -437,6 +513,7 @@ export const CreateAccountPage: React.FC<CreateAccountPageProps> = ({ onNavigate
               <div className="text-[11px] text-muted-foreground">
                 <div className="font-medium text-foreground truncate">{formDepartment}</div>
                 <div className="truncate">{previewMeta.defaultTitle}</div>
+                <div className="truncate">AY: {formSchoolYear}</div>
                 <div className="truncate">ID: {formIdNumber.trim() || ID_NUMBER_EXAMPLE}</div>
               </div>
             </div>

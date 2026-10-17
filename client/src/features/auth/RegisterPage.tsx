@@ -22,7 +22,18 @@ import {
 import { sendActivationEmail } from '../../shared/api/emailApi';
 
 export const RegisterPage: React.FC = () => {
-  const { registerAccount, activateEmail, colleges, departments, theme, toggleTheme, logout } = useLMS();
+  const {
+    registerAccount,
+    activateEmail,
+    colleges,
+    departments,
+    schoolYears,
+    getActiveSchoolYearForCollege,
+    getSchoolYearsByCollege,
+    theme,
+    toggleTheme,
+    logout
+  } = useLMS();
   const [searchParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -43,6 +54,7 @@ export const RegisterPage: React.FC = () => {
   const [idNumber, setIdNumber] = useState('');
   const [collegeId, setCollegeId] = useState('');
   const [department, setDepartment] = useState('');
+  const [schoolYear, setSchoolYear] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -60,6 +72,16 @@ export const RegisterPage: React.FC = () => {
     if (!collegeId) return [];
     return departments.filter(d => d.collegeId === collegeId);
   }, [departments, collegeId]);
+
+  // Available school years for selected college
+  const collegeSchoolYears = useMemo(() => {
+    if (!collegeId) return [];
+    if (getSchoolYearsByCollege) {
+      const list = getSchoolYearsByCollege(collegeId);
+      if (list && list.length > 0) return list;
+    }
+    return (schoolYears || []).filter(sy => sy.collegeId === collegeId);
+  }, [collegeId, getSchoolYearsByCollege, schoolYears]);
 
   // Handle email activation when token is present
   const activatedTokenRef = useRef<string | null>(null);
@@ -170,6 +192,7 @@ export const RegisterPage: React.FC = () => {
         program: department,
         studentId: cleanIdNumber,
         password,
+        schoolYear: schoolYear.trim() || undefined,
       });
 
       // Dispatch activation link directly to user's institutional email and confirm delivery
@@ -531,6 +554,18 @@ export const RegisterPage: React.FC = () => {
                   const nextCol = e.target.value;
                   setCollegeId(nextCol);
                   setDepartment('');
+                  if (nextCol) {
+                    const activeSy = getActiveSchoolYearForCollege?.(nextCol);
+                    if (activeSy?.year) {
+                      setSchoolYear(activeSy.year);
+                    } else {
+                      const list = getSchoolYearsByCollege?.(nextCol) || (schoolYears || []).filter(sy => sy.collegeId === nextCol);
+                      const active = list.find(s => s.isActive);
+                      setSchoolYear(active?.year || list[0]?.year || '2025-2026');
+                    }
+                  } else {
+                    setSchoolYear('');
+                  }
                   if (errorMessage) setErrorMessage('');
                 }}
                 className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-xs text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all font-sans cursor-pointer"

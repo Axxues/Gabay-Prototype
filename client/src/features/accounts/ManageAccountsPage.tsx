@@ -179,7 +179,8 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
     verifyRegistration,
     rejectRegistration,
     colleges,
-    departments
+    departments,
+    schoolYears
   } = useLMS();
 
   // Navigation tab state
@@ -189,6 +190,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState<'all' | UserRole>('all');
   const [departmentFilter, setDepartmentFilter] = useState<string>('all');
+  const [schoolYearFilter, setSchoolYearFilter] = useState<string>('all');
 
   // Modal state (delete only — editing lives on dedicated Edit Account page)
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
@@ -338,6 +340,14 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
         }
       }
 
+      // School Year filter
+      if (schoolYearFilter !== 'all') {
+        const uSy = user.schoolYear || '2025-2026';
+        if (uSy !== schoolYearFilter) {
+          return false;
+        }
+      }
+
       // Search query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
@@ -356,7 +366,34 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
     });
 
     return [...filtered].sort(compareUsersByAuthority);
-  }, [scopedDirectoryUsers, roleFilter, departmentFilter, searchQuery]);
+  }, [scopedDirectoryUsers, roleFilter, departmentFilter, schoolYearFilter, searchQuery]);
+
+  // Custom Dropdown option definitions for School Years
+  const schoolYearFilterOptions: DropdownOption[] = useMemo(() => {
+    const yearsSet = new Set<string>();
+    // Collect distinct school years from schoolYears list
+    (schoolYears || []).forEach(sy => {
+      if (sy.year) yearsSet.add(sy.year.trim());
+    });
+    // Collect distinct school years from users in active directory
+    (scopedDirectoryUsers || []).forEach(u => {
+      if (u.schoolYear) {
+        yearsSet.add(u.schoolYear.trim());
+      } else {
+        yearsSet.add('2025-2026');
+      }
+    });
+
+    const sortedYears = Array.from(yearsSet).sort((a, b) => b.localeCompare(a));
+    return [
+      { value: 'all', label: 'All School Years', icon: <Calendar className="w-3.5 h-3.5 text-muted-foreground" /> },
+      ...sortedYears.map(yr => ({
+        value: yr,
+        label: yr,
+        icon: <Calendar className="w-3.5 h-3.5 text-muted-foreground" />
+      }))
+    ];
+  }, [schoolYears, scopedDirectoryUsers]);
 
   // Custom Dropdown option definitions scoped by available departments/programs
   const departmentFilterOptions: DropdownOption[] = useMemo(() => {
@@ -819,7 +856,18 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
                 options={departmentFilterOptions}
                 searchable={true}
                 placeholder="All Programs"
-                className="w-full sm:w-64"
+                className="w-full sm:w-56"
+                buttonClassName="py-2 px-3 bg-muted/60"
+              />
+
+              {/* School Year Custom Dropdown */}
+              <CustomDropdown
+                value={schoolYearFilter}
+                onChange={setSchoolYearFilter}
+                options={schoolYearFilterOptions}
+                searchable={false}
+                placeholder="All School Years"
+                className="w-full sm:w-44"
                 buttonClassName="py-2 px-3 bg-muted/60"
               />
             </div>
@@ -907,12 +955,17 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
                             </div>
                           </td>
 
-                          {/* Role Badge */}
+                          {/* Role Badge & School Year Badge */}
                           <td className="py-3.5 px-4 whitespace-nowrap">
-                            <span className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-[10px] font-bold border ${roleMeta.badgeClass}`}>
-                              {roleMeta.icon}
-                              <span>{roleMeta.label}</span>
-                            </span>
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-1.5">
+                              <span className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-[10px] font-bold border ${roleMeta.badgeClass}`}>
+                                {roleMeta.icon}
+                                <span>{roleMeta.label}</span>
+                              </span>
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold bg-primary/10 text-primary border border-primary/20 w-fit">
+                                AY {user.schoolYear || '2025-2026'}
+                              </span>
+                            </div>
                           </td>
 
                           {/* Department & Title */}
