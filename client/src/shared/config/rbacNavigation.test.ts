@@ -10,6 +10,23 @@ describe('RBAC Navigation Permissions', () => {
     expect(isVisible(accountsItem!, 'admin')).toBe(true);
   });
 
+  it('places Academic Governance immediately above Manage College Accounts in MAIN_NAV', () => {
+    const governanceIndex = MAIN_NAV.findIndex(i => i.id === 'governance');
+    const accountsIndex = MAIN_NAV.findIndex(i => i.id === 'accounts');
+    expect(governanceIndex).toBeGreaterThan(-1);
+    expect(accountsIndex).toBeGreaterThan(-1);
+    expect(governanceIndex).toBe(accountsIndex - 1);
+
+    const governanceItem = MAIN_NAV[governanceIndex];
+    expect(governanceItem.label).toBe('Academic Governance');
+    expect(governanceItem.icon).toBe('governance');
+    expect(isVisible(governanceItem, 'superadmin')).toBe(true);
+    expect(isVisible(governanceItem, 'admin')).toBe(true);
+    expect(isVisible(governanceItem, 'faculty')).toBe(false);
+    expect(isVisible(governanceItem, 'staff')).toBe(false);
+    expect(isVisible(governanceItem, 'student')).toBe(false);
+  });
+
   it('hides Manage College Accounts from regular faculty, staff, and students', () => {
     const accountsItem = MAIN_NAV.find(i => i.id === 'accounts');
     expect(isVisible(accountsItem!, 'faculty')).toBe(false);
@@ -36,5 +53,10 @@ describe('RBAC Navigation Permissions', () => {
     expect(TAB_PATHS['activate']).toBe('/activate');
     expect(pathToTab('/register')).toEqual({ tab: 'register' });
     expect(pathToTab('/activate')).toEqual({ tab: 'activate' });
+  });
+
+  it('maps governance route correctly', () => {
+    expect(TAB_PATHS['governance']).toBe('/governance');
+    expect(pathToTab('/governance')).toEqual({ tab: 'governance' });
   });
 });

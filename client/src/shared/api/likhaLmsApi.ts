@@ -208,7 +208,6 @@ export const likhaLmsApi = {
 
     logout(): void {
       clearToken();
-      cachedServiceToken = null;
       likhaCache.clear();
     },
   },
@@ -1214,14 +1213,7 @@ export const likhaLmsApi = {
     const headers: Record<string, string> = {};
     if (token) headers.Authorization = `Bearer ${token}`;
 
-    let res = await fetch(`${LIKHA_URL}/files`, { method: 'POST', headers, body: formData });
-    if (res.status === 403) {
-      const svcToken = await getServiceToken();
-      if (svcToken) {
-        headers.Authorization = `Bearer ${svcToken}`;
-        res = await fetch(`${LIKHA_URL}/files`, { method: 'POST', headers, body: formData });
-      }
-    }
+    const res = await fetch(`${LIKHA_URL}/files`, { method: 'POST', headers, body: formData });
     if (!res.ok) throw new Error(`File upload to Likha failed: ${res.status}`);
     const json = await res.json();
     const fileData = json.data;

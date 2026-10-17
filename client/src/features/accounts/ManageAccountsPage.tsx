@@ -4,8 +4,6 @@ import type { User, UserRole } from '../../shared/types/lms';
 import { PageHeader } from '../../shared/components/common/PageHeader';
 import { UserAvatar } from '../../shared/components/common/UserAvatar';
 import { DialogFrame } from '../../shared/components/common/DialogFrame';
-import { LeadershipTransferModal } from './components/LeadershipTransferModal';
-import { AcademicStructureTab } from './components/AcademicStructureTab';
 import {
   Users,
   Search,
@@ -23,8 +21,6 @@ import {
   Clock,
   CheckCircle2,
   XCircle,
-  ArrowRightLeft,
-  FolderTree,
   Calendar,
   Inbox
 } from 'lucide-react';
@@ -194,7 +190,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
   } = useLMS();
 
   // Navigation tab state
-  const [activeMainTab, setActiveMainTab] = useState<'active-directory' | 'pending-verifications' | 'academic-structure'>('active-directory');
+  const [activeMainTab, setActiveMainTab] = useState<'active-directory' | 'pending-verifications'>('active-directory');
 
   // Search & Filter state for Active Directory
   const [searchQuery, setSearchQuery] = useState('');
@@ -204,9 +200,6 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
   // Modal state (delete only — editing lives on dedicated Edit Account page)
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-
-  // Leadership Transfer Modal state
-  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
 
   // Verification queue action states
   const [isVerifyingId, setIsVerifyingId] = useState<string | null>(null);
@@ -272,9 +265,6 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
     colleges?.find(
       c => (deanCollegeName && c.name?.toLowerCase() === deanCollegeName) || c.deanId === activeUser?.id
     )?.id;
-
-  const canAccessAcademicStructure =
-    activeRole === 'superadmin' || (activeRole === 'admin' && activeUser?.adminSubrole === 'dean');
 
   // Scoped directory users for collegiate scoping (Dean sees only their college; Chancellor sees all)
   const scopedDirectoryUsers = useMemo(() => {
@@ -504,13 +494,6 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
     }
   };
 
-  const canTransfer =
-    activeRole === 'superadmin' ||
-    (activeRole === 'admin' &&
-      (activeUser?.adminSubrole === 'dean' ||
-        activeUser?.adminSubrole === 'chairperson' ||
-        !activeUser?.adminSubrole));
-
   return (
     <div className="flex min-h-full w-full flex-1 flex-col space-y-6 animate-fade-in pb-16">
       {/* Role Notice if viewing as non-admin */}
@@ -536,20 +519,8 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
 
       {/* Top Header & Actions */}
       <PageHeader
-        title="Manage accounts & academic governance"
-        description="Verify pending applicants within the 30-day window, audit directory accounts, and govern institutional leadership."
-        actions={
-          canTransfer ? (
-            <button
-              type="button"
-              onClick={() => setIsTransferModalOpen(true)}
-              className="px-4 py-2.5 bg-card hover:bg-muted active:scale-[0.98] border border-border text-foreground font-bold text-xs rounded-xl shadow-xs transition-all flex items-center justify-center space-x-2 cursor-pointer shrink-0"
-            >
-              <ArrowRightLeft className="w-4 h-4 text-primary" />
-              <span>Transfer Leadership</span>
-            </button>
-          ) : undefined
-        }
+        title="Manage College Accounts"
+        description="Verify pending applicants within the 30-day window and audit collegiate directory accounts."
       />
 
       {/* Primary Tab Switcher */}
@@ -593,27 +564,6 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
             </span>
           )}
         </button>
-
-        {canAccessAcademicStructure && (
-          <button
-            role="tab"
-            aria-selected={activeMainTab === 'academic-structure'}
-            onClick={() => setActiveMainTab('academic-structure')}
-            className={`px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center space-x-2 ${
-              activeMainTab === 'academic-structure'
-                ? 'bg-primary text-primary-foreground shadow-xs'
-                : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-            }`}
-          >
-            <FolderTree className="w-3.5 h-3.5" />
-            <span>Academic Structure</span>
-            {activeUser?.adminSubrole === 'dean' && (activeUser.collegeName || activeUser.collegeId || effectiveDeanCollegeId) && (
-              <span className="px-1.5 py-0.5 text-[9px] font-bold bg-primary/20 text-primary rounded-md">
-                {colleges?.find(c => c.id === effectiveDeanCollegeId || (deanCollegeName && c.name?.toLowerCase() === deanCollegeName))?.code || 'College'}
-              </span>
-            )}
-          </button>
-        )}
       </div>
 
       {/* TAB 1: ACTIVE DIRECTORY */}
@@ -1116,19 +1066,6 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
             </div>
           </div>
         </div>
-      )}
-
-      {/* TAB 3: ACADEMIC STRUCTURE */}
-      {activeMainTab === 'academic-structure' && canAccessAcademicStructure && (
-        <AcademicStructureTab />
-      )}
-
-      {/* LEADERSHIP TRANSFER MODAL */}
-      {isTransferModalOpen && (
-        <LeadershipTransferModal
-          isOpen={isTransferModalOpen}
-          onClose={() => setIsTransferModalOpen(false)}
-        />
       )}
 
       {/* DELETE CONFIRMATION MODAL */}

@@ -3,6 +3,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 import { ManageAccountsPage } from './ManageAccountsPage';
+import { AcademicGovernancePage } from './AcademicGovernancePage';
 import type { User, College, Department, PendingRegistration } from '../../shared/types/lms';
 
 const mocks = vi.hoisted(() => ({
@@ -380,39 +381,18 @@ describe('ManageAccountsPage RBAC & Verification Queue', () => {
     });
   });
 
-  it('6. verifies "Academic Structure" tab is rendered for superadmin and deans, but not for chairpersons', () => {
-    // As chairperson: tab should NOT be rendered
-    mocks.mockState.activeRole = 'admin';
-    mocks.mockState.activeUser = {
-      ...mocks.mockState.activeUser,
-      adminSubrole: 'chairperson',
-    };
-    const { unmount } = render(<ManageAccountsPage />);
-    expect(screen.queryByRole('tab', { name: /academic structure/i })).not.toBeInTheDocument();
-    unmount();
-
-    // As dean: tab SHOULD be rendered
-    mocks.mockState.activeRole = 'admin';
-    mocks.mockState.activeUser = {
-      ...mocks.mockState.activeUser,
-      adminSubrole: 'dean',
-    };
-    const { unmount: unmountDean } = render(<ManageAccountsPage />);
-    expect(screen.getByRole('tab', { name: /academic structure/i })).toBeInTheDocument();
-    unmountDean();
-
-    // As superadmin: tab SHOULD be rendered
-    mocks.mockState.activeRole = 'superadmin';
-    mocks.mockState.activeUser = {
-      ...mocks.mockState.activeUser,
-      role: 'superadmin',
-      adminSubrole: 'chancellor',
-    };
+  it('6. verifies Academic Structure is on dedicated AcademicGovernancePage and removed from ManageAccountsPage', () => {
+    // ManageAccountsPage no longer renders embedded Academic Structure tab
     render(<ManageAccountsPage />);
-    expect(screen.getByRole('tab', { name: /academic structure/i })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /academic structure/i })).not.toBeInTheDocument();
+
+    // AcademicGovernancePage renders the Academic Structure console
+    const { unmount: unmountGov } = render(<AcademicGovernancePage />);
+    expect(screen.getByText(/Academic Structure & Multi-College Governance/i)).toBeInTheDocument();
+    unmountGov();
   });
 
-  it('7. verifies Leadership Handover modal allows selecting an eligible faculty member and calling transferLeadership()', async () => {
+  it('7. verifies Leadership Handover modal allows selecting an eligible faculty member and calling transferLeadership() on AcademicGovernancePage', async () => {
     mocks.mockState.activeRole = 'admin';
     mocks.mockState.activeUser = {
       id: 'admin-1',
@@ -432,7 +412,7 @@ describe('ManageAccountsPage RBAC & Verification Queue', () => {
       message: 'Leadership transferred successfully to Dean successor.',
     });
 
-    render(<ManageAccountsPage />);
+    render(<AcademicGovernancePage />);
 
     // Click "Transfer Leadership" button
     const transferBtn = screen.getByRole('button', { name: /transfer leadership/i });

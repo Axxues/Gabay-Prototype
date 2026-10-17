@@ -64,4 +64,17 @@ describe('AppRail Navigation', () => {
     expect(gabayBtn.querySelector('.animate-ping')).toBeNull();
     expect(gabayBtn.querySelector('.bg-primary.rounded-full')).toBeNull();
   });
+
+  it('renders Academic Governance above Manage College Accounts for admin', () => {
+    // Override activeRole to admin
+    const { container } = render(
+      <GabayChatContext.Provider value={{ executingSessionIds: [] } as any}>
+        <AppRail currentTab="dashboard" onNavigateTab={vi.fn()} />
+      </GabayChatContext.Provider>
+    );
+
+    // With activeRole student from mock, accounts and governance are hidden
+    expect(screen.queryByTitle(/Academic Governance/i)).toBeNull();
+    expect(screen.queryByTitle(/Manage College Accounts/i)).toBeNull();
+  });
 });

@@ -151,18 +151,16 @@ describe('ManageAccountsPage - Dean Access & Full Collegiate Scoping', () => {
   });
 
   describe('When viewing as Dean (CCS)', () => {
-    it('allows access to "Academic Structure" tab and renders the scoped console', () => {
+    it('renders the Manage Accounts header, Active Directory, and Pending Verifications tabs, without embedded Academic Structure', () => {
       render(<ManageAccountsPage />);
 
-      // The Academic Structure tab button must be visible for Dean
-      const academicStructureTab = screen.getByRole('tab', { name: /academic structure/i });
-      expect(academicStructureTab).toBeInTheDocument();
-      expect(academicStructureTab).toHaveTextContent('CCS');
+      // The header reflects Manage College Accounts
+      expect(screen.getByRole('heading', { name: 'Manage College Accounts' })).toBeInTheDocument();
 
-      // Clicking it switches to the Academic Structure console
-      fireEvent.click(academicStructureTab);
-      expect(screen.getByText(/Academic Structure & Multi-College Governance/i)).toBeInTheDocument();
-      expect(screen.getByText(/Dean collegiate console/i)).toBeInTheDocument();
+      // Only Active Directory and Pending Verifications tabs are present
+      expect(screen.getByRole('tab', { name: /active directory/i })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: /pending verifications/i })).toBeInTheDocument();
+      expect(screen.queryByRole('tab', { name: /academic structure/i })).not.toBeInTheDocument();
     });
 
     it('scopes Active Directory users strictly to the Dean college', () => {
@@ -214,7 +212,7 @@ describe('ManageAccountsPage - Dean Access & Full Collegiate Scoping', () => {
       expect(screen.queryByRole('button', { name: /Department of Elementary Education/i })).not.toBeInTheDocument();
     });
 
-    it('scopes departments and resolves badge even when activeUser.collegeId is empty but collegeName matches', () => {
+    it('scopes departments via fallback even when activeUser.collegeId is empty but collegeName matches', () => {
       // Clear activeUser.collegeId, rely on deanCollegeName matching
       mocks.mockState.activeUser = {
         ...mocks.mockUsers[0],
@@ -223,11 +221,6 @@ describe('ManageAccountsPage - Dean Access & Full Collegiate Scoping', () => {
       };
 
       render(<ManageAccountsPage />);
-
-      // Tab badge shows 'CCS' resolved via effectiveDeanCollegeId fallback
-      const academicStructureTab = screen.getByRole('tab', { name: /academic structure/i });
-      expect(academicStructureTab).toBeInTheDocument();
-      expect(academicStructureTab).toHaveTextContent('CCS');
 
       // Open department dropdown
       const dropdownButton = screen.getByRole('button', { name: /all departments/i });
@@ -248,11 +241,6 @@ describe('ManageAccountsPage - Dean Access & Full Collegiate Scoping', () => {
       };
 
       render(<ManageAccountsPage />);
-
-      // Tab badge shows 'CCS' resolved via c.deanId === activeUser.id
-      const academicStructureTab = screen.getByRole('tab', { name: /academic structure/i });
-      expect(academicStructureTab).toBeInTheDocument();
-      expect(academicStructureTab).toHaveTextContent('CCS');
 
       // Open department dropdown
       const dropdownButton = screen.getByRole('button', { name: /all departments/i });

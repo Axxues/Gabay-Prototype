@@ -23,6 +23,7 @@ const HistoryPage = React.lazy(() => import('./features/system/HistoryPage').the
 const HelpPage = React.lazy(() => import('./features/system/HelpPage').then(m => ({ default: m.HelpPage })));
 const EmptyPage = React.lazy(() => import('./features/system/EmptyPage').then(m => ({ default: m.EmptyPage })));
 const ManageAccountsPage = React.lazy(() => import('./features/accounts/ManageAccountsPage').then(m => ({ default: m.ManageAccountsPage })));
+const AcademicGovernancePage = React.lazy(() => import('./features/accounts/AcademicGovernancePage').then(m => ({ default: m.AcademicGovernancePage })));
 const EditAccountPage = React.lazy(() => import('./features/accounts/EditAccountPage').then(m => ({ default: m.EditAccountPage })));
 const GabayRAGPage = React.lazy(() => import('./features/rag/GabayRAGPage').then(m => ({ default: m.GabayRAGPage })));
 const SpeedGraderModal = React.lazy(() => import('./features/assessments/components/grading/SpeedGraderModal').then(m => ({ default: m.SpeedGraderModal })));
@@ -165,7 +166,7 @@ export const AppShell: React.FC = () => {
         navigate('/inbox', { replace: true });
       }
     } else if (activeRole !== 'admin' && activeRole !== 'superadmin') {
-      if (currentTab === 'accounts' || currentTab === 'create-account' || currentTab === 'edit-account') {
+      if (currentTab === 'accounts' || currentTab === 'create-account' || currentTab === 'edit-account' || currentTab === 'governance') {
         navigate('/dashboard', { replace: true });
       }
     }
@@ -258,6 +259,7 @@ export const AppContent: React.FC = () => {
         <Route path="/profile" element={<RouteWithNav element={(nav) => <ProfilePage onNavigateTab={nav.handleNavigateTab} />} />} />
         <Route path="/history" element={<RouteWithNav element={(nav) => <HistoryPage onNavigateCourse={nav.handleNavigateCourse} onNavigateTab={nav.handleNavigateTab} />} />} />
         <Route path="/help" element={<RouteWithNav element={(nav) => <HelpPage onNavigateTab={nav.handleNavigateTab} />} />} />
+        <Route path="/governance" element={<RequireAdmin><RouteWithNav element={(nav) => <AcademicGovernancePage onNavigateTab={nav.handleNavigateTab} />} /></RequireAdmin>} />
         <Route path="/accounts" element={<RequireAdmin><RouteWithNav element={(nav) => <ManageAccountsPage onNavigateTab={nav.handleNavigateTab} onEditAccount={nav.handleEditAccount} />} /></RequireAdmin>} />
         <Route path="/accounts/new" element={<Navigate to="/accounts" replace />} />
         <Route path="/accounts/:userId/edit" element={<RequireAdmin><RouteWithNav element={(nav) => <EditAccountRoute nav={nav} />} /></RequireAdmin>} />
