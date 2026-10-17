@@ -1,4 +1,4 @@
-import { LIKHA_URL } from '../server/src/env';
+const LIKHA_URL = process.env.VITE_LIKHA_URL || process.env.LIKHA_URL || 'https://gabay.zyberlab.com';
 
 const SERVICE_EMAIL = 'jayveegenetareyes@gmail.com';
 const SERVICE_PASSWORD = 'qwerty12345';

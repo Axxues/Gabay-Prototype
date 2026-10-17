@@ -217,13 +217,27 @@ export const LoginPage: React.FC = () => {
           <span className="text-[12px] font-semibold text-muted-foreground block text-center font-sans">
             Quick demo login
           </span>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             <button
               type="button"
               onClick={() => handleQuickLogin('jayveegenetareyes@gmail.com', 'qwerty12345')}
               className="py-1.5 px-2 bg-muted/50 hover:bg-primary/10 hover:border-primary/30 border border-border rounded-lg text-xs font-semibold text-foreground transition-all text-center cursor-pointer"
             >
-              Admin
+              Chancellor
+            </button>
+            <button
+              type="button"
+              onClick={() => handleQuickLogin('dean1@dmmmsu.edu.ph', 'gabay2026')}
+              className="py-1.5 px-2 bg-muted/50 hover:bg-primary/10 hover:border-primary/30 border border-border rounded-lg text-xs font-semibold text-foreground transition-all text-center cursor-pointer"
+            >
+              Dean
+            </button>
+            <button
+              type="button"
+              onClick={() => handleQuickLogin('chair1@dmmmsu.edu.ph', 'gabay2026')}
+              className="py-1.5 px-2 bg-muted/50 hover:bg-primary/10 hover:border-primary/30 border border-border rounded-lg text-xs font-semibold text-foreground transition-all text-center cursor-pointer"
+            >
+              Chairperson
             </button>
             <button
               type="button"
