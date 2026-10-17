@@ -619,6 +619,81 @@ describe('Likha LMS Direct API Client', () => {
       expect(listener).not.toHaveBeenCalled();
       window.removeEventListener('gabay:session-expired', listener);
     });
+
+    it('silently refreshes access token and retries request on 401 when refresh token exists', async () => {
+      localStorage.setItem('gabay_token', 'expired-access-token');
+      localStorage.setItem('gabay_refresh_token', 'valid-refresh-token');
+
+      const fetchSpy = vi.spyOn(global, 'fetch')
+        // 1. Initial request fails with 401
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          text: async () => JSON.stringify({ errors: [{ message: 'Token expired' }] }),
+        } as any)
+        // 2. /auth/refresh returns new access token and new refresh token
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: {
+              access_token: 'fresh-new-token',
+              refresh_token: 'fresh-new-refresh-token',
+            },
+          }),
+        } as any)
+        // 3. Retried request succeeds
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [{ id: 'col-1', name: 'College of CS', code: 'CCS' }],
+          }),
+        } as any);
+
+      const colleges = await likhaLmsApi.academicStructure.getColleges();
+
+      expect(colleges).toHaveLength(1);
+      expect(colleges[0].id).toBe('col-1');
+      expect(localStorage.getItem('gabay_token')).toBe('fresh-new-token');
+      expect(localStorage.getItem('gabay_refresh_token')).toBe('fresh-new-refresh-token');
+      expect(fetchSpy).toHaveBeenCalledWith(
+        expect.stringContaining('/auth/refresh'),
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ refresh_token: 'valid-refresh-token', mode: 'json' }),
+        })
+      );
+    });
+
+    it('clears tokens and dispatches session expired when silent refresh fails', async () => {
+      localStorage.setItem('gabay_token', 'expired-access-token');
+      localStorage.setItem('gabay_refresh_token', 'revoked-refresh-token');
+
+      const listener = vi.fn();
+      window.addEventListener('gabay:session-expired', listener);
+
+      vi.spyOn(global, 'fetch')
+        // 1. Initial request fails with 401
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          text: async () => JSON.stringify({ errors: [{ message: 'Token expired' }] }),
+        } as any)
+        // 2. /auth/refresh also fails with 401
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          json: async () => ({ errors: [{ message: 'Refresh token expired' }] }),
+        } as any);
+
+      await expect(likhaLmsApi.academicStructure.getColleges()).rejects.toThrow();
+
+      expect(listener).toHaveBeenCalled();
+      expect(localStorage.getItem('gabay_token')).toBeNull();
+      expect(localStorage.getItem('gabay_refresh_token')).toBeNull();
+      window.removeEventListener('gabay:session-expired', listener);
+    });
   });
 });
 

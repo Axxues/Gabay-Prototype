@@ -1,4 +1,4 @@
-import { getToken, setToken, clearToken, ApiError, notifySessionExpired } from './client';
+import { getToken, setToken, getRefreshToken, setRefreshToken, clearToken, ApiError, notifySessionExpired } from './client';
 import type {
   SyllabusRevisionResponse,
   SyllabusRevisionHeader,
@@ -22,9 +22,51 @@ export interface LikhaUploadedFile {
 
 import { likhaCache } from './likhaCache';
 
+let refreshPromise: Promise<string | null> | null = null;
+
+async function refreshAccessToken(): Promise<string | null> {
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) return null;
+
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async () => {
+    try {
+      const res = await fetch(`${LIKHA_URL}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refreshToken, mode: 'json' }),
+      });
+      if (!res.ok) {
+        clearToken();
+        notifySessionExpired();
+        return null;
+      }
+      const json = await res.json();
+      const newAccessToken = json.data?.access_token;
+      const newRefreshToken = json.data?.refresh_token;
+      if (newAccessToken) {
+        setToken(newAccessToken);
+      }
+      if (newRefreshToken) {
+        setRefreshToken(newRefreshToken);
+      }
+      return newAccessToken || null;
+    } catch {
+      clearToken();
+      notifySessionExpired();
+      return null;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
+}
+
 /**
  * Robust fetch wrapper that applies Directus JWT auth, transparent in-memory TTL
- * caching for GET requests, request deduplication, and auto-invalidation on mutations.
+ * caching for GET requests, request deduplication, silent token refresh, and auto-invalidation on mutations.
  */
 async function rawLikhaFetch<T = any>(
   path: string,
@@ -53,8 +95,27 @@ async function rawLikhaFetch<T = any>(
     }
   }
 
+  if (res.status === 401 && !path.includes('/auth/login') && !path.includes('/auth/refresh') && allowRetry) {
+    const refreshToken = getRefreshToken();
+    if (refreshToken) {
+      const newToken = await refreshAccessToken();
+      if (newToken) {
+        const retryHeaders = new Headers(options.headers || {});
+        if (!retryHeaders.has('Content-Type') && !(options.body instanceof FormData)) {
+          retryHeaders.set('Content-Type', 'application/json');
+        }
+        retryHeaders.set('Authorization', `Bearer ${newToken}`);
+        const retriedRes = await fetch(url, { ...options, headers: retryHeaders });
+        if (retriedRes.ok) {
+          const retriedJson = await retriedRes.json().catch(() => ({}));
+          return retriedJson.data !== undefined ? retriedJson.data : retriedJson;
+        }
+      }
+    }
+  }
+
   if (!res.ok) {
-    if (res.status === 401 && token && !path.includes('/auth/login')) {
+    if (res.status === 401 && token && !path.includes('/auth/login') && !path.includes('/auth/refresh')) {
       clearToken();
       notifySessionExpired();
     }
@@ -193,17 +254,23 @@ export const likhaLmsApi = {
       const res = await fetch(`${LIKHA_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, mode: 'json' }),
       });
       if (!res.ok) {
         throw new Error(`Likha authentication failed: ${res.status}`);
       }
       const json = await res.json();
       const token = json.data?.access_token;
+      const refreshToken = json.data?.refresh_token;
       if (token) setToken(token);
+      if (refreshToken) setRefreshToken(refreshToken);
 
       const me = await likhaRequest('/users/me?fields=*,role.*');
       return { token, user: me };
+    },
+
+    async refresh(): Promise<string | null> {
+      return refreshAccessToken();
     },
 
     async getMe(): Promise<any> {

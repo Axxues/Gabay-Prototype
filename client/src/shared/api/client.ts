@@ -9,6 +9,7 @@ export class ApiError extends Error {
 }
 
 const TOKEN_KEY = 'gabay_token';
+const REFRESH_TOKEN_KEY = 'gabay_refresh_token';
 
 export function getToken(): string | null {
   try {
@@ -22,8 +23,21 @@ export function setToken(token: string): void {
   localStorage.setItem(TOKEN_KEY, token);
 }
 
+export function getRefreshToken(): string | null {
+  try {
+    return localStorage.getItem(REFRESH_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setRefreshToken(refreshToken: string): void {
+  localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+}
+
 export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(REFRESH_TOKEN_KEY);
 }
 
 export const SESSION_EXPIRED_EVENT = 'gabay:session-expired';
