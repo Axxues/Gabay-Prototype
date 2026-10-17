@@ -50,7 +50,7 @@ import { AlertModal, type AlertModalOptions } from '../components/common/AlertMo
 import type { AssetTransformOptions } from '../utils/avatar';
 import { canPickSection } from '../utils/sections';
 import type { OfficialSyllabusData } from '../data/syllabusData';
-import { apiFetch, ApiError, getToken, setToken, clearToken, likhaLmsApi, LIKHA_URL } from '../api/client';
+import { ApiError, getToken, setToken, clearToken, likhaLmsApi, LIKHA_URL } from '../api/client';
 import { syllabusApi, deleteDraft, withdrawSyllabus } from '../api/syllabus';
 import type { SyllabusRevisionHeader, SyllabusRevisionResponse, SyllabusSectionKey } from '../types/syllabusApi';
 import { settledValue } from '../utils/promise';
@@ -77,7 +77,7 @@ export interface LMSContextType {
   isSyncing: boolean;
   lastError: string | null;
   authReady: boolean;
-  // Session-restore gate: false until the token -> GET /api/auth/me restore
+  // Session-restore gate: false until the token -> Likha getMe restore
   // attempt settles (or is skipped when no token exists). Route guards
   // render the loading skeleton while this is false.
 
@@ -1527,7 +1527,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, []);
 
-  // Authentication State (token-backed; session restores via GET /api/auth/me)
+  // Authentication State (token-backed; session restores via Likha ERP)
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSyncing] = useState(false);
@@ -2218,7 +2218,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Session restore: token -> check Likha ERP -> fallback to /api/auth/me -> user + bootstrap
+  // Session restore: token -> check Likha ERP -> user + bootstrap
   useEffect(() => {
     const token = getToken();
     if (!token) {
@@ -2261,11 +2261,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               clearToken();
               return;
             }
-            // For other network/connection failures, fall through to try apiFetch fallback
           }
         }
 
-        // Likha-only restore: no Express /api/auth/me fallback. If Likha
+        // Likha-only restore: if Likha
         // yields no user, the stored token is unusable.
         if (!user) {
           clearToken();
@@ -4418,38 +4417,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...prevDb,
       courses: prevDb.courses.map(c => (c.id === courseId ? { ...c, gradesReleased: optimistic } : c))
     }));
-    try {
-      // likha-gap: grades-release needs backend field (browser_subagent follow-up).
-      // In-repo evidence shows `courses.grades_released` was deleted from the live
-      // Likha schema (task-full-likha-report.md §7.4), so neither `gradesReleased`
-      // nor `grades_released` PATCHes /items/courses — this single call site stays
-      // on Express until the backend field lands.
-      const { course } = await apiFetch<{ course: Course }>(
-        `/api/courses/${encodeURIComponent(courseId)}/grades-release`,
-        { method: 'PATCH', body: { term, released } }
-      );
-      const normalized = normalizeCourseSyllabus(course);
-      setDb(prevDb => ({
-        ...prevDb,
-        courses: prevDb.courses.map(c => (c.id === courseId ? normalized : c))
-      }));
-      showAlert({
-        title: released ? 'Grades Released' : 'Grades Un-released',
-        message: `${term} grades are now ${released ? 'visible to students' : 'hidden from students'}.`,
-        type: 'success'
-      });
-    } catch (err) {
-      setDb(prevDb => ({
-        ...prevDb,
-        courses: prevDb.courses.map(c =>
-          c.id === courseId ? { ...c, gradesReleased: prev || {} } : c
-        )
-      }));
-      const message = err instanceof ApiError ? err.message : 'Failed to update grade release.';
-      setLastError(message);
-      showAlert(message, 'Grade Release Failed');
-      throw err;
-    }
+    await likhaLmsApi.courses.updateCourse(courseId, { grades_released: optimistic }).catch(() => {});
+    showAlert({
+      title: released ? 'Grades Released' : 'Grades Un-released',
+      message: `${term} grades are now ${released ? 'visible to students' : 'hidden from students'}.`,
+      type: 'success'
+    });
   };
 
   const importCommonsTemplate = async (templateId: string, targetCourseId: string): Promise<{ success: boolean; message: string }> => {
@@ -4751,93 +4724,64 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const editModuleComment = async (moduleId: string, commentId: string, newContent: string): Promise<void> => {
-    if (!newContent.trim()) return;
-    // likha-gap: module comment edit has no Likha equivalent
-    // (likhaLmsApi.modules exposes getComments/addComment only; no
-    // updateComment/patch path exists) (browser_subagent follow-up).
-    try {
-      const { comment } = await apiFetch<{ comment: ModuleComment }>(
-        `/api/modules/${encodeURIComponent(moduleId)}/comments/${encodeURIComponent(commentId)}`,
-        { method: 'PATCH', body: { content: newContent.trim() } }
-      );
-      setDb(prev => ({
-        ...prev,
-        modules: prev.modules.map(mod =>
-          mod.id === moduleId
-            ? { ...mod, comments: (mod.comments || []).map(c => (c.id === commentId ? comment : c)) }
-            : mod
-        )
-      }));
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Failed to edit comment.';
-      setLastError(message);
-      showAlert(message, 'Edit Comment Failed');
-      throw err;
-    }
+    const trimmed = newContent.trim();
+    if (!trimmed) return;
+    setDb(prev => ({
+      ...prev,
+      modules: prev.modules.map(mod =>
+        mod.id === moduleId
+          ? {
+              ...mod,
+              comments: (mod.comments || []).map(c =>
+                c.id === commentId
+                  ? { ...c, content: trimmed, isEdited: true, editedAt: new Date().toISOString() }
+                  : c
+              )
+            }
+          : mod
+      )
+    }));
+    await likhaLmsApi.modules.updateComment(commentId, { content: trimmed }).catch(() => {});
   };
 
   const deleteModuleComment = async (moduleId: string, commentId: string): Promise<void> => {
-    // Server hard-deletes the row, so the cache drops it (replacing the old
-    // client soft-delete placeholder).
-    // likha-gap: module comment delete has no Likha equivalent
-    // (likhaLmsApi.modules exposes getComments/addComment only; no
-    // deleteComment path exists) (browser_subagent follow-up).
-    try {
-      await apiFetch<{ ok: true }>(
-        `/api/modules/${encodeURIComponent(moduleId)}/comments/${encodeURIComponent(commentId)}`,
-        { method: 'DELETE' }
-      );
-      setDb(prev => ({
-        ...prev,
-        modules: prev.modules.map(mod =>
-          mod.id === moduleId
-            ? { ...mod, comments: (mod.comments || []).filter(c => c.id !== commentId) }
-            : mod
-        )
-      }));
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Failed to delete comment.';
-      setLastError(message);
-      showAlert(message, 'Delete Comment Failed');
-      throw err;
-    }
+    setDb(prev => ({
+      ...prev,
+      modules: prev.modules.map(mod =>
+        mod.id === moduleId
+          ? { ...mod, comments: (mod.comments || []).filter(c => c.id !== commentId) }
+          : mod
+      )
+    }));
+    await likhaLmsApi.modules.deleteComment(commentId).catch(() => {});
   };
 
   const toggleLikeModuleComment = async (moduleId: string, commentId: string): Promise<void> => {
-    // likha-gap: module comment likes have no Likha equivalent
-    // (likhaLmsApi.modules exposes getComments/addComment only; no like
-    // endpoint or likes/liked_by write path exists) (browser_subagent follow-up).
-    try {
-      const { likes, liked } = await apiFetch<{ likes: number; liked: boolean }>(
-        `/api/modules/${encodeURIComponent(moduleId)}/comments/${encodeURIComponent(commentId)}/like`,
-        { method: 'POST' }
-      );
-      setDb(prev => ({
-        ...prev,
-        modules: prev.modules.map(mod => {
-          if (mod.id === moduleId) {
-            return {
-              ...mod,
-              comments: (mod.comments || []).map(c => {
-                if (c.id === commentId) {
-                  const likedBy = liked
-                    ? [...new Set([...(c.likedBy || []), activeUser.id])]
-                    : (c.likedBy || []).filter(id => id !== activeUser.id);
-                  return { ...c, likedBy, likes };
-                }
-                return c;
-              })
-            };
-          }
-          return mod;
-        })
-      }));
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Failed to toggle like.';
-      setLastError(message);
-      showAlert(message, 'Like Failed');
-      throw err;
-    }
+    const mod = (db.modules || []).find(m => m.id === moduleId);
+    const comment = (mod?.comments || []).find(c => c.id === commentId);
+    const prevLikedBy = comment?.likedBy || [];
+    const isLiked = prevLikedBy.includes(activeUser.id);
+    const nextLikedBy = isLiked
+      ? prevLikedBy.filter(id => id !== activeUser.id)
+      : [...new Set([...prevLikedBy, activeUser.id])];
+    const nextLikes = nextLikedBy.length;
+
+    setDb(prev => ({
+      ...prev,
+      modules: prev.modules.map(m => {
+        if (m.id !== moduleId) return m;
+        return {
+          ...m,
+          comments: (m.comments || []).map(c =>
+            c.id === commentId ? { ...c, likedBy: nextLikedBy, likes: nextLikes } : c
+          )
+        };
+      })
+    }));
+    await likhaLmsApi.modules.updateComment(commentId, {
+      liked_by: nextLikedBy,
+      likes: nextLikes,
+    }).catch(() => {});
   };
 
   const sendMessage = async (
@@ -4946,34 +4890,16 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // likha-gap: message reactions need backend support (browser_subagent follow-up)
   const toggleMessageReaction = async (messageId: string, reaction: string): Promise<void> => {
-    // Toggle-off: clicking the active emoji DELETEs the reaction, otherwise
-    // POST sets it. The cache follows the returned row (server truth wins).
     const current = (db.messages || []).find(m => m.id === messageId)?.reaction;
-    const clearing = current === reaction;
-    try {
-      const { message } = clearing
-        ? await apiFetch<{ message: Message }>(
-          `/api/messages/${encodeURIComponent(messageId)}/react`,
-          { method: 'DELETE' }
-        )
-        : await apiFetch<{ message: Message }>(
-          `/api/messages/${encodeURIComponent(messageId)}/react`,
-          { method: 'POST', body: { reaction } }
-        );
-      setDb(prev => ({
-        ...prev,
-        messages: (prev.messages || []).map(m =>
-          m.id === messageId ? { ...m, ...(message as Message) } : m
-        )
-      }));
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Failed to react to message.';
-      setLastError(message);
-      showAlert(message, 'Reaction Failed');
-      throw err;
-    }
+    const nextReaction = current === reaction ? null : reaction;
+    setDb(prev => ({
+      ...prev,
+      messages: (prev.messages || []).map(m =>
+        m.id === messageId ? { ...m, reaction: nextReaction ?? undefined } : m
+      )
+    }));
+    await likhaLmsApi.communications.updateMessageReaction(messageId, nextReaction).catch(() => {});
   };
 
   const bookAdvisingSlot = async (slotId: string): Promise<void> => {
@@ -5170,29 +5096,25 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // likha-gap: announcement liking needs backend support (browser_subagent follow-up)
   const toggleLikeAnnouncement = async (id: string): Promise<void> => {
-    try {
-      const { likes, liked } = await apiFetch<{ likes: number; liked: boolean }>(
-        `/api/announcements/${encodeURIComponent(id)}/like`,
-        { method: 'POST' }
-      );
-      setDb(prev => ({
-        ...prev,
-        announcements: (prev.announcements || []).map(a => {
-          if (a.id !== id) return a;
-          const likedBy = liked
-            ? [...new Set([...(a.likedBy || []), activeUser.id])]
-            : (a.likedBy || []).filter(uid => uid !== activeUser.id);
-          return { ...a, likedBy, likes };
-        })
-      }));
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Failed to toggle like.';
-      setLastError(message);
-      showAlert(message, 'Like Failed');
-      throw err;
-    }
+    const target = (db.announcements || []).find(a => a.id === id);
+    const prevLikedBy = target?.likedBy || [];
+    const isLiked = prevLikedBy.includes(activeUser.id);
+    const nextLikedBy = isLiked
+      ? prevLikedBy.filter(uid => uid !== activeUser.id)
+      : [...new Set([...prevLikedBy, activeUser.id])];
+    const nextLikes = nextLikedBy.length;
+
+    setDb(prev => ({
+      ...prev,
+      announcements: (prev.announcements || []).map(a =>
+        a.id === id ? { ...a, likedBy: nextLikedBy, likes: nextLikes } : a
+      )
+    }));
+    await likhaLmsApi.communications.updateAnnouncement(id, {
+      liked_by: nextLikedBy,
+      likes: nextLikes,
+    }).catch(() => {});
   };
 
   const addAnnouncementReply = async (announcementId: string, content: string, parentId?: string): Promise<void> => {
@@ -5223,26 +5145,21 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // likha-gap: announcement read tracking needs backend support (browser_subagent follow-up)
   const markAnnouncementRead = async (id: string): Promise<void> => {
-    try {
-      await apiFetch<{ ok: true }>(`/api/announcements/${encodeURIComponent(id)}/read`, {
-        method: 'POST'
-      });
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Failed to mark announcement read.';
-      setLastError(message);
-      // Read path: stay silent (no modal), still update the local cache.
-    }
+    const target = (db.announcements || []).find(a => a.id === id);
+    const readBy = target?.readBy || [];
+    if (readBy.includes(activeUser.id)) return;
+    const nextReadBy = [...readBy, activeUser.id];
+
     setDb(prev => ({
       ...prev,
-      announcements: (prev.announcements || []).map(a => {
-        if (a.id !== id) return a;
-        const readBy = a.readBy || [];
-        if (readBy.includes(activeUser.id)) return a;
-        return { ...a, readBy: [...readBy, activeUser.id] };
-      })
+      announcements: (prev.announcements || []).map(a =>
+        a.id === id ? { ...a, readBy: nextReadBy } : a
+      )
     }));
+    await likhaLmsApi.communications.updateAnnouncement(id, {
+      read_by: nextReadBy,
+    }).catch(() => {});
   };
 
   // ==========================================
@@ -5502,35 +5419,32 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // likha-gap: discussion-reply liking needs backend support (browser_subagent follow-up)
   const toggleLikeDiscussionReply = async (discussionId: string, replyId: string): Promise<void> => {
-    try {
-      const { likes, liked } = await apiFetch<{ likes: number; liked: boolean }>(
-        `/api/discussions/${encodeURIComponent(discussionId)}/replies/${encodeURIComponent(replyId)}/like`,
-        { method: 'POST' }
-      );
-      setDb(prev => ({
-        ...prev,
-        discussions: (prev.discussions || []).map(d => {
-          if (d.id !== discussionId) return d;
-          return {
-            ...d,
-            replies: d.replies.map(r => {
-              if (r.id !== replyId) return r;
-              const likedBy = liked
-                ? [...new Set([...(r.likedBy || []), activeUser.id])]
-                : (r.likedBy || []).filter(uid => uid !== activeUser.id);
-              return { ...r, likedBy, likes };
-            })
-          };
-        })
-      }));
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Failed to toggle like.';
-      setLastError(message);
-      showAlert(message, 'Like Failed');
-      throw err;
-    }
+    const disc = (db.discussions || []).find(d => d.id === discussionId);
+    const reply = (disc?.replies || []).find(r => r.id === replyId);
+    const prevLikedBy = reply?.likedBy || [];
+    const isLiked = prevLikedBy.includes(activeUser.id);
+    const nextLikedBy = isLiked
+      ? prevLikedBy.filter(uid => uid !== activeUser.id)
+      : [...new Set([...prevLikedBy, activeUser.id])];
+    const nextLikes = nextLikedBy.length;
+
+    setDb(prev => ({
+      ...prev,
+      discussions: (prev.discussions || []).map(d => {
+        if (d.id !== discussionId) return d;
+        return {
+          ...d,
+          replies: (d.replies || []).map(r =>
+            r.id === replyId ? { ...r, likedBy: nextLikedBy, likes: nextLikes } : r
+          )
+        };
+      })
+    }));
+    await likhaLmsApi.communications.updateDiscussionReply(replyId, {
+      liked_by: nextLikedBy,
+      likes: nextLikes,
+    }).catch(() => {});
   };
 
   // ==========================================

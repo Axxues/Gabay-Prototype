@@ -269,6 +269,8 @@ const bookAdvisingSlotMock = vi.fn(async (id: string, studentId: string) => ({
   status: 'booked',
 }));
 const createAdvisingSlotMock = vi.fn(async (data: any) => ({ id: 'slot-new', status: 'available', ...data }));
+const updateMessageReactionMock = vi.fn(async (id: string, reaction: string | null) => ({ id, reaction }));
+const updateDiscussionReplyMock = vi.fn(async (id: string, patch: any) => ({ id, ...patch }));
 
 vi.mock('../api/client', () => ({
   ApiError: class ApiError extends Error {
@@ -312,6 +314,8 @@ vi.mock('../api/client', () => ({
       deleteCalendarEvent: (...args: any[]) => (deleteCalendarEventMock as any)(...args),
       bookAdvisingSlot: (...args: any[]) => (bookAdvisingSlotMock as any)(...args),
       createAdvisingSlot: (...args: any[]) => (createAdvisingSlotMock as any)(...args),
+      updateMessageReaction: (...args: any[]) => (updateMessageReactionMock as any)(...args),
+      updateDiscussionReply: (...args: any[]) => (updateDiscussionReplyMock as any)(...args),
     },
     courses: {
       getCourses: (...args: any[]) => (getCoursesMock as any)(...args),
@@ -697,58 +701,54 @@ describe('communications via Likha (Task 8)', () => {
     expect((seenDb.calendarEvents || []).some((e: any) => e.id === 'ev-new')).toBe(false);
   });
 
-  // Pinned likha-gaps: no backing Likha write path exists in
-  // communications.* for these, so they stay on Express (browser_subagent
-  // follow-up). These tests pin the gap so the sweep task sees them.
-  test('likha-gap: toggleLikeAnnouncement stays on Express', async () => {
+  // Migrated from Express: operations write through Likha ERP directly.
+  test('toggleLikeAnnouncement writes through Likha, never Express', async () => {
     await renderLoggedIn();
     await act(async () => {
       await ctx.toggleLikeAnnouncement('ann-1');
     });
-    expect(apiFetchMock).toHaveBeenCalledWith(
-      expect.stringContaining('/api/announcements/ann-1/like'),
-      expect.anything()
-    );
-    expect(updateAnnouncementMock).not.toHaveBeenCalled();
+    expect(updateAnnouncementMock).toHaveBeenCalledWith('ann-1', {
+      liked_by: ['u-fac-1'],
+      likes: 1,
+    });
+    expect(apiFetchMock).not.toHaveBeenCalled();
     expect((seenDb.announcements || []).find((a: any) => a.id === 'ann-1')?.likes).toBe(1);
   });
 
-  test('likha-gap: markAnnouncementRead stays on Express', async () => {
+  test('markAnnouncementRead writes through Likha, never Express', async () => {
     await renderLoggedIn();
     await act(async () => {
       await ctx.markAnnouncementRead('ann-1');
     });
-    expect(apiFetchMock).toHaveBeenCalledWith(
-      expect.stringContaining('/api/announcements/ann-1/read'),
-      expect.anything()
-    );
+    expect(updateAnnouncementMock).toHaveBeenCalledWith('ann-1', {
+      read_by: ['u-fac-1'],
+    });
+    expect(apiFetchMock).not.toHaveBeenCalled();
     expect((seenDb.announcements || []).find((a: any) => a.id === 'ann-1')?.readBy).toContain('u-fac-1');
   });
 
-  test('likha-gap: toggleLikeDiscussionReply stays on Express', async () => {
+  test('toggleLikeDiscussionReply writes through Likha, never Express', async () => {
     await renderLoggedIn();
     await act(async () => {
       await ctx.toggleLikeDiscussionReply('d-1', 'dr-1');
     });
-    expect(apiFetchMock).toHaveBeenCalledWith(
-      expect.stringContaining('/api/discussions/d-1/replies/dr-1/like'),
-      expect.anything()
-    );
-    expect(updateDiscussionMock).not.toHaveBeenCalled();
+    expect(updateDiscussionReplyMock).toHaveBeenCalledWith('dr-1', {
+      liked_by: ['u-fac-1'],
+      likes: 1,
+    });
+    expect(apiFetchMock).not.toHaveBeenCalled();
     const disc = (seenDb.discussions || []).find((d: any) => d.id === 'd-1');
     expect((disc.replies || []).find((r: any) => r.id === 'dr-1')?.likes).toBe(1);
   });
 
-  test('likha-gap: toggleMessageReaction stays on Express', async () => {
+  test('toggleMessageReaction writes through Likha, never Express', async () => {
     seedMessages = [{ ...messageRow }];
     await renderLoggedIn();
     await act(async () => {
       await ctx.toggleMessageReaction('msg-1', '👍');
     });
-    expect(apiFetchMock).toHaveBeenCalledWith(
-      expect.stringContaining('/api/messages/msg-1/react'),
-      expect.anything()
-    );
+    expect(updateMessageReactionMock).toHaveBeenCalledWith('msg-1', '👍');
+    expect(apiFetchMock).not.toHaveBeenCalled();
     expect((seenDb.messages || []).find((m: any) => m.id === 'msg-1')?.reaction).toBe('👍');
   });
 });

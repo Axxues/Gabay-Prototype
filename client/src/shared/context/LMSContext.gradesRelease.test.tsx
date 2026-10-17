@@ -216,12 +216,10 @@ describe('assessments via Likha (Task 6)', () => {
     await act(async () => {
       await doRelease!();
     });
-    // likha-gap pin: release stays on Express, never PATCHes /items/courses.
-    expect(apiFetchMock).toHaveBeenCalledWith('/api/courses/c1/grades-release', {
-      method: 'PATCH',
-      body: { term: 'midterm', released: true },
+    expect(updateCourseMock).toHaveBeenCalledWith('c1', {
+      grades_released: { midterm: true },
     });
-    expect(updateCourseMock).not.toHaveBeenCalled();
+    expect(apiFetchMock).not.toHaveBeenCalled();
     await waitFor(() => {
       expect(latestCourses.find(c => c.id === 'c1')?.gradesReleased).toEqual({ midterm: true });
     });
@@ -243,11 +241,10 @@ describe('assessments via Likha (Task 6)', () => {
     await act(async () => {
       await doUnrelease!();
     });
-    expect(apiFetchMock).toHaveBeenCalledWith('/api/courses/c1/grades-release', {
-      method: 'PATCH',
-      body: { term: 'midterm', released: false },
+    expect(updateCourseMock).toHaveBeenCalledWith('c1', {
+      grades_released: { midterm: false },
     });
-    expect(updateCourseMock).not.toHaveBeenCalled();
+    expect(apiFetchMock).not.toHaveBeenCalled();
     await waitFor(() => {
       expect(latestCourses.find(c => c.id === 'c1')?.gradesReleased).toEqual({ midterm: false });
     });
