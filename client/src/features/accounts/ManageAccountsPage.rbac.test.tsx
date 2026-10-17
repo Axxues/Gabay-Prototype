@@ -184,7 +184,7 @@ describe('ManageAccountsPage RBAC & Verification Queue', () => {
     expect(screen.getByText(/expires in 25 days/i)).toBeInTheDocument();
   });
 
-  it('2b. displays all pending applicants but disables verify button for accounts with unverified email', () => {
+  it('2b. only displays pending applicants whose email is verified, hiding unverified applicants from the verification queue', () => {
     const futureDate = new Date(Date.now() + 25 * 24 * 60 * 60 * 1000).toISOString();
     mocks.mockState.pendingRegistrations = [
       {
@@ -230,28 +230,19 @@ describe('ManageAccountsPage RBAC & Verification Queue', () => {
     const queueTab = screen.getByRole('tab', { name: /pending verifications|verification queue/i });
     fireEvent.click(queueTab);
 
-    // Both applicants MUST be in the document
+    // Only verified applicant MUST be in the document
     expect(screen.getByText('Verified Applicant')).toBeInTheDocument();
     expect(screen.getByText('verified@dmmmsu.edu.ph')).toBeInTheDocument();
-    expect(screen.getByText('Unverified Applicant')).toBeInTheDocument();
-    expect(screen.getByText('unverified@dmmmsu.edu.ph')).toBeInTheDocument();
+    expect(screen.queryByText('Unverified Applicant')).not.toBeInTheDocument();
+    expect(screen.queryByText('unverified@dmmmsu.edu.ph')).not.toBeInTheDocument();
 
     // Verification button for verified applicant is enabled
     const verifiedRow = screen.getByText('Verified Applicant').closest('tr')!;
     expect(within(verifiedRow).getByText(/email verified/i)).toBeInTheDocument();
     const verifiedVerifyBtn = within(verifiedRow).getByRole('button', { name: /verify/i });
     expect(verifiedVerifyBtn).not.toBeDisabled();
-
-    // Verification button for unverified applicant is disabled
-    const unverifiedRow = screen.getByText('Unverified Applicant').closest('tr')!;
-    expect(within(unverifiedRow).getByText(/email unverified/i)).toBeInTheDocument();
-    const unverifiedVerifyBtn = within(unverifiedRow).getByRole('button', { name: /verify/i });
-    expect(unverifiedVerifyBtn).toBeDisabled();
-
-    // Reject button is still accessible for administrative cleanup
-    const unverifiedRejectBtn = within(unverifiedRow).getByRole('button', { name: /reject/i });
-    expect(unverifiedRejectBtn).not.toBeDisabled();
   });
+
 
   it('3. verifies Chairperson only sees pending applicants from their department', () => {
     mocks.mockState.activeRole = 'admin';
@@ -419,7 +410,7 @@ describe('ManageAccountsPage RBAC & Verification Queue', () => {
     expect(screen.queryByText('Charlie Elem Student')).not.toBeInTheDocument();
   });
 
-  it('5. verifies clicking "Verify" triggers verifyRegistration()', async () => {
+  it('5. verifies clicking "Verify" opens verification modal and confirming triggers verifyRegistration()', async () => {
     const futureDate = new Date(Date.now() + 20 * 24 * 60 * 60 * 1000).toISOString();
     mocks.mockState.pendingRegistrations = [
       {
@@ -451,12 +442,156 @@ describe('ManageAccountsPage RBAC & Verification Queue', () => {
     const queueTab = screen.getByRole('tab', { name: /pending verifications|verification queue/i });
     fireEvent.click(queueTab);
 
+    // Click row Verify button
     const verifyButton = screen.getByRole('button', { name: /verify/i });
     fireEvent.click(verifyButton);
+
+    // Verification modal is displayed with applicant info
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByRole('heading', { name: /verify & approve account/i })).toBeInTheDocument();
+    expect(within(dialog).getByText('juan.delacruz@dmmmsu.edu.ph')).toBeInTheDocument();
+
+    // Confirm in modal
+    const confirmButton = within(dialog).getByRole('button', { name: /confirm verification/i });
+    fireEvent.click(confirmButton);
 
     await waitFor(() => {
       expect(mocks.verifyRegistration).toHaveBeenCalledWith('reg-to-verify');
     });
+  });
+
+  it('5b. verifies clicking Cancel in verify modal closes modal without calling verifyRegistration()', async () => {
+    const futureDate = new Date(Date.now() + 20 * 24 * 60 * 60 * 1000).toISOString();
+    mocks.mockState.pendingRegistrations = [
+      {
+        id: 'reg-cancel',
+        firstName: 'Elena',
+        lastName: 'Reyes',
+        fullName: 'Elena Reyes',
+        email: 'elena.reyes@dmmmsu.edu.ph',
+        role: 'faculty',
+        collegeId: 'col-ccs',
+        collegeName: 'College of Computer Science',
+        department: 'Department of Computer Science',
+        studentId: '2026-66666',
+        password: 'pw',
+        emailVerified: true,
+        activationToken: 'tok-e',
+        registeredAt: new Date().toISOString(),
+        expiresAt: futureDate,
+        status: 'pending',
+      },
+    ];
+
+    render(<ManageAccountsPage />);
+    const queueTab = screen.getByRole('tab', { name: /pending verifications|verification queue/i });
+    fireEvent.click(queueTab);
+
+    // Open modal
+    const verifyButton = screen.getByRole('button', { name: /verify/i });
+    fireEvent.click(verifyButton);
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByRole('heading', { name: /verify & approve account/i })).toBeInTheDocument();
+
+    // Click Cancel
+    const cancelButton = within(dialog).getByRole('button', { name: /cancel/i });
+    fireEvent.click(cancelButton);
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(mocks.verifyRegistration).not.toHaveBeenCalled();
+  });
+
+  it('5c. verifies clicking Reject opens reject modal and confirming triggers rejectRegistration()', async () => {
+    const futureDate = new Date(Date.now() + 20 * 24 * 60 * 60 * 1000).toISOString();
+    mocks.mockState.pendingRegistrations = [
+      {
+        id: 'reg-to-reject',
+        firstName: 'Fake',
+        lastName: 'User',
+        fullName: 'Fake User',
+        email: 'fake.user@dmmmsu.edu.ph',
+        role: 'student',
+        collegeId: 'col-ccs',
+        collegeName: 'College of Computer Science',
+        department: 'Department of Computer Science',
+        studentId: '2026-00000',
+        password: 'pw',
+        emailVerified: true,
+        activationToken: 'tok-f',
+        registeredAt: new Date().toISOString(),
+        expiresAt: futureDate,
+        status: 'pending',
+      },
+    ];
+
+    mocks.rejectRegistration.mockResolvedValueOnce({
+      success: true,
+      message: 'Registration has been rejected.',
+    });
+
+    render(<ManageAccountsPage />);
+    const queueTab = screen.getByRole('tab', { name: /pending verifications|verification queue/i });
+    fireEvent.click(queueTab);
+
+    // Click row Reject button
+    const rejectButton = screen.getByRole('button', { name: /reject/i });
+    fireEvent.click(rejectButton);
+
+    // Rejection modal appears
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByRole('heading', { name: /reject registration/i })).toBeInTheDocument();
+    expect(within(dialog).getByText('fake.user@dmmmsu.edu.ph')).toBeInTheDocument();
+
+    // Type optional reason
+    const reasonInput = within(dialog).getByPlaceholderText(/provide a reason for declining this applicant/i);
+    fireEvent.change(reasonInput, { target: { value: 'Incomplete credentials' } });
+
+    // Confirm in modal
+    const confirmRejectBtn = within(dialog).getByRole('button', { name: /reject registration/i });
+    fireEvent.click(confirmRejectBtn);
+
+    await waitFor(() => {
+      expect(mocks.rejectRegistration).toHaveBeenCalledWith('reg-to-reject', 'Incomplete credentials');
+    });
+  });
+
+  it('5d. verifies clicking Cancel in reject modal closes modal without calling rejectRegistration()', async () => {
+    const futureDate = new Date(Date.now() + 20 * 24 * 60 * 60 * 1000).toISOString();
+    mocks.mockState.pendingRegistrations = [
+      {
+        id: 'reg-reject-cancel',
+        firstName: 'Fake',
+        lastName: 'User',
+        fullName: 'Fake User',
+        email: 'fake.user@dmmmsu.edu.ph',
+        role: 'student',
+        collegeId: 'col-ccs',
+        collegeName: 'College of Computer Science',
+        department: 'Department of Computer Science',
+        studentId: '2026-00000',
+        password: 'pw',
+        emailVerified: true,
+        activationToken: 'tok-f',
+        registeredAt: new Date().toISOString(),
+        expiresAt: futureDate,
+        status: 'pending',
+      },
+    ];
+
+    render(<ManageAccountsPage />);
+    const queueTab = screen.getByRole('tab', { name: /pending verifications|verification queue/i });
+    fireEvent.click(queueTab);
+
+    const rejectButton = screen.getByRole('button', { name: /reject/i });
+    fireEvent.click(rejectButton);
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByRole('heading', { name: /reject registration/i })).toBeInTheDocument();
+
+    const cancelButton = within(dialog).getByRole('button', { name: /cancel/i });
+    fireEvent.click(cancelButton);
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(mocks.rejectRegistration).not.toHaveBeenCalled();
   });
 
   it('6. verifies Academic Structure is on dedicated AcademicGovernancePage and removed from ManageAccountsPage', () => {

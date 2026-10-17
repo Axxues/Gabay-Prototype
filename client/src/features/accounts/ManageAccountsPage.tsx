@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useLMS } from '../../shared/context/LMSContext';
-import type { User, UserRole } from '../../shared/types/lms';
+import type { User, UserRole, PendingRegistration } from '../../shared/types/lms';
 import { PageHeader } from '../../shared/components/common/PageHeader';
 import { UserAvatar } from '../../shared/components/common/UserAvatar';
 import { DialogFrame } from '../../shared/components/common/DialogFrame';
@@ -197,10 +197,15 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
   // Verification queue action states
   const [isVerifyingId, setIsVerifyingId] = useState<string | null>(null);
   const [isRejectingId, setIsRejectingId] = useState<string | null>(null);
+  const [verifyingReg, setVerifyingReg] = useState<PendingRegistration | null>(null);
+  const [rejectingReg, setRejectingReg] = useState<PendingRegistration | null>(null);
+  const [rejectReason, setRejectReason] = useState<string>('');
 
-  // Scoped Pending Registrations calculation
+  // Scoped Pending Registrations calculation (only show accounts whose email is verified)
   const scopedPendingRegistrations = useMemo(() => {
-    const list = (pendingRegistrations || []).filter(r => r.status === 'pending' || !r.status);
+    const list = (pendingRegistrations || []).filter(
+      r => Boolean(r.emailVerified) && (r.status === 'pending' || !r.status)
+    );
 
     // Chancellor / Superadmin sees all registrations across all colleges & departments
     if (activeRole === 'superadmin' || activeUser?.adminSubrole === 'chancellor') {
@@ -411,8 +416,8 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
     }
   };
 
-  // Handle Verify Registration
-  const handleVerify = async (id: string) => {
+  // Open Verify Modal
+  const handleVerify = (id: string) => {
     if (isVerifyingId) return;
     const target = (pendingRegistrations || []).find(r => r.id === id);
     if (target && !target.emailVerified) {
@@ -423,9 +428,28 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
       });
       return;
     }
-    setIsVerifyingId(id);
+    if (target) {
+      setVerifyingReg(target);
+    }
+  };
+
+  // Confirm Verify Registration (from modal)
+  const handleConfirmVerify = async () => {
+    if (!verifyingReg || isVerifyingId) return;
+    if (!verifyingReg.emailVerified) {
+      showAlert({
+        title: 'Email Verification Required',
+        message: 'Cannot verify registration: applicant must verify their email address before approval.',
+        type: 'error'
+      });
+      setVerifyingReg(null);
+      return;
+    }
+    const targetId = verifyingReg.id;
+    setIsVerifyingId(targetId);
     try {
-      const res = await verifyRegistration(id);
+      const res = await verifyRegistration(targetId);
+      setVerifyingReg(null);
       if (res.success) {
         showAlert({
           title: 'Account Verified',
@@ -444,12 +468,26 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
     }
   };
 
-  // Handle Reject Registration
-  const handleReject = async (id: string) => {
+  // Open Reject Modal
+  const handleReject = (id: string) => {
     if (isRejectingId) return;
-    setIsRejectingId(id);
+    const target = (pendingRegistrations || []).find(r => r.id === id);
+    if (target) {
+      setRejectReason('');
+      setRejectingReg(target);
+    }
+  };
+
+  // Confirm Reject Registration (from modal)
+  const handleConfirmReject = async () => {
+    if (!rejectingReg || isRejectingId) return;
+    const targetId = rejectingReg.id;
+    const reason = rejectReason.trim() || undefined;
+    setIsRejectingId(targetId);
     try {
-      const res = await rejectRegistration(id);
+      const res = await rejectRegistration(targetId, reason);
+      setRejectingReg(null);
+      setRejectReason('');
       if (res.success) {
         showAlert({
           title: 'Registration Rejected',
@@ -1144,6 +1182,148 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
             <div className="text-muted-foreground">{deletingUser.email}</div>
             <div className="text-[11px] font-semibold text-primary uppercase">
               {deletingUser.role} • {deletingUser.department}
+            </div>
+          </div>
+        </DialogFrame>
+      )}
+
+      {/* VERIFY / APPROVE CONFIRMATION MODAL */}
+      {verifyingReg && (
+        <DialogFrame
+          title="Verify & Approve Account"
+          subtitle="Confirm verification to approve this applicant and provision their active institutional account."
+          onClose={() => setVerifyingReg(null)}
+          footer={
+            <>
+              <button
+                type="button"
+                onClick={() => setVerifyingReg(null)}
+                className="px-4 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmVerify}
+                disabled={isVerifyingId === verifyingReg.id}
+                className="px-4 py-2 bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground font-bold text-xs rounded-xl shadow-sm transition-all cursor-pointer disabled:opacity-60 disabled:cursor-wait flex items-center space-x-1.5"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>{isVerifyingId === verifyingReg.id ? 'Approving...' : 'Confirm Verification'}</span>
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-3 text-xs font-sans">
+            <div className="p-3.5 bg-muted/60 border border-border rounded-xl space-y-2.5">
+              <div className="flex items-center space-x-3">
+                <UserAvatar
+                  name={verifyingReg.fullName || `${verifyingReg.firstName} ${verifyingReg.lastName}`}
+                  src=""
+                  className="w-10 h-10 rounded-full object-cover border border-border shadow-xs shrink-0"
+                />
+                <div className="min-w-0">
+                  <div className="font-bold text-foreground text-sm truncate">
+                    {verifyingReg.fullName || `${verifyingReg.firstName} ${verifyingReg.lastName}`}
+                  </div>
+                  <div className="text-muted-foreground truncate">{verifyingReg.email}</div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-border/60 text-[11px]">
+                <div>
+                  <span className="text-muted-foreground block">Role:</span>
+                  <span className="font-bold uppercase text-primary">{verifyingReg.role}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block">Student / Employee ID:</span>
+                  <span className="font-mono font-semibold text-foreground">{verifyingReg.studentId || '—'}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block">Academic Unit:</span>
+                  <span className="font-semibold text-foreground truncate block">{verifyingReg.department}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block">Email Verification:</span>
+                  <span className="font-semibold text-emerald-600 dark:text-emerald-400 flex items-center space-x-1">
+                    <CheckCircle2 className="w-3 h-3" />
+                    <span>Verified</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <p className="text-muted-foreground text-[11px] leading-relaxed">
+              Approving this applicant will activate their account in the institutional directory, allowing them to sign in and access the LMS immediately.
+            </p>
+          </div>
+        </DialogFrame>
+      )}
+
+      {/* REJECT CONFIRMATION MODAL */}
+      {rejectingReg && (
+        <DialogFrame
+          title="Reject Registration"
+          subtitle="Are you sure you want to decline this registration? This will mark the registration as rejected."
+          onClose={() => {
+            setRejectingReg(null);
+            setRejectReason('');
+          }}
+          footer={
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setRejectingReg(null);
+                  setRejectReason('');
+                }}
+                className="px-4 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmReject}
+                disabled={isRejectingId === rejectingReg.id}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 active:scale-[0.98] text-white font-bold text-xs rounded-xl shadow-sm transition-all cursor-pointer disabled:opacity-60 disabled:cursor-wait flex items-center space-x-1.5"
+              >
+                <XCircle className="w-3.5 h-3.5" />
+                <span>{isRejectingId === rejectingReg.id ? 'Rejecting...' : 'Reject Registration'}</span>
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-3 text-xs font-sans">
+            <div className="p-3.5 bg-muted/60 border border-border rounded-xl space-y-2">
+              <div className="flex items-center space-x-3">
+                <UserAvatar
+                  name={rejectingReg.fullName || `${rejectingReg.firstName} ${rejectingReg.lastName}`}
+                  src=""
+                  className="w-10 h-10 rounded-full object-cover border border-border shadow-xs shrink-0"
+                />
+                <div className="min-w-0">
+                  <div className="font-bold text-foreground text-sm truncate">
+                    {rejectingReg.fullName || `${rejectingReg.firstName} ${rejectingReg.lastName}`}
+                  </div>
+                  <div className="text-muted-foreground truncate">{rejectingReg.email}</div>
+                  <div className="text-[11px] text-muted-foreground mt-0.5">
+                    {rejectingReg.role.toUpperCase()} • {rejectingReg.department}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="block text-xs font-semibold text-foreground">
+                Reason for Rejection <span className="text-muted-foreground font-normal">(Optional)</span>
+              </label>
+              <textarea
+                rows={3}
+                value={rejectReason}
+                onChange={e => setRejectReason(e.target.value)}
+                placeholder="Provide a reason for declining this applicant (e.g. invalid credentials, duplicate submission)..."
+                className="w-full text-xs p-3 border border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none"
+              />
             </div>
           </div>
         </DialogFrame>
