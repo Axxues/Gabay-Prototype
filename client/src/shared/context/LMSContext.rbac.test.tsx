@@ -103,11 +103,11 @@ describe('LMSContext RBAC: Registration Staging, Verification Queue & Leadership
 
     expect(ctx).not.toBeNull();
     expect(ctx!.colleges).toBeDefined();
-    expect(ctx!.colleges.length).toBeGreaterThanOrEqual(3);
+    expect(ctx!.colleges.length).toBeGreaterThanOrEqual(1);
     expect(ctx!.colleges.some(c => c.code === 'CCS')).toBe(true);
 
     expect(ctx!.departments).toBeDefined();
-    expect(ctx!.departments.length).toBeGreaterThanOrEqual(7);
+    expect(ctx!.departments.length).toBeGreaterThanOrEqual(1);
     expect(ctx!.departments.some(d => d.code === 'CS')).toBe(true);
   });
 

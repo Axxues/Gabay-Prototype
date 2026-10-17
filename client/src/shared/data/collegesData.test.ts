@@ -11,15 +11,14 @@ import {
 describe('Colleges & Departments Data Store', () => {
   it('contains initial university colleges', () => {
     const colleges = getColleges();
-    expect(colleges.length).toBeGreaterThanOrEqual(2);
+    expect(colleges.length).toBeGreaterThanOrEqual(1);
     expect(colleges.some(c => c.code === 'CCS')).toBe(true);
   });
 
   it('retrieves departments belonging to a specific college', () => {
     const ccsDepts = getDepartmentsByCollege('col-ccs');
-    expect(ccsDepts.length).toBeGreaterThanOrEqual(3);
+    expect(ccsDepts.length).toBeGreaterThanOrEqual(1);
     expect(ccsDepts.some(d => d.name === 'Department of Computer Science')).toBe(true);
-    expect(ccsDepts.some(d => d.name === 'Department of Information Technology')).toBe(true);
   });
 
   it('retrieves a college by ID and department by name', () => {
@@ -30,14 +29,12 @@ describe('Colleges & Departments Data Store', () => {
   });
 
   it('provides all expected colleges and departments in default data sets', () => {
-    expect(DEFAULT_COLLEGES.length).toBe(3);
-    expect(DEFAULT_COLLEGES.map(c => c.name)).toContain('College of Computer Science');
-    expect(DEFAULT_COLLEGES.map(c => c.name)).toContain('College of Education');
-    expect(DEFAULT_COLLEGES.map(c => c.name)).toContain('College of Engineering');
+    expect(DEFAULT_COLLEGES.length).toBe(1);
+    expect(DEFAULT_COLLEGES[0].name).toBe('College of Computer Science');
 
-    expect(DEFAULT_DEPARTMENTS.length).toBe(7);
-    const deptCodes = DEFAULT_DEPARTMENTS.map(d => d.code);
-    expect(deptCodes).toEqual(expect.arrayContaining(['CS', 'IT', 'IS', 'ELED', 'SED', 'CE', 'EE']));
+    expect(DEFAULT_DEPARTMENTS.length).toBe(1);
+    expect(DEFAULT_DEPARTMENTS[0].name).toBe('Department of Computer Science');
+    expect(DEFAULT_DEPARTMENTS[0].code).toBe('CS');
   });
 
   it('handles safety fallbacks for missing or invalid college queries', () => {
@@ -53,11 +50,11 @@ describe('Colleges & Departments Data Store', () => {
     const ccsByCode = getCollegeById('CCS');
     expect(ccsByCode?.id).toBe('col-ccs');
 
-    const itDept = getDepartmentByName('IT');
-    expect(itDept?.name).toBe('Department of Information Technology');
+    const csDept = getDepartmentByName('CS');
+    expect(csDept?.name).toBe('Department of Computer Science');
 
     const deptsByCode = getDepartmentsByCollege('CCS');
-    expect(deptsByCode.length).toBe(3);
+    expect(deptsByCode.length).toBe(1);
   });
 
   it('allows passing custom colleges and departments lists to accessors', () => {

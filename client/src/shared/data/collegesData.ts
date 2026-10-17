@@ -11,16 +11,6 @@ export const DEFAULT_COLLEGES: College[] = [
     code: 'CCS',
     deanId: '6a52a8c6-5a15-4620-8a16-d06a5b269fc3',
   },
-  {
-    id: 'col-coe',
-    name: 'College of Education',
-    code: 'COED',
-  },
-  {
-    id: 'col-eng',
-    name: 'College of Engineering',
-    code: 'COE',
-  },
 ];
 
 /**
@@ -34,42 +24,6 @@ export const DEFAULT_DEPARTMENTS: Department[] = [
     name: 'Department of Computer Science',
     code: 'CS',
     chairpersonId: '3281e224-fc7d-4c7e-b4c9-bcb7bca2ab89',
-  },
-  {
-    id: 'dept-it',
-    collegeId: 'col-ccs',
-    name: 'Department of Information Technology',
-    code: 'IT',
-  },
-  {
-    id: 'dept-is',
-    collegeId: 'col-ccs',
-    name: 'Department of Information Systems',
-    code: 'IS',
-  },
-  {
-    id: 'dept-eled',
-    collegeId: 'col-coe',
-    name: 'Department of Elementary Education',
-    code: 'ELED',
-  },
-  {
-    id: 'dept-sec-ed',
-    collegeId: 'col-coe',
-    name: 'Department of Secondary Education',
-    code: 'SED',
-  },
-  {
-    id: 'dept-civil-eng',
-    collegeId: 'col-eng',
-    name: 'Department of Civil Engineering',
-    code: 'CE',
-  },
-  {
-    id: 'dept-elec-eng',
-    collegeId: 'col-eng',
-    name: 'Department of Electrical Engineering',
-    code: 'EE',
   },
 ];
 

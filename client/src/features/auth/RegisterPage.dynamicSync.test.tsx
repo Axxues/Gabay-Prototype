@@ -78,8 +78,6 @@ describe('RegisterPage Dynamic Self-Registration Sync', () => {
 
     expect(collegeSelect).toBeInTheDocument();
     expect(screen.getByRole('option', { name: /College of Computer Science/i })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /College of Education/i })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /College of Engineering/i })).toBeInTheDocument();
 
     // Department select starts disabled with prompt to select a college first
     expect(departmentSelect).toBeDisabled();
