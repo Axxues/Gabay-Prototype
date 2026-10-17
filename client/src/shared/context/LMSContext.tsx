@@ -3757,7 +3757,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status: payload.status || 'pending',
     };
 
-    setPendingRegistrations(prev => [newRegistration, ...prev]);
+    const currentList = pendingRegistrationsRef.current || pendingRegistrations;
+    const updated = [newRegistration, ...currentList.filter(r => r.id !== newRegistration.id)];
+    pendingRegistrationsRef.current = updated;
+    setPendingRegistrations(updated);
     return newRegistration;
   };
 
@@ -3769,15 +3772,15 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     const isExpired = target.status === 'expired' || Date.now() >= new Date(target.expiresAt).getTime();
     if (isExpired) {
-      setPendingRegistrations(prev =>
-        prev.map(r => (r.activationToken === token ? { ...r, status: 'expired' } : r))
-      );
+      const updated = list.map(r => (r.activationToken === token ? { ...r, status: 'expired' as const } : r));
+      pendingRegistrationsRef.current = updated;
+      setPendingRegistrations(updated);
       return { success: false, message: 'Activation token has expired.' };
     }
 
-    setPendingRegistrations(prev =>
-      prev.map(r => (r.activationToken === token ? { ...r, emailVerified: true } : r))
-    );
+    const updated = list.map(r => (r.activationToken === token ? { ...r, emailVerified: true } : r));
+    pendingRegistrationsRef.current = updated;
+    setPendingRegistrations(updated);
     return { success: true, message: 'Email address successfully verified.' };
   };
 
@@ -3790,10 +3793,14 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const isExpired = target.status === 'expired' || Date.now() >= new Date(target.expiresAt).getTime();
     if (isExpired) {
-      setPendingRegistrations(prev =>
-        prev.map(r => (r.id === id ? { ...r, status: 'expired' } : r))
-      );
+      const updated = list.map(r => (r.id === id ? { ...r, status: 'expired' as const } : r));
+      pendingRegistrationsRef.current = updated;
+      setPendingRegistrations(updated);
       return { success: false, message: 'Registration has expired.' };
+    }
+
+    if (!target.emailVerified) {
+      return { success: false, message: 'Cannot verify registration: email address has not been verified yet.' };
     }
 
     let createdUser: User;
@@ -3843,9 +3850,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }));
     }
 
-    setPendingRegistrations(prev =>
-      prev.map(r => (r.id === id ? { ...r, status: 'verified' } : r))
+    const verifyUpdated = (pendingRegistrationsRef.current || pendingRegistrations).map(r =>
+      r.id === id ? { ...r, status: 'verified' as const } : r
     );
+    pendingRegistrationsRef.current = verifyUpdated;
+    setPendingRegistrations(verifyUpdated);
 
     return {
       success: true,
@@ -3855,9 +3864,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const rejectRegistration = async (id: string, reason?: string): Promise<{ success: boolean; message: string }> => {
-    setPendingRegistrations(prev =>
-      prev.map(r => (r.id === id ? { ...r, status: 'rejected' } : r))
+    const rejectUpdated = (pendingRegistrationsRef.current || pendingRegistrations).map(r =>
+      r.id === id ? { ...r, status: 'rejected' as const } : r
     );
+    pendingRegistrationsRef.current = rejectUpdated;
+    setPendingRegistrations(rejectUpdated);
     return {
       success: true,
       message: reason ? `Registration rejected: ${reason}` : 'Registration rejected.',

@@ -184,6 +184,61 @@ describe('ManageAccountsPage RBAC & Verification Queue', () => {
     expect(screen.getByText(/expires in 25 days/i)).toBeInTheDocument();
   });
 
+  it('2b. only displays applicants whose email has already been verified', () => {
+    const futureDate = new Date(Date.now() + 25 * 24 * 60 * 60 * 1000).toISOString();
+    mocks.mockState.pendingRegistrations = [
+      {
+        id: 'reg-unverified',
+        firstName: 'Unverified',
+        lastName: 'Applicant',
+        fullName: 'Unverified Applicant',
+        email: 'unverified@dmmmsu.edu.ph',
+        role: 'student',
+        collegeId: 'col-ccs',
+        collegeName: 'College of Computer Science',
+        department: 'Department of Computer Science',
+        studentId: '2026-99999',
+        password: 'pw',
+        emailVerified: false,
+        activationToken: 'token-unverified',
+        registeredAt: new Date().toISOString(),
+        expiresAt: futureDate,
+        status: 'pending',
+      },
+      {
+        id: 'reg-verified',
+        firstName: 'Verified',
+        lastName: 'Applicant',
+        fullName: 'Verified Applicant',
+        email: 'verified@dmmmsu.edu.ph',
+        role: 'student',
+        collegeId: 'col-ccs',
+        collegeName: 'College of Computer Science',
+        department: 'Department of Computer Science',
+        studentId: '2026-88888',
+        password: 'pw',
+        emailVerified: true,
+        activationToken: 'token-verified',
+        registeredAt: new Date().toISOString(),
+        expiresAt: futureDate,
+        status: 'pending',
+      },
+    ];
+
+    render(<ManageAccountsPage />);
+
+    const queueTab = screen.getByRole('tab', { name: /pending verifications|verification queue/i });
+    fireEvent.click(queueTab);
+
+    // Verified applicant MUST be in the document
+    expect(screen.getByText('Verified Applicant')).toBeInTheDocument();
+    expect(screen.getByText('verified@dmmmsu.edu.ph')).toBeInTheDocument();
+
+    // Unverified applicant MUST NOT be in the document
+    expect(screen.queryByText('Unverified Applicant')).not.toBeInTheDocument();
+    expect(screen.queryByText('unverified@dmmmsu.edu.ph')).not.toBeInTheDocument();
+  });
+
   it('3. verifies Chairperson only sees pending applicants from their department', () => {
     mocks.mockState.activeRole = 'admin';
     mocks.mockState.activeUser = {

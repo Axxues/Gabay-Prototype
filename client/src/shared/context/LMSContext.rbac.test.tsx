@@ -268,6 +268,37 @@ describe('LMSContext RBAC: Registration Staging, Verification Queue & Leadership
     expect(loginRes.success).toBe(true);
   });
 
+  test('verifyRegistration() rejects unverified email registration', async () => {
+    render(
+      <LMSProvider>
+        <ContextProbe />
+      </LMSProvider>
+    );
+
+    let reg: any;
+    await act(async () => {
+      reg = await ctx!.registerAccount({
+        firstName: 'Unverified',
+        lastName: 'Email',
+        email: 'unverified.email@dmmmsu.edu.ph',
+        role: 'student',
+        collegeId: 'col-ccs',
+        department: 'Department of Computer Science',
+        studentId: '202-6009-9',
+        password: 'Password123!',
+      });
+      // Do NOT call activateEmail
+    });
+
+    let verifyRes: any;
+    await act(async () => {
+      verifyRes = await ctx!.verifyRegistration(reg.id);
+    });
+
+    expect(verifyRes.success).toBe(false);
+    expect(verifyRes.message).toContain('email address has not been verified yet');
+  });
+
   test('registrations older than 30 days are automatically marked expired / cancelled', async () => {
     render(
       <LMSProvider>

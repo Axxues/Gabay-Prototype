@@ -198,9 +198,11 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
   const [isVerifyingId, setIsVerifyingId] = useState<string | null>(null);
   const [isRejectingId, setIsRejectingId] = useState<string | null>(null);
 
-  // Scoped Pending Registrations calculation
+  // Scoped Pending Registrations calculation (only show accounts whose email is already verified)
   const scopedPendingRegistrations = useMemo(() => {
-    const list = (pendingRegistrations || []).filter(r => r.status === 'pending' || !r.status);
+    const list = (pendingRegistrations || []).filter(
+      r => (r.status === 'pending' || !r.status) && Boolean(r.emailVerified)
+    );
 
     // Chancellor / Superadmin sees all registrations across all colleges & departments
     if (activeRole === 'superadmin' || activeUser?.adminSubrole === 'chancellor') {
