@@ -90,6 +90,7 @@ describe('FilesView PDF preview', () => {
     const frame = screen.getByTitle('handout.pdf');
     expect(frame.tagName).toBe('IFRAME');
     expect(frame).toHaveAttribute('src', '/uploads/c1/handout.pdf');
+    expect(frame).toHaveAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms');
     expect(screen.queryByText(/Built-in PDF Reader/)).not.toBeInTheDocument();
     mocks.db.courseFiles = [];
   });

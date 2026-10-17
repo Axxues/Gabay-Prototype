@@ -641,6 +641,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
                     {(previewFile.url || previewFile.fileUrl) ? (
                       <iframe
                         src={previewFile.url || previewFile.fileUrl}
+                        sandbox="allow-scripts allow-same-origin allow-forms"
                         className="w-full min-h-[65vh] rounded-lg border border-border bg-white"
                         title={previewFile.name}
                       />
