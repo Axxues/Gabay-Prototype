@@ -121,7 +121,11 @@ def retriever_node(state: RagState) -> Dict[str, Any]:
     filter_str = " AND ".join(filter_clauses) if filter_clauses else None
 
     logger.debug("Querying vector store with filter: %s", filter_str)
-    docs = query_vector_store(query_text=query, top_k=3, filter_str=filter_str)
+    try:
+        docs = query_vector_store(query_text=query, top_k=3, filter_str=filter_str)
+    except Exception as exc:
+        logger.warning("Vector retrieval failed, continuing with empty context: %s", exc)
+        docs = []
 
     return {
         "retrieved_docs": docs,
