@@ -1,6 +1,7 @@
 services:
   - type: web
     name: gabay-rag-service
+    rootDir: rag-service
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt

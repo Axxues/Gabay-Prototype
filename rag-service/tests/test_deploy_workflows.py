@@ -23,6 +23,7 @@ def test_render_yaml_specification():
     svc = config["services"][0]
     assert svc.get("type") == "web"
     assert svc.get("name") == "gabay-rag-service"
+    assert svc.get("rootDir") == "rag-service"
     assert svc.get("runtime") == "python"
     assert svc.get("plan") == "free"
     assert svc.get("buildCommand") == "pip install -r requirements.txt"

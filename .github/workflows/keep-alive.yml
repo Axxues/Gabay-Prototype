@@ -23,7 +23,7 @@ jobs:
           TARGET_URL="${RAG_SERVICE_URL%/}/health"
           echo "Pinging health endpoint: $TARGET_URL"
 
-          HTTP_STATUS=$(curl -s -o response.txt -w "%{http_code}" --max-time 30 "$TARGET_URL")
+          HTTP_STATUS=$(curl -sS -o response.txt -w "%{http_code}" --max-time 30 "$TARGET_URL")
           echo "HTTP Status: $HTTP_STATUS"
           echo "Response Body: $(cat response.txt)"
 
