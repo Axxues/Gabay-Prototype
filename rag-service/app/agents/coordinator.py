@@ -89,13 +89,14 @@ def classify_intent(
 
     try:
         completion = router.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model="qwen/qwen3.8-27b",
             messages=[
                 {"role": "system", "content": COORDINATOR_SYSTEM_PROMPT},
                 {"role": "user", "content": user_content},
             ],
             temperature=0.0,
             response_format={"type": "json_object"},
+            max_tokens=250,
             timeout=8.0,
         )
         response_text = completion.choices[0].message.content or "{}"

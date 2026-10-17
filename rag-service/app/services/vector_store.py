@@ -10,12 +10,13 @@ from app.core.config import get_settings
 def get_embeddings_client() -> GoogleGenerativeAIEmbeddings:
     """Instantiate and return the Google Generative AI embeddings client.
 
-    Uses models/text-embedding-004 to produce 768-dimensional float vectors.
+    Uses models/gemini-embedding-001 with 768-dimensional float vectors.
     """
     settings = get_settings()
     return GoogleGenerativeAIEmbeddings(
-        model="models/text-embedding-004",
+        model="models/gemini-embedding-001",
         google_api_key=settings.gemini_api_key,
+        output_dimensionality=768,
     )
 
 

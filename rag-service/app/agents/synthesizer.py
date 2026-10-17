@@ -42,14 +42,14 @@ STRICT INSTRUCTIONS:
 
 @lru_cache(maxsize=4)
 def get_gemini_synthesizer(
-    model: str = "gemini-2.0-flash",
+    model: str = "gemini-flash-latest",
     temperature: float = 0.2,
     api_key: Optional[str] = None,
 ) -> ChatGoogleGenerativeAI:
     """Initialize and return a ChatGoogleGenerativeAI client.
 
     Args:
-        model: Model identifier (default: gemini-2.0-flash).
+        model: Model identifier (default: gemini-flash-latest).
         temperature: Sampling temperature for synthesis.
         api_key: Optional Gemini API key override.
 
@@ -188,6 +188,13 @@ async def synthesize_answer(
     else:
         response = res
 
-    if hasattr(response, "content"):
-        return str(response.content)
-    return str(response)
+    raw_content = getattr(response, "content", response)
+    if isinstance(raw_content, list):
+        text_parts = []
+        for part in raw_content:
+            if isinstance(part, dict) and "text" in part:
+                text_parts.append(part["text"])
+            elif isinstance(part, str):
+                text_parts.append(part)
+        return "".join(text_parts).strip()
+    return str(raw_content).strip()

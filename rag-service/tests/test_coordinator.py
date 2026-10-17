@@ -170,7 +170,7 @@ class TestCoordinatorAgent:
 
         mock_router.chat.completions.create.assert_called_once()
         _, call_kwargs = mock_router.chat.completions.create.call_args
-        assert call_kwargs["model"] == "llama-3.3-70b-versatile"
+        assert call_kwargs["model"] == "qwen/qwen3.8-27b"
         assert call_kwargs["temperature"] == 0.0
         assert call_kwargs["response_format"] == {"type": "json_object"}
         assert len(call_kwargs["messages"]) >= 2
