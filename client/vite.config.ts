@@ -2,6 +2,7 @@ import react from '@vitejs/plugin-react';
 import { defineConfig, type Plugin } from 'vite';
 import fs from 'node:fs';
 import path from 'node:path';
+import { isAllowedUploadExtension, sanitizeUploadFilename } from './src/shared/utils/uploadSecurity.js';
 
 function fileUploadPlugin(): Plugin {
   return {
@@ -16,8 +17,26 @@ function fileUploadPlugin(): Plugin {
         }
 
         const chunks: Buffer[] = [];
-        req.on('data', chunk => chunks.push(chunk));
+        let totalSize = 0;
+        const MAX_SIZE = 25 * 1024 * 1024;
+        let aborted = false;
+
+        req.on('data', chunk => {
+          if (aborted) return;
+          totalSize += chunk.length;
+          if (totalSize > MAX_SIZE) {
+            aborted = true;
+            res.statusCode = 413;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: 'Payload Too Large: Maximum upload size is 25 MB.' }));
+            req.destroy();
+            return;
+          }
+          chunks.push(chunk);
+        });
+
         req.on('end', () => {
+          if (aborted) return;
           try {
             const body = Buffer.concat(chunks);
             let filename = `file_${Date.now()}`;
@@ -27,14 +46,21 @@ function fileUploadPlugin(): Plugin {
             if (contentType.includes('application/json')) {
               const json = JSON.parse(body.toString('utf-8'));
               filename = json.filename || filename;
-              filename = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
+              filename = sanitizeUploadFilename(filename);
               const dataUrl = json.dataUrl || '';
               const base64Data = dataUrl.replace(/^data:[^;]+;base64,/, '');
               fileBuffer = Buffer.from(base64Data, 'base64');
             } else {
               const rawName = (req.headers['x-filename'] as string) || filename;
-              filename = decodeURIComponent(rawName).replace(/[^a-zA-Z0-9._-]/g, '_');
+              filename = sanitizeUploadFilename(decodeURIComponent(rawName));
               fileBuffer = body;
+            }
+
+            if (!isAllowedUploadExtension(filename)) {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: 'Disallowed file type. Only standard documents and images are permitted.' }));
+              return;
             }
 
             // Write into client/public/uploads: Vite dev server serves public files
