@@ -56,4 +56,69 @@ describe('LMSContextPanel Collapsible Assessments', () => {
     fireEvent.click(assignmentsBtn);
     expect(onSelectCourseTab).toHaveBeenCalledWith('assignments');
   });
+
+  test('does not violate rules of hooks when switching between dashboard and courses tabs', () => {
+    const { rerender } = render(
+      <LMSContextPanel
+        currentTab="dashboard"
+        courseSubTab="modules"
+        onNavigateTab={() => {}}
+        onSelectCourseTab={() => {}}
+        onNavigateCourse={() => {}}
+      />
+    );
+
+    rerender(
+      <LMSContextPanel
+        currentTab="courses"
+        courseSubTab="modules"
+        onNavigateTab={() => {}}
+        onSelectCourseTab={() => {}}
+        onNavigateCourse={() => {}}
+      />
+    );
+
+    expect(screen.getByText('CS101')).toBeDefined();
+  });
+
+  test('does not violate rules of hooks when switching from non-LMS governance tab to courses tab', () => {
+    const { rerender, container } = render(
+      <LMSContextPanel
+        currentTab="governance"
+        courseSubTab="modules"
+        onNavigateTab={() => {}}
+        onSelectCourseTab={() => {}}
+        onNavigateCourse={() => {}}
+      />
+    );
+
+    // Non-LMS tab returns null
+    expect(container.firstChild).toBeNull();
+
+    // Navigate to courses tab
+    rerender(
+      <LMSContextPanel
+        currentTab="courses"
+        courseSubTab="modules"
+        onNavigateTab={() => {}}
+        onSelectCourseTab={() => {}}
+        onNavigateCourse={() => {}}
+      />
+    );
+
+    expect(screen.getByText('CS101')).toBeDefined();
+
+    // Navigate to accounts tab
+    rerender(
+      <LMSContextPanel
+        currentTab="accounts"
+        courseSubTab="modules"
+        onNavigateTab={() => {}}
+        onSelectCourseTab={() => {}}
+        onNavigateCourse={() => {}}
+      />
+    );
+
+    expect(container.firstChild).toBeNull();
+  });
 });
