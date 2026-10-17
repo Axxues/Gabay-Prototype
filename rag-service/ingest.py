@@ -380,13 +380,21 @@ def fetch_likha_data(
         if token:
             headers["Authorization"] = f"Bearer {token}"
 
-        # Fetch published courses (limit=-1 to retrieve complete catalog)
-        courses_url = f"{base_url}/items/courses?filter[status][_eq]=published&limit=-1"
+        # Fetch courses from Likha ERP catalog
+        courses_url = f"{base_url}/items/courses?limit=-1"
         courses_resp = client.get(courses_url, headers=headers)
         courses_resp.raise_for_status()
 
         resp_data = courses_resp.json()
         courses: list[dict] = resp_data.get("data", []) if isinstance(resp_data, dict) else resp_data
+
+        # Filter by published status in-memory if published flag is utilized
+        has_published_flag = any(c.get("published") is True or c.get("status") == "published" for c in courses)
+        if has_published_flag:
+            courses = [
+                c for c in courses
+                if c.get("published") is True or c.get("status") == "published"
+            ]
 
         # Normalize syllabus field for each course
         for course in courses:

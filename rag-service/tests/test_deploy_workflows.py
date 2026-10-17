@@ -35,8 +35,7 @@ def test_render_yaml_specification():
         "UPSTASH_VECTOR_REST_URL",
         "UPSTASH_VECTOR_REST_TOKEN",
         "LIKHA_URL",
-        "LIKHA_ADMIN_EMAIL",
-        "LIKHA_ADMIN_PASSWORD",
+        "LIKHA_TOKEN",
     }
     declared_env_vars = {item["key"]: item.get("sync") for item in svc.get("envVars", [])}
 
@@ -106,8 +105,7 @@ def test_sync_cron_workflow_specification():
         "UPSTASH_VECTOR_REST_URL",
         "UPSTASH_VECTOR_REST_TOKEN",
         "LIKHA_URL",
-        "LIKHA_ADMIN_EMAIL",
-        "LIKHA_ADMIN_PASSWORD",
+        "LIKHA_TOKEN",
     }
     step_env = ingest_step.get("env", {})
     for secret in required_secrets:

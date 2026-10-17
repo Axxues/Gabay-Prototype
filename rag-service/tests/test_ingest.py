@@ -212,7 +212,7 @@ def test_fetch_likha_data_authenticated():
 
     # Verify courses GET call
     mock_client.get.assert_called_once_with(
-        "https://gabay.zyberlab.com/items/courses?filter[status][_eq]=published&limit=-1",
+        "https://gabay.zyberlab.com/items/courses?limit=-1",
         headers={"Authorization": "Bearer mock_token_abc123"},
     )
 
@@ -266,7 +266,7 @@ def test_fetch_likha_data_with_static_token():
     # Login MUST NOT be called because static token is present
     mock_client.post.assert_not_called()
     mock_client.get.assert_called_once_with(
-        "https://gabay.zyberlab.com/items/courses?filter[status][_eq]=published&limit=-1",
+        "https://gabay.zyberlab.com/items/courses?limit=-1",
         headers={"Authorization": "Bearer static-secret-token-xyz"},
     )
     assert len(courses) == 1

@@ -34,7 +34,6 @@ jobs:
           UPSTASH_VECTOR_REST_URL: ${{ secrets.UPSTASH_VECTOR_REST_URL }}
           UPSTASH_VECTOR_REST_TOKEN: ${{ secrets.UPSTASH_VECTOR_REST_TOKEN }}
           LIKHA_URL: ${{ secrets.LIKHA_URL }}
-          LIKHA_ADMIN_EMAIL: ${{ secrets.LIKHA_ADMIN_EMAIL }}
-          LIKHA_ADMIN_PASSWORD: ${{ secrets.LIKHA_ADMIN_PASSWORD }}
+          LIKHA_TOKEN: ${{ secrets.LIKHA_TOKEN }}
         run: |
           python ingest.py
