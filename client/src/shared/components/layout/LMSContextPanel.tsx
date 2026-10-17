@@ -32,6 +32,7 @@ import {
   isVisible,
   isLmsSectionTab,
 } from '../../config/navigation';
+import { getScopedCourses } from '../../utils/courseScoping';
 import {
   countFacultyGradingBadge,
   countNewFiles,
@@ -162,6 +163,17 @@ const CourseNavigationPanel: React.FC<CourseNavigationPanelProps> = ({
 
   const courseBadgeFor = (tabId: string): number => courseBadges[tabId] ?? 0;
 
+  if (!course) {
+    return (
+      <aside className="flex w-[240px] flex-shrink-0 flex-col border-r border-border/60 bg-card/50 p-3">
+        <div className="custom-scrollbar flex-1 space-y-1 overflow-y-auto">
+          {lmsNav}
+        </div>
+        <div className="px-2 pt-3 text-[10px] text-muted-foreground">Trail: LMS &gt; courses</div>
+      </aside>
+    );
+  }
+
   return (
     <aside className="flex w-[240px] flex-shrink-0 flex-col border-r border-border/60 bg-card/50 p-3">
       <div className="custom-scrollbar flex-1 space-y-1 overflow-y-auto">
@@ -287,27 +299,37 @@ const CourseNavigationPanel: React.FC<CourseNavigationPanelProps> = ({
 };
 
 export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: string; onNavigateTab: (t: string) => void; onSelectCourseTab: (t: string) => void; onNavigateCourse: (id: string, sub?: string) => void }> = React.memo((p) => {
-  const { db, activeCourseId, activeRole, activeUser, getUnreadNotificationCount } = useLMS();
+  const { db, activeCourseId, activeRole, activeUser, colleges, departments, getUnreadNotificationCount } = useLMS();
 
   // LMS navigations (Dashboard, Courses, Calendar, Inbox, History, Help) belong
   // to the Learning Management section only — hide the whole context panel on
   // top-level pages outside it (Page 1/2/3, Manage College Accounts).
   if (!isLmsSectionTab(p.currentTab)) return null;
 
-  const unread = db.messages.filter(m => m.recipientId === activeUser.id && !m.read).length;
+  const unread = (db.messages || []).filter(m => m.recipientId === activeUser.id && !m.read).length;
 
-  // Students with no enrollments must not see Course Navigation.
-  // Mirrors CoursesPage: enrollment truth is approved request rows, falling
-  // back to enrolledCourseIds when stale.
-  const approvedCourseIds = new Set(
+  // Enrollment truth is approved request rows, falling back to enrolledCourseIds when stale.
+  const approvedCourseIds = useMemo(() => new Set(
     (db.enrollmentRequests || [])
       .filter(r => r.studentId === activeUser.id && r.status === 'approved')
       .map(r => r.courseId)
-  );
-  const visibleCourses = activeRole === 'student'
-    ? db.courses.filter(c => (activeUser.enrolledCourseIds || []).includes(c.id) || approvedCourseIds.has(c.id))
-    : db.courses;
-  const studentHasNoCourses = activeRole === 'student' && visibleCourses.length === 0;
+  ), [db.enrollmentRequests, activeUser.id]);
+
+  const visibleCourses = useMemo(() => (
+    activeRole === 'staff'
+      ? (db.courses || [])
+      : getScopedCourses({
+          courses: db.courses || [],
+          users: db.users || [],
+          activeUser,
+          activeRole,
+          approvedCourseIds,
+          colleges: colleges || [],
+          departments: departments || [],
+        })
+  ), [activeRole, db.courses, db.users, activeUser, approvedCourseIds, colleges, departments]);
+
+  const hasNoCourses = visibleCourses.length === 0;
 
   const lmsNav = (
     <>
@@ -325,9 +347,9 @@ export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: strin
   );
 
   if (p.currentTab === 'courses') {
-    // Unenrolled students get LMS nav only — no course header, join code,
-    // or course sub-tabs to open.
-    if (studentHasNoCourses) {
+    // When there are no courses yet (e.g. unenrolled students, faculty without created courses),
+    // show LMS nav only — no Course Navigation header, join code, or course sub-tabs.
+    if (hasNoCourses) {
       return (
         <aside className="flex w-[240px] flex-shrink-0 flex-col border-r border-border/60 bg-card/50 p-3">
           <div className="custom-scrollbar flex-1 space-y-1 overflow-y-auto">

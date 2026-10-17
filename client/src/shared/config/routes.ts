@@ -29,7 +29,7 @@ export function courseToPath(courseId: string, subTab = 'modules'): string {
   return `/courses/${encodeURIComponent(courseId)}/${encodeURIComponent(subTab)}`;
 }
 
-export function pathToTab(pathname: string): { tab: string; courseId?: string; subTab?: string; editUserId?: string } {
+export function pathToTab(pathname: string): { tab: string; courseId?: string; subTab?: string; editUserId?: string; departmentId?: string } {
   const parts = pathname.split('/').filter(Boolean);
   if (parts.length === 0) return { tab: 'dashboard' };
   const [first, second, third] = parts;
@@ -46,7 +46,12 @@ export function pathToTab(pathname: string): { tab: string; courseId?: string; s
   if (first === 'page1') return { tab: 'page1' };
   if (first === 'page2') return { tab: 'page2' };
   if (first === 'page3') return { tab: 'page3' };
-  if (first === 'governance') return { tab: 'governance' };
+  if (first === 'governance') {
+    if (second === 'departments' && third) {
+      return { tab: 'governance', subTab: 'department-details', departmentId: decodeURIComponent(third) };
+    }
+    return { tab: 'governance' };
+  }
   if (first === 'courses') {
     if (second === 'new') return { tab: 'create-course' };
     if (!second) return { tab: 'courses' };

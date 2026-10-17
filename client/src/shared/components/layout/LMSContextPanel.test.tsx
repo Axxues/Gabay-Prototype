@@ -3,22 +3,28 @@ import { describe, expect, test, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 
+let mockLmsState: any = {
+  db: {
+    messages: [],
+    courses: [{ id: 'c1', code: 'CS101', title: 'Intro CS', color: '#3b82f6', instructorId: 'u1' }],
+    users: [{ id: 'u1', name: 'Instructor', role: 'faculty' }],
+    activities: [],
+    quizzes: [],
+    exams: [],
+    submissions: [],
+    courseSections: [],
+    enrollmentRequests: [],
+  },
+  activeCourseId: 'c1',
+  activeRole: 'faculty',
+  activeUser: { id: 'u1', name: 'Instructor', enrolledCourseIds: ['c1'] },
+  colleges: [],
+  departments: [],
+  getUnreadNotificationCount: () => 0,
+};
+
 vi.mock('../../context/LMSContext', () => ({
-  useLMS: () => ({
-    db: {
-      messages: [],
-      courses: [{ id: 'c1', code: 'CS101', title: 'Intro CS', color: '#3b82f6' }],
-      activities: [],
-      quizzes: [],
-      exams: [],
-      submissions: [],
-      courseSections: [],
-    },
-    activeCourseId: 'c1',
-    activeRole: 'faculty',
-    activeUser: { id: 'u1', name: 'Instructor', enrolledCourseIds: ['c1'] },
-    getUnreadNotificationCount: () => 0,
-  }),
+  useLMS: () => mockLmsState,
 }));
 
 import { LMSContextPanel } from './LMSContextPanel';
@@ -121,4 +127,88 @@ describe('LMSContextPanel Collapsible Assessments', () => {
 
     expect(container.firstChild).toBeNull();
   });
+
+  test('does not display Course Navigation when faculty has not created any courses yet', () => {
+    mockLmsState = {
+      db: {
+        messages: [],
+        courses: [{ id: 'c1', code: 'CS101', title: 'Intro CS', color: '#3b82f6', instructorId: 'u_other' }],
+        users: [
+          { id: 'u1', name: 'Eleanor', role: 'faculty' },
+          { id: 'u_other', name: 'Other Instructor', role: 'faculty' },
+        ],
+        activities: [],
+        quizzes: [],
+        exams: [],
+        submissions: [],
+        courseSections: [],
+        enrollmentRequests: [],
+      },
+      activeCourseId: 'c1',
+      activeRole: 'faculty',
+      activeUser: { id: 'u1', name: 'Eleanor', role: 'faculty' },
+      colleges: [],
+      departments: [],
+      getUnreadNotificationCount: () => 0,
+    };
+
+    render(
+      <LMSContextPanel
+        currentTab="courses"
+        courseSubTab="modules"
+        onNavigateTab={() => {}}
+        onSelectCourseTab={() => {}}
+        onNavigateCourse={() => {}}
+      />
+    );
+
+    // Learning Management should be visible
+    expect(screen.getByText('Learning Management')).toBeDefined();
+    expect(screen.getByRole('button', { name: /Courses/i })).toBeDefined();
+
+    // Course Navigation header and course items should NOT be displayed
+    expect(screen.queryByText('Course Navigation')).toBeNull();
+    expect(screen.queryByText('CS101')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Modules/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Syllabus/i })).toBeNull();
+
+    // Trail should reflect general courses page without sub-tab
+    expect(screen.getByText('Trail: LMS > courses')).toBeDefined();
+  });
+
+  test('does not display Course Navigation when database has 0 courses', () => {
+    mockLmsState = {
+      db: {
+        messages: [],
+        courses: [],
+        users: [{ id: 'u1', name: 'Eleanor', role: 'faculty' }],
+        activities: [],
+        quizzes: [],
+        exams: [],
+        submissions: [],
+        courseSections: [],
+        enrollmentRequests: [],
+      },
+      activeCourseId: null,
+      activeRole: 'faculty',
+      activeUser: { id: 'u1', name: 'Eleanor', role: 'faculty' },
+      colleges: [],
+      departments: [],
+      getUnreadNotificationCount: () => 0,
+    };
+
+    render(
+      <LMSContextPanel
+        currentTab="courses"
+        courseSubTab="modules"
+        onNavigateTab={() => {}}
+        onSelectCourseTab={() => {}}
+        onNavigateCourse={() => {}}
+      />
+    );
+
+    expect(screen.queryByText('Course Navigation')).toBeNull();
+    expect(screen.getByText('Trail: LMS > courses')).toBeDefined();
+  });
 });
+
