@@ -17,6 +17,8 @@ services:
         sync: false
       - key: LIKHA_URL
         sync: false
+      - key: LIKHA_TOKEN
+        sync: false
       - key: LIKHA_ADMIN_EMAIL
         sync: false
       - key: LIKHA_ADMIN_PASSWORD

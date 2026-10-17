@@ -33,6 +33,9 @@ class Settings(BaseModel):
     likha_url: Optional[str] = Field(
         default_factory=lambda: os.getenv("LIKHA_URL", "https://gabay.zyberlab.com")
     )
+    likha_token: Optional[str] = Field(
+        default_factory=lambda: os.getenv("LIKHA_TOKEN") or os.getenv("LIKHA_STATIC_TOKEN")
+    )
     likha_admin_email: Optional[str] = Field(
         default_factory=lambda: os.getenv("LIKHA_ADMIN_EMAIL")
     )

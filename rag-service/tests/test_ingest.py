@@ -245,6 +245,34 @@ def test_fetch_likha_data_without_credentials():
     assert courses == []
 
 
+def test_fetch_likha_data_with_static_token():
+    """Verify that fetch uses static token directly without invoking /auth/login."""
+    settings = Settings(
+        likha_url="https://gabay.zyberlab.com",
+        likha_token="static-secret-token-xyz",
+        likha_admin_email="admin@test.com",
+        likha_admin_password="password",
+    )
+
+    mock_courses_resp = MagicMock(spec=httpx.Response)
+    mock_courses_resp.status_code = 200
+    mock_courses_resp.json.return_value = {"data": [{"id": "c1", "code": "CMSC12", "title": "Prog 1"}]}
+
+    mock_client = MagicMock(spec=httpx.Client)
+    mock_client.get.return_value = mock_courses_resp
+
+    courses = fetch_likha_data(settings=settings, client=mock_client)
+
+    # Login MUST NOT be called because static token is present
+    mock_client.post.assert_not_called()
+    mock_client.get.assert_called_once_with(
+        "https://gabay.zyberlab.com/items/courses?filter[status][_eq]=published&limit=-1",
+        headers={"Authorization": "Bearer static-secret-token-xyz"},
+    )
+    assert len(courses) == 1
+    assert courses[0]["code"] == "CMSC12"
+
+
 def test_fetch_likha_data_login_failure():
     """Verify exception handling when Directus login returns 401."""
     settings = Settings(

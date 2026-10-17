@@ -360,9 +360,9 @@ def fetch_likha_data(
         close_client = True
 
     try:
-        token: Optional[str] = None
-        # Authenticate with Likha ERP if service credentials are provided
-        if settings.likha_admin_email and settings.likha_admin_password:
+        token: Optional[str] = settings.likha_token
+        # If no static token is provided, authenticate with Likha ERP via service credentials if present
+        if not token and settings.likha_admin_email and settings.likha_admin_password:
             login_url = f"{base_url}/auth/login"
             login_payload = {
                 "email": settings.likha_admin_email,
