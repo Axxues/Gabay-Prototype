@@ -1,4 +1,4 @@
-import type { College, Department } from '../types/lms';
+import type { College, Department, Program } from '../types/lms';
 
 /**
  * Initial Default University Colleges
@@ -14,18 +14,20 @@ export const DEFAULT_COLLEGES: College[] = [
 ];
 
 /**
- * Initial Default University Departments
+ * Initial Default University Academic Programs
  * Mapped to their respective parent colleges.
  */
-export const DEFAULT_DEPARTMENTS: Department[] = [
+export const DEFAULT_PROGRAMS: Program[] = [
   {
     id: 'dept-cs',
     collegeId: 'col-ccs',
-    name: 'Department of Computer Science',
+    name: 'Program in Computer Science',
     code: 'CS',
     chairpersonId: '3281e224-fc7d-4c7e-b4c9-bcb7bca2ab89',
   },
 ];
+
+export const DEFAULT_DEPARTMENTS: Department[] = DEFAULT_PROGRAMS;
 
 /**
  * Retrieve all registered colleges or return defaults
@@ -93,7 +95,7 @@ export function getDepartmentsByCollege(
 }
 
 /**
- * Retrieve a department by exact or fuzzy name, code, or ID
+ * Retrieve a department or program by exact or fuzzy name, code, or ID
  */
 export function getDepartmentByName(
   name: string,
@@ -101,22 +103,31 @@ export function getDepartmentByName(
 ): Department | undefined {
   if (!name || typeof name !== 'string' || !Array.isArray(departments)) return undefined;
   const target = name.trim().toLowerCase();
+  const normalizedTarget = target
+    .replace(/^(department of|program in|program of)\s+/i, '')
+    .replace(/\s+(department|program)$/i, '');
+
   return departments.find(d => {
     const dName = d.name.toLowerCase();
     const dCode = d.code.toLowerCase();
     const dId = d.id.toLowerCase();
+    const normalizedDName = dName
+      .replace(/^(department of|program in|program of)\s+/i, '')
+      .replace(/\s+(department|program)$/i, '');
+
     return (
       dName === target ||
       dCode === target ||
       dId === target ||
-      dName.replace(/^department of\s+/i, '') === target ||
-      target.replace(/^department of\s+/i, '') === dName.replace(/^department of\s+/i, '')
+      normalizedDName === normalizedTarget ||
+      normalizedDName === target ||
+      dName === normalizedTarget
     );
   });
 }
 
 /**
- * Retrieve a department by unique ID or code
+ * Retrieve a department or program by unique ID or code
  */
 export function getDepartmentById(
   id: string,
@@ -126,3 +137,8 @@ export function getDepartmentById(
   const target = id.trim().toLowerCase();
   return departments.find(d => d.id.toLowerCase() === target || d.code.toLowerCase() === target);
 }
+
+// Program aliases for seamless terminology transition
+export const getProgramsByCollege = getDepartmentsByCollege;
+export const getProgramByName = getDepartmentByName;
+export const getProgramById = getDepartmentById;

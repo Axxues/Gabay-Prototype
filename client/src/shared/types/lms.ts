@@ -9,13 +9,15 @@ export interface College {
   deanId?: string;
 }
 
-export interface Department {
+export interface Program {
   id: string;
   collegeId: string;
   name: string;
   code: string;
   chairpersonId?: string;
 }
+
+export type Department = Program;
 
 export interface PendingRegistration {
   id: string;
@@ -28,6 +30,7 @@ export interface PendingRegistration {
   collegeId: string;
   collegeName: string;
   department: string;
+  program?: string;
   studentId: string;
   password?: string;
   emailVerified: boolean;
@@ -48,6 +51,7 @@ export interface User {
   banner?: string;
   studentId?: string;
   department: string;
+  program?: string;
   title: string;
   password?: string;
   enrolledCourseIds?: string[];
@@ -68,6 +72,7 @@ export interface User {
 // Runtime export stubs to guarantee Vite ESM dev imports and browser runtime never fail
 export const User = {} as unknown as User;
 export const College = {} as unknown as College;
+export const Program = {} as unknown as Program;
 export const Department = {} as unknown as Department;
 export const PendingRegistration = {} as unknown as PendingRegistration;
 

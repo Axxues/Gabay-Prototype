@@ -31,6 +31,7 @@ import type {
   SPRColumn,
   College,
   Department,
+  Program,
   PendingRegistration,
   AdminSubrole
 } from '../types/lms';
@@ -266,6 +267,7 @@ export interface LMSContextType {
   // Academic Units & RBAC
   colleges: College[];
   departments: Department[];
+  programs: Program[];
   pendingRegistrations: PendingRegistration[];
   registerAccount: (
     payload: {
@@ -294,10 +296,13 @@ export interface LMSContextType {
   ) => Promise<{ success: boolean; message: string }>;
   addCollege: (college: College, initialDeanId?: string) => Promise<College>;
   addDepartment: (department: Department, initialChairId?: string) => Promise<Department>;
+  addProgram: (program: Program, initialChairId?: string) => Promise<Program>;
   deleteCollege: (collegeId: string) => Promise<{ success: boolean; message: string; blockers?: string[] }>;
   deleteDepartment: (departmentId: string) => Promise<{ success: boolean; message: string; blockers?: string[] }>;
+  deleteProgram: (programId: string) => Promise<{ success: boolean; message: string; blockers?: string[] }>;
   getCollegeDeleteBlockers: (collegeId: string) => string[];
   getDepartmentDeleteBlockers: (departmentId: string) => string[];
+  getProgramDeleteBlockers: (programId: string) => string[];
 
   logHistory: (path: string, title: string) => void;
   clearHistory: () => void;
@@ -4263,7 +4268,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           (currentUser.role === 'admin' && currentUser.adminSubrole === 'chairperson') ||
           isChairRole(currentUser, activeRole);
         if (isChair) {
-          throw new Error('Permission denied: Department Chairpersons cannot create academic departments.');
+          throw new Error('Permission denied: Program Chairpersons cannot create academic programs.');
         }
       }
     }
@@ -4420,45 +4425,49 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const getDepartmentDeleteBlockers = (departmentId: string): string[] => {
     const dept = departments.find(d => d.id === departmentId);
-    if (!dept) return ['Department not found.'];
+    if (!dept) return ['Program not found.'];
     const blockers: string[] = [];
 
     // 1. Leader check
     if (dept.chairpersonId && dept.chairpersonId !== 'none') {
       const chair = db.users.find(u => u.id === dept.chairpersonId);
-      const chairName = chair?.name || chair?.email || 'an active chairperson';
-      blockers.push(`Department has an assigned Chairperson (${chairName}).`);
+      const chairName = chair?.name || chair?.email || 'an active program chairperson';
+      blockers.push(`Program has an assigned Program Chairperson (${chairName}).`);
     }
 
     // 2. Affiliated users check
     const affiliatedUsers = db.users.filter(u => {
       const uDept = u.department?.trim().toLowerCase();
+      const uProg = u.program?.trim().toLowerCase();
       const deptName = dept.name?.trim().toLowerCase();
       const deptCode = dept.code?.trim().toLowerCase();
       return (
         (uDept && (uDept === deptName || uDept === deptCode)) ||
-        (u as any).departmentId === dept.id
+        (uProg && (uProg === deptName || uProg === deptCode)) ||
+        (u as any).departmentId === dept.id ||
+        (u as any).programId === dept.id
       );
     });
     if (affiliatedUsers.length > 0) {
-      blockers.push(`Department has ${affiliatedUsers.length} affiliated or enrolled user(s).`);
+      blockers.push(`Program has ${affiliatedUsers.length} affiliated or enrolled user(s).`);
     }
 
     // 3. Pending registrations check
     const pendingList = pendingRegistrationsRef.current || pendingRegistrations;
     const affiliatedPending = pendingList.filter(p => {
       const pDept = p.department?.trim().toLowerCase();
+      const pProg = p.program?.trim().toLowerCase();
       const deptName = dept.name?.trim().toLowerCase();
       const deptCode = dept.code?.trim().toLowerCase();
       return (
         p.status !== 'rejected' &&
         p.status !== 'expired' &&
-        pDept &&
-        (pDept === deptName || pDept === deptCode)
+        ((pDept && (pDept === deptName || pDept === deptCode)) ||
+         (pProg && (pProg === deptName || pProg === deptCode)))
       );
     });
     if (affiliatedPending.length > 0) {
-      blockers.push(`Department has ${affiliatedPending.length} pending user registration(s).`);
+      blockers.push(`Program has ${affiliatedPending.length} pending user registration(s).`);
     }
 
     return blockers;
@@ -4476,17 +4485,17 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       blockers.push(`College has an assigned Dean (${deanName}).`);
     }
 
-    // 2. Child departments chairperson check
+    // 2. Child programs chairperson check
     const childDepts = departments.filter(d => d.collegeId === collegeId);
     for (const d of childDepts) {
       if (d.chairpersonId && d.chairpersonId !== 'none') {
         const chair = db.users.find(u => u.id === d.chairpersonId);
         const chairName = chair?.name || chair?.email || d.chairpersonId;
-        blockers.push(`Department "${d.name}" has an assigned Chairperson (${chairName}).`);
+        blockers.push(`Program "${d.name}" has an assigned Program Chairperson (${chairName}).`);
       }
     }
 
-    // 3. Affiliated users check across college and child departments
+    // 3. Affiliated users check across college and child programs
     const colName = col.name?.trim().toLowerCase();
     const colCode = col.code?.trim().toLowerCase();
     const childDeptNames = childDepts.map(d => d.name?.trim().toLowerCase()).filter(Boolean);
@@ -4496,16 +4505,22 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (u.collegeId === col.id) return true;
       if (u.collegeName && u.collegeName.trim().toLowerCase() === colName) return true;
       const uDept = u.department?.trim().toLowerCase();
+      const uProg = u.program?.trim().toLowerCase();
       if (uDept) {
         if (uDept === colName || uDept === colCode) return true;
         if (childDeptNames.includes(uDept) || childDeptCodes.includes(uDept)) return true;
       }
+      if (uProg) {
+        if (uProg === colName || uProg === colCode) return true;
+        if (childDeptNames.includes(uProg) || childDeptCodes.includes(uProg)) return true;
+      }
       if ((u as any).departmentId && childDepts.some(d => d.id === (u as any).departmentId)) return true;
+      if ((u as any).programId && childDepts.some(d => d.id === (u as any).programId)) return true;
       return false;
     });
 
     if (affiliatedUsers.length > 0) {
-      blockers.push(`College or its departments have ${affiliatedUsers.length} affiliated or enrolled user(s).`);
+      blockers.push(`College or its programs have ${affiliatedUsers.length} affiliated or enrolled user(s).`);
     }
 
     // 4. Pending registrations check
@@ -4515,9 +4530,14 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (p.collegeId === col.id) return true;
       if (p.collegeName && p.collegeName.trim().toLowerCase() === colName) return true;
       const pDept = p.department?.trim().toLowerCase();
+      const pProg = p.program?.trim().toLowerCase();
       if (pDept) {
         if (pDept === colName || pDept === colCode) return true;
         if (childDeptNames.includes(pDept) || childDeptCodes.includes(pDept)) return true;
+      }
+      if (pProg) {
+        if (pProg === colName || pProg === colCode) return true;
+        if (childDeptNames.includes(pProg) || childDeptCodes.includes(pProg)) return true;
       }
       return false;
     });
@@ -4532,7 +4552,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteDepartment = async (departmentId: string): Promise<{ success: boolean; message: string; blockers?: string[] }> => {
     const targetDept = departments.find(d => d.id === departmentId);
     if (!targetDept) {
-      return { success: false, message: 'Department not found.' };
+      return { success: false, message: 'Program not found.' };
     }
 
     if (currentUser) {
@@ -4540,13 +4560,13 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const isDean = (currentUser.role === 'admin' && currentUser.adminSubrole === 'dean') || isDeanRole(currentUser, activeRole);
 
       if (!isSuperadminOrChancellor && !isDean) {
-        return { success: false, message: 'Permission denied: Only Administrators and Deans can delete academic departments.' };
+        return { success: false, message: 'Permission denied: Only Administrators and Deans can delete academic programs.' };
       }
 
       if (isDean && !isSuperadminOrChancellor) {
         const deanColId = currentUser.collegeId || colleges.find(c => c.deanId === currentUser.id || (currentUser.collegeName && c.name?.toLowerCase() === currentUser.collegeName.toLowerCase()))?.id;
         if (!deanColId || targetDept.collegeId !== deanColId) {
-          return { success: false, message: 'Permission denied: Deans can only delete departments within their assigned college.' };
+          return { success: false, message: 'Permission denied: Deans can only delete programs within their assigned college.' };
         }
       }
     }
@@ -4555,7 +4575,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (blockers.length > 0) {
       return {
         success: false,
-        message: 'Cannot delete department while it has assigned leaders or affiliated users.',
+        message: 'Cannot delete program while it has assigned leaders or affiliated users.',
         blockers,
       };
     }
@@ -4574,9 +4594,13 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     return {
       success: true,
-      message: `Department "${targetDept.name}" (${targetDept.code}) was deleted successfully.`,
+      message: `Program "${targetDept.name}" (${targetDept.code}) was deleted successfully.`,
     };
   };
+
+  const addProgram = addDepartment;
+  const deleteProgram = deleteDepartment;
+  const getProgramDeleteBlockers = getDepartmentDeleteBlockers;
 
   const deleteCollege = async (collegeId: string): Promise<{ success: boolean; message: string; blockers?: string[] }> => {
     const targetCollege = colleges.find(c => c.id === collegeId);
@@ -4595,7 +4619,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (blockers.length > 0) {
       return {
         success: false,
-        message: 'Cannot delete college while it or its departments have assigned leaders or affiliated users.',
+        message: 'Cannot delete college while it or its programs have assigned leaders or affiliated users.',
         blockers,
       };
     }
@@ -7405,6 +7429,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         getPendingRequests,
         colleges,
         departments,
+        programs: departments,
         pendingRegistrations,
         registerAccount,
         activateEmail,
@@ -7414,10 +7439,13 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         transferLeadership,
         addCollege,
         addDepartment,
+        addProgram,
         deleteCollege,
         deleteDepartment,
+        deleteProgram,
         getCollegeDeleteBlockers,
         getDepartmentDeleteBlockers,
+        getProgramDeleteBlockers,
         logHistory,
         clearHistory,
         isSessionExpired,
