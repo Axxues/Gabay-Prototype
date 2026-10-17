@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "npm run dev --workspace=client",
     "dev:client": "npm run dev --workspace=client",
+    "dev:rag": "python -m uvicorn app.main:app --reload --port 8000 --app-dir rag-service",
     "build": "npm run build --workspace=client",
     "build:client": "npm run build --workspace=client",
     "typecheck": "npm run typecheck --workspace=client",
