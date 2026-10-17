@@ -14,33 +14,10 @@ export const LIKHA_URL =
     ? '/likha'
     : 'https://gabay.zyberlab.com');
 
-const SERVICE_EMAIL = 'jayveegenetareyes@gmail.com';
-const SERVICE_PASSWORD = 'qwerty12345';
-let cachedServiceToken: string | null = null;
-
 export interface LikhaUploadedFile {
   id: string;
   filename_download: string;
   url: string;
-}
-
-async function getServiceToken(): Promise<string> {
-  if (cachedServiceToken) return cachedServiceToken;
-  try {
-    const res = await fetch(`${LIKHA_URL}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: SERVICE_EMAIL, password: SERVICE_PASSWORD }),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      cachedServiceToken = data.data?.access_token || null;
-      return cachedServiceToken || '';
-    }
-  } catch {
-    /* ignore fallback error */
-  }
-  return '';
 }
 
 import { likhaCache } from './likhaCache';
@@ -71,19 +48,6 @@ async function rawLikhaFetch<T = any>(
     await new Promise(r => setTimeout(r, 800));
     const retryRes = await fetch(url, { ...options, headers });
     if (retryRes.ok) {
-      const retryJson = await retryRes.json().catch(() => ({}));
-      return retryJson.data !== undefined ? retryJson.data : retryJson;
-    }
-  }
-
-  if (res.status === 403 && allowRetry) {
-    const svcToken = await getServiceToken();
-    if (svcToken) {
-      headers.set('Authorization', `Bearer ${svcToken}`);
-      const retryRes = await fetch(url, { ...options, headers });
-      if (!retryRes.ok) {
-        throw new Error(`Likha request failed (${retryRes.status}): ${await retryRes.text().catch(() => '')}`);
-      }
       const retryJson = await retryRes.json().catch(() => ({}));
       return retryJson.data !== undefined ? retryJson.data : retryJson;
     }

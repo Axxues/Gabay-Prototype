@@ -89,22 +89,17 @@ describe('Likha LMS Direct API Client', () => {
     expect(auth.user.email).toBe('faculty1@dmmmsu.edu.ph');
   });
 
-  it('retries with service token on HTTP 403 Forbidden', async () => {
+  it('immediately throws on HTTP 403 Forbidden without service credential elevation', async () => {
     const fetchSpy = vi.spyOn(global, 'fetch')
-      // 1. Initial user request fails with 403
-      .mockResolvedValueOnce({ ok: false, status: 403, json: async () => ({ error: 'Forbidden' }) } as any)
-      // 2. Service token login succeeds
-      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: { access_token: 'service-token-xyz' } }) } as any)
-      // 3. Retry with service token succeeds
-      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [{ id: 'notif-1' }] }) } as any);
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        text: async () => JSON.stringify({ error: { code: 'FORBIDDEN', message: 'Forbidden' } }),
+        json: async () => ({ error: { code: 'FORBIDDEN', message: 'Forbidden' } })
+      } as any);
 
-    const notifs = await likhaLmsApi.communications.getNotifications('u-1');
-    expect(notifs[0].id).toBe('notif-1');
-    expect(fetchSpy).toHaveBeenCalledTimes(3);
-    expect(fetchSpy).toHaveBeenCalledWith(
-      expect.stringContaining('/notifications'),
-      expect.any(Object)
-    );
+    await expect(likhaLmsApi.users.getUsers()).rejects.toThrow();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
   it('queries normalized relational syllabus with child tables', async () => {
