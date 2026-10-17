@@ -21,18 +21,42 @@ export const AcademicStructureTab: React.FC = () => {
     transferLeadership,
     db,
     showAlert,
+    activeRole,
+    activeUser,
   } = useLMS();
+
+  // Role & scope derivation
+  const isChancellor = activeRole === 'superadmin' || activeUser?.adminSubrole === 'chancellor';
+  const isDean = activeRole === 'admin' && activeUser?.adminSubrole === 'dean';
+  const viewerCollegeId = activeUser?.collegeId;
+  const viewerCollegeName = activeUser?.collegeName?.toLowerCase();
+
+  const deanCollege = (colleges || []).find(
+    c => (viewerCollegeId && c.id === viewerCollegeId) ||
+         (viewerCollegeName && c.name?.toLowerCase() === viewerCollegeName)
+  );
+  const effectiveCollegeId = viewerCollegeId || deanCollege?.id;
+  const effectiveCollegeName = viewerCollegeName || deanCollege?.name?.toLowerCase();
+
+  const displayedColleges = isDean
+    ? (colleges || []).filter(
+        c => (viewerCollegeId && c.id === viewerCollegeId) ||
+             (viewerCollegeName && c.name?.toLowerCase() === viewerCollegeName)
+      )
+    : (colleges || []);
 
   // Modal states
   const [isAddCollegeOpen, setIsAddCollegeOpen] = useState(false);
   const [collegeName, setCollegeName] = useState('');
   const [collegeCode, setCollegeCode] = useState('');
+  const [initialDeanId, setInitialDeanId] = useState('');
   const [isSubmittingCollege, setIsSubmittingCollege] = useState(false);
 
   const [isAddDeptOpen, setIsAddDeptOpen] = useState(false);
   const [deptCollegeId, setDeptCollegeId] = useState('');
   const [deptName, setDeptName] = useState('');
   const [deptCode, setDeptCode] = useState('');
+  const [initialChairId, setInitialChairId] = useState('');
   const [isSubmittingDept, setIsSubmittingDept] = useState(false);
 
   // Appointing / Reassigning leader modal state
@@ -51,6 +75,12 @@ export const AcademicStructureTab: React.FC = () => {
     return (db?.users || []).find(u => u.id === id);
   };
 
+  const isCandidateInCollege = (u: User, colId?: string, colName?: string) => {
+    if (colId && u.collegeId === colId) return true;
+    if (colName && u.collegeName?.toLowerCase() === colName.toLowerCase()) return true;
+    return false;
+  };
+
   // Submit new college
   const handleCreateCollege = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,7 +93,7 @@ export const AcademicStructureTab: React.FC = () => {
         name: collegeName.trim(),
         code: collegeCode.trim().toUpperCase(),
       };
-      await addCollege(newCol);
+      await addCollege(newCol, initialDeanId.trim() || undefined);
       showAlert({
         title: 'College Added',
         message: `${newCol.name} (${newCol.code}) was created successfully.`,
@@ -72,6 +102,7 @@ export const AcademicStructureTab: React.FC = () => {
       setIsAddCollegeOpen(false);
       setCollegeName('');
       setCollegeCode('');
+      setInitialDeanId('');
     } finally {
       setIsSubmittingCollege(false);
     }
@@ -80,17 +111,18 @@ export const AcademicStructureTab: React.FC = () => {
   // Submit new department
   const handleCreateDepartment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!deptCollegeId || !deptName.trim() || !deptCode.trim() || isSubmittingDept) return;
+    const targetCollegeId = isDean ? (effectiveCollegeId || deptCollegeId) : deptCollegeId;
+    if (!targetCollegeId || !deptName.trim() || !deptCode.trim() || isSubmittingDept) return;
 
     setIsSubmittingDept(true);
     try {
       const newDept: Department = {
         id: `dept-${deptCode.trim().toLowerCase()}-${Date.now().toString().slice(-4)}`,
-        collegeId: deptCollegeId,
+        collegeId: targetCollegeId,
         name: deptName.trim(),
         code: deptCode.trim().toUpperCase(),
       };
-      await addDepartment(newDept);
+      await addDepartment(newDept, initialChairId.trim() || undefined);
       showAlert({
         title: 'Department Added',
         message: `${newDept.name} (${newDept.code}) was added to the college.`,
@@ -100,6 +132,7 @@ export const AcademicStructureTab: React.FC = () => {
       setDeptName('');
       setDeptCode('');
       setDeptCollegeId('');
+      setInitialChairId('');
     } finally {
       setIsSubmittingDept(false);
     }
@@ -143,7 +176,28 @@ export const AcademicStructureTab: React.FC = () => {
     if (!appointModalData) return false;
     // Don't show current leader
     if (appointModalData.currentLeaderId && u.id === appointModalData.currentLeaderId) return false;
-    return u.role === 'faculty' || u.role === 'admin';
+    const isRoleEligible = u.role === 'faculty' || u.role === 'admin';
+    if (!isRoleEligible) return false;
+
+    if (isDean) {
+      return isCandidateInCollege(u, effectiveCollegeId, effectiveCollegeName);
+    }
+    return true;
+  });
+
+  // Eligible candidates for initial leader selection in creation modals
+  const eligibleDeanCandidates = (db?.users || []).filter(
+    u => u.role === 'faculty' || u.role === 'admin'
+  );
+
+  const eligibleChairCandidates = (db?.users || []).filter(u => {
+    const isRoleEligible = u.role === 'faculty' || u.role === 'admin';
+    if (!isRoleEligible) return false;
+
+    if (isDean) {
+      return isCandidateInCollege(u, effectiveCollegeId, effectiveCollegeName);
+    }
+    return true;
   });
 
   return (
@@ -156,26 +210,37 @@ export const AcademicStructureTab: React.FC = () => {
             <span>Academic Structure & Multi-College Governance</span>
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Chancellor administrative console: dynamically provision colleges, academic
-            departments, and designate unit leadership seats.
+            {isDean
+              ? 'Dean collegiate console: manage departments and designate department chairpersons within your college.'
+              : 'Chancellor administrative console: dynamically provision colleges, academic departments, and designate unit leadership seats.'}
           </p>
         </div>
         <div className="flex items-center space-x-2 shrink-0">
-          <button
-            type="button"
-            onClick={() => setIsAddCollegeOpen(true)}
-            className="px-3.5 py-2 bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground font-bold text-xs rounded-xl shadow-xs transition-all flex items-center space-x-1.5 cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add College</span>
-          </button>
+          {!isDean && (
+            <button
+              type="button"
+              onClick={() => setIsAddCollegeOpen(true)}
+              className="px-3.5 py-2 bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground font-bold text-xs rounded-xl shadow-xs transition-all flex items-center space-x-1.5 cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add College</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {
-              if (colleges.length > 0) setDeptCollegeId(colleges[0].id);
+              if (isDean) {
+                setDeptCollegeId(effectiveCollegeId || '');
+              } else if (colleges.length > 0) {
+                setDeptCollegeId(colleges[0].id);
+              }
               setIsAddDeptOpen(true);
             }}
-            className="px-3.5 py-2 bg-muted hover:bg-muted/80 active:scale-[0.98] text-foreground font-bold text-xs rounded-xl border border-border transition-all flex items-center space-x-1.5 cursor-pointer"
+            className={`px-3.5 py-2 ${
+              isDean
+                ? 'bg-primary hover:bg-primary/90 text-primary-foreground'
+                : 'bg-muted hover:bg-muted/80 text-foreground border border-border'
+            } active:scale-[0.98] font-bold text-xs rounded-xl transition-all flex items-center space-x-1.5 cursor-pointer`}
           >
             <Plus className="w-4 h-4" />
             <span>Add Department</span>
@@ -185,7 +250,7 @@ export const AcademicStructureTab: React.FC = () => {
 
       {/* Colleges & Departments List */}
       <div className="space-y-5">
-        {(colleges || []).map(college => {
+        {displayedColleges.map(college => {
           const dean = getUserById(college.deanId);
           const collegeDepts = (departments || []).filter(d => d.collegeId === college.id);
 
@@ -223,25 +288,34 @@ export const AcademicStructureTab: React.FC = () => {
                         className="w-8 h-8 rounded-full border border-border shrink-0"
                       />
                       <div className="text-left min-w-0 pr-2">
-                        <div className="text-[10px] font-bold text-muted-foreground uppercase">Dean</div>
+                        <div className="text-[10px] font-bold text-muted-foreground uppercase flex items-center space-x-1.5">
+                          <span>Dean</span>
+                          {isDean && (
+                            <span className="text-[9px] px-1.5 py-0.5 bg-primary/10 text-primary font-bold rounded border border-primary/20">
+                              (Current Dean)
+                            </span>
+                          )}
+                        </div>
                         <div className="text-xs font-bold text-foreground truncate max-w-[140px]">
                           {dean.name}
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAppointModalData({
-                            roleType: 'dean',
-                            unitId: college.id,
-                            unitName: college.name,
-                            currentLeaderId: college.deanId,
-                          });
-                        }}
-                        className="px-2.5 py-1 text-[11px] font-semibold text-primary hover:bg-primary/10 rounded-lg transition-colors cursor-pointer"
-                      >
-                        Reassign
-                      </button>
+                      {!isDean && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAppointModalData({
+                              roleType: 'dean',
+                              unitId: college.id,
+                              unitName: college.name,
+                              currentLeaderId: college.deanId,
+                            });
+                          }}
+                          className="px-2.5 py-1 text-[11px] font-semibold text-primary hover:bg-primary/10 rounded-lg transition-colors cursor-pointer"
+                        >
+                          Reassign
+                        </button>
+                      )}
                     </>
                   ) : (
                     <>
@@ -249,25 +323,34 @@ export const AcademicStructureTab: React.FC = () => {
                         <AlertCircle className="w-4 h-4" />
                       </div>
                       <div className="text-left min-w-0 pr-2">
-                        <div className="text-[10px] font-bold text-muted-foreground uppercase">Dean</div>
+                        <div className="text-[10px] font-bold text-muted-foreground uppercase flex items-center space-x-1.5">
+                          <span>Dean</span>
+                          {isDean && (
+                            <span className="text-[9px] px-1.5 py-0.5 bg-primary/10 text-primary font-bold rounded border border-primary/20">
+                              (Current Dean)
+                            </span>
+                          )}
+                        </div>
                         <div className="text-xs font-semibold text-amber-600 dark:text-amber-400">
                           Not Appointed
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAppointModalData({
-                            roleType: 'dean',
-                            unitId: college.id,
-                            unitName: college.name,
-                            currentLeaderId: college.deanId,
-                          });
-                        }}
-                        className="px-2.5 py-1 text-[11px] font-bold bg-primary text-primary-foreground rounded-lg shadow-xs hover:bg-primary/90 transition-colors cursor-pointer"
-                      >
-                        Appoint
-                      </button>
+                      {!isDean && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAppointModalData({
+                              roleType: 'dean',
+                              unitId: college.id,
+                              unitName: college.name,
+                              currentLeaderId: college.deanId,
+                            });
+                          }}
+                          className="px-2.5 py-1 text-[11px] font-bold bg-primary text-primary-foreground rounded-lg shadow-xs hover:bg-primary/90 transition-colors cursor-pointer"
+                        >
+                          Appoint
+                        </button>
+                      )}
                     </>
                   )}
                 </div>
@@ -377,7 +460,12 @@ export const AcademicStructureTab: React.FC = () => {
         <DialogFrame
           title="Add New Academic College"
           subtitle="Provision a collegiate division with its administrative dean seat."
-          onClose={() => setIsAddCollegeOpen(false)}
+          onClose={() => {
+            setIsAddCollegeOpen(false);
+            setCollegeName('');
+            setCollegeCode('');
+            setInitialDeanId('');
+          }}
         >
           <form onSubmit={handleCreateCollege} className="space-y-4">
             <div>
@@ -408,10 +496,33 @@ export const AcademicStructureTab: React.FC = () => {
                 className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs font-sans text-foreground outline-none focus:ring-2 focus:ring-primary/30 uppercase"
               />
             </div>
+            <div>
+              <label htmlFor="new-college-dean" className="block text-xs font-bold text-foreground mb-1">
+                Initial Dean (Optional)
+              </label>
+              <select
+                id="new-college-dean"
+                value={initialDeanId}
+                onChange={e => setInitialDeanId(e.target.value)}
+                className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs font-sans text-foreground outline-none focus:ring-2 focus:ring-primary/30"
+              >
+                <option value="">Leave Unassigned (Appoint Later)</option>
+                {eligibleDeanCandidates.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} ({c.email}){c.department ? ` - ${c.department}` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
             <div className="flex justify-end space-x-2 pt-2 border-t border-border">
               <button
                 type="button"
-                onClick={() => setIsAddCollegeOpen(false)}
+                onClick={() => {
+                  setIsAddCollegeOpen(false);
+                  setCollegeName('');
+                  setCollegeCode('');
+                  setInitialDeanId('');
+                }}
                 className="px-3.5 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted rounded-xl cursor-pointer"
               >
                 Cancel
@@ -433,7 +544,13 @@ export const AcademicStructureTab: React.FC = () => {
         <DialogFrame
           title="Add Academic Department"
           subtitle="Attach an academic department under an existing college."
-          onClose={() => setIsAddDeptOpen(false)}
+          onClose={() => {
+            setIsAddDeptOpen(false);
+            setDeptName('');
+            setDeptCode('');
+            setDeptCollegeId('');
+            setInitialChairId('');
+          }}
         >
           <form onSubmit={handleCreateDepartment} className="space-y-4">
             <div>
@@ -443,16 +560,27 @@ export const AcademicStructureTab: React.FC = () => {
               <select
                 id="dept-college-select"
                 required
-                value={deptCollegeId}
+                disabled={isDean}
+                value={isDean ? (effectiveCollegeId || deptCollegeId) : deptCollegeId}
                 onChange={e => setDeptCollegeId(e.target.value)}
-                className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs font-sans text-foreground outline-none focus:ring-2 focus:ring-primary/30"
+                className={`w-full px-3 py-2 bg-background border border-border rounded-xl text-xs font-sans text-foreground outline-none focus:ring-2 focus:ring-primary/30 ${
+                  isDean ? 'opacity-75 cursor-not-allowed bg-muted' : ''
+                }`}
               >
-                <option value="">Select College...</option>
-                {colleges.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} ({c.code})
+                {isDean ? (
+                  <option value={effectiveCollegeId || deptCollegeId}>
+                    {deanCollege ? `${deanCollege.name} (${deanCollege.code})` : (activeUser?.collegeName || 'Current College')}
                   </option>
-                ))}
+                ) : (
+                  <>
+                    <option value="">Select College...</option>
+                    {(colleges || []).map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} ({c.code})
+                      </option>
+                    ))}
+                  </>
+                )}
               </select>
             </div>
             <div>
@@ -483,10 +611,34 @@ export const AcademicStructureTab: React.FC = () => {
                 className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs font-sans text-foreground outline-none focus:ring-2 focus:ring-primary/30 uppercase"
               />
             </div>
+            <div>
+              <label htmlFor="new-dept-chair" className="block text-xs font-bold text-foreground mb-1">
+                Initial Chairperson (Optional)
+              </label>
+              <select
+                id="new-dept-chair"
+                value={initialChairId}
+                onChange={e => setInitialChairId(e.target.value)}
+                className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs font-sans text-foreground outline-none focus:ring-2 focus:ring-primary/30"
+              >
+                <option value="">Leave Unassigned (Appoint Later)</option>
+                {eligibleChairCandidates.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} ({c.email}){c.department ? ` - ${c.department}` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
             <div className="flex justify-end space-x-2 pt-2 border-t border-border">
               <button
                 type="button"
-                onClick={() => setIsAddDeptOpen(false)}
+                onClick={() => {
+                  setIsAddDeptOpen(false);
+                  setDeptName('');
+                  setDeptCode('');
+                  setDeptCollegeId('');
+                  setInitialChairId('');
+                }}
                 className="px-3.5 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted rounded-xl cursor-pointer"
               >
                 Cancel
