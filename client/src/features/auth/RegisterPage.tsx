@@ -73,15 +73,6 @@ export const RegisterPage: React.FC = () => {
     return departments.filter(d => d.collegeId === collegeId);
   }, [departments, collegeId]);
 
-  // Available school years for selected college
-  const collegeSchoolYears = useMemo(() => {
-    if (!collegeId) return [];
-    if (getSchoolYearsByCollege) {
-      const list = getSchoolYearsByCollege(collegeId);
-      if (list && list.length > 0) return list;
-    }
-    return (schoolYears || []).filter(sy => sy.collegeId === collegeId);
-  }, [collegeId, getSchoolYearsByCollege, schoolYears]);
 
   // Handle email activation when token is present
   const activatedTokenRef = useRef<string | null>(null);

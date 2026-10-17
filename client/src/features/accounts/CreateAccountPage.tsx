@@ -150,7 +150,6 @@ export const CreateAccountPage: React.FC<CreateAccountPageProps> = ({ onNavigate
     colleges,
     schoolYears,
     activeUser,
-    activeRole,
     getActiveSchoolYearForCollege,
     getSchoolYearsByCollege
   } = useLMS();

@@ -48,7 +48,6 @@ export const AcademicStructureTab: React.FC = () => {
     addSchoolYear,
     setActiveSchoolYear,
     getSchoolYearsByCollege,
-    getActiveSchoolYearForCollege,
   } = useLMS();
 
   const getColYears = (collegeId: string): SchoolYear[] => {
