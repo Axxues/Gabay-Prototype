@@ -1,0 +1,35 @@
+name: Keep-Alive RAG Service
+
+on:
+  schedule:
+    # Run every 10 minutes to prevent Render free instance inactivity spin-down
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  keep-alive:
+    name: Ping Health Endpoint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping RAG Service
+        env:
+          RAG_SERVICE_URL: ${{ secrets.RAG_SERVICE_URL }}
+        run: |
+          if [ -z "$RAG_SERVICE_URL" ]; then
+            echo "Error: RAG_SERVICE_URL secret is not configured."
+            exit 1
+          fi
+
+          TARGET_URL="${RAG_SERVICE_URL%/}/health"
+          echo "Pinging health endpoint: $TARGET_URL"
+
+          HTTP_STATUS=$(curl -s -o response.txt -w "%{http_code}" --max-time 30 "$TARGET_URL")
+          echo "HTTP Status: $HTTP_STATUS"
+          echo "Response Body: $(cat response.txt)"
+
+          if [ "$HTTP_STATUS" -ne 200 ]; then
+            echo "Keep-alive ping failed with HTTP status $HTTP_STATUS"
+            exit 1
+          fi
+
+          echo "Keep-alive ping succeeded."
