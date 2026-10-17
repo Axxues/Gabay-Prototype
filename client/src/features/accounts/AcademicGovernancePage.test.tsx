@@ -100,7 +100,7 @@ describe('AcademicGovernancePage', () => {
     render(<AcademicGovernancePage />);
 
     expect(screen.getByRole('heading', { name: 'Academic Governance' })).toBeInTheDocument();
-    expect(screen.getByText(/Govern collegiate academic structures, departments, and institutional leadership appointments/i)).toBeInTheDocument();
+    expect(screen.getByText(/Govern collegiate academic structures, (departments|academic programs), and institutional leadership appointments/i)).toBeInTheDocument();
     expect(screen.getByText(/Academic Structure & Multi-College Governance/i)).toBeInTheDocument();
   });
 
@@ -154,30 +154,30 @@ describe('AcademicGovernancePage', () => {
   it('collapses and expands college card hiding and showing department rows on click', () => {
     render(<AcademicGovernancePage />);
 
-    // Department of Computer Science is initially visible
-    expect(screen.getByText('Department of Computer Science')).toBeInTheDocument();
+    // Department/Program of Computer Science is initially visible
+    expect(screen.getByText(/(Department|Program) of Computer Science/i)).toBeInTheDocument();
 
     // Click collapse toggle button for the college
-    const collapseBtn = screen.getByRole('button', { name: /toggle departments for college of computer science/i });
+    const collapseBtn = screen.getByRole('button', { name: /toggle (departments|programs) for college of computer science/i });
     fireEvent.click(collapseBtn);
 
-    // Department should now be hidden
-    expect(screen.queryByText('Department of Computer Science')).not.toBeInTheDocument();
+    // Department/Program should now be hidden
+    expect(screen.queryByText(/(Department|Program) of Computer Science/i)).not.toBeInTheDocument();
 
     // Click expand
     fireEvent.click(collapseBtn);
 
-    // Department should be visible again
-    expect(screen.getByText('Department of Computer Science')).toBeInTheDocument();
+    // Department/Program should be visible again
+    expect(screen.getByText(/(Department|Program) of Computer Science/i)).toBeInTheDocument();
   });
 
   it('navigates to department details page when department row is clicked', () => {
     render(<AcademicGovernancePage />);
 
-    const deptRow = screen.getByTestId('department-row-dept-cs');
+    const deptRow = screen.getByTestId(/(department|program)-row-dept-cs/);
     expect(deptRow).toBeInTheDocument();
 
     fireEvent.click(deptRow);
-    expect(mockNavigate).toHaveBeenCalledWith('/governance/departments/dept-cs');
+    expect(mockNavigate).toHaveBeenCalledWith(expect.stringMatching(/\/governance\/(departments|programs)\/dept-cs/));
   });
 });

@@ -47,8 +47,8 @@ export function pathToTab(pathname: string): { tab: string; courseId?: string; s
   if (first === 'page2') return { tab: 'page2' };
   if (first === 'page3') return { tab: 'page3' };
   if (first === 'governance') {
-    if (second === 'departments' && third) {
-      return { tab: 'governance', subTab: 'department-details', departmentId: decodeURIComponent(third) };
+    if ((second === 'programs' || second === 'departments') && third) {
+      return { tab: 'governance', subTab: 'program-details', departmentId: decodeURIComponent(third) };
     }
     return { tab: 'governance' };
   }

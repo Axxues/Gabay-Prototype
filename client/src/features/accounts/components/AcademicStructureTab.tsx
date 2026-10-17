@@ -196,7 +196,7 @@ export const AcademicStructureTab: React.FC = () => {
     if (!canAddDepartment) {
       showAlert({
         title: 'Permission Denied',
-        message: 'Department Chairpersons cannot create academic departments.',
+        message: 'Program Chairpersons cannot create academic programs.',
         type: 'error',
       });
       return;
@@ -214,7 +214,7 @@ export const AcademicStructureTab: React.FC = () => {
       };
       await addDepartment(newDept, initialChairId.trim() || undefined);
       showAlert({
-        title: 'Department Added',
+        title: 'Program Added',
         message: `${newDept.name} (${newDept.code}) was added to the college.`,
         type: 'success',
       });
@@ -302,7 +302,7 @@ export const AcademicStructureTab: React.FC = () => {
     const blockers = getDepartmentDeleteBlockers(dept.id);
     if (blockers.length > 0) {
       setBlockerModalData({
-        title: 'Cannot Delete Department',
+        title: 'Cannot Delete Program',
         unitName: `${dept.name} (${dept.code})`,
         blockers,
       });
@@ -327,7 +327,7 @@ export const AcademicStructureTab: React.FC = () => {
 
       if (res.success) {
         showAlert({
-          title: `${deleteConfirmModalData.type === 'college' ? 'College' : 'Department'} Deleted`,
+          title: `${deleteConfirmModalData.type === 'college' ? 'College' : 'Program'} Deleted`,
           message: res.message,
           type: 'success',
         });
@@ -387,10 +387,10 @@ export const AcademicStructureTab: React.FC = () => {
             </h2>
             <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
               {isDean
-                ? 'Dean collegiate console: manage departments and designate department chairpersons within your college.'
+                ? 'Dean collegiate console: manage programs and designate program chairpersons within your college.'
                 : isChair
-                ? 'Chairperson console: view academic structure, faculty, and department operations.'
-                : 'Administrator console: dynamically provision colleges, academic departments, and designate unit leadership seats.'}
+                ? 'Chairperson console: view academic structure, faculty, and program operations.'
+                : 'Administrator console: dynamically provision colleges, academic programs, and designate unit leadership seats.'}
             </p>
           </div>
         </div>
@@ -423,7 +423,7 @@ export const AcademicStructureTab: React.FC = () => {
               } active:scale-[0.98] font-bold text-xs rounded-xl transition-all flex items-center space-x-1.5 cursor-pointer`}
             >
               <Plus className="w-4 h-4" />
-              <span>Add Department</span>
+              <span>Add Program</span>
             </button>
           )}
         </div>
@@ -445,7 +445,7 @@ export const AcademicStructureTab: React.FC = () => {
                 role="button"
                 tabIndex={0}
                 aria-expanded={!collapsedColleges[college.id]}
-                aria-label={`Toggle departments for ${college.name}`}
+                aria-label={`Toggle programs for ${college.name}`}
                 onClick={() => toggleCollegeCollapse(college.id)}
                 onKeyDown={(e) => {
                   if (e.target !== e.currentTarget) return;
@@ -478,7 +478,7 @@ export const AcademicStructureTab: React.FC = () => {
                       </span>
                     </div>
                     <div className="text-xs text-muted-foreground mt-0.5">
-                      {collegeDepts.length} {collegeDepts.length === 1 ? 'Department' : 'Departments'}
+                      {collegeDepts.length} {collegeDepts.length === 1 ? 'Program' : 'Programs'}
                     </div>
                   </div>
                 </div>
@@ -568,12 +568,12 @@ export const AcademicStructureTab: React.FC = () => {
                 )}
               </div>
 
-              {/* Department Listing Table */}
+              {/* Program Listing Table */}
               {!collapsedColleges[college.id] && (
                 <div className="divide-y divide-border/60">
                   {collegeDepts.length === 0 ? (
                     <div className="p-6 text-center text-xs text-muted-foreground">
-                      No departments added yet for this college.{' '}
+                      No programs added yet for this college.{' '}
                       {canAddDepartment && (
                         <button
                           type="button"
@@ -594,8 +594,8 @@ export const AcademicStructureTab: React.FC = () => {
                       return (
                         <div
                           key={dept.id}
-                          data-testid={`department-row-${dept.id}`}
-                          onClick={() => navigate(`/governance/departments/${encodeURIComponent(dept.id)}`)}
+                          data-testid={`program-row-${dept.id}`}
+                          onClick={() => navigate(`/governance/programs/${encodeURIComponent(dept.id)}`)}
                           className="p-3.5 sm:px-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-muted/30 transition-colors cursor-pointer group"
                         >
                           <div className="flex items-center space-x-3">
@@ -661,7 +661,7 @@ export const AcademicStructureTab: React.FC = () => {
                                   handleInitiateDeleteDepartment(dept);
                                 }}
                                 className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors cursor-pointer shrink-0"
-                                title="Delete Department"
+                                title="Delete Program"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
@@ -762,11 +762,11 @@ export const AcademicStructureTab: React.FC = () => {
         </DialogFrame>
       )}
 
-      {/* ADD DEPARTMENT MODAL */}
+      {/* ADD PROGRAM MODAL */}
       {isAddDeptOpen && (
         <DialogFrame
-          title="Add Academic Department"
-          subtitle="Attach an academic department under an existing college."
+          title="Add Academic Program"
+          subtitle="Attach an academic program under an existing college."
           onClose={() => {
             setIsAddDeptOpen(false);
             setDeptName('');
@@ -808,13 +808,13 @@ export const AcademicStructureTab: React.FC = () => {
             </div>
             <div>
               <label htmlFor="new-dept-name" className="block text-xs font-bold text-foreground mb-1">
-                Department Name
+                Program Name
               </label>
               <input
                 id="new-dept-name"
                 type="text"
                 required
-                placeholder="e.g. Department of Agribusiness"
+                placeholder="e.g. Program in Agribusiness"
                 value={deptName}
                 onChange={e => setDeptName(e.target.value)}
                 className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs font-sans text-foreground outline-none focus:ring-2 focus:ring-primary/30"
@@ -822,13 +822,13 @@ export const AcademicStructureTab: React.FC = () => {
             </div>
             <div>
               <label htmlFor="new-dept-code" className="block text-xs font-bold text-foreground mb-1">
-                Department Code
+                Program Code
               </label>
               <input
                 id="new-dept-code"
                 type="text"
                 required
-                placeholder="e.g. AGRIBUS"
+                placeholder="e.g. BSAB"
                 value={deptCode}
                 onChange={e => setDeptCode(e.target.value)}
                 className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs font-sans text-foreground outline-none focus:ring-2 focus:ring-primary/30 uppercase"
@@ -847,7 +847,7 @@ export const AcademicStructureTab: React.FC = () => {
                 <option value="">Leave Unassigned (Appoint Later)</option>
                 {eligibleChairCandidates.map(c => (
                   <option key={c.id} value={c.id}>
-                    {c.name} ({c.email}){c.department ? ` - ${c.department}` : ''}
+                    {c.name} ({c.email}){c.program || c.department ? ` - ${c.program || c.department}` : ''}
                   </option>
                 ))}
               </select>
@@ -871,7 +871,7 @@ export const AcademicStructureTab: React.FC = () => {
                 disabled={isSubmittingDept}
                 className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-xs rounded-xl shadow-xs cursor-pointer disabled:opacity-50"
               >
-                {isSubmittingDept ? 'Adding...' : 'Add Department'}
+                {isSubmittingDept ? 'Adding...' : 'Add Program'}
               </button>
             </div>
           </form>
@@ -983,7 +983,7 @@ export const AcademicStructureTab: React.FC = () => {
       {/* CONFIRM DELETION MODAL */}
       {deleteConfirmModalData && (
         <DialogFrame
-          title={`Delete ${deleteConfirmModalData.type === 'college' ? 'Academic College' : 'Academic Department'}`}
+          title={`Delete ${deleteConfirmModalData.type === 'college' ? 'Academic College' : 'Academic Program'}`}
           subtitle="This destructive action cannot be undone."
           onClose={() => !isDeleting && setDeleteConfirmModalData(null)}
         >
@@ -996,7 +996,7 @@ export const AcademicStructureTab: React.FC = () => {
                 </p>
                 {deleteConfirmModalData.type === 'college' && (deleteConfirmModalData.childDepartments?.length ?? 0) > 0 && (
                   <p className="text-muted-foreground">
-                    This college contains <strong className="text-foreground">{deleteConfirmModalData.childDepartments!.length} department(s)</strong> ({deleteConfirmModalData.childDepartments!.map(d => d.name).join(', ')}), which have no enrolled users. Deleting this college will also permanently delete these departments.
+                    This college contains <strong className="text-foreground">{deleteConfirmModalData.childDepartments!.length} program(s)</strong> ({deleteConfirmModalData.childDepartments!.map(d => d.name).join(', ')}), which have no enrolled users. Deleting this college will also permanently delete these programs.
                   </p>
                 )}
               </div>
@@ -1016,7 +1016,7 @@ export const AcademicStructureTab: React.FC = () => {
                 onClick={handleConfirmDelete}
                 className="px-4 py-2 bg-destructive hover:bg-destructive/90 text-destructive-foreground font-bold text-xs rounded-xl shadow-xs cursor-pointer disabled:opacity-50"
               >
-                {isDeleting ? 'Deleting...' : deleteConfirmModalData.type === 'college' && (deleteConfirmModalData.childDepartments?.length ?? 0) > 0 ? 'Delete College & Departments' : 'Delete'}
+                {isDeleting ? 'Deleting...' : deleteConfirmModalData.type === 'college' && (deleteConfirmModalData.childDepartments?.length ?? 0) > 0 ? 'Delete College & Programs' : 'Delete'}
               </button>
             </div>
           </div>

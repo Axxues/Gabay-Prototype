@@ -211,9 +211,9 @@ describe('AcademicStructureTab Scoping and Leader Appointments', () => {
 
     render(<AcademicStructureTab />);
 
-    // Chancellor sees + Add College and + Add Department
+    // Chancellor sees + Add College and + Add Program
     expect(screen.getByRole('button', { name: /add college/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /add department/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /add (department|program)/i })).toBeInTheDocument();
 
     // Chancellor sees all colleges
     expect(screen.getByText('College of Engineering and Technology')).toBeInTheDocument();
@@ -241,8 +241,8 @@ describe('AcademicStructureTab Scoping and Leader Appointments', () => {
     // Dean cannot see + Add College
     expect(screen.queryByRole('button', { name: /add college/i })).not.toBeInTheDocument();
 
-    // Dean sees + Add Department
-    const addDeptBtn = screen.getByRole('button', { name: /add department/i });
+    // Dean sees + Add Program
+    const addDeptBtn = screen.getByRole('button', { name: /add (department|program)/i });
     expect(addDeptBtn).toBeInTheDocument();
 
     // Shows only Dean's college
@@ -360,20 +360,20 @@ describe('AcademicStructureTab Scoping and Leader Appointments', () => {
 
     render(<AcademicStructureTab />);
 
-    // Open Add Department modal
-    fireEvent.click(screen.getByRole('button', { name: /add department/i }));
-    expect(screen.getByText('Add Academic Department')).toBeInTheDocument();
+    // Open Add Program modal
+    fireEvent.click(screen.getByRole('button', { name: /add (department|program)/i }));
+    expect(screen.getByText(/Add Academic (Department|Program)/i)).toBeInTheDocument();
 
     // Parent college should be locked to CET
     const parentSelect = screen.getByLabelText(/select parent college/i) as HTMLSelectElement;
     expect(parentSelect).toBeDisabled();
     expect(parentSelect.value).toBe('col-cet');
 
-    // Fill department name and code
-    fireEvent.change(screen.getByLabelText(/department name/i), {
+    // Fill program name and code
+    fireEvent.change(screen.getByLabelText(/(department|program) name/i), {
       target: { value: 'Software Engineering' },
     });
-    fireEvent.change(screen.getByLabelText(/department code/i), {
+    fireEvent.change(screen.getByLabelText(/(department|program) code/i), {
       target: { value: 'SE' },
     });
 
@@ -392,7 +392,7 @@ describe('AcademicStructureTab Scoping and Leader Appointments', () => {
     // Submit
     const dialog = screen.getByRole('dialog');
     await act(async () => {
-      fireEvent.click(within(dialog).getByRole('button', { name: /add department/i }));
+      fireEvent.click(within(dialog).getByRole('button', { name: /add (department|program)/i }));
     });
 
     expect(mockAddDepartment).toHaveBeenCalledTimes(1);
@@ -410,7 +410,7 @@ describe('AcademicStructureTab Scoping and Leader Appointments', () => {
     render(<AcademicStructureTab />);
 
     const cetHeader = screen.getByRole('button', {
-      name: /toggle departments for college of engineering and technology/i,
+      name: /toggle (departments|programs) for college of engineering and technology/i,
     });
     expect(cetHeader).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByText('Information Technology')).toBeInTheDocument();
@@ -432,7 +432,7 @@ describe('AcademicStructureTab Scoping and Leader Appointments', () => {
     render(<AcademicStructureTab />);
 
     const cetHeader = screen.getByRole('button', {
-      name: /toggle departments for college of engineering and technology/i,
+      name: /toggle (departments|programs) for college of engineering and technology/i,
     });
 
     // The first Reassign button belongs to the CET dean card in the header
@@ -470,8 +470,8 @@ describe('AcademicStructureTab Scoping and Leader Appointments', () => {
     // Chair MUST NOT see + Add College
     expect(screen.queryByRole('button', { name: /add college/i })).not.toBeInTheDocument();
 
-    // Chair MUST NOT see + Add Department
-    expect(screen.queryByRole('button', { name: /add department/i })).not.toBeInTheDocument();
+    // Chair MUST NOT see + Add Program
+    expect(screen.queryByRole('button', { name: /add (department|program)/i })).not.toBeInTheDocument();
 
     // Chair MUST NOT see Reassign/Appoint for Deans
     expect(screen.queryByRole('button', { name: /reassign/i })).not.toBeInTheDocument();
@@ -482,7 +482,7 @@ describe('AcademicStructureTab Scoping and Leader Appointments', () => {
     // Scoped to their college
     expect(screen.getByText('College of Engineering and Technology')).toBeInTheDocument();
 
-    // Chair MUST NOT see delete buttons for colleges or departments
+    // Chair MUST NOT see delete buttons for colleges or programs
     expect(screen.queryByRole('button', { name: /^delete /i })).not.toBeInTheDocument();
   });
 
@@ -518,7 +518,7 @@ describe('AcademicStructureTab Scoping and Leader Appointments', () => {
     mockActiveUser = { id: 'u-chancellor', role: 'superadmin', adminSubrole: 'chancellor' };
     mockGetCollegeDeleteBlockers.mockReturnValueOnce([
       'College has an assigned Dean (Dean Alice CET).',
-      'Department "Information Technology" has an assigned Chairperson (Prof. Charlie IT).',
+      'Program "Information Technology" has an assigned Program Chairperson (Prof. Charlie IT).',
     ]);
 
     render(<AcademicStructureTab />);
@@ -528,7 +528,7 @@ describe('AcademicStructureTab Scoping and Leader Appointments', () => {
 
     expect(screen.getByText('Cannot Delete College')).toBeInTheDocument();
     expect(screen.getByText(/College has an assigned Dean/i)).toBeInTheDocument();
-    expect(screen.getByText(/Information Technology.*assigned Chairperson/i)).toBeInTheDocument();
+    expect(screen.getByText(/Information Technology.*assigned Program Chairperson/i)).toBeInTheDocument();
 
     // Dismiss blocker modal
     fireEvent.click(screen.getByRole('button', { name: /^close$/i }));
@@ -551,7 +551,7 @@ describe('AcademicStructureTab Scoping and Leader Appointments', () => {
 
     // Confirms deletion
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /delete college & departments/i }));
+      fireEvent.click(screen.getByRole('button', { name: /delete college & (departments|programs)/i }));
     });
 
     expect(mockDeleteCollege).toHaveBeenCalledWith('col-cet');

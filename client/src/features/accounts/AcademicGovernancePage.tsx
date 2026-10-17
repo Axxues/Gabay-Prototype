@@ -52,7 +52,7 @@ export const AcademicGovernancePage: React.FC<AcademicGovernancePageProps> = () 
       {/* Top Header & Actions */}
       <PageHeader
         title="Academic Governance"
-        description="Govern collegiate academic structures, departments, and institutional leadership appointments."
+        description="Govern collegiate academic structures, academic programs, and institutional leadership appointments."
         actions={
           canTransfer ? (
             <button

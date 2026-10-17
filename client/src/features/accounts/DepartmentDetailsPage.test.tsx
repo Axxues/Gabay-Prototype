@@ -88,6 +88,40 @@ const mockUsers: User[] = [
     avatar: '',
     verificationStatus: 'verified',
   },
+  {
+    id: 'u-admin-cs',
+    name: 'Jayvee Admin',
+    email: 'jayvee.admin@dmmmsu.edu.ph',
+    role: 'admin',
+    collegeId: 'col-ccs',
+    collegeName: 'College of Computer Science',
+    department: 'Department of Computer Science',
+    title: 'Department Administrator',
+    avatar: '',
+  },
+  {
+    id: 'u-staff-cs',
+    name: 'Linus Registrar',
+    email: 'linus.registrar@dmmmsu.edu.ph',
+    role: 'staff',
+    collegeId: 'col-ccs',
+    collegeName: 'College of Computer Science',
+    department: 'Department of Computer Science',
+    title: 'Department Registrar',
+    avatar: '',
+  },
+  {
+    id: 'u-dean-coe',
+    name: 'Dr. Marcus Reyes',
+    email: 'dean.coe@dmmmsu.edu.ph',
+    role: 'admin',
+    adminSubrole: 'dean',
+    collegeId: 'col-coe',
+    collegeName: 'College of Education',
+    department: 'College of Education',
+    title: 'College Dean',
+    avatar: '',
+  },
 ];
 
 const mockCourses: Course[] = [
@@ -174,8 +208,8 @@ describe('DepartmentDetailsPage', () => {
     render(<DepartmentDetailsPage />);
 
     expect(screen.getByText('Academic Governance')).toBeInTheDocument();
-    expect(screen.getByText('College of Computer Science')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /department of computer science/i })).toBeInTheDocument();
+    expect(screen.getByText(/College of Computer Science/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /(department|program) (of|in) computer science/i })).toBeInTheDocument();
     expect(screen.getByText('CS')).toBeInTheDocument();
 
     const backButton = screen.getByRole('button', { name: /back to academic governance/i });
@@ -191,7 +225,7 @@ describe('DepartmentDetailsPage', () => {
     const chairCard = screen.getByTestId('incumbent-chairperson-card');
     expect(within(chairCard).getByText('Prof. Alan Turing')).toBeInTheDocument();
     expect(within(chairCard).getByText('alan.turing@dmmmsu.edu.ph')).toBeInTheDocument();
-    expect(within(chairCard).getByText(/department chairperson/i)).toBeInTheDocument();
+    expect(within(chairCard).getByText(/(department|program) chairperson/i)).toBeInTheDocument();
 
     const reassignButton = screen.getByRole('button', { name: /reassign chairperson/i });
     expect(reassignButton).toBeInTheDocument();
@@ -233,7 +267,9 @@ describe('DepartmentDetailsPage', () => {
 
     render(<DepartmentDetailsPage />);
 
-    expect(screen.getByText(/no chairperson appointed/i)).toBeInTheDocument();
+    expect(screen.getByTestId('unappointed-chairperson-card')).toBeInTheDocument();
+    expect(screen.getByText('No Chairperson Appointed')).toBeInTheDocument();
+    expect(screen.getByText('Seat Vacant')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /appoint chairperson/i })).toBeInTheDocument();
   });
 
@@ -253,28 +289,73 @@ describe('DepartmentDetailsPage', () => {
     expect(sectionsMetric).toHaveTextContent('3'); // sec-1, sec-2, sec-3
   });
 
-  it('switches between Faculty Roster, Course Catalog, and Student Directory tabs', () => {
+  it('shows every account affiliated with the department, not just faculty', () => {
     render(<DepartmentDetailsPage />);
 
-    // Faculty Roster is default tab
-    expect(screen.getByText('Faculty Roster')).toBeInTheDocument();
+    // Faculty member, chairperson, college dean, admin, staff, and student all appear in the roster
     expect(screen.getByText('Prof. Ada Lovelace')).toBeInTheDocument();
-
-    // Switch to Course Catalog tab
-    const coursesTabBtn = screen.getByRole('tab', { name: /course catalog/i });
-    fireEvent.click(coursesTabBtn);
-
-    expect(screen.getByText('CS 101')).toBeInTheDocument();
-    expect(screen.getByText('Introduction to Computer Science')).toBeInTheDocument();
-    expect(screen.getByText('Published')).toBeInTheDocument();
-    expect(screen.getByText('Draft')).toBeInTheDocument();
-
-    // Switch to Student Directory tab
-    const studentsTabBtn = screen.getByRole('tab', { name: /student directory/i });
-    fireEvent.click(studentsTabBtn);
-
+    expect(screen.getByText('Jayvee Admin')).toBeInTheDocument();
+    expect(screen.getByText('Linus Registrar')).toBeInTheDocument();
     expect(screen.getByText('Grace Hopper')).toBeInTheDocument();
     expect(screen.getByText('2026-CS-001')).toBeInTheDocument();
+    expect(screen.getAllByText('Prof. Alan Turing').length).toBe(2); // chairperson card + roster
+
+    // The dean of the parent college is on the roster; another college's dean is not
+    expect(screen.getByText('Dr. Eleanor Vance')).toBeInTheDocument();
+    expect(screen.queryByText('Dr. Marcus Reyes')).not.toBeInTheDocument();
+
+    // Filter chips replace the old tabs, with per-role counts
+    const filters = screen.getByRole('group', { name: /filter roster by role/i });
+    expect(within(filters).getByRole('button', { name: /all/i })).toHaveTextContent('6');
+    expect(within(filters).getByRole('button', { name: /^admin/i })).toHaveTextContent('3'); // dean + chair + dept admin
+    expect(within(filters).getByRole('button', { name: /^faculty/i })).toHaveTextContent('1'); // Ada
+    expect(within(filters).getByRole('button', { name: /^staff/i })).toHaveTextContent('1'); // Linus
+    expect(within(filters).getByRole('button', { name: /^student/i })).toHaveTextContent('1'); // Grace
+  });
+
+  it('narrows the roster to the selected role filter', () => {
+    render(<DepartmentDetailsPage />);
+
+    const allFilter = screen.getByRole('button', { name: /all/i });
+    expect(allFilter).toHaveAttribute('aria-pressed', 'true');
+
+    // Students only
+    fireEvent.click(screen.getByRole('button', { name: /^student/i }));
+    expect(screen.getByText('Grace Hopper')).toBeInTheDocument();
+    expect(screen.queryByText('Prof. Ada Lovelace')).not.toBeInTheDocument();
+    expect(screen.queryByText('Linus Registrar')).not.toBeInTheDocument();
+
+    // Administrative seats only (college dean + sitting chairperson + department admin)
+    fireEvent.click(screen.getByRole('button', { name: /^admin/i }));
+    expect(screen.getAllByText('Prof. Alan Turing').length).toBe(2); // card + roster row
+    expect(screen.getByText('Dr. Eleanor Vance')).toBeInTheDocument();
+    expect(screen.getByText('Jayvee Admin')).toBeInTheDocument();
+    expect(screen.queryByText('Grace Hopper')).not.toBeInTheDocument();
+    expect(screen.queryByText('Prof. Ada Lovelace')).not.toBeInTheDocument();
+  });
+
+  it('shows only the dean of the department’s own college', () => {
+    // A non-dean admin can open any department, so the college boundary is what decides
+    mockContext.activeRole = 'admin';
+    mockContext.activeUser = mockUsers.find(u => u.id === 'u-admin-cs')!;
+    mockParams = { deptId: 'dept-elem' };
+
+    render(<DepartmentDetailsPage />);
+
+    expect(screen.getByText('Dr. Marcus Reyes')).toBeInTheDocument();
+    expect(screen.queryByText('Dr. Eleanor Vance')).not.toBeInTheDocument();
+  });
+
+  it('removes the Course Catalog view entirely', () => {
+    render(<DepartmentDetailsPage />);
+
+    expect(screen.queryByRole('tab', { name: /course catalog/i })).not.toBeInTheDocument();
+    expect(screen.queryByText('Course Catalog')).not.toBeInTheDocument();
+    expect(screen.queryByText('CS 101')).not.toBeInTheDocument();
+    expect(screen.queryByText('Introduction to Computer Science')).not.toBeInTheDocument();
+
+    // The department's course count still surfaces through the metric card
+    expect(screen.getByTestId('metric-active-courses')).toHaveTextContent('2');
   });
 
   it('blocks Dean from accessing departments outside their assigned college', () => {
@@ -292,7 +373,7 @@ describe('DepartmentDetailsPage', () => {
 
     render(<DepartmentDetailsPage />);
 
-    expect(screen.getByText(/department not found/i)).toBeInTheDocument();
+    expect(screen.getByText(/(department|program) not found/i)).toBeInTheDocument();
   });
 
   it('filters directory list when user types in the search input', () => {
@@ -302,7 +383,7 @@ describe('DepartmentDetailsPage', () => {
     expect(screen.getAllByText('Prof. Alan Turing').length).toBe(2);
     expect(screen.getByText('Prof. Ada Lovelace')).toBeInTheDocument();
 
-    const searchInput = screen.getByPlaceholderText(/filter faculty members/i);
+    const searchInput = screen.getByPlaceholderText(/filter members/i);
     fireEvent.change(searchInput, { target: { value: 'lovelace' } });
 
     // Ada remains, Alan is filtered out of the roster (leaving only 1 in chairperson card)
@@ -316,4 +397,45 @@ describe('DepartmentDetailsPage', () => {
     expect(screen.getAllByText('Prof. Alan Turing').length).toBe(2);
     expect(screen.getByText('Prof. Ada Lovelace')).toBeInTheDocument();
   });
+
+  it('opens Appoint Chairperson modal in a centered portal and allows selecting a candidate', async () => {
+    mockParams = { deptId: 'dept-cs' };
+    render(<DepartmentDetailsPage />);
+
+    // Click Reassign Chairperson button
+    const appointBtn = screen.getByRole('button', { name: /reassign chairperson/i });
+    fireEvent.click(appointBtn);
+
+    // Modal dialog is displayed
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toBeInTheDocument();
+    expect(screen.getByText('Appoint Chairperson')).toBeInTheDocument();
+    expect(screen.getByText(/designate unit administrative leader/i)).toBeInTheDocument();
+
+    // The dialog should be rendered into document.body via portal
+    expect(document.body).toContainElement(dialog);
+
+    // Dialog contains candidate dropdown
+    const select = screen.getByLabelText(/select candidate/i);
+    expect(select).toBeInTheDocument();
+
+    // Select candidate
+    fireEvent.change(select, { target: { value: 'u-fac-cs' } });
+    expect((select as HTMLSelectElement).value).toBe('u-fac-cs');
+
+    // Confirm Appointment button is enabled and clickable
+    const confirmBtn = screen.getByRole('button', { name: /confirm appointment/i });
+    expect(confirmBtn).not.toBeDisabled();
+    await act(async () => {
+      fireEvent.click(confirmBtn);
+    });
+
+    expect(mockTransferLeadership).toHaveBeenCalledWith(
+      'chairperson',
+      'u-chair-cs',
+      'u-fac-cs',
+      'dept-cs'
+    );
+  });
 });
+
