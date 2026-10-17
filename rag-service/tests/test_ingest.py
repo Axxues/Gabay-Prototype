@@ -212,7 +212,7 @@ def test_fetch_likha_data_authenticated():
 
     # Verify courses GET call
     mock_client.get.assert_called_once_with(
-        "https://gabay.zyberlab.com/items/courses?filter[status][_eq]=published",
+        "https://gabay.zyberlab.com/items/courses?filter[status][_eq]=published&limit=-1",
         headers={"Authorization": "Bearer mock_token_abc123"},
     )
 

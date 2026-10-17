@@ -380,8 +380,8 @@ def fetch_likha_data(
         if token:
             headers["Authorization"] = f"Bearer {token}"
 
-        # Fetch published courses
-        courses_url = f"{base_url}/items/courses?filter[status][_eq]=published"
+        # Fetch published courses (limit=-1 to retrieve complete catalog)
+        courses_url = f"{base_url}/items/courses?filter[status][_eq]=published&limit=-1"
         courses_resp = client.get(courses_url, headers=headers)
         courses_resp.raise_for_status()
 
@@ -441,13 +441,16 @@ def run_ingestion(
 
         sections = parse_syllabus_to_sections(code, title, syllabus_data)
         for section in sections:
-            upsert_vector_document(
-                doc_id=section["id"],
-                text=section["text"],
-                metadata=section["metadata"],
-                index=index,
-            )
-            sections_upserted += 1
+            try:
+                upsert_vector_document(
+                    doc_id=section["id"],
+                    text=section["text"],
+                    metadata=section["metadata"],
+                    index=index,
+                )
+                sections_upserted += 1
+            except Exception as exc:
+                logger.warning("Failed to upsert section %s for course %s: %s", section.get("id"), code, exc)
 
     summary = {
         "status": "success",
