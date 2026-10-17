@@ -566,6 +566,60 @@ describe('Likha LMS Direct API Client', () => {
     );
     expect(result.likes).toBe(5);
   });
+
+  describe('Session Expiration Detection on 401', () => {
+    it('dispatches gabay:session-expired and clears token on 401 when token exists', async () => {
+      localStorage.setItem('gabay_token', 'valid-looking-token');
+      const listener = vi.fn();
+      window.addEventListener('gabay:session-expired', listener);
+
+      vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        text: async () => JSON.stringify({ errors: [{ message: 'Token expired', extensions: { code: 'TOKEN_EXPIRED' } }] }),
+      } as any);
+
+      await expect(likhaLmsApi.academicStructure.getColleges()).rejects.toThrow();
+
+      expect(listener).toHaveBeenCalled();
+      expect(localStorage.getItem('gabay_token')).toBeNull();
+      window.removeEventListener('gabay:session-expired', listener);
+    });
+
+    it('does not dispatch gabay:session-expired on 401 when no token is present', async () => {
+      localStorage.removeItem('gabay_token');
+      const listener = vi.fn();
+      window.addEventListener('gabay:session-expired', listener);
+
+      vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        text: async () => JSON.stringify({ errors: [{ message: 'Unauthorized' }] }),
+      } as any);
+
+      await expect(likhaLmsApi.academicStructure.getColleges()).rejects.toThrow();
+
+      expect(listener).not.toHaveBeenCalled();
+      window.removeEventListener('gabay:session-expired', listener);
+    });
+
+    it('does not dispatch gabay:session-expired on 401 for /auth/login credentials failure', async () => {
+      localStorage.setItem('gabay_token', 'stale-token');
+      const listener = vi.fn();
+      window.addEventListener('gabay:session-expired', listener);
+
+      vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        text: async () => JSON.stringify({ errors: [{ message: 'Invalid user credentials', extensions: { code: 'INVALID_CREDENTIALS' } }] }),
+      } as any);
+
+      await expect(likhaLmsApi.auth.login('user@example.com', 'wrongpassword')).rejects.toThrow();
+
+      expect(listener).not.toHaveBeenCalled();
+      window.removeEventListener('gabay:session-expired', listener);
+    });
+  });
 });
 
 

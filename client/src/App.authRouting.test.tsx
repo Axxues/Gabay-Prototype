@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   isAuthenticated: false,
   authReady: true,
   isLoading: false,
+  isSessionExpired: false,
 }));
 
 const mockUser = {
@@ -26,6 +27,7 @@ vi.mock('./shared/context/LMSContext', () => ({
     isAuthenticated: mocks.isAuthenticated,
     authReady: mocks.authReady,
     isLoading: mocks.isLoading,
+    isSessionExpired: mocks.isSessionExpired,
     db: { users: [], courses: [], enrollmentRequests: [], notifications: [], messages: [], announcements: [] },
     activeCourseId: null,
     setActiveCourseId: vi.fn(),
@@ -121,5 +123,28 @@ describe('Auth Routing and Skeleton Loading', () => {
     );
 
     expect(screen.getByTestId('location-spy')).toHaveTextContent('/dashboard');
+  });
+
+  it('holds AuthLoadingScreen rather than redirecting to /login when isSessionExpired is true on protected route', () => {
+    mocks.isAuthenticated = false;
+    mocks.authReady = true;
+    mocks.isLoading = false;
+    mocks.isSessionExpired = true;
+
+    function LocationSpy() {
+      const location = useLocation();
+      return <div data-testid="location-spy">{location.pathname}</div>;
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/dashboard']}>
+        <LocationSpy />
+        <AppContent />
+      </MemoryRouter>
+    );
+
+    // Location must stay on /dashboard (not redirected to /login yet)
+    expect(screen.getByTestId('location-spy')).toHaveTextContent('/dashboard');
+    expect(screen.getByTestId('dashboard-skeleton')).toBeInTheDocument();
   });
 });

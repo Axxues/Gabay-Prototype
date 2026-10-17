@@ -36,4 +36,53 @@ describe('apiFetch', () => {
     const err = await apiFetch('/api/x').catch(e => e);
     expect((err as ApiError).code).toBe('request_failed');
   });
+
+  it('clears token and dispatches SESSION_EXPIRED_EVENT on 401 when token is present', async () => {
+    setToken('stale-jwt-token');
+    const dispatchSpy = vi.fn();
+    vi.stubGlobal('dispatchEvent', dispatchSpy);
+
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: false,
+      status: 401,
+      json: async () => ({ error: { code: 'unauthorized', message: 'Token expired' } }),
+    })));
+
+    await expect(apiFetch('/items/colleges')).rejects.toThrow();
+
+    expect(dispatchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'gabay:session-expired' })
+    );
+  });
+
+  it('does not dispatch SESSION_EXPIRED_EVENT on 401 when no token is present', async () => {
+    const dispatchSpy = vi.fn();
+    vi.stubGlobal('dispatchEvent', dispatchSpy);
+
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: false,
+      status: 401,
+      json: async () => ({ error: { code: 'unauthorized', message: 'Unauthorized' } }),
+    })));
+
+    await expect(apiFetch('/items/colleges')).rejects.toThrow();
+
+    expect(dispatchSpy).not.toHaveBeenCalled();
+  });
+
+  it('does not dispatch SESSION_EXPIRED_EVENT on 401 for /auth/login credential failure', async () => {
+    setToken('existing-token');
+    const dispatchSpy = vi.fn();
+    vi.stubGlobal('dispatchEvent', dispatchSpy);
+
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: false,
+      status: 401,
+      json: async () => ({ error: { code: 'invalid_credentials', message: 'Invalid credentials' } }),
+    })));
+
+    await expect(apiFetch('/auth/login')).rejects.toThrow();
+
+    expect(dispatchSpy).not.toHaveBeenCalled();
+  });
 });

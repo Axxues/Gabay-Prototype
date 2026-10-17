@@ -62,6 +62,9 @@ export default {
         "sidebar-foreground": "hsl(var(--sidebar-foreground))",
         "card-hover": "hsl(var(--card-hover))",
       },
+      spacing: {
+        4.5: "1.125rem",
+      },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",

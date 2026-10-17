@@ -78,8 +78,11 @@ const AuthLoadingScreen: React.FC = () => {
 };
 
 const RequireAuth: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated, authReady } = useLMS();
+  const { isAuthenticated, authReady, isSessionExpired } = useLMS();
   if (!authReady) {
+    return <AuthLoadingScreen />;
+  }
+  if (isSessionExpired && !isAuthenticated) {
     return <AuthLoadingScreen />;
   }
   if (!isAuthenticated) {
@@ -97,10 +100,13 @@ const RequireAdmin: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 };
 
 const LoginRoute: React.FC = () => {
-  const { isAuthenticated, authReady } = useLMS();
+  const { isAuthenticated, authReady, isSessionExpired } = useLMS();
 
   if (!authReady) {
     return <AuthLoadingScreen />;
+  }
+  if (isSessionExpired) {
+    return <LoginPage />;
   }
   if (isAuthenticated) {
     return <Navigate to="/dashboard" replace />;

@@ -48,10 +48,11 @@ import { DEFAULT_COLLEGES, DEFAULT_DEPARTMENTS } from '../data/collegesData';
 import { effectiveTerms, normalizeGradesReleased, normalizeTermId } from '../utils/gradingTerms';
 import { isSyllabusGradeReady } from '../utils/syllabusGradeGate';
 import { AlertModal, type AlertModalOptions } from '../components/common/AlertModal';
+import { SessionExpiredModal } from '../components/common/SessionExpiredModal';
 import type { AssetTransformOptions } from '../utils/avatar';
 import { canPickSection } from '../utils/sections';
 import type { OfficialSyllabusData } from '../data/syllabusData';
-import { ApiError, getToken, setToken, clearToken, likhaLmsApi, LIKHA_URL } from '../api/client';
+import { ApiError, getToken, setToken, clearToken, likhaLmsApi, LIKHA_URL, SESSION_EXPIRED_EVENT } from '../api/client';
 import { syllabusApi, deleteDraft, withdrawSyllabus } from '../api/syllabus';
 import type { SyllabusRevisionHeader, SyllabusRevisionResponse, SyllabusSectionKey } from '../types/syllabusApi';
 import { settledValue } from '../utils/promise';
@@ -79,6 +80,8 @@ export interface LMSContextType {
   isSyncing: boolean;
   lastError: string | null;
   authReady: boolean;
+  isSessionExpired: boolean;
+  dismissSessionExpired: () => void;
   // Session-restore gate: false until the token -> Likha getMe restore
   // attempt settles (or is skipped when no token exists). Route guards
   // render the loading skeleton while this is false.
@@ -1646,7 +1649,30 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isLoading, setIsLoading] = useState(false);
   const [isSyncing] = useState(false);
   const [authReady, setAuthReady] = useState(false);
+  const [isSessionExpired, setIsSessionExpired] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      setIsSessionExpired(true);
+    };
+    window.addEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
+    return () => {
+      window.removeEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
+    };
+  }, []);
+
+  const handleSessionExpiredBackToLogin = useCallback(() => {
+    clearToken();
+    try {
+      likhaLmsApi?.invalidateCache?.();
+    } catch {}
+    setCurrentUser(null);
+    setIsSessionExpired(false);
+    if (typeof window !== 'undefined') {
+      window.location.href = '/login';
+    }
+  }, []);
   // SPR lazy-hydration guard: config/cells are fetched once per course per
   // session so getSPRConfig-triggered fills never refetch in a loop.
   const sprHydratedRef = useRef<Set<string>>(new Set());
@@ -2365,6 +2391,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             // If Likha explicitly returns 401 Unauthorized, the stored token is expired/invalid.
             if (likhaErr?.status === 401 || String(likhaErr?.message).includes('401')) {
               clearToken();
+              setIsSessionExpired(true);
               return;
             }
           }
@@ -2392,6 +2419,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         if (isAuthError) {
           clearToken();
+          setIsSessionExpired(true);
         } else {
           const message = err instanceof ApiError ? err.message : 'Failed to restore session.';
           setLastError(message);
@@ -7029,7 +7057,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addCollege,
         addDepartment,
         logHistory,
-        clearHistory
+        clearHistory,
+        isSessionExpired,
+        dismissSessionExpired: handleSessionExpiredBackToLogin
       }}
     >
       {children}
@@ -7037,6 +7067,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isOpen={isAlertOpen}
         options={alertOptions}
         onClose={closeAlert}
+      />
+      <SessionExpiredModal
+        isOpen={isSessionExpired}
+        onBackToLogin={handleSessionExpiredBackToLogin}
       />
     </LMSContext.Provider>
   );

@@ -216,24 +216,28 @@ export const AcademicStructureTab: React.FC = () => {
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header with Actions */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4.5 bg-card border border-border rounded-2xl">
-        <div>
-          <h2 className="text-sm font-extrabold text-foreground flex items-center space-x-2">
-            <FolderTree className="w-4 h-4 text-primary" />
-            <span>Academic Structure & Multi-College Governance</span>
-          </h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {isDean
-              ? 'Dean collegiate console: manage departments and designate department chairpersons within your college.'
-              : 'Chancellor administrative console: dynamically provision colleges, academic departments, and designate unit leadership seats.'}
-          </p>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 sm:p-6 bg-card border border-border rounded-2xl shadow-none">
+        <div className="flex items-start gap-3.5 min-w-0">
+          <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20 mt-0.5">
+            <FolderTree className="w-5 h-5" />
+          </div>
+          <div className="min-w-0">
+            <h2 className="text-sm sm:text-base font-extrabold text-foreground tracking-tight">
+              Academic Structure & Multi-College Governance
+            </h2>
+            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+              {isDean
+                ? 'Dean collegiate console: manage departments and designate department chairpersons within your college.'
+                : 'Administrator console: dynamically provision colleges, academic departments, and designate unit leadership seats.'}
+            </p>
+          </div>
         </div>
-        <div className="flex items-center space-x-2 shrink-0">
+        <div className="flex items-center gap-2.5 shrink-0 self-start md:self-auto">
           {!isDean && (
             <button
               type="button"
               onClick={() => setIsAddCollegeOpen(true)}
-              className="px-3.5 py-2 bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground font-bold text-xs rounded-xl shadow-xs transition-all flex items-center space-x-1.5 cursor-pointer"
+              className="px-4 py-2 bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground font-bold text-xs rounded-xl shadow-primary-sm transition-all flex items-center space-x-1.5 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>Add College</span>
@@ -249,10 +253,10 @@ export const AcademicStructureTab: React.FC = () => {
               }
               setIsAddDeptOpen(true);
             }}
-            className={`px-3.5 py-2 ${
+            className={`px-4 py-2 ${
               isDean
-                ? 'bg-primary hover:bg-primary/90 text-primary-foreground'
-                : 'bg-muted hover:bg-muted/80 text-foreground border border-border'
+                ? 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-primary-sm'
+                : 'bg-muted hover:bg-muted/80 text-foreground border border-border hover:border-primary/40'
             } active:scale-[0.98] font-bold text-xs rounded-xl transition-all flex items-center space-x-1.5 cursor-pointer`}
           >
             <Plus className="w-4 h-4" />
@@ -273,20 +277,32 @@ export const AcademicStructureTab: React.FC = () => {
               className="bg-card border border-border rounded-2xl overflow-hidden shadow-none"
             >
               {/* College Header */}
-              <div className="p-4 sm:p-5 bg-muted/40 border-b border-border flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div
+                role="button"
+                tabIndex={0}
+                aria-expanded={!collapsedColleges[college.id]}
+                aria-label={`Toggle departments for ${college.name}`}
+                onClick={() => toggleCollegeCollapse(college.id)}
+                onKeyDown={(e) => {
+                  if (e.target !== e.currentTarget) return;
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    toggleCollegeCollapse(college.id);
+                  }
+                }}
+                className="p-4 sm:p-5 bg-muted/40 border-b border-border flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer select-none hover:bg-muted/60 transition-colors"
+              >
                 <div className="flex items-center space-x-3">
-                  <button
-                    type="button"
-                    onClick={() => toggleCollegeCollapse(college.id)}
-                    aria-label={`Toggle departments for ${college.name}`}
-                    className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors cursor-pointer"
+                  <span
+                    aria-hidden="true"
+                    className="p-1 rounded-lg text-muted-foreground transition-colors"
                   >
                     {collapsedColleges[college.id] ? (
                       <ChevronRight className="w-4 h-4" />
                     ) : (
                       <ChevronDown className="w-4 h-4" />
                     )}
-                  </button>
+                  </span>
                   <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold text-sm shrink-0 border border-primary/20">
                     <Building className="w-5 h-5" />
                   </div>
@@ -313,13 +329,8 @@ export const AcademicStructureTab: React.FC = () => {
                         className="w-8 h-8 rounded-full border border-border shrink-0"
                       />
                       <div className="text-left min-w-0 pr-2">
-                        <div className="text-[10px] font-bold text-muted-foreground uppercase flex items-center space-x-1.5">
-                          <span>Dean</span>
-                          {isDean && (
-                            <span className="text-[9px] px-1.5 py-0.5 bg-primary/10 text-primary font-bold rounded border border-primary/20">
-                              (Current Dean)
-                            </span>
-                          )}
+                        <div className="text-[10px] font-bold text-muted-foreground uppercase">
+                          Dean
                         </div>
                         <div className="text-xs font-bold text-foreground truncate max-w-[140px]">
                           {dean.name}
@@ -349,13 +360,8 @@ export const AcademicStructureTab: React.FC = () => {
                         <AlertCircle className="w-4 h-4" />
                       </div>
                       <div className="text-left min-w-0 pr-2">
-                        <div className="text-[10px] font-bold text-muted-foreground uppercase flex items-center space-x-1.5">
-                          <span>Dean</span>
-                          {isDean && (
-                            <span className="text-[9px] px-1.5 py-0.5 bg-primary/10 text-primary font-bold rounded border border-primary/20">
-                              (Current Dean)
-                            </span>
-                          )}
+                        <div className="text-[10px] font-bold text-muted-foreground uppercase">
+                          Dean
                         </div>
                         <div className="text-xs font-semibold text-amber-600 dark:text-amber-400">
                           Not Appointed
@@ -412,7 +418,6 @@ export const AcademicStructureTab: React.FC = () => {
                           className="p-3.5 sm:px-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-muted/30 transition-colors cursor-pointer group"
                         >
                           <div className="flex items-center space-x-3">
-                            <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors shrink-0" />
                             <div>
                               <div className="flex items-center space-x-2">
                                 <span className="font-bold text-foreground text-xs group-hover:text-primary transition-colors">
@@ -440,21 +445,6 @@ export const AcademicStructureTab: React.FC = () => {
                                   </span>
                                   <span className="font-bold text-foreground">{chair.name}</span>
                                 </div>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setAppointModalData({
-                                      roleType: 'chairperson',
-                                      unitId: dept.id,
-                                      unitName: dept.name,
-                                      currentLeaderId: dept.chairpersonId,
-                                    });
-                                  }}
-                                  className="text-[11px] text-primary hover:underline font-semibold ml-2 cursor-pointer"
-                                >
-                                  Reassign
-                                </button>
                               </div>
                             ) : (
                               <div className="flex items-center space-x-2 bg-amber-500/10 px-3 py-1.5 rounded-xl border border-amber-500/20">

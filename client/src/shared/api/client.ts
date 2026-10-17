@@ -26,6 +26,14 @@ export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+export const SESSION_EXPIRED_EVENT = 'gabay:session-expired';
+
+export function notifySessionExpired(): void {
+  if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+    window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT));
+  }
+}
+
 interface ApiOptions {
   method?: string;
   headers?: Record<string, string>;
@@ -41,6 +49,10 @@ export async function apiFetch<T>(path: string, options: ApiOptions = {}): Promi
     headers,
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
   });
+  if (res.status === 401 && token && !path.includes('/auth/login')) {
+    clearToken();
+    notifySessionExpired();
+  }
   const data = (await res.json().catch(() => null)) as { error?: { code?: string; message?: string } } | T;
   if (!res.ok || (data && typeof data === 'object' && 'error' in (data as object))) {
     const err = (data as { error?: { code?: string; message?: string } })?.error;

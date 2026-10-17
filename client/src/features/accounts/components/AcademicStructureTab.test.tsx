@@ -237,13 +237,13 @@ describe('AcademicStructureTab Scoping and Leader Appointments', () => {
     expect(screen.getByText('College of Engineering and Technology')).toBeInTheDocument();
     expect(screen.queryByText('College of Arts and Sciences')).not.toBeInTheDocument();
 
-    // Dean card has pill/badge "(Current Dean)" or "(You)"
-    expect(screen.getByText(/\(Current Dean\)|\(You\)/i)).toBeInTheDocument();
+    // Dean card shows the sitting dean (the "(Current Dean)" badge has been removed)
+    expect(screen.getByText('Dean Alice CET')).toBeInTheDocument();
+    expect(screen.queryByText(/\(Current Dean\)/i)).not.toBeInTheDocument();
 
-    // Dean card hides Reassign button for Dean
-    // There is only 1 chairperson Reassign button (for IT dept), no Reassign button for Dean
-    const reassignButtons = screen.getAllByRole('button', { name: /reassign/i });
-    expect(reassignButtons).toHaveLength(1); // Only Chair Reassign for IT dept
+    // Dean card hides Reassign for the Dean, and department rows no longer expose a chair Reassign
+    // (chair reassignment lives on the department details page instead)
+    expect(screen.queryByRole('button', { name: /reassign/i })).not.toBeInTheDocument();
 
     // Click + Add Department to open modal
     fireEvent.click(addDeptBtn);
@@ -254,7 +254,7 @@ describe('AcademicStructureTab Scoping and Leader Appointments', () => {
     expect(collegeSelect.value).toBe('col-cet');
   });
 
-  test('3. Dean appointing/reassigning a chair only sees candidates belonging to the Dean\'s college', () => {
+  test('3. Dean appointing a chair only sees candidates belonging to the Dean\'s college', () => {
     mockActiveRole = 'admin';
     mockActiveUser = {
       id: 'u-dean-cet',
@@ -268,23 +268,19 @@ describe('AcademicStructureTab Scoping and Leader Appointments', () => {
 
     render(<AcademicStructureTab />);
 
-    // Click Reassign on the IT department chairperson
-    const reassignChairBtn = screen.getByRole('button', { name: /reassign/i });
-    fireEvent.click(reassignChairBtn);
+    // Civil Engineering has no sitting chairperson, so it exposes the Appoint action
+    const appointChairBtn = screen.getByRole('button', { name: /^appoint$/i });
+    fireEvent.click(appointChairBtn);
 
-    // Appoint/Reassign modal is open
+    // Appoint modal is open
     expect(screen.getByText(/appoint chairperson/i)).toBeInTheDocument();
 
     // Inspect candidate dropdown
     const candidateSelect = screen.getByLabelText(/select candidate/i) as HTMLSelectElement;
     const optionValues = Array.from(candidateSelect.options).map(o => o.value);
-    const optionTexts = Array.from(candidateSelect.options).map(o => o.textContent);
 
     // Should include Prof. Diana CET (eligible faculty in same college)
     expect(optionValues).toContain('u-fac-cet');
-
-    // Should NOT include current leader Prof. Charlie IT (u-chair-it)
-    expect(optionValues).not.toContain('u-chair-it');
 
     // Should NOT include faculty from CAS (u-fac-cas or u-chair-bio)
     expect(optionValues).not.toContain('u-fac-cas');
@@ -396,5 +392,50 @@ describe('AcademicStructureTab Scoping and Leader Appointments', () => {
       }),
       'u-fac-cet'
     );
+  });
+
+  test('6. clicking the college card header toggles departments without needing the arrow', () => {
+    render(<AcademicStructureTab />);
+
+    const cetHeader = screen.getByRole('button', {
+      name: /toggle departments for college of engineering and technology/i,
+    });
+    expect(cetHeader).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('Information Technology')).toBeInTheDocument();
+
+    // Click the card's title (not the chevron) to collapse
+    fireEvent.click(screen.getByText('College of Engineering and Technology'));
+
+    expect(screen.queryByText('Information Technology')).not.toBeInTheDocument();
+    expect(cetHeader).toHaveAttribute('aria-expanded', 'false');
+
+    // Click the card again to expand
+    fireEvent.click(screen.getByText('College of Engineering and Technology'));
+
+    expect(screen.getByText('Information Technology')).toBeInTheDocument();
+    expect(cetHeader).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  test('7. clicking a header action (Reassign) inside the card does not collapse the college', () => {
+    render(<AcademicStructureTab />);
+
+    const cetHeader = screen.getByRole('button', {
+      name: /toggle departments for college of engineering and technology/i,
+    });
+
+    // The first Reassign button belongs to the CET dean card in the header
+    const [deanReassign] = screen.getAllByRole('button', { name: /reassign/i });
+    fireEvent.click(deanReassign);
+
+    // Appoint dean modal opens, and the card stays expanded
+    expect(screen.getByText(/appoint dean/i)).toBeInTheDocument();
+    expect(screen.getByText('Information Technology')).toBeInTheDocument();
+    expect(cetHeader).toHaveAttribute('aria-expanded', 'true');
+
+    // The sitting dean is excluded from the candidate list
+    const candidateSelect = screen.getByLabelText(/select candidate/i) as HTMLSelectElement;
+    const optionValues = Array.from(candidateSelect.options).map(o => o.value);
+    expect(optionValues).not.toContain('u-dean-cet');
+    expect(optionValues).toContain('u-fac-cet');
   });
 });

@@ -1,4 +1,4 @@
-import { getToken, setToken, clearToken, ApiError } from './client';
+import { getToken, setToken, clearToken, ApiError, notifySessionExpired } from './client';
 import type {
   SyllabusRevisionResponse,
   SyllabusRevisionHeader,
@@ -54,6 +54,10 @@ async function rawLikhaFetch<T = any>(
   }
 
   if (!res.ok) {
+    if (res.status === 401 && token && !path.includes('/auth/login')) {
+      clearToken();
+      notifySessionExpired();
+    }
     const errorText = await res.text().catch(() => '');
     let parsedCode = 'request_failed';
     try {
@@ -1391,3 +1395,5 @@ export const likhaLmsApi = {
     },
   },
 };
+
+export { SESSION_EXPIRED_EVENT, notifySessionExpired } from './client';
