@@ -26,7 +26,6 @@ export const AcademicStructureTab: React.FC = () => {
   } = useLMS();
 
   // Role & scope derivation
-  const isChancellor = activeRole === 'superadmin' || activeUser?.adminSubrole === 'chancellor';
   const isDean = activeRole === 'admin' && activeUser?.adminSubrole === 'dean';
   const viewerCollegeId = activeUser?.collegeId;
   const viewerCollegeName = activeUser?.collegeName?.toLowerCase();

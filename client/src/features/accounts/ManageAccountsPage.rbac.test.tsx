@@ -380,12 +380,26 @@ describe('ManageAccountsPage RBAC & Verification Queue', () => {
     });
   });
 
-  it('6. verifies "Academic Structure" tab is only rendered when activeRole === "superadmin"', () => {
-    // As admin (dean/chairperson): tab should NOT be rendered
+  it('6. verifies "Academic Structure" tab is rendered for superadmin and deans, but not for chairpersons', () => {
+    // As chairperson: tab should NOT be rendered
     mocks.mockState.activeRole = 'admin';
+    mocks.mockState.activeUser = {
+      ...mocks.mockState.activeUser,
+      adminSubrole: 'chairperson',
+    };
     const { unmount } = render(<ManageAccountsPage />);
     expect(screen.queryByRole('tab', { name: /academic structure/i })).not.toBeInTheDocument();
     unmount();
+
+    // As dean: tab SHOULD be rendered
+    mocks.mockState.activeRole = 'admin';
+    mocks.mockState.activeUser = {
+      ...mocks.mockState.activeUser,
+      adminSubrole: 'dean',
+    };
+    const { unmount: unmountDean } = render(<ManageAccountsPage />);
+    expect(screen.getByRole('tab', { name: /academic structure/i })).toBeInTheDocument();
+    unmountDean();
 
     // As superadmin: tab SHOULD be rendered
     mocks.mockState.activeRole = 'superadmin';

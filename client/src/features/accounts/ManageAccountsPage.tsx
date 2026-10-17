@@ -188,7 +188,9 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
     logout,
     pendingRegistrations,
     verifyRegistration,
-    rejectRegistration
+    rejectRegistration,
+    colleges,
+    departments
   } = useLMS();
 
   // Navigation tab state
@@ -261,6 +263,25 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
     return list;
   }, [pendingRegistrations, activeRole, activeUser]);
 
+  // Role scoping helpers
+  const isDean = activeRole === 'admin' && activeUser?.adminSubrole === 'dean';
+  const deanCollegeId = activeUser?.collegeId;
+  const deanCollegeName = activeUser?.collegeName?.toLowerCase();
+
+  const canAccessAcademicStructure =
+    activeRole === 'superadmin' || (activeRole === 'admin' && activeUser?.adminSubrole === 'dean');
+
+  // Scoped directory users for collegiate scoping (Dean sees only their college; Chancellor sees all)
+  const scopedDirectoryUsers = useMemo(() => {
+    const allUsers = db?.users || [];
+    if (!isDean) return allUsers;
+    return allUsers.filter(u => {
+      if (deanCollegeId && u.collegeId === deanCollegeId) return true;
+      if (deanCollegeName && u.collegeName && u.collegeName.toLowerCase() === deanCollegeName) return true;
+      return false;
+    });
+  }, [db?.users, isDean, deanCollegeId, deanCollegeName]);
+
   // Dynamically aggregated departments from base list and all active users
   const allDepartments = useMemo(() => {
     const deptSet = new Set<string>(DEPARTMENTS);
@@ -272,20 +293,28 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
     return Array.from(deptSet).sort();
   }, [db?.users]);
 
-  // Computed summary metrics - 5 distinct unmerged metrics
+  // Available departments scoped to Dean's college when viewing as Dean
+  const availableDepartments = useMemo(() => {
+    if (isDean && deanCollegeId) {
+      return (departments || []).filter(d => d.collegeId === deanCollegeId);
+    }
+    return departments || [];
+  }, [departments, isDean, deanCollegeId]);
+
+  // Computed summary metrics - scoped to college for Deans, university-wide for Chancellor
   const stats = useMemo(() => {
-    const userList = db?.users || [];
+    const userList = scopedDirectoryUsers;
     const total = userList.length;
     const faculty = userList.filter(u => u?.role === 'faculty').length;
     const students = userList.filter(u => u?.role === 'student').length;
     const admin = userList.filter(u => u?.role === 'admin').length;
     const staff = userList.filter(u => u?.role === 'staff').length;
     return { total, faculty, students, admin, staff };
-  }, [db?.users]);
+  }, [scopedDirectoryUsers]);
 
   // Filtered accounts list with complete null safety
   const filteredUsers = useMemo(() => {
-    const userList = db?.users || [];
+    const userList = scopedDirectoryUsers;
     return userList.filter(user => {
       if (!user) return false;
 
@@ -314,17 +343,41 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
 
       return true;
     });
-  }, [db?.users, roleFilter, departmentFilter, searchQuery]);
+  }, [scopedDirectoryUsers, roleFilter, departmentFilter, searchQuery]);
 
-  // Custom Dropdown option definitions
-  const departmentFilterOptions: DropdownOption[] = useMemo(() => [
-    { value: 'all', label: 'All Departments', icon: <Building className="w-3.5 h-3.5 text-muted-foreground" /> },
-    ...allDepartments.map(d => ({
-      value: d,
-      label: d,
-      icon: <Building className="w-3.5 h-3.5 text-muted-foreground" />
-    }))
-  ], [allDepartments]);
+  // Custom Dropdown option definitions scoped by available departments
+  const departmentFilterOptions: DropdownOption[] = useMemo(() => {
+    if (isDean) {
+      return [
+        { value: 'all', label: 'All Departments', icon: <Building className="w-3.5 h-3.5 text-muted-foreground" /> },
+        ...availableDepartments.map(d => ({
+          value: d.name,
+          label: d.name,
+          icon: <Building className="w-3.5 h-3.5 text-muted-foreground" />
+        }))
+      ];
+    }
+
+    if (availableDepartments && availableDepartments.length > 0) {
+      return [
+        { value: 'all', label: 'All Departments', icon: <Building className="w-3.5 h-3.5 text-muted-foreground" /> },
+        ...availableDepartments.map(d => ({
+          value: d.name,
+          label: d.name,
+          icon: <Building className="w-3.5 h-3.5 text-muted-foreground" />
+        }))
+      ];
+    }
+
+    return [
+      { value: 'all', label: 'All Departments', icon: <Building className="w-3.5 h-3.5 text-muted-foreground" /> },
+      ...allDepartments.map(d => ({
+        value: d,
+        label: d,
+        icon: <Building className="w-3.5 h-3.5 text-muted-foreground" />
+      }))
+    ];
+  }, [isDean, availableDepartments, allDepartments]);
 
   // Go to dedicated Edit Account page
   const handleOpenEditPage = (user: User) => {
@@ -536,7 +589,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
           )}
         </button>
 
-        {activeRole === 'superadmin' && (
+        {canAccessAcademicStructure && (
           <button
             role="tab"
             aria-selected={activeMainTab === 'academic-structure'}
@@ -549,6 +602,11 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
           >
             <FolderTree className="w-3.5 h-3.5" />
             <span>Academic Structure</span>
+            {activeUser?.adminSubrole === 'dean' && (activeUser.collegeName || activeUser.collegeId) && (
+              <span className="px-1.5 py-0.2 text-[9px] font-bold bg-primary/20 text-primary rounded-md">
+                {colleges?.find(c => c.id === activeUser.collegeId)?.code || 'College'}
+              </span>
+            )}
           </button>
         )}
       </div>
@@ -680,7 +738,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
                       : 'text-muted-foreground hover:text-foreground'
                   }`}
                 >
-                  All ({db.users.length})
+                  All ({scopedDirectoryUsers.length})
                 </button>
                 <button
                   type="button"
@@ -1055,8 +1113,8 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
         </div>
       )}
 
-      {/* TAB 3: ACADEMIC STRUCTURE (Superadmin Only) */}
-      {activeMainTab === 'academic-structure' && activeRole === 'superadmin' && (
+      {/* TAB 3: ACADEMIC STRUCTURE */}
+      {activeMainTab === 'academic-structure' && canAccessAcademicStructure && (
         <AcademicStructureTab />
       )}
 
