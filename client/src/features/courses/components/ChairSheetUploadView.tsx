@@ -37,6 +37,7 @@ export const ChairSheetUploadView: React.FC<ChairSheetUploadViewProps> = ({
     db,
     createCourse,
     showAlert,
+    showConfirm,
     getActiveSchoolYearForCollege
   } = useLMS();
 
@@ -140,7 +141,35 @@ export const ChairSheetUploadView: React.FC<ChairSheetUploadViewProps> = ({
   };
 
   const handleDeleteRow = (id: string) => {
-    setRows(prev => prev.filter(r => r.id !== id));
+    const rowToDelete = rows.find(r => r.id === id);
+    if (!rowToDelete) return;
+
+    // Check if the row has any non-empty fields
+    const hasContent = Boolean(
+      rowToDelete.firstName?.trim() ||
+      rowToDelete.middleName?.trim() ||
+      rowToDelete.lastName?.trim() ||
+      rowToDelete.courseCode?.trim() ||
+      rowToDelete.descriptiveTitle?.trim() ||
+      rowToDelete.yearAndSection?.trim()
+    );
+
+    if (hasContent) {
+      const summaryLabel = [
+        rowToDelete.courseCode?.trim(),
+        rowToDelete.descriptiveTitle?.trim() || (rowToDelete.firstName ? `${rowToDelete.firstName} ${rowToDelete.lastName}`.trim() : '')
+      ].filter(Boolean).join(' - ') || 'this course entry';
+
+      showConfirm(
+        `Are you sure you want to delete ${summaryLabel}? This will remove it from the preview table.`,
+        () => {
+          setRows(prev => prev.filter(r => r.id !== id));
+        },
+        'Delete Course Row'
+      );
+    } else {
+      setRows(prev => prev.filter(r => r.id !== id));
+    }
   };
 
   const handleAddNewRow = () => {

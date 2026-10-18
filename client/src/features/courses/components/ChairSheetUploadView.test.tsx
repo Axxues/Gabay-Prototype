@@ -59,6 +59,7 @@ const mockCreateCourse = vi.fn(async (data: Partial<Course>) => ({
 }));
 
 const mockShowAlert = vi.fn();
+const mockShowConfirm = vi.fn();
 const mockOnNavigateCourse = vi.fn();
 const mockOnNavigateTab = vi.fn();
 
@@ -78,6 +79,7 @@ vi.mock('../../../shared/context/LMSContext', () => ({
     },
     createCourse: mockCreateCourse,
     showAlert: mockShowAlert,
+    showConfirm: mockShowConfirm,
     getActiveSchoolYearForCollege: () => ({ year: '2025-2026' }),
   }),
 }));
@@ -210,6 +212,36 @@ describe('ChairSheetUploadView', () => {
     const downloadBtn = screen.getByRole('button', { name: /Download Template/i });
     expect(downloadBtn).toBeInTheDocument();
     expect(downloadBtn).not.toBeDisabled();
+  });
+
+  it('triggers confirmation modal when deleting a row with contents', async () => {
+    render(
+      <ChairSheetUploadView
+        onNavigateCourse={mockOnNavigateCourse}
+        onNavigateTab={mockOnNavigateTab}
+      />
+    );
+
+    const file = createTestWorkbookBuffer([
+      ['First Name', 'Middle Name', 'Last Name', 'Course Code', 'Descriptive Title', 'Year and Section'],
+      ['Charlie', 'Seli', 'Marzan', 'CSCC 103', 'Object Oriented Programming', '4-E'],
+    ]);
+
+    const input = screen.getByTestId('chair-sheet-file-input');
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('CSCC 103')).toBeInTheDocument();
+    });
+
+    const deleteBtn = screen.getByRole('button', { name: /Delete course row 1/i });
+    fireEvent.click(deleteBtn);
+
+    expect(mockShowConfirm).toHaveBeenCalledWith(
+      expect.stringContaining('Are you sure you want to delete'),
+      expect.any(Function),
+      'Delete Course Row'
+    );
   });
 });
 

@@ -165,8 +165,9 @@ export const ChairSheetPreviewTable: React.FC<ChairSheetPreviewTableProps> = ({
                   <button
                     type="button"
                     onClick={() => onDeleteRow(row.id)}
-                    className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors cursor-pointer"
+                    aria-label={`Delete course row ${idx + 1}`}
                     title="Remove row"
+                    className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors cursor-pointer"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
