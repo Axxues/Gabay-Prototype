@@ -49,4 +49,18 @@ describe('institutional email validation', () => {
     );
     expect(INSTITUTIONAL_EMAIL_PATTERN.test('jdelacruz@student.dmmmsu.edu.ph')).toBe(true);
   });
+
+  it('validates strictly based on role when role is specified', () => {
+    // Student requires @student.dmmmsu.edu.ph and rejects @dmmmsu.edu.ph
+    expect(isValidInstitutionalEmail('student1@student.dmmmsu.edu.ph', 'student')).toBe(true);
+    expect(isValidInstitutionalEmail('student1@dmmmsu.edu.ph', 'student')).toBe(false);
+
+    // Faculty requires @dmmmsu.edu.ph and rejects @student.dmmmsu.edu.ph
+    expect(isValidInstitutionalEmail('prof1@dmmmsu.edu.ph', 'faculty')).toBe(true);
+    expect(isValidInstitutionalEmail('prof1@student.dmmmsu.edu.ph', 'faculty')).toBe(false);
+
+    // Staff requires @dmmmsu.edu.ph and rejects @student.dmmmsu.edu.ph
+    expect(isValidInstitutionalEmail('staff1@dmmmsu.edu.ph', 'staff')).toBe(true);
+    expect(isValidInstitutionalEmail('staff1@student.dmmmsu.edu.ph', 'staff')).toBe(false);
+  });
 });

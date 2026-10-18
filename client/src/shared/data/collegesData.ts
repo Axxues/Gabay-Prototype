@@ -14,17 +14,47 @@ export const DEFAULT_COLLEGES: College[] = [
 ];
 
 /**
- * Initial Default University School Years
- * Created by Admin/Chancellor, accessible throughout all colleges.
+ * Automatically generates university school years 5 years in advance.
+ * Base year defaults to 2025.
  */
-export const DEFAULT_SCHOOL_YEARS: SchoolYear[] = [
-  {
-    id: 'sy-univ-2025-2026',
-    year: '2025-2026',
-    isActive: true,
-    createdAt: '2025-06-01T00:00:00.000Z',
-  },
-];
+export function generateAutomaticSchoolYears(
+  baseStartYear = 2025,
+  yearsAhead = 5
+): SchoolYear[] {
+  const currentCalendarYear = new Date().getFullYear();
+  const start = Math.min(baseStartYear, currentCalendarYear);
+  const end = Math.max(baseStartYear, currentCalendarYear) + yearsAhead;
+
+  const years: SchoolYear[] = [];
+  for (let y = start; y <= end; y++) {
+    const yearString = `${y}-${y + 1}`;
+    years.push({
+      id: `sy-univ-${yearString}`,
+      year: yearString,
+      isActive: yearString === '2025-2026',
+      createdAt: `${y}-06-01T00:00:00.000Z`,
+    });
+  }
+  return years;
+}
+
+/**
+ * Initial Default University School Years
+ * Automatically generated yearly with 5 years in advance.
+ */
+export const DEFAULT_SCHOOL_YEARS: SchoolYear[] = generateAutomaticSchoolYears();
+
+/**
+ * Helper to normalize program names, stripping any redundant "Program in " prefix.
+ */
+export function normalizeProgramName(name: string): string {
+  if (!name || typeof name !== 'string') return '';
+  const trimmed = name.trim();
+  if (/^Program in Computer Science$/i.test(trimmed)) {
+    return 'Computer Science';
+  }
+  return trimmed;
+}
 
 /**
  * Initial Default University Academic Programs
@@ -34,7 +64,7 @@ export const DEFAULT_PROGRAMS: Program[] = [
   {
     id: 'dept-cs',
     collegeId: 'col-ccs',
-    name: 'Program in Computer Science',
+    name: 'Computer Science',
     code: 'CS',
     chairpersonId: '3281e224-fc7d-4c7e-b4c9-bcb7bca2ab89',
   },

@@ -2,8 +2,8 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Link, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 
 import { useLMS } from '../../shared/context/LMSContext';
-import { formatIdNumber, isValidIdNumber, ID_NUMBER_EXAMPLE } from '../../shared/utils/idNumber';
-import { isValidInstitutionalEmail, INSTITUTIONAL_EMAIL_REQUIREMENT } from '../../shared/utils/institutionalEmail';
+import { formatIdNumber, isValidIdNumber, ID_NUMBER_EXAMPLE, EMPLOYEE_ID_EXAMPLE } from '../../shared/utils/idNumber';
+import { isValidInstitutionalEmail } from '../../shared/utils/institutionalEmail';
 import type { PendingRegistration } from '../../shared/types/lms';
 import {
   Lock,
@@ -110,6 +110,14 @@ export const RegisterPage: React.FC = () => {
   };
 
 
+  const handleRoleChange = (newRole: 'student' | 'faculty' | 'staff') => {
+    setRole(newRole);
+    if (idNumber) {
+      setIdNumber(formatIdNumber(idNumber, newRole));
+    }
+    if (errorMessage) setErrorMessage('');
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
@@ -128,8 +136,12 @@ export const RegisterPage: React.FC = () => {
       setErrorMessage('Please enter your institutional email.');
       return;
     }
-    if (!isValidInstitutionalEmail(cleanEmail)) {
-      setErrorMessage(INSTITUTIONAL_EMAIL_REQUIREMENT);
+    if (!isValidInstitutionalEmail(cleanEmail, role)) {
+      setErrorMessage(
+        role === 'student'
+          ? 'Student institutional email must end with @student.dmmmsu.edu.ph.'
+          : 'Institutional email must end with @dmmmsu.edu.ph.'
+      );
       return;
     }
 
@@ -138,8 +150,12 @@ export const RegisterPage: React.FC = () => {
       setErrorMessage('Please enter your ID Number.');
       return;
     }
-    if (!isValidIdNumber(cleanIdNumber)) {
-      setErrorMessage(`ID Number must follow the format XXX-XXXX-X (e.g. ${ID_NUMBER_EXAMPLE}).`);
+    if (!isValidIdNumber(cleanIdNumber, role)) {
+      setErrorMessage(
+        role === 'student'
+          ? `ID Number must follow the format XXX-XXXX-X (e.g. ${ID_NUMBER_EXAMPLE}).`
+          : `ID Number must follow the format XXXX (e.g. ${EMPLOYEE_ID_EXAMPLE}).`
+      );
       return;
     }
 
@@ -421,7 +437,7 @@ export const RegisterPage: React.FC = () => {
                       name="accountRole"
                       value={item.id}
                       checked={isSelected}
-                      onChange={() => setRole(item.id as 'student' | 'faculty' | 'staff')}
+                      onChange={() => handleRoleChange(item.id as 'student' | 'faculty' | 'staff')}
                       className="sr-only"
                     />
                     <Icon className={`w-4 h-4 mb-1.5 ${isSelected ? 'text-primary-foreground' : 'text-muted-foreground'}`} />
@@ -503,7 +519,7 @@ export const RegisterPage: React.FC = () => {
                     setEmail(e.target.value);
                     if (errorMessage) setErrorMessage('');
                   }}
-                  placeholder="name@dmmmsu.edu.ph"
+                  placeholder={role === 'student' ? 'name@student.dmmmsu.edu.ph' : 'name@dmmmsu.edu.ph'}
                   className="w-full pl-9 pr-3 py-2.5 bg-background border border-border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all font-sans"
                   disabled={isSubmitting}
                 />
@@ -519,12 +535,12 @@ export const RegisterPage: React.FC = () => {
                 type="text"
                 value={idNumber}
                 onChange={e => {
-                  const formatted = formatIdNumber(e.target.value);
+                  const formatted = formatIdNumber(e.target.value, role);
                   setIdNumber(formatted);
                   if (errorMessage) setErrorMessage('');
                 }}
-                placeholder="231-1082-3"
-                maxLength={10}
+                placeholder={role === 'student' ? '231-1082-3' : '1082'}
+                maxLength={role === 'student' ? 10 : 4}
                 className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all font-sans"
                 disabled={isSubmitting}
               />

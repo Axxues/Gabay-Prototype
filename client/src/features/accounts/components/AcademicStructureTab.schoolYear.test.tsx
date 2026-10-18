@@ -24,6 +24,8 @@ const mockShowAlert = vi.fn();
 
 const mockAddSchoolYear = vi.fn();
 const mockSetActiveSchoolYear = vi.fn();
+const mockSetBaselineSchoolYear = vi.fn().mockResolvedValue({ success: true, message: 'Baseline updated' });
+const mockGetBaselineSchoolYear = vi.fn().mockReturnValue({ id: 'sy-2025-2026', year: '2025-2026', isActive: true });
 
 let mockActiveRole: string = 'admin';
 let mockActiveUser: Partial<User> = {
@@ -126,6 +128,8 @@ vi.mock('../../../shared/context/LMSContext', () => ({
     schoolYears: sampleSchoolYears,
     addSchoolYear: mockAddSchoolYear,
     setActiveSchoolYear: mockSetActiveSchoolYear,
+    setBaselineSchoolYear: mockSetBaselineSchoolYear,
+    getBaselineSchoolYear: mockGetBaselineSchoolYear,
     getSchoolYearsByCollege: (_colId: string) => sampleSchoolYears,
     getActiveSchoolYearForCollege: (_colId: string) => sampleSchoolYears.find(sy => sy.isActive) || sampleSchoolYears[0],
   }),
@@ -180,18 +184,37 @@ describe('AcademicStructureTab - Dean School Year Management', () => {
 
     render(<AcademicStructureTab />);
 
-    // School Year section should be displayed for the Dean's college
+    // School Year section should be displayed for the Dean's college with a combo box / select list
     expect(screen.getByText('Collegiate School Year & Rollover')).toBeInTheDocument();
     expect(screen.getByText('2025-2026')).toBeInTheDocument();
     expect(screen.getByText('Active')).toBeInTheDocument();
 
-    // Dean sees rollover button for inactive year, but NOT Add School Year (creation is admin-only)
+    // Select list / combo box is rendered
+    const sySelect = screen.getByLabelText(/select school year to roll over for college of engineering and technology/i);
+    expect(sySelect).toBeInTheDocument();
+
+    // Add School Year button is NOT rendered
     expect(screen.queryByRole('button', { name: /add school year/i })).not.toBeInTheDocument();
     const rolloverBtn = screen.getByRole('button', { name: /roll over/i });
     expect(rolloverBtn).toBeInTheDocument();
 
+    // Select another year and initiate roll over
+    fireEvent.change(sySelect, { target: { value: 'sy-cet-2026-2027' } });
+
     await act(async () => {
       fireEvent.click(rolloverBtn);
+    });
+
+    // Verification modal should now be visible before rollover executes
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByRole('heading', { name: /confirm academic year rollover/i })).toBeInTheDocument();
+    expect(within(dialog).getByText(/transitioning to sy 2026-2027/i)).toBeInTheDocument();
+    expect(mockSetActiveSchoolYear).not.toHaveBeenCalled();
+
+    // Confirm rollover
+    const confirmBtn = within(dialog).getByRole('button', { name: /confirm rollover/i });
+    await act(async () => {
+      fireEvent.click(confirmBtn);
     });
 
     expect(mockSetActiveSchoolYear).toHaveBeenCalledWith('col-cet', 'sy-cet-2026-2027');
@@ -202,7 +225,7 @@ describe('AcademicStructureTab - Dean School Year Management', () => {
     );
   });
 
-  test('Admin/Chancellor can add a new school year accessible across all colleges', async () => {
+  test('Add School Year button is removed from Academic Governance header for all roles', () => {
     mockActiveRole = 'superadmin';
     mockActiveUser = {
       id: 'u-chancellor',
@@ -214,34 +237,8 @@ describe('AcademicStructureTab - Dean School Year Management', () => {
 
     render(<AcademicStructureTab />);
 
-    const openModalBtn = screen.getAllByRole('button', { name: /add school year/i })[0];
-    fireEvent.click(openModalBtn);
-
-    // Modal opens
-    const dialog = screen.getByRole('dialog');
-    expect(within(dialog).getByRole('heading', { name: /add school year/i })).toBeInTheDocument();
-    const input = within(dialog).getByLabelText(/school year/i);
-
-    // Enter invalid format first
-    fireEvent.change(input, { target: { value: 'invalid-year' } });
-    const submitBtn = within(dialog).getByRole('button', { name: /^add school year$/i });
-    fireEvent.click(submitBtn);
-
-    // Should not call addSchoolYear with invalid format
-    expect(mockAddSchoolYear).not.toHaveBeenCalled();
-
-    // Enter valid format
-    fireEvent.change(input, { target: { value: '2026-2027' } });
-    await act(async () => {
-      fireEvent.click(submitBtn);
-    });
-
-    expect(mockAddSchoolYear).toHaveBeenCalled();
-    expect(mockShowAlert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: 'success',
-      })
-    );
+    // Since school years are now generated automatically, no Add School Year button should appear anywhere
+    expect(screen.queryByRole('button', { name: /add school year/i })).not.toBeInTheDocument();
   });
 
   test('Chairperson cannot add school years or roll over school years', () => {
@@ -258,12 +255,40 @@ describe('AcademicStructureTab - Dean School Year Management', () => {
 
     render(<AcademicStructureTab />);
 
-    // Chairperson can view active school year badge or list, but no Add or Roll Over action buttons
+    // Chairperson can view active school year badge or select list, but no Add or Roll Over action buttons
     expect(screen.queryByRole('button', { name: /add school year/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /roll over/i })).not.toBeInTheDocument();
   });
 
-  test('Chancellor/Superadmin can create school years and roll over for colleges', async () => {
+  test('Chancellor, Superadmin, and General Admin do not have authority to roll over (only Deans)', () => {
+    mockActiveRole = 'superadmin';
+    mockActiveUser = {
+      id: 'u-chancellor',
+      name: 'Dr. Chancellor',
+      email: 'chancellor@dmmmsu.edu.ph',
+      role: 'superadmin',
+      adminSubrole: 'chancellor',
+    };
+
+    const { rerender } = render(<AcademicStructureTab />);
+
+    // Superadmin / Chancellor has no rollover button
+    expect(screen.queryByRole('button', { name: /roll over/i })).not.toBeInTheDocument();
+
+    // General Admin (without dean subrole) also has no rollover button
+    mockActiveRole = 'admin';
+    mockActiveUser = {
+      id: 'u-admin-general',
+      name: 'General Admin',
+      email: 'admin@dmmmsu.edu.ph',
+      role: 'admin',
+    };
+
+    rerender(<AcademicStructureTab />);
+    expect(screen.queryByRole('button', { name: /roll over/i })).not.toBeInTheDocument();
+  });
+
+  test('individual college cards do not render an Add School Year button', () => {
     mockActiveRole = 'superadmin';
     mockActiveUser = {
       id: 'u-chancellor',
@@ -275,8 +300,91 @@ describe('AcademicStructureTab - Dean School Year Management', () => {
 
     render(<AcademicStructureTab />);
 
-    // Chancellor should have access to Add School Year buttons
-    const addBtns = screen.getAllByRole('button', { name: /add school year/i });
-    expect(addBtns.length).toBeGreaterThanOrEqual(1);
+    // Individual college card section should only show school years and rollover, without an individual Add button
+    const sySections = screen.getAllByText('Collegiate School Year & Rollover');
+    for (const sectionHeader of sySections) {
+      const sectionContainer = sectionHeader.closest('.border-t');
+      expect(within(sectionContainer as HTMLElement).queryByRole('button', { name: /add school year/i })).not.toBeInTheDocument();
+    }
+  });
+
+  test('Admin/Chancellor has authority to change the University-Wide Default Baseline Year with verification modal', async () => {
+    mockActiveRole = 'superadmin';
+    mockActiveUser = {
+      id: 'u-chancellor',
+      name: 'Dr. Chancellor',
+      email: 'chancellor@dmmmsu.edu.ph',
+      role: 'superadmin',
+      adminSubrole: 'chancellor',
+    };
+    sampleSchoolYears = [
+      {
+        id: 'sy-univ-2025-2026',
+        year: '2025-2026',
+        isActive: true,
+      },
+      {
+        id: 'sy-univ-2026-2027',
+        year: '2026-2027',
+        isActive: false,
+      },
+    ];
+    mockGetBaselineSchoolYear.mockReturnValue({ id: 'sy-univ-2025-2026', year: '2025-2026', isActive: true });
+
+    render(<AcademicStructureTab />);
+
+    // Baseline card should be visible for Admin/Chancellor
+    expect(screen.getByText('University-Wide Default Baseline Academic Year')).toBeInTheDocument();
+    const select = screen.getByLabelText('Select University-Wide Default Baseline School Year');
+    expect(select).toBeInTheDocument();
+
+    const updateBtn = screen.getByRole('button', { name: /update baseline/i });
+    expect(updateBtn).toBeDisabled();
+
+    // Select another baseline year
+    await act(async () => {
+      fireEvent.change(select, { target: { value: 'sy-univ-2026-2027' } });
+    });
+    expect(updateBtn).toBeEnabled();
+
+    // Click update -> verification modal opens
+    await act(async () => {
+      fireEvent.click(updateBtn);
+    });
+
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByRole('heading', { name: /confirm baseline academic year update/i })).toBeInTheDocument();
+
+    // Confirm update in modal
+    const confirmBtn = within(dialog).getByRole('button', { name: /confirm update/i });
+    await act(async () => {
+      fireEvent.click(confirmBtn);
+    });
+
+    expect(mockSetBaselineSchoolYear).toHaveBeenCalledWith('sy-univ-2026-2027');
+    expect(mockShowAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'success',
+      })
+    );
+  });
+
+  test('Dean does not see the University-Wide Baseline Year card (only collegiate rollover)', () => {
+    mockActiveRole = 'admin';
+    mockActiveUser = {
+      id: 'u-dean-cet',
+      name: 'Dean Alice CET',
+      email: 'alice.cet@dmmmsu.edu.ph',
+      role: 'admin',
+      adminSubrole: 'dean',
+      collegeId: 'col-cet',
+      collegeName: 'College of Engineering and Technology',
+    };
+
+    render(<AcademicStructureTab />);
+
+    // Dean sees collegiate rollover, but NOT the university-wide baseline management card
+    expect(screen.queryByText('University-Wide Default Baseline Academic Year')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Select University-Wide Default Baseline School Year')).not.toBeInTheDocument();
   });
 });

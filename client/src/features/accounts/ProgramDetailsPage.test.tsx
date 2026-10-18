@@ -34,7 +34,7 @@ const mockCollegeCCS: College = {
 const mockDepartmentCS: Department = {
   id: 'dept-cs',
   collegeId: 'col-ccs',
-  name: 'Program in Computer Science',
+  name: 'Computer Science',
   code: 'CS',
   chairpersonId: 'u-chair-cs',
 };
@@ -60,7 +60,7 @@ const mockUsers: User[] = [
     adminSubrole: 'chairperson',
     title: 'Program Chairperson',
     avatar: '',
-    department: 'Program in Computer Science',
+    department: 'Computer Science',
     collegeId: 'col-ccs',
     collegeName: 'College of Computer Science',
   },
@@ -71,7 +71,7 @@ const mockUsers: User[] = [
     role: 'faculty',
     title: 'Associate Professor',
     avatar: '',
-    department: 'Program in Computer Science',
+    department: 'Computer Science',
     collegeId: 'col-ccs',
     collegeName: 'College of Computer Science',
   },
@@ -83,7 +83,7 @@ const mockUsers: User[] = [
     title: 'Student',
     studentId: '2026-CS-001',
     avatar: '',
-    department: 'Program in Computer Science',
+    department: 'Computer Science',
     collegeId: 'col-ccs',
     collegeName: 'College of Computer Science',
   },
@@ -139,7 +139,7 @@ describe('ProgramDetailsPage', () => {
 
     expect(screen.getByText('Academic Governance')).toBeInTheDocument();
     expect(screen.getByText(/College of Computer Science/i)).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /Program in Computer Science/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Computer Science/i })).toBeInTheDocument();
     expect(screen.getByText('CS')).toBeInTheDocument();
 
     const backButton = screen.getByRole('button', { name: /back to academic governance/i });
@@ -160,7 +160,7 @@ describe('ProgramDetailsPage', () => {
     fireEvent.click(reassignButton);
 
     expect(screen.getByText('Appoint Chairperson')).toBeInTheDocument();
-    expect(screen.getByText(/Program: Program in Computer Science/i)).toBeInTheDocument();
+    expect(screen.getByText(/Program: Computer Science/i)).toBeInTheDocument();
   });
 
   it('renders 4 key program metrics', () => {

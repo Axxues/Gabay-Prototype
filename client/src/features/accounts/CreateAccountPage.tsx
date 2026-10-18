@@ -157,7 +157,7 @@ export const CreateAccountPage: React.FC<CreateAccountPageProps> = ({ onNavigate
   const [formEmail, setFormEmail] = useState('');
   const [formIdNumber, setFormIdNumber] = useState('');
   const [formRole, setFormRole] = useState<UserRole>('faculty');
-  const [formDepartment, setFormDepartment] = useState('Program in Computer Science');
+  const [formDepartment, setFormDepartment] = useState('Computer Science');
 
   // Determine current college (considering selected program when applicable)
   const currentCollegeId = useMemo(() => {
@@ -220,7 +220,7 @@ export const CreateAccountPage: React.FC<CreateAccountPageProps> = ({ onNavigate
 
   const departmentSelectOptions: DropdownOption[] = useMemo(() => {
     const list = (programs || departments || []).map(p => p.name);
-    const defaultList = list.length > 0 ? list : ['Program in Computer Science'];
+    const defaultList = list.length > 0 ? list : ['Computer Science'];
     const extras = ['College of Computer Science', 'Office of the College Registrar', 'Office of the Dean'];
     const combined = Array.from(new Set([...defaultList, ...extras]));
     return combined.map(d => ({

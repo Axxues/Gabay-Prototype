@@ -5,6 +5,7 @@ import { PageHeader } from '../../shared/components/common/PageHeader';
 import { UserAvatar } from '../../shared/components/common/UserAvatar';
 import { DialogFrame } from '../../shared/components/common/DialogFrame';
 import { getDisplayRoleLabel, compareUsersByAuthority } from '../../shared/utils/roles';
+import { normalizeProgramName } from '../../shared/data/collegesData';
 import {
   Users,
   Search,
@@ -288,15 +289,15 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
   const allDepartments = useMemo(() => {
     const deptSet = new Set<string>();
     (departments || []).forEach(d => {
-      if (d.name) deptSet.add(d.name.trim());
+      if (d.name) deptSet.add(normalizeProgramName(d.name.trim()));
     });
     if (deptSet.size === 0) {
-      deptSet.add('Program in Computer Science');
+      deptSet.add('Computer Science');
     }
     (db?.users || []).forEach(u => {
       const uProg = u?.program || u?.department;
       if (uProg && typeof uProg === 'string') {
-        deptSet.add(uProg.trim());
+        deptSet.add(normalizeProgramName(uProg.trim()));
       }
     });
     return Array.from(deptSet).sort();
@@ -334,8 +335,9 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
 
       // Program filter
       if (departmentFilter !== 'all') {
-        const uProg = user.program || user.department || '';
-        if (uProg !== departmentFilter) {
+        const uProg = normalizeProgramName(user.program || user.department || '');
+        const targetFilter = normalizeProgramName(departmentFilter);
+        if (uProg !== targetFilter) {
           return false;
         }
       }
@@ -400,32 +402,41 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
     if (isDean) {
       return [
         { value: 'all', label: 'All Programs', icon: <Building className="w-3.5 h-3.5 text-muted-foreground" /> },
-        ...availableDepartments.map(d => ({
-          value: d.name,
-          label: d.name,
-          icon: <Building className="w-3.5 h-3.5 text-muted-foreground" />
-        }))
+        ...availableDepartments.map(d => {
+          const name = normalizeProgramName(d.name);
+          return {
+            value: name,
+            label: name,
+            icon: <Building className="w-3.5 h-3.5 text-muted-foreground" />
+          };
+        })
       ];
     }
 
     if (availableDepartments && availableDepartments.length > 0) {
       return [
         { value: 'all', label: 'All Programs', icon: <Building className="w-3.5 h-3.5 text-muted-foreground" /> },
-        ...availableDepartments.map(d => ({
-          value: d.name,
-          label: d.name,
-          icon: <Building className="w-3.5 h-3.5 text-muted-foreground" />
-        }))
+        ...availableDepartments.map(d => {
+          const name = normalizeProgramName(d.name);
+          return {
+            value: name,
+            label: name,
+            icon: <Building className="w-3.5 h-3.5 text-muted-foreground" />
+          };
+        })
       ];
     }
 
     return [
       { value: 'all', label: 'All Programs', icon: <Building className="w-3.5 h-3.5 text-muted-foreground" /> },
-      ...allDepartments.map(d => ({
-        value: d,
-        label: d,
-        icon: <Building className="w-3.5 h-3.5 text-muted-foreground" />
-      }))
+      ...allDepartments.map(d => {
+        const name = normalizeProgramName(d);
+        return {
+          value: name,
+          label: name,
+          icon: <Building className="w-3.5 h-3.5 text-muted-foreground" />
+        };
+      })
     ];
   }, [isDean, availableDepartments, allDepartments]);
 
@@ -920,7 +931,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
 
                       const userName = user.name || 'Unnamed Account';
                       const userEmail = user.email || 'no-email@dmmmsu.edu.ph';
-                      const userDept = user.program || user.department || 'Program in Computer Science';
+                      const userDept = normalizeProgramName(user.program || user.department || 'Computer Science');
                       const userTitle = user.title || (user.role === 'student' ? 'Student' : 'Faculty Instructor');
 
                       return (

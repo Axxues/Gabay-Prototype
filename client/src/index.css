@@ -149,6 +149,11 @@
   .dark input[type="radio"] {
     color-scheme: dark;
   }
+
+  input::placeholder,
+  textarea::placeholder {
+    text-transform: none;
+  }
 }
 
 /* =============================================

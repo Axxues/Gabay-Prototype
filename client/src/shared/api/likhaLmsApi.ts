@@ -141,7 +141,7 @@ function getPathTtl(path: string): number {
   if (path.includes('/users')) return 300000;
   if (path.includes('/items/calendar_events')) return 60000;
   if (path.includes('/notifications')) return 15000;
-  if (path.includes('/items/colleges') || path.includes('/items/departments')) return 120000;
+  if (path.includes('/items/colleges') || path.includes('/items/departments') || path.includes('/items/school_years')) return 120000;
   return 30000;
 }
 
@@ -1579,6 +1579,25 @@ export const likhaLmsApi = {
 
     async deleteDepartment(id: string): Promise<void> {
       await likhaRequest(`/items/departments/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    },
+
+    async getSchoolYears(): Promise<any[]> {
+      const years = await likhaRequest<any[]>('/items/school_years?fields=*&limit=100&sort=year').catch(() => []);
+      return years || [];
+    },
+
+    async createSchoolYear(payload: any): Promise<any> {
+      return likhaRequest('/items/school_years', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+    },
+
+    async updateSchoolYear(id: string, updates: any): Promise<any> {
+      return likhaRequest(`/items/school_years/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(updates),
+      });
     },
   },
 };

@@ -10,6 +10,7 @@ const updateCollegeMock = vi.fn();
 const getDepartmentsMock = vi.fn();
 const createDepartmentMock = vi.fn();
 const updateDepartmentMock = vi.fn();
+const getSchoolYearsMock = vi.fn();
 const updateUserMock = vi.fn();
 
 vi.mock('../api/client', () => ({
@@ -30,6 +31,7 @@ vi.mock('../api/client', () => ({
       getDepartments: (...args: any[]) => (getDepartmentsMock as any)(...args),
       createDepartment: (...args: any[]) => (createDepartmentMock as any)(...args),
       updateDepartment: (...args: any[]) => (updateDepartmentMock as any)(...args),
+      getSchoolYears: (...args: any[]) => (getSchoolYearsMock as any)(...args),
     },
     users: {
       getUsers: vi.fn(async () => []),
@@ -263,6 +265,30 @@ describe('LMSContext Likha ERP Academic Structure Integration', () => {
       expect(capturedCtx.departments.some((d: any) => d.id === '88888888-8888-4888-8888-888888888888')).toBe(true);
       const storedDepts = JSON.parse(localStorage.getItem('gabay_departments') || '[]');
       expect(storedDepts.some((d: any) => d.id === '88888888-8888-4888-8888-888888888888')).toBe(true);
+    });
+  });
+
+  test('synchronizes school years from Likha ERP when collection is populated', async () => {
+    getSchoolYearsMock.mockResolvedValueOnce([
+      { id: 'sy-likha-2025-2026', year: '2025-2026', is_active: true },
+      { id: 'sy-likha-2026-2027', year: '2026-2027', is_active: false },
+      { id: 'sy-likha-2027-2028', year: '2027-2028', is_active: false },
+    ]);
+
+    let capturedCtx: any = null;
+    render(
+      <LMSProvider>
+        <TestHarness onReady={ctx => { capturedCtx = ctx; }} />
+      </LMSProvider>
+    );
+
+    await waitFor(() => {
+      expect(getSchoolYearsMock).toHaveBeenCalled();
+    });
+
+    await waitFor(() => {
+      expect(capturedCtx.schoolYears.some((sy: any) => sy.year === '2025-2026' && sy.id === 'sy-likha-2025-2026')).toBe(true);
+      expect(capturedCtx.schoolYears.some((sy: any) => sy.year === '2026-2027' && sy.id === 'sy-likha-2026-2027')).toBe(true);
     });
   });
 });

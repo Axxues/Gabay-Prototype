@@ -22,7 +22,7 @@ describe('LMSContext - Program Rename & Terminology Support', () => {
 
     const defaultProg = result.current.programs.find(p => p.code === 'CS');
     expect(defaultProg).toBeDefined();
-    expect(defaultProg?.name).toMatch(/Program in Computer Science/i);
+    expect(defaultProg?.name).toBe('Computer Science');
   });
 
   it('allows adding a new program via addProgram and updates programs state', async () => {

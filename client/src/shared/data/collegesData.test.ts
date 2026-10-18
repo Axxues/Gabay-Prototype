@@ -5,7 +5,9 @@ import {
   getColleges,
   getDepartmentsByCollege,
   getCollegeById,
-  getDepartmentByName
+  getDepartmentByName,
+  generateAutomaticSchoolYears,
+  DEFAULT_SCHOOL_YEARS
 } from './collegesData';
 
 describe('Colleges & Departments Data Store', () => {
@@ -18,7 +20,7 @@ describe('Colleges & Departments Data Store', () => {
   it('retrieves departments belonging to a specific college', () => {
     const ccsDepts = getDepartmentsByCollege('col-ccs');
     expect(ccsDepts.length).toBeGreaterThanOrEqual(1);
-    expect(ccsDepts.some(d => d.name === 'Program in Computer Science')).toBe(true);
+    expect(ccsDepts.some(d => d.name === 'Computer Science')).toBe(true);
   });
 
   it('retrieves a college by ID and department by name', () => {
@@ -26,7 +28,7 @@ describe('Colleges & Departments Data Store', () => {
     expect(ccs?.name).toBe('College of Computer Science');
     const csDept = getDepartmentByName('Department of Computer Science');
     expect(csDept?.code).toBe('CS');
-    expect(csDept?.name).toBe('Program in Computer Science');
+    expect(csDept?.name).toBe('Computer Science');
   });
 
   it('provides all expected colleges and departments in default data sets', () => {
@@ -34,7 +36,7 @@ describe('Colleges & Departments Data Store', () => {
     expect(DEFAULT_COLLEGES[0].name).toBe('College of Computer Science');
 
     expect(DEFAULT_DEPARTMENTS.length).toBe(1);
-    expect(DEFAULT_DEPARTMENTS[0].name).toBe('Program in Computer Science');
+    expect(DEFAULT_DEPARTMENTS[0].name).toBe('Computer Science');
     expect(DEFAULT_DEPARTMENTS[0].code).toBe('CS');
   });
 
@@ -52,7 +54,7 @@ describe('Colleges & Departments Data Store', () => {
     expect(ccsByCode?.id).toBe('col-ccs');
 
     const csDept = getDepartmentByName('CS');
-    expect(csDept?.name).toBe('Program in Computer Science');
+    expect(csDept?.name).toBe('Computer Science');
 
     const deptsByCode = getDepartmentsByCollege('CCS');
     expect(deptsByCode.length).toBe(1);
@@ -66,5 +68,16 @@ describe('Colleges & Departments Data Store', () => {
     expect(getCollegeById('col-custom', customColleges)?.name).toBe('Custom College');
     expect(getDepartmentsByCollege('col-custom', customDepartments)).toEqual(customDepartments);
     expect(getDepartmentByName('Custom Dept', customDepartments)?.code).toBe('CD');
+  });
+
+  it('generates automatic school years with 5 years in advance', () => {
+    const schoolYears = generateAutomaticSchoolYears(2025, 5);
+    expect(schoolYears.length).toBeGreaterThanOrEqual(6);
+    expect(schoolYears[0].year).toBe('2025-2026');
+    expect(schoolYears.some(sy => sy.year === '2025-2026' && sy.isActive)).toBe(true);
+
+    // Verify DEFAULT_SCHOOL_YEARS is populated with generated years
+    expect(DEFAULT_SCHOOL_YEARS.length).toBeGreaterThanOrEqual(6);
+    expect(DEFAULT_SCHOOL_YEARS[0].id).toContain('sy-univ-');
   });
 });

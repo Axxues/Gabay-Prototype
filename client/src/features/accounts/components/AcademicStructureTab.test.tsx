@@ -406,6 +406,23 @@ describe('AcademicStructureTab Scoping and Leader Appointments', () => {
     );
   });
 
+  test('5b. Add Program modal defaults the parent college to the placeholder, not the first college', () => {
+    render(<AcademicStructureTab />);
+
+    fireEvent.click(screen.getByRole('button', { name: /add (department|program)/i }));
+    expect(screen.getByText(/Add Academic (Department|Program)/i)).toBeInTheDocument();
+
+    const parentSelect = screen.getByLabelText(/select parent college/i) as HTMLSelectElement;
+
+    // "Select College..." is the default selection rather than the first college
+    expect(parentSelect.value).toBe('');
+    expect(parentSelect.selectedIndex).toBe(0);
+    expect(parentSelect.options[0].textContent).toMatch(/select college/i);
+
+    // Colleges are still offered once the user opens the list
+    expect(parentSelect.options.length).toBeGreaterThan(1);
+  });
+
   test('6. clicking the college card header toggles departments without needing the arrow', () => {
     render(<AcademicStructureTab />);
 

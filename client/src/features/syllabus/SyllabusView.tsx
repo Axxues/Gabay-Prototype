@@ -958,7 +958,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                       <div>
                         <div className="font-bold text-xs text-foreground">{detectedFacultyName}</div>
                         <div className="text-[11px] text-muted-foreground">
-                          {(chosenFaculty as any).title || 'Course Instructor'} • {(chosenFaculty as any).program || (chosenFaculty as any).department || 'Program in Computer Science'}
+                          {(chosenFaculty as any).title || 'Course Instructor'} • {(chosenFaculty as any).program || (chosenFaculty as any).department || 'Computer Science'}
                         </div>
                       </div>
                     </div>

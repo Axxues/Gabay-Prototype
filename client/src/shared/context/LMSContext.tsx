@@ -311,6 +311,8 @@ export interface LMSContextType {
   setActiveSchoolYear: (collegeId: string, schoolYearId: string) => Promise<{ success: boolean; message?: string }>;
   getSchoolYearsByCollege: (collegeId: string) => SchoolYear[];
   getActiveSchoolYearForCollege: (collegeId: string) => SchoolYear | undefined;
+  setBaselineSchoolYear: (schoolYearIdOrYear: string) => Promise<{ success: boolean; message?: string }>;
+  getBaselineSchoolYear: () => SchoolYear | undefined;
 
   logHistory: (path: string, title: string) => void;
   clearHistory: () => void;
@@ -4904,6 +4906,55 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     [schoolYears, collegeActiveSchoolYears]
   );
 
+  const getBaselineSchoolYear = useCallback((): SchoolYear | undefined => {
+    const list = schoolYearsRef.current || schoolYears;
+    const found = list.find(sy => !sy.collegeId && sy.isActive);
+    return found || list.find(sy => sy.isActive) || list[0];
+  }, [schoolYears]);
+
+  const setBaselineSchoolYear = async (
+    schoolYearIdOrYear: string
+  ): Promise<{ success: boolean; message?: string }> => {
+    const list = schoolYearsRef.current || schoolYears;
+    const target = list.find(
+      sy => sy.id === schoolYearIdOrYear || sy.year.trim().toLowerCase() === schoolYearIdOrYear.trim().toLowerCase()
+    );
+    if (!target) {
+      return { success: false, message: 'School year not found.' };
+    }
+
+    // Set the new baseline active flag across universal school years
+    setSchoolYears(prev => {
+      const next = prev.map(sy => {
+        if (!sy.collegeId) {
+          return { ...sy, isActive: sy.id === target.id || sy.year === target.year };
+        }
+        return sy;
+      });
+      safeSetLocalStorage(STORAGE_KEY_SCHOOL_YEARS, JSON.stringify(next));
+      return next;
+    });
+
+    // Sync with Likha ERP if possible
+    if (likhaLmsApi?.academicStructure?.updateSchoolYear) {
+      try {
+        if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(target.id)) {
+          await likhaLmsApi.academicStructure.updateSchoolYear(target.id, { is_active: true }).catch(() => {});
+        }
+        for (const item of list) {
+          if (item.id !== target.id && item.isActive && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(item.id)) {
+            await likhaLmsApi.academicStructure.updateSchoolYear(item.id, { is_active: false }).catch(() => {});
+          }
+        }
+      } catch {}
+    }
+
+    return {
+      success: true,
+      message: `University-Wide Default Baseline Academic Year updated to ${target.year}.`,
+    };
+  };
+
   const addSchoolYear = async (
     collegeIdOrYear: string,
     yearMaybe?: string
@@ -4958,13 +5009,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return next;
     });
 
-    // Also update isActive flag in schoolYears list for college-scoped or single-college setups
+    // Also update isActive flag in schoolYears list only for college-scoped setups if any
     setSchoolYears(prev => {
       const next = prev.map(sy => {
-        if (sy.collegeId === collegeId || (!sy.collegeId && sy.year === target.year)) {
+        if (sy.collegeId && sy.collegeId === collegeId) {
           return { ...sy, isActive: sy.id === target.id || sy.year === target.year };
-        } else if (!sy.collegeId) {
-          return { ...sy, isActive: false };
         }
         return sy;
       });
@@ -7808,6 +7857,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setActiveSchoolYear,
         getSchoolYearsByCollege,
         getActiveSchoolYearForCollege,
+        setBaselineSchoolYear,
+        getBaselineSchoolYear,
         logHistory,
         clearHistory,
         isSessionExpired,

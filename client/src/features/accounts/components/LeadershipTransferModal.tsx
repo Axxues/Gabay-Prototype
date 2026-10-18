@@ -66,7 +66,7 @@ export const LeadershipTransferModal: React.FC<LeadershipTransferModalProps> = (
             (leaderUnit && d.name.toLowerCase() === leaderUnit.toLowerCase())
         );
         uId = dept?.id || leaderUnit || 'dept-cs';
-        uName = dept?.name || leaderUnit || 'Program in Computer Science';
+        uName = dept?.name || leaderUnit || 'Computer Science';
       }
     }
 

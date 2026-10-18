@@ -5,7 +5,6 @@ import { GabayChatProvider } from './shared/context/GabayChatContext';
 import { AppRail } from './shared/components/layout/AppRail';
 import { LMSContextPanel } from './shared/components/layout/LMSContextPanel';
 import { Topbar } from './shared/components/layout/Topbar';
-import { ProfileIncompleteBanner } from './shared/components/layout/ProfileIncompleteBanner';
 import { LoginPage } from './features/auth/LoginPage';
 import { RegisterPage } from './features/auth/RegisterPage';
 import { RoleSwitcherModal } from './shared/components/common/RoleSwitcherModal';
@@ -203,9 +202,7 @@ export const AppShell: React.FC = () => {
         onOpenSidebar={handleOpenSidebar}
       />
 
-      <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden pt-16 flex-col">
-        <ProfileIncompleteBanner onNavigateTab={nav.handleNavigateTab} />
-        <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
+      <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden pt-16">
         {sidebarOpen && (
           <div
             className="fixed inset-0 overlay-backdrop z-10 lg:hidden transition-opacity animate-fade-in"
@@ -225,7 +222,6 @@ export const AppShell: React.FC = () => {
             </PageTransition>
           </div>
         </main>
-        </div>
       </div>
 
       <GlobalSearchDialog

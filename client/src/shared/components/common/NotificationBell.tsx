@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Bell, Loader2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Bell, Loader2, UserCheck, ArrowRight } from 'lucide-react';
 import { useLMS } from '../../context/LMSContext';
 import type { EnrollmentRequest } from '../../types/lms';
 import { canPickSection } from '../../utils/sections';
+import { isProfileComplete } from '../../utils/profileCompletion';
 import { useProcessing } from '../../hooks/useProcessing';
 import { UserAvatar } from './UserAvatar';
 
@@ -42,6 +44,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
     showAlert
   } = useLMS();
 
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const bellRef = useRef<HTMLDivElement>(null);
   const { isProcessing, run } = useProcessing();
@@ -57,7 +60,8 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const unreadCount = getUnreadNotificationCount(activeUser.id);
+  const hasIncompleteProfile = Boolean(activeUser && !isProfileComplete(activeUser));
+  const unreadCount = getUnreadNotificationCount(activeUser?.id || '') + (hasIncompleteProfile ? 1 : 0);
   const isStaff = activeRole === 'faculty' || activeRole === 'admin';
 
   const staffPending: EnrollmentRequest[] = isStaff
@@ -133,9 +137,44 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
             </p>
           </div>
 
+          {hasIncompleteProfile && (
+            <div className="mx-2 mb-2 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl space-y-2 animate-fade-in shadow-xs">
+              <div className="flex items-start gap-2.5">
+                <span className="p-1.5 rounded-lg bg-amber-500/20 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5">
+                  <UserCheck className="w-4 h-4" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-foreground">
+                      Profile Information Required
+                    </span>
+                    <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded-md bg-amber-500/20 text-amber-700 dark:text-amber-300">
+                      Incomplete
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground font-sans mt-0.5 leading-relaxed">
+                    Please fill up your profile information to keep your institutional records up to date.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  onNavigateTab?.('profile');
+                  navigate('/profile');
+                }}
+                className="w-full py-1.5 px-3 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
+              >
+                <span>Fill up Profile</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
           {isStaff && (
             <div className="space-y-1 mb-2">
-              {staffPending.length === 0 ? (
+              {staffPending.length === 0 && !hasIncompleteProfile ? (
                 <p className="px-3 py-3 text-xs text-muted-foreground font-sans">
                   No pending enrollment requests.
                 </p>
@@ -192,7 +231,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
 
           {!isStaff && (
             <div className="space-y-1 mb-2">
-              {studentPending.length === 0 ? (
+              {studentPending.length === 0 && !hasIncompleteProfile ? (
                 <p className="px-3 py-3 text-xs text-muted-foreground font-sans">
                   Nothing needs your action right now.
                 </p>

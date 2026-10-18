@@ -600,7 +600,7 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
                     readOnly
                     value={courseJoinCode}
                     placeholder="Auto-generated upon creation"
-                    className="w-full p-2 bg-muted/40 border border-border rounded-xl font-mono font-bold text-xs uppercase tracking-wider text-foreground outline-none cursor-default select-all"
+                    className="w-full p-2 bg-muted/40 border border-border rounded-xl font-mono font-bold text-xs uppercase tracking-wider text-foreground outline-none cursor-default select-all placeholder:normal-case"
                   />
                 </div>
                 <p className="text-[10px] text-muted-foreground">
