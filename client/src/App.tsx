@@ -139,6 +139,16 @@ const CoursesRoute: React.FC = () => {
   return <CoursesPage key={`${courseId ?? activeCourseId ?? 'none'}-${effectiveSubTab}`} initialSubTab={effectiveSubTab} />;
 };
 
+const ChairSheetRoute: React.FC = () => {
+  const nav = useAppNavigation();
+  return (
+    <ChairSheetUploadView
+      onNavigateCourse={nav.handleNavigateCourse}
+      onNavigateTab={nav.handleNavigateTab}
+    />
+  );
+};
+
 const EditAccountRoute: React.FC<{ nav: ReturnType<typeof useAppNavigation> }> = ({ nav }) => {
   const { userId } = useParams<{ userId: string }>();
   const { db } = useLMS();
@@ -270,8 +280,8 @@ export const AppContent: React.FC = () => {
       <Route element={<RequireAuth><AppShell /></RequireAuth>}>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<RouteWithNav element={(nav) => <DashboardPage onNavigateCourse={nav.handleNavigateCourse} onNavigateTab={nav.handleNavigateTab} />} />} />
-        <Route path="/courses/chair-sheet" element={<RequireChair><RouteWithNav element={(nav) => <ChairSheetUploadView onNavigateCourse={nav.handleNavigateCourse} onNavigateTab={nav.handleNavigateTab} />} /></RequireChair>} />
-        <Route path="/courses/new" element={<RequireChair><RouteWithNav element={(nav) => <ChairSheetUploadView onNavigateCourse={nav.handleNavigateCourse} onNavigateTab={nav.handleNavigateTab} />} /></RequireChair>} />
+        <Route path="/courses/chair-sheet" element={<RequireChair><ChairSheetRoute /></RequireChair>} />
+        <Route path="/courses/new" element={<RequireChair><ChairSheetRoute /></RequireChair>} />
         <Route path="/courses" element={<CoursesRoute />} />
         <Route path="/courses/:courseId" element={<CoursesRoute />} />
         <Route path="/courses/:courseId/:subTab" element={<CoursesRoute />} />

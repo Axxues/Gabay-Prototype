@@ -9,9 +9,11 @@ import {
   RefreshCw,
   PlusCircle,
   HelpCircle,
-  Download
+  Download,
+  X
 } from 'lucide-react';
 import { useLMS } from '../../../shared/context/LMSContext';
+import { AnimatedModal } from '../../../shared/components/common/ModalPortal';
 import {
   parseChairSheet,
   validateChairSheetRows,
@@ -37,11 +39,11 @@ export const ChairSheetUploadView: React.FC<ChairSheetUploadViewProps> = ({
     db,
     createCourse,
     showAlert,
-    showConfirm,
     getActiveSchoolYearForCollege
   } = useLMS();
 
   const [rows, setRows] = useState<ValidatedChairSheetRow[]>([]);
+  const [rowToDelete, setRowToDelete] = useState<ValidatedChairSheetRow | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -141,32 +143,21 @@ export const ChairSheetUploadView: React.FC<ChairSheetUploadViewProps> = ({
   };
 
   const handleDeleteRow = (id: string) => {
-    const rowToDelete = rows.find(r => r.id === id);
-    if (!rowToDelete) return;
+    const target = rows.find(r => r.id === id);
+    if (!target) return;
 
     // Check if the row has any non-empty fields
     const hasContent = Boolean(
-      rowToDelete.firstName?.trim() ||
-      rowToDelete.middleName?.trim() ||
-      rowToDelete.lastName?.trim() ||
-      rowToDelete.courseCode?.trim() ||
-      rowToDelete.descriptiveTitle?.trim() ||
-      rowToDelete.yearAndSection?.trim()
+      target.firstName?.trim() ||
+      target.middleName?.trim() ||
+      target.lastName?.trim() ||
+      target.courseCode?.trim() ||
+      target.descriptiveTitle?.trim() ||
+      target.yearAndSection?.trim()
     );
 
     if (hasContent) {
-      const summaryLabel = [
-        rowToDelete.courseCode?.trim(),
-        rowToDelete.descriptiveTitle?.trim() || (rowToDelete.firstName ? `${rowToDelete.firstName} ${rowToDelete.lastName}`.trim() : '')
-      ].filter(Boolean).join(' - ') || 'this course entry';
-
-      showConfirm(
-        `Are you sure you want to delete ${summaryLabel}? This will remove it from the preview table.`,
-        () => {
-          setRows(prev => prev.filter(r => r.id !== id));
-        },
-        'Delete Course Row'
-      );
+      setRowToDelete(target);
     } else {
       setRows(prev => prev.filter(r => r.id !== id));
     }
@@ -461,6 +452,71 @@ export const ChairSheetUploadView: React.FC<ChairSheetUploadViewProps> = ({
           />
         </div>
       )}
+
+      {/* Delete Row Confirmation Modal */}
+      <AnimatedModal
+        isOpen={Boolean(rowToDelete)}
+        onClose={() => setRowToDelete(null)}
+        panelClassName="w-full max-w-md bg-card border border-border rounded-2xl shadow-elevated p-6 space-y-4"
+      >
+        {({ startClose }) => {
+          const summaryLabel = [
+            rowToDelete?.courseCode?.trim(),
+            rowToDelete?.descriptiveTitle?.trim() || (rowToDelete?.firstName ? `${rowToDelete.firstName} ${rowToDelete.lastName}`.trim() : '')
+          ].filter(Boolean).join(' - ') || 'this course entry';
+
+          return (
+            <>
+              <div className="flex items-start justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20 shrink-0">
+                    <AlertTriangle className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-foreground leading-tight font-sans">
+                      Delete Course Row
+                    </h3>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={startClose}
+                  className="text-muted-foreground hover:text-foreground p-1 rounded-lg hover:bg-muted transition-colors cursor-pointer"
+                  aria-label="Close modal"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="text-xs sm:text-sm text-muted-foreground leading-relaxed pl-1 font-sans">
+                Are you sure you want to delete <span className="font-semibold text-foreground">{summaryLabel}</span>? This will remove it from the preview table.
+              </div>
+
+              <div className="flex items-center justify-end space-x-2 pt-2">
+                <button
+                  type="button"
+                  onClick={startClose}
+                  className="px-4 py-2 text-xs font-semibold rounded-xl border border-border hover:bg-muted text-muted-foreground hover:text-foreground transition-all cursor-pointer font-sans"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (rowToDelete) {
+                      setRows(prev => prev.filter(r => r.id !== rowToDelete.id));
+                      setRowToDelete(null);
+                    }
+                  }}
+                  className="px-5 py-2 text-xs font-bold rounded-xl bg-destructive hover:bg-destructive/90 text-destructive-foreground shadow-sm transition-all cursor-pointer active:scale-[0.98] font-sans"
+                >
+                  Delete
+                </button>
+              </div>
+            </>
+          );
+        }}
+      </AnimatedModal>
     </div>
   );
 };

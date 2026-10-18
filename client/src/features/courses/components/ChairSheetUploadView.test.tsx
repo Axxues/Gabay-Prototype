@@ -237,11 +237,28 @@ describe('ChairSheetUploadView', () => {
     const deleteBtn = screen.getByRole('button', { name: /Delete course row 1/i });
     fireEvent.click(deleteBtn);
 
-    expect(mockShowConfirm).toHaveBeenCalledWith(
-      expect.stringContaining('Are you sure you want to delete'),
-      expect.any(Function),
-      'Delete Course Row'
-    );
+    // Modal appears and displays row info
+    expect(screen.getByText('Delete Course Row')).toBeInTheDocument();
+    expect(screen.getByText(/Are you sure you want to delete/i)).toBeInTheDocument();
+    expect(screen.getByDisplayValue('CSCC 103')).toBeInTheDocument();
+
+    // Clicking cancel keeps the row and closes modal after exit animation
+    const cancelBtn = screen.getByRole('button', { name: /Cancel/i });
+    fireEvent.click(cancelBtn);
+
+    await waitFor(() => {
+      expect(screen.queryByText('Delete Course Row')).not.toBeInTheDocument();
+    });
+    expect(screen.getByDisplayValue('CSCC 103')).toBeInTheDocument();
+
+    // Clicking delete row again and confirming removes the row
+    fireEvent.click(deleteBtn);
+    expect(screen.getByText('Delete Course Row')).toBeInTheDocument();
+
+    const confirmDeleteBtn = screen.getByRole('button', { name: /^Delete$/i });
+    fireEvent.click(confirmDeleteBtn);
+
+    expect(screen.queryByDisplayValue('CSCC 103')).not.toBeInTheDocument();
   });
 });
 
