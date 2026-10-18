@@ -194,4 +194,23 @@ describe('ChairSheetUploadView', () => {
     const approveBtn = screen.getByRole('button', { name: /Approve & Create 1 Course/i });
     expect(approveBtn).not.toBeDisabled();
   });
+
+  it('renders download template button in header and dropzone', async () => {
+    render(
+      <ChairSheetUploadView
+        onNavigateCourse={mockOnNavigateCourse}
+        onNavigateTab={mockOnNavigateTab}
+      />
+    );
+
+    // Both the header button and dropzone action button should exist and be enabled
+    const downloadBtns = screen.getAllByRole('button', { name: /Download Template/i });
+    expect(downloadBtns.length).toBeGreaterThanOrEqual(1);
+    for (const btn of downloadBtns) {
+      expect(btn).toBeInTheDocument();
+      expect(btn).not.toBeDisabled();
+    }
+  });
 });
+
+

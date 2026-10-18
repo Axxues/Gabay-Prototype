@@ -223,3 +223,58 @@ export function validateChairSheetRows(
     };
   });
 }
+
+/**
+ * Generates an Excel workbook for the chair-sheet template with standard columns and example data.
+ */
+export function generateChairSheetTemplateWorkbook(): xlsx.WorkBook {
+  const headers = [
+    'First Name',
+    'Middle Name',
+    'Last Name',
+    'Course Code',
+    'Descriptive Title',
+    'Year and Section',
+  ];
+
+  const sampleData = [
+    {
+      'First Name': 'Charlie',
+      'Middle Name': 'Seli',
+      'Last Name': 'Marzan',
+      'Course Code': 'CSCC 103',
+      'Descriptive Title': 'Data Structures and Algorithms',
+      'Year and Section': 'BSCS 2-1',
+    },
+    {
+      'First Name': 'Raymund',
+      'Middle Name': 'Ezekiel',
+      'Last Name': 'Dilan',
+      'Course Code': 'CCSC 303',
+      'Descriptive Title': 'Software Engineering',
+      'Year and Section': 'BSCS 3-1',
+    },
+  ];
+
+  const worksheet = xlsx.utils.json_to_sheet(sampleData, { header: headers });
+  worksheet['!cols'] = [
+    { wch: 18 }, // First Name
+    { wch: 18 }, // Middle Name
+    { wch: 18 }, // Last Name
+    { wch: 16 }, // Course Code
+    { wch: 36 }, // Descriptive Title
+    { wch: 18 }, // Year and Section
+  ];
+
+  const workbook = xlsx.utils.book_new();
+  xlsx.utils.book_append_sheet(workbook, worksheet, 'Chair Sheet');
+  return workbook;
+}
+
+/**
+ * Downloads the chair-sheet template as an Excel file (.xlsx) in the browser.
+ */
+export function downloadChairSheetTemplate(filename = 'chair-sheet-template.xlsx'): void {
+  const wb = generateChairSheetTemplateWorkbook();
+  xlsx.writeFile(wb, filename);
+}

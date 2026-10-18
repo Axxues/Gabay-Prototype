@@ -8,7 +8,8 @@ import {
   Loader2,
   RefreshCw,
   PlusCircle,
-  HelpCircle
+  HelpCircle,
+  Download
 } from 'lucide-react';
 import { useLMS } from '../../../shared/context/LMSContext';
 import {
@@ -16,6 +17,7 @@ import {
   validateChairSheetRows,
   matchFaculty,
   isEligibleFaculty,
+  downloadChairSheetTemplate,
   type ValidatedChairSheetRow,
   type RawChairSheetRow
 } from '../utils/chairSheetParser';
@@ -240,49 +242,61 @@ export const ChairSheetUploadView: React.FC<ChairSheetUploadViewProps> = ({
           </div>
         </div>
 
-        {rows.length > 0 && (
-          <div className="flex items-center space-x-2">
-            <button
-              type="button"
-              onClick={() => {
-                setRows([]);
-                setFileName(null);
-              }}
-              disabled={isSubmitting}
-              className="px-3.5 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-colors cursor-pointer disabled:opacity-50"
-            >
-              <RefreshCw className="w-3.5 h-3.5 inline mr-1.5" />
-              Reset & Re-upload
-            </button>
+        <div className="flex items-center space-x-2">
+          <button
+            type="button"
+            onClick={() => downloadChairSheetTemplate()}
+            className="px-3.5 py-2 text-xs font-semibold text-foreground bg-muted hover:bg-muted/80 border border-border rounded-xl transition-colors cursor-pointer flex items-center space-x-1.5"
+            title="Download blank Excel chair-sheet template with sample format"
+          >
+            <Download className="w-3.5 h-3.5 text-primary" />
+            <span>Download Template (.xlsx)</span>
+          </button>
 
-            <button
-              type="button"
-              onClick={handleApproveAndSave}
-              disabled={!canApprove}
-              className={`px-5 py-2 text-xs font-bold rounded-xl shadow-xs transition-all flex items-center space-x-1.5 cursor-pointer ${
-                canApprove
-                  ? 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-primary-sm active:scale-[0.98]'
-                  : 'bg-muted text-muted-foreground cursor-not-allowed opacity-70'
-              }`}
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>
-                    Creating ({submitProgress?.current}/{submitProgress?.total})...
-                  </span>
-                </>
-              ) : canApprove ? (
-                <>
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Approve & Create {totalCount} Course{totalCount === 1 ? '' : 's'}</span>
-                </>
-              ) : (
-                <span>Resolve Unmatched Faculty</span>
-              )}
-            </button>
-          </div>
-        )}
+          {rows.length > 0 && (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setRows([]);
+                  setFileName(null);
+                }}
+                disabled={isSubmitting}
+                className="px-3.5 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw className="w-3.5 h-3.5 inline mr-1.5" />
+                Reset & Re-upload
+              </button>
+
+              <button
+                type="button"
+                onClick={handleApproveAndSave}
+                disabled={!canApprove}
+                className={`px-5 py-2 text-xs font-bold rounded-xl shadow-xs transition-all flex items-center space-x-1.5 cursor-pointer ${
+                  canApprove
+                    ? 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-primary-sm active:scale-[0.98]'
+                    : 'bg-muted text-muted-foreground cursor-not-allowed opacity-70'
+                }`}
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>
+                      Creating ({submitProgress?.current}/{submitProgress?.total})...
+                    </span>
+                  </>
+                ) : canApprove ? (
+                  <>
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Approve & Create {totalCount} Course{totalCount === 1 ? '' : 's'}</span>
+                  </>
+                ) : (
+                  <span>Resolve Unmatched Faculty</span>
+                )}
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Upload Dropzone */}
@@ -320,14 +334,25 @@ export const ChairSheetUploadView: React.FC<ChairSheetUploadViewProps> = ({
             className="hidden"
           />
 
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="px-5 py-2.5 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl shadow-primary-sm transition-all flex items-center space-x-2 cursor-pointer"
-          >
-            <UploadCloud className="w-4 h-4" />
-            <span>Select Chair-Sheet File</span>
-          </button>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="px-5 py-2.5 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl shadow-primary-sm transition-all flex items-center space-x-2 cursor-pointer"
+            >
+              <UploadCloud className="w-4 h-4" />
+              <span>Select Chair-Sheet File</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => downloadChairSheetTemplate()}
+              className="px-4 py-2.5 text-xs font-semibold bg-muted hover:bg-muted/80 text-foreground border border-border rounded-xl transition-all flex items-center space-x-2 cursor-pointer"
+            >
+              <Download className="w-4 h-4 text-primary" />
+              <span>Download Template</span>
+            </button>
+          </div>
 
           <div className="mt-6 flex items-center gap-2 text-[11px] text-muted-foreground bg-muted/60 px-3 py-1.5 rounded-lg border border-border/60">
             <HelpCircle className="w-3.5 h-3.5" />

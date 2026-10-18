@@ -6,6 +6,7 @@ import {
   parseChairSheet,
   matchFaculty,
   validateChairSheetRows,
+  generateChairSheetTemplateWorkbook,
   type RawChairSheetRow,
 } from './chairSheetParser';
 
@@ -205,4 +206,23 @@ describe('chairSheetParser', () => {
     expect(validated[1].matchedUser).toBeUndefined();
     expect(validated[1].facultyErrorMessage).toBeTruthy();
   });
+
+  it('generates a valid chair sheet template workbook that parses into valid rows', () => {
+    const wb = generateChairSheetTemplateWorkbook();
+    expect(wb.SheetNames).toContain('Chair Sheet');
+
+    // Round-trip parse the generated template buffer
+    const buf = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const parsed = parseChairSheet(buf);
+
+    expect(parsed.length).toBe(2);
+    expect(parsed[0].firstName).toBe('Charlie');
+    expect(parsed[0].courseCode).toBe('CSCC 103');
+    expect(parsed[0].yearAndSection).toBe('BSCS 2-1');
+
+    expect(parsed[1].firstName).toBe('Raymund');
+    expect(parsed[1].courseCode).toBe('CCSC 303');
+    expect(parsed[1].yearAndSection).toBe('BSCS 3-1');
+  });
 });
+
