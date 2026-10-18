@@ -224,5 +224,48 @@ describe('StudentProfileForm Component', () => {
 
     expect(mockUpdateUser).not.toHaveBeenCalled();
   });
+
+  it('allows saving address without House No. / Street / Building (optional field)', async () => {
+    const studentWithoutStreet: User = {
+      ...baseStudent,
+      permanentAddress: 'Catbangen, San Fernando, La Union',
+      presentAddress: 'Catbangen, San Fernando, La Union',
+      permanentAddressDetails: {
+        houseStreet: '',
+        barangay: 'Catbangen',
+        municipalityCity: 'San Fernando',
+        province: 'La Union',
+      },
+      presentAddressDetails: {
+        houseStreet: '',
+        barangay: 'Catbangen',
+        municipalityCity: 'San Fernando',
+        province: 'La Union',
+      },
+      sameAsPermanentAddress: true,
+    };
+
+    render(
+      <StudentProfileForm
+        user={studentWithoutStreet}
+        updateUser={mockUpdateUser}
+        showAlert={mockShowAlert}
+      />
+    );
+
+    const permStreetInput = screen.getByLabelText(/permanent house\/street/i);
+    expect(permStreetInput).not.toHaveAttribute('required');
+    expect(permStreetInput).toHaveValue('');
+
+    const saveButton = screen.getByRole('button', { name: /save profile|save student information/i });
+    fireEvent.click(saveButton);
+
+    await waitFor(() => {
+      expect(mockUpdateUser).toHaveBeenCalledWith('student-123', expect.objectContaining({
+        permanentAddress: 'Catbangen, San Fernando, La Union',
+        presentAddress: 'Catbangen, San Fernando, La Union',
+      }));
+    });
+  });
 });
 

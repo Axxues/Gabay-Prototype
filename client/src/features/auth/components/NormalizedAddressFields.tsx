@@ -44,15 +44,14 @@ export const NormalizedAddressFields: React.FC<NormalizedAddressFieldsProps> = (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="space-y-1">
             <label htmlFor={`${labelPrefix}-perm-street`} className="block text-[11px] font-semibold text-muted-foreground">
-              House No. / Street / Building <span className="text-destructive">*</span>
+              House No. / Street / Building <span className="text-[10px] text-muted-foreground/80 font-normal">(Optional)</span>
             </label>
             <input
               id={`${labelPrefix}-perm-street`}
               type="text"
-              required
               aria-label="Permanent House/Street"
               disabled={disabled}
-              value={permanentAddress.houseStreet}
+              value={permanentAddress.houseStreet || ''}
               onChange={(e) => onChangePermanentAddress({ houseStreet: e.target.value })}
               placeholder="e.g. 123 Academic Blvd, Subd."
               className="w-full px-3 py-2 text-xs bg-background border border-border focus:ring-2 focus:ring-primary/30 rounded-xl text-foreground font-sans outline-none transition-all"
@@ -145,15 +144,14 @@ export const NormalizedAddressFields: React.FC<NormalizedAddressFieldsProps> = (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="space-y-1">
             <label htmlFor={`${labelPrefix}-pres-street`} className="block text-[11px] font-semibold text-muted-foreground">
-              House No. / Street / Building <span className="text-destructive">*</span>
+              House No. / Street / Building <span className="text-[10px] text-muted-foreground/80 font-normal">(Optional)</span>
             </label>
             <input
               id={`${labelPrefix}-pres-street`}
               type="text"
-              required
               aria-label="Present House/Street"
               disabled={disabled || sameAsPermanentAddress}
-              value={effectivePresentAddress.houseStreet}
+              value={effectivePresentAddress.houseStreet || ''}
               onChange={(e) => onChangePresentAddress({ houseStreet: e.target.value })}
               placeholder="e.g. 456 Dormitory Row"
               className={`w-full px-3 py-2 text-xs border border-border rounded-xl font-sans outline-none transition-all ${

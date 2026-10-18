@@ -58,7 +58,7 @@ export interface NormalizedPersonName {
 }
 
 export interface NormalizedAddress {
-  houseStreet: string;
+  houseStreet?: string;
   barangay: string;
   municipalityCity: string;
   province: string;

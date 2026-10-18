@@ -266,5 +266,50 @@ describe('FacultyProfileForm Component', () => {
 
     expect(mockUpdateUser).not.toHaveBeenCalled();
   });
+
+  it('allows saving address without House No. / Street / Building (optional field)', async () => {
+    const facultyWithoutStreet: User = {
+      ...baseFaculty,
+      address: 'Catbangen, San Fernando, La Union',
+      permanentAddress: 'Catbangen, San Fernando, La Union',
+      presentAddress: 'Catbangen, San Fernando, La Union',
+      permanentAddressDetails: {
+        houseStreet: '',
+        barangay: 'Catbangen',
+        municipalityCity: 'San Fernando',
+        province: 'La Union',
+      },
+      presentAddressDetails: {
+        houseStreet: '',
+        barangay: 'Catbangen',
+        municipalityCity: 'San Fernando',
+        province: 'La Union',
+      },
+      sameAsPermanentAddress: true,
+    };
+
+    render(
+      <FacultyProfileForm
+        user={facultyWithoutStreet}
+        updateUser={mockUpdateUser}
+        showAlert={mockShowAlert}
+      />
+    );
+
+    const permStreetInput = screen.getByLabelText(/permanent house\/street/i);
+    expect(permStreetInput).not.toHaveAttribute('required');
+    expect(permStreetInput).toHaveValue('');
+
+    const submitBtn = screen.getByRole('button', { name: /save faculty profile|save profile/i });
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(mockUpdateUser).toHaveBeenCalledWith('faculty-123', expect.objectContaining({
+        address: 'Catbangen, San Fernando, La Union',
+        permanentAddress: 'Catbangen, San Fernando, La Union',
+        presentAddress: 'Catbangen, San Fernando, La Union',
+      }));
+    });
+  });
 });
 

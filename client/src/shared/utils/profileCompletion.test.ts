@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isProfileComplete } from './profileCompletion';
+import { isProfileComplete, isAddressComplete, parseAddress } from './profileCompletion';
 import type { User } from '../types/lms';
 
 describe('isProfileComplete', () => {
@@ -179,6 +179,48 @@ describe('isProfileComplete', () => {
     // Future birthday (e.g. tomorrow or 2027-02-27 as reported by user)
     expect(isProfileComplete({ ...completeStudent, birthday: '2027-02-27' } as User)).toBe(false);
     expect(isProfileComplete({ ...completeStudent, birthday: '2026-10-19' } as User)).toBe(false);
+  });
+
+  it('treats houseStreet as optional in isAddressComplete and profile completion', () => {
+    // Complete address with optional houseStreet omitted
+    const addressWithoutStreet = {
+      barangay: 'Catbangen',
+      municipalityCity: 'San Fernando',
+      province: 'La Union',
+    };
+    expect(isAddressComplete(addressWithoutStreet)).toBe(true);
+
+    // Complete address with empty string houseStreet
+    expect(isAddressComplete({ ...addressWithoutStreet, houseStreet: '   ' })).toBe(true);
+
+    // Incomplete when mandatory components are missing
+    expect(isAddressComplete({ ...addressWithoutStreet, barangay: '' })).toBe(false);
+    expect(isAddressComplete({ ...addressWithoutStreet, municipalityCity: '' })).toBe(false);
+    expect(isAddressComplete({ ...addressWithoutStreet, province: '' })).toBe(false);
+
+    // Student profile complete without houseStreet
+    const student = {
+      role: 'student',
+      birthday: '2004-05-15',
+      permanentAddressDetails: addressWithoutStreet,
+      presentAddressDetails: addressWithoutStreet,
+      sameAsPermanentAddress: true,
+      contactNumber: '09123456789',
+      hasGuardianOnly: false,
+      motherName: { firstName: 'Maria', lastName: 'Cruz' },
+      fatherName: { firstName: 'Juan', lastName: 'Cruz' },
+      parentContactNumber: '09987654321',
+      yearLevel: 1,
+    } as User;
+    expect(isProfileComplete(student)).toBe(true);
+
+    // 3-part string parsed into barangay, municipality, province with empty houseStreet
+    const parsed3 = parseAddress('Catbangen, San Fernando, La Union');
+    expect(parsed3.houseStreet).toBe('');
+    expect(parsed3.barangay).toBe('Catbangen');
+    expect(parsed3.municipalityCity).toBe('San Fernando');
+    expect(parsed3.province).toBe('La Union');
+    expect(isAddressComplete(parsed3)).toBe(true);
   });
 });
 

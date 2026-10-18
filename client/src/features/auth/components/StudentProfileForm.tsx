@@ -93,12 +93,12 @@ export const StudentProfileForm: React.FC<StudentProfileFormProps> = ({
     const effectivePresentDetails = sameAsPermanentAddress ? permanentAddressDetails : presentAddressDetails;
 
     if (!isAddressComplete(permanentAddressDetails)) {
-      setErrorMessage('Please fill in all permanent address details (House/Street, Barangay, Municipality/City, Province).');
+      setErrorMessage('Please fill in all required permanent address details (Barangay, Municipality/City, Province).');
       return;
     }
 
     if (!isAddressComplete(effectivePresentDetails)) {
-      setErrorMessage('Please fill in all present address details (House/Street, Barangay, Municipality/City, Province).');
+      setErrorMessage('Please fill in all required present address details (Barangay, Municipality/City, Province).');
       return;
     }
 

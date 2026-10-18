@@ -51,17 +51,18 @@ export function parseAddress(addr?: string | Partial<NormalizedAddress> | null):
     };
   } else if (parts.length === 3) {
     return {
-      houseStreet: parts[0] || '',
-      barangay: '',
+      houseStreet: '',
+      barangay: parts[0] || '',
       municipalityCity: parts[1] || '',
       province: parts[2] || '',
     };
   }
-  return { houseStreet: addr.trim(), barangay: '', municipalityCity: '', province: '' };
+  return { houseStreet: '', barangay: '', municipalityCity: '', province: addr.trim() };
 }
 
 /**
- * Validates whether an address is complete (either non-empty string or all 4 normalized parts filled).
+ * Validates whether an address is complete (either non-empty string or required normalized parts: barangay, municipalityCity, province).
+ * Note: houseStreet (House No. / Street / Building) is optional.
  */
 export function isAddressComplete(address?: Partial<NormalizedAddress> | string | null): boolean {
   if (!address) return false;
@@ -69,7 +70,6 @@ export function isAddressComplete(address?: Partial<NormalizedAddress> | string 
     return address.trim() !== '';
   }
   return Boolean(
-    address.houseStreet && address.houseStreet.trim() !== '' &&
     address.barangay && address.barangay.trim() !== '' &&
     address.municipalityCity && address.municipalityCity.trim() !== '' &&
     address.province && address.province.trim() !== ''
