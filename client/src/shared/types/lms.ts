@@ -51,6 +51,22 @@ export interface SchoolYear {
   createdAt?: string;
 }
 
+export interface NormalizedPersonName {
+  firstName: string;
+  middleName?: string;
+  lastName: string;
+}
+
+export type DegreeLevel = 'bachelors' | 'masters' | 'post_masters' | 'doctorate' | 'post_doctorate';
+
+export interface EducationalDegree {
+  id: string;
+  degreeLevel: DegreeLevel;
+  school: string;
+  yearGraduated: number | string;
+  specialization: string;
+}
+
 export interface User {
   id: string;
   name: string;
@@ -77,6 +93,28 @@ export interface User {
   registeredAt?: string;
   verificationExpiresAt?: string;
   schoolYear?: string;
+
+  // Extended profile fields:
+  birthday?: string;
+  contactNumber?: string;
+
+  // Student specific:
+  permanentAddress?: string;
+  presentAddress?: string;
+  sameAsPermanentAddress?: boolean;
+  hasGuardianOnly?: boolean;
+  motherName?: NormalizedPersonName;
+  fatherName?: NormalizedPersonName;
+  guardianName?: NormalizedPersonName;
+  parentContactNumber?: string;
+  yearLevel?: number;
+
+  // Faculty/Staff specific:
+  address?: string;
+  yearsOfTeaching?: number;
+  educationalBackground?: EducationalDegree[];
+
+  profileCompleted?: boolean;
 }
 
 // Runtime export stubs to guarantee Vite ESM dev imports and browser runtime never fail
@@ -86,6 +124,8 @@ export const Program = {} as unknown as Program;
 export const Department = {} as unknown as Department;
 export const PendingRegistration = {} as unknown as PendingRegistration;
 export const SchoolYear = {} as unknown as SchoolYear;
+export const NormalizedPersonName = {} as unknown as NormalizedPersonName;
+export const EducationalDegree = {} as unknown as EducationalDegree;
 
 import type { OfficialSyllabusData } from '../data/syllabusData';
 
