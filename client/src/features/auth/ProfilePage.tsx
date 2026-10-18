@@ -34,6 +34,7 @@ import {
   ImagePlus
 } from 'lucide-react';
 import { PageHeader } from '../../shared/components/common/PageHeader';
+import { StudentProfileForm } from './components/StudentProfileForm';
 
 type ProfileTab = 'overview' | 'preferences' | 'security';
 
@@ -572,6 +573,25 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
               </p>
             )}
           </div>
+
+          {/* Student Profile Form (Institutional Records) */}
+          {activeRole === 'student' && (
+            <div className="bg-card border border-border rounded-2xl p-6 shadow-none space-y-5">
+              <div>
+                <h3 className="font-bold text-foreground text-sm">
+                  Institutional Records & Student Information
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Update your official student records, address details, and family contact information.
+                </p>
+              </div>
+              <StudentProfileForm
+                user={currentUser}
+                updateUser={updateUser}
+                showAlert={showAlert}
+              />
+            </div>
+          )}
         </div>
       )}
 
