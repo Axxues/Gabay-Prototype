@@ -225,7 +225,7 @@ export function validateChairSheetRows(
 }
 
 /**
- * Generates an Excel workbook for the chair-sheet template with standard columns and example data.
+ * Generates an Excel workbook for the blank chair-sheet template with column headers only.
  */
 export function generateChairSheetTemplateWorkbook(): xlsx.WorkBook {
   const headers = [
@@ -237,26 +237,8 @@ export function generateChairSheetTemplateWorkbook(): xlsx.WorkBook {
     'Year and Section',
   ];
 
-  const sampleData = [
-    {
-      'First Name': 'Charlie',
-      'Middle Name': 'Seli',
-      'Last Name': 'Marzan',
-      'Course Code': 'CSCC 103',
-      'Descriptive Title': 'Data Structures and Algorithms',
-      'Year and Section': 'BSCS 2-1',
-    },
-    {
-      'First Name': 'Raymund',
-      'Middle Name': 'Ezekiel',
-      'Last Name': 'Dilan',
-      'Course Code': 'CCSC 303',
-      'Descriptive Title': 'Software Engineering',
-      'Year and Section': 'BSCS 3-1',
-    },
-  ];
-
-  const worksheet = xlsx.utils.json_to_sheet(sampleData, { header: headers });
+  // Creates sheet with headers only (row 1) and no sample data content
+  const worksheet = xlsx.utils.aoa_to_sheet([headers]);
   worksheet['!cols'] = [
     { wch: 18 }, // First Name
     { wch: 18 }, // Middle Name

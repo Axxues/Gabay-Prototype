@@ -207,22 +207,28 @@ describe('chairSheetParser', () => {
     expect(validated[1].facultyErrorMessage).toBeTruthy();
   });
 
-  it('generates a valid chair sheet template workbook that parses into valid rows', () => {
+  it('generates a clean blank template workbook with column headers only', () => {
     const wb = generateChairSheetTemplateWorkbook();
     expect(wb.SheetNames).toContain('Chair Sheet');
 
-    // Round-trip parse the generated template buffer
+    const sheet = wb.Sheets['Chair Sheet'];
+    const rows = xlsx.utils.sheet_to_json(sheet, { header: 1 }) as string[][];
+
+    // Only 1 row (the header titles)
+    expect(rows.length).toBe(1);
+    expect(rows[0]).toEqual([
+      'First Name',
+      'Middle Name',
+      'Last Name',
+      'Course Code',
+      'Descriptive Title',
+      'Year and Section',
+    ]);
+
+    // Parsing the blank template buffer returns 0 data rows
     const buf = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
     const parsed = parseChairSheet(buf);
-
-    expect(parsed.length).toBe(2);
-    expect(parsed[0].firstName).toBe('Charlie');
-    expect(parsed[0].courseCode).toBe('CSCC 103');
-    expect(parsed[0].yearAndSection).toBe('BSCS 2-1');
-
-    expect(parsed[1].firstName).toBe('Raymund');
-    expect(parsed[1].courseCode).toBe('CCSC 303');
-    expect(parsed[1].yearAndSection).toBe('BSCS 3-1');
+    expect(parsed.length).toBe(0);
   });
 });
 
