@@ -22,8 +22,8 @@ const mockUser = {
 vi.mock('./shared/context/LMSContext', () => ({
   useLMS: () => ({
     activeRole: mocks.activeRole,
-    activeUser: mocks.isAuthenticated ? mockUser : null,
-    currentUser: mocks.isAuthenticated ? mockUser : null,
+    activeUser: mocks.isAuthenticated ? { ...mockUser, role: mocks.activeRole, profileCompleted: true } : null,
+    currentUser: mocks.isAuthenticated ? { ...mockUser, role: mocks.activeRole, profileCompleted: true } : null,
     isAuthenticated: mocks.isAuthenticated,
     authReady: mocks.authReady,
     isLoading: mocks.isLoading,

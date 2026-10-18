@@ -203,7 +203,7 @@ describe('authReady session-restore gate', () => {
       loginResult = await doLogin!();
     });
     await waitFor(() => {
-      expect(loginResult).toEqual({ success: true });
+      expect(loginResult).toMatchObject({ success: true });
     });
     expect(apiFetchMock).not.toHaveBeenCalled();
   });

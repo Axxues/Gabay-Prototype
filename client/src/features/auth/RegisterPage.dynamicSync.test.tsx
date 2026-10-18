@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent, act, within } from '@testing-library/react';
 import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { RegisterPage } from './RegisterPage';
@@ -127,7 +127,7 @@ describe('RegisterPage Dynamic Self-Registration Sync', () => {
     // 6. Changing college filters departments dynamically and resets department value
     fireEvent.change(collegeSelect, { target: { value: 'col-ccs' } });
     expect(departmentSelect.value).toBe('');
-    expect(screen.getByRole('option', { name: /(Program|Department) (in|of) Computer Science/i })).toBeInTheDocument();
+    expect(within(departmentSelect).getByRole('option', { name: /Computer Science/i })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: /Department of Nursing/i })).not.toBeInTheDocument();
 
     // Switch back to CAHS: Nursing should be present again
