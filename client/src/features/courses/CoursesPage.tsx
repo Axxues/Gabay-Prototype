@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { BookOpen, Calendar, ChevronDown } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { BookOpen } from 'lucide-react';
 import { useLMS } from '../../shared/context/LMSContext';
 import { JoinCourseModal } from '../../shared/components/common/JoinCourseModal';
 import { EmptyState } from '../../shared/components/common/EmptyState';
@@ -59,36 +59,11 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
     activeUser,
     colleges,
     departments,
-    schoolYears,
-    getActiveSchoolYearForCollege,
-    getSchoolYearsByCollege,
     getUnreadNotificationCount,
     markTabVisited,
     isCourseGradeReady
   } = useLMS();
 
-  // Determine active school year for current college context (defaults to '2025-2026')
-  const userCollegeId = activeUser?.collegeId || 'col-ccs';
-  const currentActiveSchoolYear = useMemo(() => {
-    if (getActiveSchoolYearForCollege) {
-      const activeSy = getActiveSchoolYearForCollege(userCollegeId);
-      if (activeSy?.year) return activeSy.year;
-    }
-    const list = getSchoolYearsByCollege ? getSchoolYearsByCollege(userCollegeId) : [];
-    const active = list.find(sy => sy.isActive);
-    return active?.year || '2025-2026';
-  }, [getActiveSchoolYearForCollege, getSchoolYearsByCollege, userCollegeId]);
-
-  const [selectedSchoolYear, setSelectedSchoolYear] = useState<string>(() => currentActiveSchoolYear);
-
-  // Sync selectedSchoolYear if currentActiveSchoolYear changes and user hasn't chosen a past year
-  useEffect(() => {
-    if (!selectedSchoolYear) {
-      setSelectedSchoolYear(currentActiveSchoolYear);
-    }
-  }, [currentActiveSchoolYear, selectedSchoolYear]);
-
-  const [isSchoolYearDropdownOpen, setIsSchoolYearDropdownOpen] = useState(false);
   const [subTab, setSubTab] = useState(initialSubTab);
   const [returnToTab, setReturnToTab] = useState<string | null>(null);
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
@@ -107,7 +82,8 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
       .filter(r => r.studentId === activeUser.id && r.status === 'approved')
       .map(r => r.courseId)
   );
-  const allScopedCourses = activeRole === 'staff'
+  // Scoped courses
+  const availableCourses = activeRole === 'staff'
     ? db.courses
     : getScopedCourses({
         courses: db.courses,
@@ -119,48 +95,7 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
         departments,
       });
 
-  // Filter scoped courses by selectedSchoolYear
-  const availableCourses = useMemo(() => {
-    if (selectedSchoolYear === 'all') {
-      return allScopedCourses;
-    }
-    return allScopedCourses.filter(c => {
-      const courseYear = c.schoolYear || '2025-2026';
-      return courseYear === selectedSchoolYear;
-    });
-  }, [allScopedCourses, selectedSchoolYear]);
-
-  // Distinct school years for selector dropdown
-  const availableSchoolYears = useMemo(() => {
-    const years = new Set<string>();
-    // Add collegiate school years
-    const list = getSchoolYearsByCollege ? getSchoolYearsByCollege(userCollegeId) : (schoolYears || []);
-    list.forEach(sy => {
-      if (sy.year) years.add(sy.year.trim());
-    });
-    // Add distinct years from courses
-    allScopedCourses.forEach(c => {
-      if (c.schoolYear) {
-        years.add(c.schoolYear.trim());
-      } else {
-        years.add('2025-2026');
-      }
-    });
-    years.add('2025-2026');
-    return Array.from(years).sort((a, b) => b.localeCompare(a));
-  }, [getSchoolYearsByCollege, userCollegeId, schoolYears, allScopedCourses]);
-
   const activeCourse = availableCourses.find(c => c.id === activeCourseId) || availableCourses[0];
-
-  // If the activeCourseId does not match the chosen school year, update activeCourseId
-  useEffect(() => {
-    if (availableCourses.length > 0) {
-      const match = availableCourses.some(c => c.id === activeCourseId);
-      if (!match) {
-        setActiveCourseId(availableCourses[0].id);
-      }
-    }
-  }, [availableCourses, activeCourseId, setActiveCourseId]);
 
   // Student explicitly navigated to a course they are not enrolled in
   // (stale activeCourseId from history/search), or has no enrollments at
@@ -289,121 +224,10 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
     );
   }
 
-  const syDropdownRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (syDropdownRef.current && !syDropdownRef.current.contains(e.target as Node)) {
-        setIsSchoolYearDropdownOpen(false);
-      }
-    };
-    if (isSchoolYearDropdownOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isSchoolYearDropdownOpen]);
-
   return (
     <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
       {/* Main Content Area */}
       <main className="min-h-0 flex-1 p-6 overflow-y-auto bg-background custom-scrollbar">
-        {/* School Year Scoping & Course Navigation Bar */}
-        <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-3.5 bg-card border border-border/80 rounded-2xl shadow-xs">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <span className="w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                <Calendar className="w-4 h-4" />
-              </span>
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
-                  Academic Scope
-                </span>
-                <span className="text-xs font-extrabold text-foreground">
-                  {selectedSchoolYear === 'all' ? 'All Academic Years' : `AY ${selectedSchoolYear}`}
-                </span>
-              </div>
-            </div>
-
-            {/* School Year Dropdown Selector */}
-            <div className="relative ml-2" ref={syDropdownRef}>
-              <button
-                type="button"
-                data-testid="courses-school-year-filter"
-                onClick={() => setIsSchoolYearDropdownOpen(prev => !prev)}
-                className="flex items-center gap-2 px-3 py-1.5 bg-background hover:bg-muted/60 border border-border rounded-xl text-xs font-bold text-foreground transition-all cursor-pointer shadow-2xs"
-              >
-                <span>{selectedSchoolYear === 'all' ? 'All School Years' : selectedSchoolYear}</span>
-                <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform duration-200 ${isSchoolYearDropdownOpen ? 'rotate-180' : ''}`} />
-              </button>
-
-              {isSchoolYearDropdownOpen && (
-                <div className="absolute left-0 mt-2 w-48 bg-card border border-border rounded-xl shadow-elevated z-30 p-1.5 animate-scale-in">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedSchoolYear('all');
-                      setIsSchoolYearDropdownOpen(false);
-                    }}
-                    className={`w-full flex items-center justify-between px-3 py-2 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
-                      selectedSchoolYear === 'all' ? 'bg-primary/10 text-primary font-bold' : 'text-foreground hover:bg-muted/60'
-                    }`}
-                  >
-                    <span>All School Years</span>
-                  </button>
-                  {availableSchoolYears.map(yr => (
-                    <button
-                      key={yr}
-                      type="button"
-                      onClick={() => {
-                        setSelectedSchoolYear(yr);
-                        setIsSchoolYearDropdownOpen(false);
-                      }}
-                      className={`w-full flex items-center justify-between px-3 py-2 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
-                        selectedSchoolYear === yr ? 'bg-primary/10 text-primary font-bold' : 'text-foreground hover:bg-muted/60'
-                      }`}
-                    >
-                      <span>{yr}</span>
-                      {yr === currentActiveSchoolYear && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border">
-                          Current
-                        </span>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Course Selector Strip / Active Course Badge in Header */}
-          <div className="flex items-center gap-2 overflow-x-auto max-w-full pb-1 sm:pb-0">
-            <span className="text-xs text-muted-foreground font-medium hidden sm:inline-block shrink-0">Courses:</span>
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {availableCourses.map(c => {
-                const isActive = c.id === activeCourse.id;
-                const cYear = c.schoolYear || '2025-2026';
-                return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => setActiveCourseId(c.id)}
-                    className={`px-3 py-1 text-xs rounded-xl font-bold transition-all cursor-pointer border flex items-center gap-1.5 ${
-                      isActive
-                        ? 'bg-foreground text-background border-foreground shadow-2xs'
-                        : 'bg-muted/50 text-muted-foreground hover:text-foreground border-border hover:bg-muted'
-                    }`}
-                  >
-                    <span>{c.code}</span>
-                    <span className="opacity-80 font-normal truncate max-w-[140px]">{c.title}</span>
-                    <span className="text-[10px] opacity-70">({cYear})</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
         <div className="mb-4 flex gap-1.5 overflow-x-auto pb-1 md:hidden">
           {COURSE_CHILDREN.filter(i => isVisible(i, activeRole)).map(tab => {
             const badgeCount = tabBadges[tab.id] ?? 0;

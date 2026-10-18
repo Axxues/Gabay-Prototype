@@ -5,6 +5,7 @@ expect.extend(matchers);
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import React from 'react';
 import { CoursesPage } from './CoursesPage';
+import { DashboardPage } from '../dashboard/DashboardPage';
 
 afterEach(() => {
   cleanup();
@@ -35,7 +36,6 @@ let mockCoursesState = [
     published: true,
   },
 ];
-
 
 const mockSchoolYears = [
   { id: 'sy-2526', collegeId: 'col-ccs', year: '2025-2026', isActive: true },
@@ -74,43 +74,43 @@ vi.mock('../../shared/context/LMSContext', () => ({
     schoolYears: mockSchoolYears,
     getSchoolYearsByCollege: (colId: string) => mockSchoolYears.filter(sy => sy.collegeId === colId),
     getActiveSchoolYearForCollege: (colId: string) => mockSchoolYears.find(sy => sy.collegeId === colId && sy.isActive),
+    getPendingRequestsForStudent: () => [],
+    getApprovedRequestsForCourse: vi.fn().mockResolvedValue([]),
+    studentApproveInvitation: vi.fn(),
+    studentDeclineInvitation: vi.fn(),
+    deleteCourse: vi.fn(),
+    showConfirm: vi.fn(),
+    showAlert: vi.fn(),
+    openSpeedGrader: vi.fn(),
+    isLoading: false,
     getUnreadNotificationCount: () => 0,
     markTabVisited: mockMarkTabVisited,
     isCourseGradeReady: () => false,
   }),
 }));
 
-describe('CoursesPage School Year Filtering and Navigation', () => {
+describe('DashboardPage Academic Scope Horizontal Scrollable Wheel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockActiveCourseId = 'c-curr';
   });
 
-  test('defaults view to active school year and filters courses', async () => {
-    render(<CoursesPage initialSubTab="modules" />);
+  test('renders Academic Scope horizontal wheel and defaults to active year on Dashboard', () => {
+    render(<DashboardPage onNavigateCourse={() => {}} onNavigateTab={() => {}} />);
 
-    // School Year selector should be present and default to active year (2025-2026)
-    const sySelector = screen.getByTestId('courses-school-year-filter');
-    expect(sySelector).toBeInTheDocument();
-    expect(sySelector).toHaveTextContent('2025-2026');
+    // Academic Scope section exists on dashboard
+    expect(screen.getByText('Academic Scope')).toBeInTheDocument();
+    expect(screen.getByTestId('academic-scope-wheel')).toBeInTheDocument();
 
-    // Only current course should be displayed/active in active year
+    // Defaults to current active year (2025-2026)
     expect(screen.getByText('Intro to Computer Science')).toBeInTheDocument();
     expect(screen.queryByText('Foundation Computing')).not.toBeInTheDocument();
   });
 
-  test('switching to past school year displays past courses and switches activeCourseId', async () => {
-    render(<CoursesPage initialSubTab="modules" />);
+  test('clicking year in horizontal wheel filters courses on Dashboard', async () => {
+    render(<DashboardPage onNavigateCourse={() => {}} onNavigateTab={() => {}} />);
 
-    const sySelector = screen.getByTestId('courses-school-year-filter');
-    fireEvent.click(sySelector);
-
-    // Click past year option '2024-2025'
-    const pastOption = screen.getByRole('button', { name: /2024-2025/i });
-    fireEvent.click(pastOption);
-
-    // Active course should update to past course
-    expect(mockSetActiveCourseId).toHaveBeenCalledWith('c-past');
+    const pastYearBtn = screen.getByRole('button', { name: /AY 2024-2025/i });
+    fireEvent.click(pastYearBtn);
 
     await waitFor(() => {
       expect(screen.getByText('Foundation Computing')).toBeInTheDocument();
@@ -118,33 +118,36 @@ describe('CoursesPage School Year Filtering and Navigation', () => {
     });
   });
 
-  test('selecting "All School Years" displays all courses across historical years', async () => {
-    render(<CoursesPage initialSubTab="modules" />);
+  test('clicking All Years shows all courses across historical years on Dashboard', async () => {
+    render(<DashboardPage onNavigateCourse={() => {}} onNavigateTab={() => {}} />);
 
-    const sySelector = screen.getByTestId('courses-school-year-filter');
-    fireEvent.click(sySelector);
-
-    const allOption = screen.getByRole('button', { name: /All School Years/i });
-    fireEvent.click(allOption);
+    const allYearsBtn = screen.getByRole('button', { name: /All Years/i });
+    fireEvent.click(allYearsBtn);
 
     await waitFor(() => {
-      // Both courses should be available in list/pills
-      expect(screen.getByText('(2025-2026)')).toBeInTheDocument();
-      expect(screen.getByText('(2024-2025)')).toBeInTheDocument();
       expect(screen.getByText('Intro to Computer Science')).toBeInTheDocument();
       expect(screen.getByText('Foundation Computing')).toBeInTheDocument();
     });
   });
+});
 
-  test('past courses remain fully interactive and modules view is rendered', async () => {
-    mockActiveCourseId = 'c-past';
+describe('CoursesPage Scoped Views (without Academic Scope Banner)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockActiveCourseId = 'c-curr';
+  });
+
+  test('CoursesPage does not render Academic Scope banner or course pills', () => {
     render(<CoursesPage initialSubTab="modules" />);
 
-    const sySelector = screen.getByTestId('courses-school-year-filter');
-    fireEvent.click(sySelector);
-    fireEvent.click(screen.getByRole('button', { name: /2024-2025/i }));
+    // Academic Scope banner should be gone from CoursesPage
+    expect(screen.queryByText('Academic Scope')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('courses-school-year-filter')).not.toBeInTheDocument();
+  });
 
-    // Historical course should have its modules view loaded
+  test('CoursesPage renders active course modules view cleanly', async () => {
+    render(<CoursesPage initialSubTab="modules" />);
+
     await waitFor(() => {
       expect(screen.getByRole('heading', { level: 1, name: 'Modules' })).toBeInTheDocument();
     });

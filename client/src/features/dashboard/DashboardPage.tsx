@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useLMS } from '../../shared/context/LMSContext';
 import type { EnrollmentRequest } from '../../shared/types/lms';
 import { getDisplaySectionName } from '../../shared/utils/sections';
@@ -23,7 +23,10 @@ import {
   Trash2,
   Users,
   Loader2,
-  UploadCloud
+  UploadCloud,
+  Calendar,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { isChairRole } from '../../shared/utils/roles';
 import { useProcessing } from '../../shared/hooks/useProcessing';
@@ -37,7 +40,25 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   onNavigateCourse,
   onNavigateTab
 }) => {
-  const { activeRole, activeUser, db, colleges, departments, isLoading, openSpeedGrader, getPendingRequestsForStudent, studentApproveInvitation, studentDeclineInvitation, deleteCourse, showConfirm, showAlert, getApprovedRequestsForCourse } = useLMS();
+  const {
+    activeRole,
+    activeUser,
+    db,
+    colleges,
+    departments,
+    isLoading,
+    openSpeedGrader,
+    getPendingRequestsForStudent,
+    studentApproveInvitation,
+    studentDeclineInvitation,
+    deleteCourse,
+    showConfirm,
+    showAlert,
+    getApprovedRequestsForCourse,
+    schoolYears,
+    getSchoolYearsByCollege,
+    getActiveSchoolYearForCollege
+  } = useLMS();
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
   const [copiedCodeCourseId, setCopiedCodeCourseId] = useState<string | null>(null);
   const { isProcessing, run } = useProcessing();
@@ -64,15 +85,80 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     departments,
   }), [db.courses, db.users, activeUser, activeRole, approvedCourseIds, colleges, departments]);
 
+  const userCollegeId = activeUser?.collegeId || 'col-ccs';
+  const currentActiveSchoolYear = useMemo(() => {
+    if (getActiveSchoolYearForCollege) {
+      const activeSy = getActiveSchoolYearForCollege(userCollegeId);
+      if (activeSy?.year) return activeSy.year;
+    }
+    const list = getSchoolYearsByCollege ? getSchoolYearsByCollege(userCollegeId) : [];
+    const active = list.find(sy => sy.isActive);
+    return active?.year || '2025-2026';
+  }, [getActiveSchoolYearForCollege, getSchoolYearsByCollege, userCollegeId]);
+
+  const [selectedSchoolYear, setSelectedSchoolYear] = useState<string>(() => currentActiveSchoolYear);
+
+  useEffect(() => {
+    if (!selectedSchoolYear) {
+      setSelectedSchoolYear(currentActiveSchoolYear);
+    }
+  }, [currentActiveSchoolYear, selectedSchoolYear]);
+
+  // Distinct school years for the horizontal scrollable wheel
+  const availableSchoolYears = useMemo(() => {
+    const years = new Set<string>();
+    const list = getSchoolYearsByCollege ? getSchoolYearsByCollege(userCollegeId) : (schoolYears || []);
+    list.forEach(sy => {
+      if (sy.year) years.add(sy.year.trim());
+    });
+    userCourses.forEach(c => {
+      if (c.schoolYear) {
+        years.add(c.schoolYear.trim());
+      } else {
+        years.add('2025-2026');
+      }
+    });
+    years.add('2025-2026');
+    return Array.from(years).sort((a, b) => b.localeCompare(a));
+  }, [getSchoolYearsByCollege, userCollegeId, schoolYears, userCourses]);
+
+  const wheelTrackRef = useRef<HTMLDivElement>(null);
+
+  const scrollWheel = (direction: 'left' | 'right') => {
+    if (wheelTrackRef.current) {
+      const scrollAmount = 140;
+      wheelTrackRef.current.scrollBy({
+        left: direction === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth'
+      });
+    }
+  };
+
+  // Filter courses by selected school year
+  const filteredCourses = useMemo(() => {
+    if (selectedSchoolYear === 'all') {
+      return userCourses;
+    }
+    return userCourses.filter(c => {
+      const courseYear = c.schoolYear || '2025-2026';
+      return courseYear === selectedSchoolYear;
+    });
+  }, [userCourses, selectedSchoolYear]);
+
   const [coursePage, setCoursePage] = useState(1);
   const COURSES_PER_PAGE = 12;
-  const totalCoursePages = useMemo(() => Math.max(1, Math.ceil(userCourses.length / COURSES_PER_PAGE)), [userCourses.length]);
-  const paginatedCourses = useMemo(() => userCourses.slice((coursePage - 1) * COURSES_PER_PAGE, coursePage * COURSES_PER_PAGE), [userCourses, coursePage]);
+  const totalCoursePages = useMemo(() => Math.max(1, Math.ceil(filteredCourses.length / COURSES_PER_PAGE)), [filteredCourses.length]);
+  const paginatedCourses = useMemo(() => filteredCourses.slice((coursePage - 1) * COURSES_PER_PAGE, coursePage * COURSES_PER_PAGE), [filteredCourses, coursePage]);
 
-  const userCourseIds = useMemo(() => new Set(userCourses.map(c => c.id)), [userCourses]);
+  // Reset page when school year changes
+  useEffect(() => {
+    setCoursePage(1);
+  }, [selectedSchoolYear]);
+
+  const userCourseIds = useMemo(() => new Set(filteredCourses.map(c => c.id)), [filteredCourses]);
   const unsubmittedList = useMemo(() => db.submissions.filter(
-    s => s.status === 'submitted' && (userCourseIds.has(s.courseId) || (!s.courseId && userCourses.length > 0))
-  ), [db.submissions, userCourseIds, userCourses.length]);
+    s => s.status === 'submitted' && (userCourseIds.has(s.courseId) || (!s.courseId && filteredCourses.length > 0))
+  ), [db.submissions, userCourseIds, filteredCourses.length]);
 
   // Pending rows can reference courses outside the cached (enrolled-only)
   // list — prefer the live cache, fall back to the server snapshot, and
@@ -222,14 +308,105 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   </button>
                 )}
                 <span className="text-xs font-sans text-muted-foreground bg-muted px-2.5 py-1 rounded-full border border-border tabular-nums">
-                  {userCourses.length} courses
+                  {filteredCourses.length} courses
                 </span>
               </>
             }
           />
 
+          {/* Academic Scope Horizontal Scrollable Wheel */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3.5 bg-card border border-border/80 rounded-2xl shadow-xs">
+            <div className="flex items-center gap-2.5 shrink-0">
+              <span className="w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                <Calendar className="w-4 h-4" />
+              </span>
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
+                  Academic Scope
+                </span>
+                <span className="text-xs font-extrabold text-foreground">
+                  {selectedSchoolYear === 'all' ? 'All Academic Years' : `AY ${selectedSchoolYear}`}
+                </span>
+              </div>
+            </div>
+
+            {/* Horizontal Scrollable Wheel Track */}
+            <div className="relative flex items-center min-w-0 max-w-full">
+              <button
+                type="button"
+                onClick={() => scrollWheel('left')}
+                aria-label="Scroll years left"
+                className="hidden sm:flex items-center justify-center w-7 h-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/70 transition-colors shrink-0 mr-1 cursor-pointer"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+
+              <div
+                ref={wheelTrackRef}
+                data-testid="academic-scope-wheel"
+                onWheel={(e) => {
+                  if (wheelTrackRef.current) {
+                    wheelTrackRef.current.scrollLeft += e.deltaY;
+                  }
+                }}
+                className="flex items-center gap-1.5 overflow-x-auto py-1 px-0.5 no-scrollbar scroll-smooth"
+                style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setSelectedSchoolYear('all')}
+                  className={`px-3 py-1.5 text-xs rounded-xl font-bold transition-all cursor-pointer border whitespace-nowrap shrink-0 ${
+                    selectedSchoolYear === 'all'
+                      ? 'bg-foreground text-background border-foreground shadow-2xs'
+                      : 'bg-muted/50 text-muted-foreground hover:text-foreground border-border hover:bg-muted'
+                  }`}
+                >
+                  All Years
+                </button>
+                {availableSchoolYears.map((yr) => {
+                  const isSelected = selectedSchoolYear === yr;
+                  const isCurrent = yr === currentActiveSchoolYear;
+                  return (
+                    <button
+                      key={yr}
+                      type="button"
+                      onClick={() => setSelectedSchoolYear(yr)}
+                      className={`px-3 py-1.5 text-xs rounded-xl font-bold transition-all cursor-pointer border flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
+                        isSelected
+                          ? 'bg-foreground text-background border-foreground shadow-2xs'
+                          : 'bg-muted/50 text-muted-foreground hover:text-foreground border-border hover:bg-muted'
+                      }`}
+                    >
+                      <span>AY {yr}</span>
+                      {isCurrent && (
+                        <span
+                          className={`text-[9px] px-1 py-0.2 rounded font-semibold border ${
+                            isSelected
+                              ? 'bg-background/20 text-background border-transparent'
+                              : 'bg-muted text-muted-foreground border-border'
+                          }`}
+                        >
+                          Current
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => scrollWheel('right')}
+                aria-label="Scroll years right"
+                className="hidden sm:flex items-center justify-center w-7 h-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/70 transition-colors shrink-0 ml-1 cursor-pointer"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
           {/* Empty State or Course Cards Grid */}
-          {isLoading && userCourses.length === 0 ? (
+          {isLoading && filteredCourses.length === 0 ? (
             <div data-testid="dashboard-courses-loading" className={`grid gap-5 ${hasRightSidebar ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1 md:grid-cols-2 lg:grid-cols-3"}`} aria-hidden="true">
               {Array.from({ length: 4 }).map((_, i) => (
                 <div key={`dashboard-courses-skeleton-${i}`} className="bg-card text-card-foreground border border-border rounded-2xl overflow-hidden flex flex-col justify-between animate-pulse">
@@ -266,15 +443,17 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 </div>
               ))}
             </div>
-          ) : userCourses.length === 0 ? (
+          ) : filteredCourses.length === 0 ? (
             <EmptyState
               icon={<BookOpen className="h-6 w-6" />}
-              title="No enrolled courses"
-              body={activeRole === 'student'
-                ? 'You are not enrolled in any courses yet. Ask your faculty instructor for the course join code and click below to enter your code.'
-                : 'No course shells assigned to your account.'}
-              actionLabel={activeRole === 'student' ? 'Enter course join code' : undefined}
-              onAction={activeRole === 'student' ? () => setIsJoinModalOpen(true) : undefined}
+              title={userCourses.length === 0 ? "No enrolled courses" : "No courses in this academic year"}
+              body={userCourses.length === 0
+                ? (activeRole === 'student'
+                    ? 'You are not enrolled in any courses yet. Ask your faculty instructor for the course join code and click below to enter your code.'
+                    : 'No course shells assigned to your account.')
+                : `You do not have any courses for AY ${selectedSchoolYear}. Select another year or 'All Years' from above.`}
+              actionLabel={userCourses.length === 0 && activeRole === 'student' ? 'Enter course join code' : undefined}
+              onAction={userCourses.length === 0 && activeRole === 'student' ? () => setIsJoinModalOpen(true) : undefined}
             />
           ) : (
             <div className={`grid gap-5 ${hasRightSidebar ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1 md:grid-cols-2 lg:grid-cols-3"}`}>
