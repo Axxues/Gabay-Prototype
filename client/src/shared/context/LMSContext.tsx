@@ -46,7 +46,7 @@ import {
   termGrade,
 } from '../utils/spr';
 import { commonsTemplates } from '../data/commonsTemplates';
-import { DEFAULT_COLLEGES, DEFAULT_DEPARTMENTS, generateAutomaticSchoolYears } from '../data/collegesData';
+import { DEFAULT_COLLEGES, DEFAULT_DEPARTMENTS, generateAutomaticSchoolYears, normalizeProgramName } from '../data/collegesData';
 import { effectiveTerms, normalizeGradesReleased, normalizeTermId } from '../utils/gradingTerms';
 import { isSyllabusGradeReady } from '../utils/syllabusGradeGate';
 import { AlertModal, type AlertModalOptions } from '../components/common/AlertModal';
@@ -322,6 +322,7 @@ const STORAGE_KEY_DEPARTMENTS = 'gabay_departments';
 const STORAGE_KEY_PENDING_REGISTRATIONS = 'gabay_pending_registrations';
 const STORAGE_KEY_SCHOOL_YEARS = 'gabay_school_years';
 const STORAGE_KEY_COLLEGE_ACTIVE_SY = 'gabay_college_active_school_years';
+export const STORAGE_KEY_DB = 'gabay_lms_db_v6';
 
 const safeSetLocalStorage = (key: string, value: string): boolean => {
   try {
@@ -1040,6 +1041,8 @@ export const mapLikhaUserRowToUser = (row: any): User => {
     avatar: resolveDirectusUserAvatar(row, ''),
     department: row?.department || 'College of Computer Science',
     title: row?.title || (role === 'student' ? 'Undergraduate Student' : 'Faculty Instructor'),
+    yearLevel: row?.year_level !== undefined ? Number(row.year_level) : (row?.yearLevel !== undefined ? Number(row.yearLevel) : undefined),
+    yearsOfTeaching: row?.years_of_teaching !== undefined ? Number(row.years_of_teaching) : (row?.yearsOfTeaching !== undefined ? Number(row.yearsOfTeaching) : undefined),
   };
 };
 
@@ -1558,8 +1561,19 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     enrollmentRequests: [],
   });
 
-  // Database State (API-backed cache; starts empty, no localStorage persistence)
-  const [db, setDbState] = useState<LMSDatabase>(() => emptyDb());
+  // Database State (API-backed cache; starts empty or loads from localStorage if persisted)
+  const [db, setDbState] = useState<LMSDatabase>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_DB);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') {
+          return { ...emptyDb(), ...parsed };
+        }
+      }
+    } catch (_) {}
+    return emptyDb();
+  });
   const setDb = useCallback((action: React.SetStateAction<LMSDatabase>) => {
     setDbState(prev => {
       const next = typeof action === 'function' ? action(prev) : action;
@@ -1590,7 +1604,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const saved = localStorage.getItem(STORAGE_KEY_DEPARTMENTS);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((d: any) => ({
+            ...d,
+            name: normalizeProgramName(d.name || ''),
+          }));
+        }
       }
     } catch (_) {}
     return DEFAULT_DEPARTMENTS;
@@ -1693,9 +1712,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     (async () => {
       try {
         if (likhaLmsApi?.academicStructure?.getColleges && likhaLmsApi?.academicStructure?.getDepartments) {
-          const [colSettled, deptSettled] = await Promise.allSettled([
+          const [colSettled, deptSettled, sySettled] = await Promise.allSettled([
             likhaLmsApi.academicStructure.getColleges(),
             likhaLmsApi.academicStructure.getDepartments(),
+            likhaLmsApi.academicStructure.getSchoolYears ? likhaLmsApi.academicStructure.getSchoolYears() : Promise.resolve([]),
           ]);
 
           if (!cancelled && colSettled.status === 'fulfilled' && Array.isArray(colSettled.value) && colSettled.value.length > 0) {
@@ -1720,21 +1740,51 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
 
           if (!cancelled && deptSettled.status === 'fulfilled' && Array.isArray(deptSettled.value) && deptSettled.value.length > 0) {
-            const mappedDepts: Department[] = deptSettled.value.map((d: any) => ({
-              id: String(d.id),
-              collegeId: typeof d.college_id === 'object' && d.college_id ? String(d.college_id.id) : String(d.college_id || ''),
-              name: d.name,
-              code: d.code,
-              chairpersonId: typeof d.chairperson_id === 'object' && d.chairperson_id ? String(d.chairperson_id.id) : (typeof d.chairperson_id === 'string' && d.chairperson_id ? d.chairperson_id : undefined),
-            }));
+            const mappedDepts: Department[] = deptSettled.value.map((d: any) => {
+              const rawName = String(d.name || '');
+              const cleanName = normalizeProgramName(rawName);
+              if (rawName !== cleanName && d.id) {
+                likhaLmsApi.academicStructure.updateDepartment(String(d.id), { name: cleanName }).catch(() => {});
+              }
+              return {
+                id: String(d.id),
+                collegeId: typeof d.college_id === 'object' && d.college_id ? String(d.college_id.id) : String(d.college_id || ''),
+                name: cleanName,
+                code: d.code,
+                chairpersonId: typeof d.chairperson_id === 'object' && d.chairperson_id ? String(d.chairperson_id.id) : (typeof d.chairperson_id === 'string' && d.chairperson_id ? d.chairperson_id : undefined),
+              };
+            });
             setDepartments(prev => {
               const merged = [...mappedDepts];
               for (const localDept of prev) {
+                const cleanLocal = {
+                  ...localDept,
+                  name: normalizeProgramName(localDept.name || ''),
+                };
                 const exists = merged.some(
-                  r => r.id === localDept.id || (r.collegeId === localDept.collegeId && r.code && localDept.code && r.code.toUpperCase() === localDept.code.toUpperCase())
+                  r => r.id === cleanLocal.id || (r.collegeId === cleanLocal.collegeId && r.code && cleanLocal.code && r.code.toUpperCase() === cleanLocal.code.toUpperCase())
                 );
                 if (!exists) {
-                  merged.push(localDept);
+                  merged.push(cleanLocal);
+                }
+              }
+              return merged;
+            });
+          }
+
+          if (!cancelled && sySettled.status === 'fulfilled' && Array.isArray(sySettled.value) && sySettled.value.length > 0) {
+            const mappedYears: SchoolYear[] = sySettled.value.map((sy: any) => ({
+              id: String(sy.id),
+              year: String(sy.year),
+              isActive: Boolean(sy.is_active ?? sy.isActive ?? false),
+              createdAt: sy.date_created || sy.createdAt,
+            }));
+            setSchoolYears(prev => {
+              const merged = [...mappedYears];
+              for (const localSy of prev) {
+                const exists = merged.some(r => r.year === localSy.year || r.id === localSy.id);
+                if (!exists) {
+                  merged.push(localSy);
                 }
               }
               return merged;
@@ -1938,6 +1988,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 collegeId: u.college_id || u.collegeId,
                 collegeName: u.college_name || u.collegeName,
                 schoolYear: u.school_year || u.schoolYear,
+                yearLevel: u.year_level !== undefined ? Number(u.year_level) : (u.yearLevel !== undefined ? Number(u.yearLevel) : undefined),
+                yearsOfTeaching: u.years_of_teaching !== undefined ? Number(u.years_of_teaching) : (u.yearsOfTeaching !== undefined ? Number(u.yearsOfTeaching) : undefined),
               };
               return normalizeChancellorUser(baseUser);
             });
@@ -2079,21 +2131,32 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             });
           }
           if (deptSettled.status === 'fulfilled' && Array.isArray(deptSettled.value) && deptSettled.value.length > 0) {
-            const mappedDepts: Department[] = deptSettled.value.map((d: any) => ({
-              id: String(d.id),
-              collegeId: typeof d.college_id === 'object' && d.college_id ? String(d.college_id.id) : String(d.college_id || ''),
-              name: d.name,
-              code: d.code,
-              chairpersonId: typeof d.chairperson_id === 'object' && d.chairperson_id ? String(d.chairperson_id.id) : (typeof d.chairperson_id === 'string' && d.chairperson_id ? d.chairperson_id : undefined),
-            }));
+            const mappedDepts: Department[] = deptSettled.value.map((d: any) => {
+              const rawName = String(d.name || '');
+              const cleanName = normalizeProgramName(rawName);
+              if (rawName !== cleanName && d.id) {
+                likhaLmsApi.academicStructure.updateDepartment(String(d.id), { name: cleanName }).catch(() => {});
+              }
+              return {
+                id: String(d.id),
+                collegeId: typeof d.college_id === 'object' && d.college_id ? String(d.college_id.id) : String(d.college_id || ''),
+                name: cleanName,
+                code: d.code,
+                chairpersonId: typeof d.chairperson_id === 'object' && d.chairperson_id ? String(d.chairperson_id.id) : (typeof d.chairperson_id === 'string' && d.chairperson_id ? d.chairperson_id : undefined),
+              };
+            });
             setDepartments(prev => {
               const merged = [...mappedDepts];
               for (const localDept of prev) {
+                const cleanLocal = {
+                  ...localDept,
+                  name: normalizeProgramName(localDept.name || ''),
+                };
                 const exists = merged.some(
-                  r => r.id === localDept.id || (r.collegeId === localDept.collegeId && r.code && localDept.code && r.code.toUpperCase() === localDept.code.toUpperCase())
+                  r => r.id === cleanLocal.id || (r.collegeId === cleanLocal.collegeId && r.code && localDept.code && r.code.toUpperCase() === cleanLocal.code.toUpperCase())
                 );
                 if (!exists) {
-                  merged.push(localDept);
+                  merged.push(cleanLocal);
                 }
               }
               return merged;
@@ -2571,6 +2634,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 title: (mapped.role === 'student' ? 'Undergraduate Student' : (me.title || mapped.title)),
                 collegeId: me.college_id || me.collegeId,
                 collegeName: me.college_name || me.collegeName,
+                yearLevel: me.year_level !== undefined ? Number(me.year_level) : (me.yearLevel !== undefined ? Number(me.yearLevel) : undefined),
+                yearsOfTeaching: me.years_of_teaching !== undefined ? Number(me.years_of_teaching) : (me.yearsOfTeaching !== undefined ? Number(me.yearsOfTeaching) : undefined),
               };
               user = normalizeChancellorUser(rawMeUser);
             }
@@ -2703,6 +2768,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             title: (mapped.role === 'student' ? 'Undergraduate Student' : (likhaAuth.user.title || mapped.title)),
             collegeId: likhaAuth.user.college_id || likhaAuth.user.collegeId,
             collegeName: likhaAuth.user.college_name || likhaAuth.user.collegeName,
+            yearLevel: likhaAuth.user.year_level !== undefined ? Number(likhaAuth.user.year_level) : (likhaAuth.user.yearLevel !== undefined ? Number(likhaAuth.user.yearLevel) : undefined),
+            yearsOfTeaching: likhaAuth.user.years_of_teaching !== undefined ? Number(likhaAuth.user.years_of_teaching) : (likhaAuth.user.yearsOfTeaching !== undefined ? Number(likhaAuth.user.yearsOfTeaching) : undefined),
           };
           const mappedUser = normalizeChancellorUser(rawMappedUser);
           setToken(likhaAuth.token);
@@ -4435,7 +4502,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
     let predecessorId = existingInState?.chairpersonId && existingInState.chairpersonId !== effectiveChairId ? existingInState.chairpersonId : undefined;
 
-    const targetDept: Department = { ...department };
+    const targetDept: Department = { ...department, name: normalizeProgramName(department.name) };
     if (hasChair && effectiveChairId) {
       targetDept.chairpersonId = effectiveChairId;
     } else {
@@ -4903,6 +4970,48 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       safeSetLocalStorage(STORAGE_KEY_SCHOOL_YEARS, JSON.stringify(next));
       return next;
+    });
+
+    // Auto-increment student year levels and faculty/staff teaching experience for matching college
+    setDb(prev => {
+      const updatedUsers = (prev.users || []).map(u => {
+        const matchesCollege = u.collegeId === collegeId || (!u.collegeId && collegeId === 'col-ccs');
+        if (u.role === 'student' && matchesCollege) {
+          return {
+            ...u,
+            yearLevel: Math.min(4, (u.yearLevel ?? 1) + 1),
+          };
+        }
+        if ((u.role === 'faculty' || u.role === 'staff') && matchesCollege) {
+          return {
+            ...u,
+            yearsOfTeaching: (u.yearsOfTeaching ?? 0) + 1,
+          };
+        }
+        return u;
+      });
+      const nextDb = { ...prev, users: updatedUsers };
+      safeSetLocalStorage(STORAGE_KEY_DB, JSON.stringify(nextDb));
+      return nextDb;
+    });
+
+    // Update currentUser if affected
+    setCurrentUser(prev => {
+      if (!prev) return prev;
+      const matchesCollege = prev.collegeId === collegeId || (!prev.collegeId && collegeId === 'col-ccs');
+      if (prev.role === 'student' && matchesCollege) {
+        return {
+          ...prev,
+          yearLevel: Math.min(4, (prev.yearLevel ?? 1) + 1),
+        };
+      }
+      if ((prev.role === 'faculty' || prev.role === 'staff') && matchesCollege) {
+        return {
+          ...prev,
+          yearsOfTeaching: (prev.yearsOfTeaching ?? 0) + 1,
+        };
+      }
+      return prev;
     });
 
     return { success: true, message: `College rolled over to school year "${target.year}".` };
