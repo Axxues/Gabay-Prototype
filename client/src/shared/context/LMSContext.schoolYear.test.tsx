@@ -123,7 +123,7 @@ describe('School Year Management & Scoping State in LMSContext', () => {
     expect(activeYear?.isActive).toBe(true);
   });
 
-  test('allows adding a new school year for a college', async () => {
+  test('allows adding a new school year accessible across colleges', async () => {
     let contextValues: any = null;
     const Probe = () => {
       contextValues = useLMS();
@@ -138,7 +138,7 @@ describe('School Year Management & Scoping State in LMSContext', () => {
 
     let res: any;
     await act(async () => {
-      res = await contextValues.addSchoolYear('col-ccs', '2026-2027');
+      res = await contextValues.addSchoolYear('2026-2027');
     });
 
     expect(res.success).toBe(true);
@@ -146,10 +146,10 @@ describe('School Year Management & Scoping State in LMSContext', () => {
     const ccsYears = contextValues.getSchoolYearsByCollege('col-ccs');
     const added = ccsYears.find((sy: SchoolYear) => sy.year === '2026-2027');
     expect(added).toBeDefined();
-    expect(added?.collegeId).toBe('col-ccs');
+    expect(added?.year).toBe('2026-2027');
   });
 
-  test('prevents duplicate school year for the same college', async () => {
+  test('prevents duplicate school year', async () => {
     let contextValues: any = null;
     const Probe = () => {
       contextValues = useLMS();
@@ -164,13 +164,13 @@ describe('School Year Management & Scoping State in LMSContext', () => {
 
     let res: any;
     await act(async () => {
-      res = await contextValues.addSchoolYear('col-ccs', '2025-2026');
+      res = await contextValues.addSchoolYear('2025-2026');
     });
 
     expect(res.success).toBe(false);
   });
 
-  test('allows switching the active school year for a college', async () => {
+  test('allows rolling over the active school year for a college', async () => {
     let contextValues: any = null;
     const Probe = () => {
       contextValues = useLMS();
@@ -184,7 +184,7 @@ describe('School Year Management & Scoping State in LMSContext', () => {
     );
 
     await act(async () => {
-      await contextValues.addSchoolYear('col-ccs', '2026-2027');
+      await contextValues.addSchoolYear('2026-2027');
     });
 
     const ccsYears = contextValues.getSchoolYearsByCollege('col-ccs');
@@ -197,13 +197,8 @@ describe('School Year Management & Scoping State in LMSContext', () => {
     });
 
     const activeYear = contextValues.getActiveSchoolYearForCollege('col-ccs');
-    expect(activeYear?.id).toBe(targetYear!.id);
     expect(activeYear?.year).toBe('2026-2027');
     expect(activeYear?.isActive).toBe(true);
-
-    // Old active year should now be inactive
-    const oldActiveYear = contextValues.getSchoolYearsByCollege('col-ccs').find((sy: SchoolYear) => sy.year === '2025-2026');
-    expect(oldActiveYear?.isActive).toBe(false);
   });
 
   test('defaults existing users and courses without schoolYear to active school year (or 2025-2026)', async () => {

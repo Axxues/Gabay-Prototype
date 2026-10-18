@@ -321,6 +321,7 @@ const STORAGE_KEY_COLLEGES = 'gabay_colleges';
 const STORAGE_KEY_DEPARTMENTS = 'gabay_departments';
 const STORAGE_KEY_PENDING_REGISTRATIONS = 'gabay_pending_registrations';
 const STORAGE_KEY_SCHOOL_YEARS = 'gabay_school_years';
+const STORAGE_KEY_COLLEGE_ACTIVE_SY = 'gabay_college_active_school_years';
 
 const safeSetLocalStorage = (key: string, value: string): boolean => {
   try {
@@ -1639,6 +1640,23 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     schoolYearsRef.current = schoolYears;
     safeSetLocalStorage(STORAGE_KEY_SCHOOL_YEARS, JSON.stringify(schoolYears));
   }, [schoolYears]);
+
+  const [collegeActiveSchoolYears, setCollegeActiveSchoolYears] = useState<Record<string, string>>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_COLLEGE_ACTIVE_SY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') return parsed;
+      }
+    } catch (_) {}
+    return { 'col-ccs': '2025-2026' };
+  });
+
+  const collegeActiveSYRef = useRef(collegeActiveSchoolYears);
+  useEffect(() => {
+    collegeActiveSYRef.current = collegeActiveSchoolYears;
+    safeSetLocalStorage(STORAGE_KEY_COLLEGE_ACTIVE_SY, JSON.stringify(collegeActiveSchoolYears));
+  }, [collegeActiveSchoolYears]);
 
   // Synchronize academic hierarchy with Likha ERP backend (Directus)
   useEffect(() => {
@@ -4767,9 +4785,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const getSchoolYearsByCollege = useCallback(
-    (collegeId: string): SchoolYear[] => {
+    (_collegeId?: string): SchoolYear[] => {
       const list = schoolYearsRef.current || schoolYears;
-      return list.filter(sy => sy.collegeId === collegeId);
+      // All school years created by Admin (or assigned to this college) are accessible throughout all colleges
+      return list;
     },
     [schoolYears]
   );
@@ -4777,30 +4796,41 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const getActiveSchoolYearForCollege = useCallback(
     (collegeId: string): SchoolYear | undefined => {
       const list = schoolYearsRef.current || schoolYears;
-      return list.find(sy => sy.collegeId === collegeId && sy.isActive);
+      const activeYearName = collegeActiveSYRef.current?.[collegeId] || collegeActiveSchoolYears?.[collegeId];
+      if (activeYearName) {
+        const found = list.find(sy => sy.year.trim().toLowerCase() === activeYearName.trim().toLowerCase());
+        if (found) return { ...found, isActive: true };
+      }
+      // Fallback: first active year in list, or first year in list
+      const fallback = list.find(sy => sy.isActive) || list[0];
+      return fallback ? { ...fallback, isActive: true } : undefined;
     },
-    [schoolYears]
+    [schoolYears, collegeActiveSchoolYears]
   );
 
   const addSchoolYear = async (
-    collegeId: string,
-    year: string
+    collegeIdOrYear: string,
+    yearMaybe?: string
   ): Promise<{ success: boolean; message?: string }> => {
+    // School years created by admin can be passed as (year) or (collegeId, year)
+    const hasCollege = Boolean(yearMaybe);
+    const collegeId = hasCollege ? collegeIdOrYear : undefined;
+    const yearToUse = (yearMaybe || collegeIdOrYear).trim();
     const list = schoolYearsRef.current || schoolYears;
-    const cleanYear = year.trim();
     const existing = list.find(
-      sy => sy.collegeId === collegeId && sy.year.toLowerCase() === cleanYear.toLowerCase()
+      sy => (collegeId ? (sy.collegeId === collegeId || !sy.collegeId) : true) &&
+            sy.year.toLowerCase() === yearToUse.toLowerCase()
     );
     if (existing) {
-      return { success: false, message: `School year "${cleanYear}" already exists for this college.` };
+      return { success: false, message: `School year "${yearToUse}" already exists.` };
     }
 
-    const hasActive = list.some(sy => sy.collegeId === collegeId && sy.isActive);
+    const hasActive = list.some(sy => (collegeId ? sy.collegeId === collegeId : true) && sy.isActive);
     const newSY: SchoolYear = {
-      id: `sy-${collegeId}-${cleanYear.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now().toString(36)}`,
+      id: `sy-${collegeId || 'univ'}-${yearToUse.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now().toString(36)}`,
       collegeId,
-      year: cleanYear,
-      isActive: !hasActive, // Make active if no active school year exists yet
+      year: yearToUse,
+      isActive: !hasActive, // Make active if none exists yet
       createdAt: new Date().toISOString(),
     };
 
@@ -4810,23 +4840,35 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return next;
     });
 
-    return { success: true, message: `School year "${cleanYear}" added successfully.` };
+    return { success: true, message: `School year "${yearToUse}" added successfully.` };
   };
 
   const setActiveSchoolYear = async (
     collegeId: string,
-    schoolYearId: string
+    schoolYearIdOrYear: string
   ): Promise<{ success: boolean; message?: string }> => {
     const list = schoolYearsRef.current || schoolYears;
-    const target = list.find(sy => sy.collegeId === collegeId && sy.id === schoolYearId);
+    const target = list.find(
+      sy => sy.id === schoolYearIdOrYear || sy.year.toLowerCase() === schoolYearIdOrYear.toLowerCase()
+    );
     if (!target) {
-      return { success: false, message: 'School year not found for this college.' };
+      return { success: false, message: 'School year not found.' };
     }
 
+    // Rollover: Set the target school year as the active school year for this college
+    setCollegeActiveSchoolYears(prev => {
+      const next = { ...prev, [collegeId]: target.year };
+      safeSetLocalStorage(STORAGE_KEY_COLLEGE_ACTIVE_SY, JSON.stringify(next));
+      return next;
+    });
+
+    // Also update isActive flag in schoolYears list for college-scoped or single-college setups
     setSchoolYears(prev => {
       const next = prev.map(sy => {
-        if (sy.collegeId === collegeId) {
-          return { ...sy, isActive: sy.id === schoolYearId };
+        if (sy.collegeId === collegeId || (!sy.collegeId && sy.year === target.year)) {
+          return { ...sy, isActive: sy.id === target.id || sy.year === target.year };
+        } else if (!sy.collegeId) {
+          return { ...sy, isActive: false };
         }
         return sy;
       });
@@ -4834,7 +4876,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return next;
     });
 
-    return { success: true, message: `School year "${target.year}" is now active.` };
+    return { success: true, message: `College rolled over to school year "${target.year}".` };
   };
 
   const joinCourseByCode = async (code: string): Promise<{ success: boolean; message: string; course?: Course }> => {

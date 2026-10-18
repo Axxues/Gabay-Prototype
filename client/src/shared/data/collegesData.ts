@@ -14,12 +14,12 @@ export const DEFAULT_COLLEGES: College[] = [
 ];
 
 /**
- * Initial Default University School Years per College
+ * Initial Default University School Years
+ * Created by Admin/Chancellor, accessible throughout all colleges.
  */
 export const DEFAULT_SCHOOL_YEARS: SchoolYear[] = [
   {
-    id: 'sy-col-ccs-2025-2026',
-    collegeId: 'col-ccs',
+    id: 'sy-univ-2025-2026',
     year: '2025-2026',
     isActive: true,
     createdAt: '2025-06-01T00:00:00.000Z',

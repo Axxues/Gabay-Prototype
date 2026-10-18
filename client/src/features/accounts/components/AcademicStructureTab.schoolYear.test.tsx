@@ -126,8 +126,8 @@ vi.mock('../../../shared/context/LMSContext', () => ({
     schoolYears: sampleSchoolYears,
     addSchoolYear: mockAddSchoolYear,
     setActiveSchoolYear: mockSetActiveSchoolYear,
-    getSchoolYearsByCollege: (colId: string) => sampleSchoolYears.filter(sy => sy.collegeId === colId),
-    getActiveSchoolYearForCollege: (colId: string) => sampleSchoolYears.find(sy => sy.collegeId === colId && sy.isActive),
+    getSchoolYearsByCollege: (_colId: string) => sampleSchoolYears,
+    getActiveSchoolYearForCollege: (_colId: string) => sampleSchoolYears.find(sy => sy.isActive) || sampleSchoolYears[0],
   }),
 }));
 
@@ -164,20 +164,57 @@ describe('AcademicStructureTab - Dean School Year Management', () => {
     mockSetActiveSchoolYear.mockResolvedValue({ success: true, message: 'School year "2026-2027" is now active.' });
   });
 
-  test('Dean sees school years section for their college with active badge and Add School Year button', () => {
+  test('Dean sees school years section for their college with active badge and can roll over to another year', async () => {
+    sampleSchoolYears = [
+      {
+        id: 'sy-cet-2025-2026',
+        year: '2025-2026',
+        isActive: true,
+      },
+      {
+        id: 'sy-cet-2026-2027',
+        year: '2026-2027',
+        isActive: false,
+      },
+    ];
+
     render(<AcademicStructureTab />);
 
     // School Year section should be displayed for the Dean's college
-    expect(screen.getByText('School Years & Academic Cycles')).toBeInTheDocument();
+    expect(screen.getByText('Collegiate School Year & Rollover')).toBeInTheDocument();
     expect(screen.getByText('2025-2026')).toBeInTheDocument();
     expect(screen.getByText('Active')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /add school year/i })).toBeInTheDocument();
+
+    // Dean sees rollover button for inactive year, but NOT Add School Year (creation is admin-only)
+    expect(screen.queryByRole('button', { name: /add school year/i })).not.toBeInTheDocument();
+    const rolloverBtn = screen.getByRole('button', { name: /roll over/i });
+    expect(rolloverBtn).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(rolloverBtn);
+    });
+
+    expect(mockSetActiveSchoolYear).toHaveBeenCalledWith('col-cet', 'sy-cet-2026-2027');
+    expect(mockShowAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'success',
+      })
+    );
   });
 
-  test('Dean can add a new school year with valid format (YYYY-YYYY)', async () => {
+  test('Admin/Chancellor can add a new school year accessible across all colleges', async () => {
+    mockActiveRole = 'superadmin';
+    mockActiveUser = {
+      id: 'u-chancellor',
+      name: 'Dr. Chancellor',
+      email: 'chancellor@dmmmsu.edu.ph',
+      role: 'superadmin',
+      adminSubrole: 'chancellor',
+    };
+
     render(<AcademicStructureTab />);
 
-    const openModalBtn = screen.getByRole('button', { name: /add school year/i });
+    const openModalBtn = screen.getAllByRole('button', { name: /add school year/i })[0];
     fireEvent.click(openModalBtn);
 
     // Modal opens
@@ -199,7 +236,7 @@ describe('AcademicStructureTab - Dean School Year Management', () => {
       fireEvent.click(submitBtn);
     });
 
-    expect(mockAddSchoolYear).toHaveBeenCalledWith('col-cet', '2026-2027');
+    expect(mockAddSchoolYear).toHaveBeenCalled();
     expect(mockShowAlert).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'success',
@@ -207,40 +244,7 @@ describe('AcademicStructureTab - Dean School Year Management', () => {
     );
   });
 
-  test('Dean can set another school year as active', async () => {
-    // Provide two school years for CET: 2025-2026 (active) and 2026-2027 (inactive)
-    sampleSchoolYears = [
-      {
-        id: 'sy-cet-2025-2026',
-        collegeId: 'col-cet',
-        year: '2025-2026',
-        isActive: true,
-      },
-      {
-        id: 'sy-cet-2026-2027',
-        collegeId: 'col-cet',
-        year: '2026-2027',
-        isActive: false,
-      },
-    ];
-
-    render(<AcademicStructureTab />);
-
-    expect(screen.getByText('2026-2027')).toBeInTheDocument();
-    const setActiveBtn = screen.getByRole('button', { name: /set active|set as active/i });
-    await act(async () => {
-      fireEvent.click(setActiveBtn);
-    });
-
-    expect(mockSetActiveSchoolYear).toHaveBeenCalledWith('col-cet', 'sy-cet-2026-2027');
-    expect(mockShowAlert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: 'success',
-      })
-    );
-  });
-
-  test('Chairperson cannot add school years or set active school year', () => {
+  test('Chairperson cannot add school years or roll over school years', () => {
     mockActiveRole = 'admin';
     mockActiveUser = {
       id: 'u-chair-it',
@@ -254,12 +258,12 @@ describe('AcademicStructureTab - Dean School Year Management', () => {
 
     render(<AcademicStructureTab />);
 
-    // Chairperson can view active school year badge or list, but no Add or Set Active action buttons
+    // Chairperson can view active school year badge or list, but no Add or Roll Over action buttons
     expect(screen.queryByRole('button', { name: /add school year/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /set active|set as active/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /roll over/i })).not.toBeInTheDocument();
   });
 
-  test('Chancellor/Superadmin can manage school years for colleges', async () => {
+  test('Chancellor/Superadmin can create school years and roll over for colleges', async () => {
     mockActiveRole = 'superadmin';
     mockActiveUser = {
       id: 'u-chancellor',

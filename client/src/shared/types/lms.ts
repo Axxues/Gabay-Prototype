@@ -45,9 +45,9 @@ export type TermId = 'prelim' | 'midterm' | 'finals';
 
 export interface SchoolYear {
   id: string;
-  collegeId: string;
+  collegeId?: string; // Optional: when omitted or undefined, available university-wide across all colleges
   year: string;
-  isActive: boolean;
+  isActive?: boolean;
   createdAt?: string;
 }
 
