@@ -91,7 +91,7 @@ const loginLikhaMock = vi.fn(async () => ({
 const getCoursesWithRelationsMock = vi.fn(async () => [{ ...courseRow }]);
 const getCoursesMock = vi.fn(async () => [{ ...courseRow }]);
 const getCourseMock = vi.fn(async (id: string) => ({ ...courseRow, id }));
-const createCourseMock = vi.fn(async (payload: any) => ({ id: 'c-new', ...payload }));
+const createCourseMock = vi.fn(async (payload: any) => ({ ...payload, id: 'c-new' }));
 const updateCourseMock = vi.fn(async (id: string, updates: any) => ({ id, ...updates }));
 const getNotifsMock = vi.fn(async () => []);
 const getUsersMock = vi.fn(async () => [

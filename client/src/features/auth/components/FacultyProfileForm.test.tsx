@@ -20,7 +20,22 @@ describe('FacultyProfileForm Component', () => {
     avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
     birthday: '1985-04-12',
     contactNumber: '09123456789',
-    address: '123 Academic Blvd, San Fernando, La Union',
+    address: '123 Academic Blvd, Catbangen, San Fernando, La Union',
+    permanentAddress: '123 Academic Blvd, Catbangen, San Fernando, La Union',
+    presentAddress: '123 Academic Blvd, Catbangen, San Fernando, La Union',
+    permanentAddressDetails: {
+      houseStreet: '123 Academic Blvd',
+      barangay: 'Catbangen',
+      municipalityCity: 'San Fernando',
+      province: 'La Union',
+    },
+    presentAddressDetails: {
+      houseStreet: '123 Academic Blvd',
+      barangay: 'Catbangen',
+      municipalityCity: 'San Fernando',
+      province: 'La Union',
+    },
+    sameAsPermanentAddress: true,
     yearsOfTeaching: 8,
     educationalBackground: [
       {
@@ -56,7 +71,11 @@ describe('FacultyProfileForm Component', () => {
 
     expect(screen.getByLabelText(/birthday/i)).toHaveValue('1985-04-12');
     expect(screen.getByLabelText(/contact number/i)).toHaveValue('09123456789');
-    expect(screen.getByLabelText(/^address/i)).toHaveValue('123 Academic Blvd, San Fernando, La Union');
+    expect(screen.getByLabelText(/permanent house\/street/i)).toHaveValue('123 Academic Blvd');
+    expect(screen.getByLabelText(/permanent barangay/i)).toHaveValue('Catbangen');
+    expect(screen.getByLabelText(/permanent municipality\/city/i)).toHaveValue('San Fernando');
+    expect(screen.getByLabelText(/permanent province/i)).toHaveValue('La Union');
+    expect(screen.getByLabelText(/present house\/street/i)).toHaveValue('123 Academic Blvd');
     expect(screen.getByLabelText(/years of teaching experience/i)).toHaveValue(8);
     expect(screen.getByText(/auto-increments/i)).toBeInTheDocument();
 
@@ -123,6 +142,51 @@ describe('FacultyProfileForm Component', () => {
     expect(screen.getByDisplayValue('University of the Philippines Diliman')).toBeInTheDocument();
   });
 
+  it('mirrors permanent address and disables present address when sameAsPermanentAddress is checked', () => {
+    const unlinkedFaculty: User = {
+      ...baseFaculty,
+      sameAsPermanentAddress: false,
+      presentAddress: '456 Temporary Ave, Sevilla, San Fernando, La Union',
+      presentAddressDetails: {
+        houseStreet: '456 Temporary Ave',
+        barangay: 'Sevilla',
+        municipalityCity: 'San Fernando',
+        province: 'La Union',
+      },
+    };
+
+    render(
+      <FacultyProfileForm
+        user={unlinkedFaculty}
+        updateUser={mockUpdateUser}
+        showAlert={mockShowAlert}
+      />
+    );
+
+    const sameAsCheckbox = screen.getByLabelText(/same as permanent address/i);
+    const presentStreetInput = screen.getByLabelText(/present house\/street/i);
+
+    expect(sameAsCheckbox).not.toBeChecked();
+    expect(presentStreetInput).not.toBeDisabled();
+    expect(presentStreetInput).toHaveValue('456 Temporary Ave');
+
+    // Check the box
+    fireEvent.click(sameAsCheckbox);
+    expect(sameAsCheckbox).toBeChecked();
+    expect(presentStreetInput).toBeDisabled();
+    expect(presentStreetInput).toHaveValue('123 Academic Blvd');
+
+    // Modifying permanent address updates present address while checked
+    const permanentStreetInput = screen.getByLabelText(/permanent house\/street/i);
+    fireEvent.change(permanentStreetInput, { target: { value: '789 Professor Way' } });
+    expect(presentStreetInput).toHaveValue('789 Professor Way');
+
+    // Unchecking re-enables present address
+    fireEvent.click(sameAsCheckbox);
+    expect(sameAsCheckbox).not.toBeChecked();
+    expect(presentStreetInput).not.toBeDisabled();
+  });
+
   it('submits form and calls updateUser with updated fields', async () => {
     render(
       <FacultyProfileForm
@@ -146,7 +210,22 @@ describe('FacultyProfileForm Component', () => {
       expect(mockUpdateUser).toHaveBeenCalledWith('faculty-123', expect.objectContaining({
         birthday: '1985-04-12',
         contactNumber: '09991112233',
-        address: '123 Academic Blvd, San Fernando, La Union',
+        address: '123 Academic Blvd, Catbangen, San Fernando, La Union',
+        permanentAddress: '123 Academic Blvd, Catbangen, San Fernando, La Union',
+        presentAddress: '123 Academic Blvd, Catbangen, San Fernando, La Union',
+        permanentAddressDetails: expect.objectContaining({
+          houseStreet: '123 Academic Blvd',
+          barangay: 'Catbangen',
+          municipalityCity: 'San Fernando',
+          province: 'La Union',
+        }),
+        presentAddressDetails: expect.objectContaining({
+          houseStreet: '123 Academic Blvd',
+          barangay: 'Catbangen',
+          municipalityCity: 'San Fernando',
+          province: 'La Union',
+        }),
+        sameAsPermanentAddress: true,
         yearsOfTeaching: 10,
         educationalBackground: expect.arrayContaining([
           expect.objectContaining({

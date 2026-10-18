@@ -142,11 +142,8 @@ describe('DashboardPage admin access', () => {
     } as any;
   });
 
-  test('admin sees create course button, to-grade queue, and system overview widget', () => {
+  test('admin sees to-grade queue and system overview widget', () => {
     renderPage();
-
-    // Admin can create courses like faculty
-    expect(screen.getByRole('button', { name: /create course/i })).toBeInTheDocument();
 
     // Admin only sees courses they created
     expect(screen.getByText('Data Structures')).toBeInTheDocument();

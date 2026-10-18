@@ -1,4 +1,4 @@
-import type { User, NormalizedPersonName, EducationalDegree } from '../types/lms';
+import type { User, NormalizedPersonName, EducationalDegree, NormalizedAddress } from '../types/lms';
 
 /**
  * Validates whether a person's name object has the required first and last names.
@@ -10,6 +10,69 @@ export function isPersonNameComplete(name?: NormalizedPersonName | null): boolea
     name.firstName.trim() !== '' &&
     typeof name.lastName === 'string' &&
     name.lastName.trim() !== ''
+  );
+}
+
+/**
+ * Formats a normalized address or string into a single line address string:
+ * "House/Street, Barangay, Municipality/City, Province"
+ */
+export function formatAddress(addr?: Partial<NormalizedAddress> | string | null): string {
+  if (!addr) return '';
+  if (typeof addr === 'string') return addr.trim();
+  return [addr.houseStreet, addr.barangay, addr.municipalityCity, addr.province]
+    .map(s => (typeof s === 'string' ? s.trim() : ''))
+    .filter(Boolean)
+    .join(', ');
+}
+
+/**
+ * Parses an address string or partial normalized address into a NormalizedAddress object.
+ */
+export function parseAddress(addr?: string | Partial<NormalizedAddress> | null): NormalizedAddress {
+  if (!addr) {
+    return { houseStreet: '', barangay: '', municipalityCity: '', province: '' };
+  }
+  if (typeof addr === 'object') {
+    return {
+      houseStreet: addr.houseStreet?.trim() || '',
+      barangay: addr.barangay?.trim() || '',
+      municipalityCity: addr.municipalityCity?.trim() || '',
+      province: addr.province?.trim() || '',
+    };
+  }
+  const parts = addr.split(',').map(s => s.trim());
+  if (parts.length >= 4) {
+    return {
+      houseStreet: parts.slice(0, parts.length - 3).join(', '),
+      barangay: parts[parts.length - 3] || '',
+      municipalityCity: parts[parts.length - 2] || '',
+      province: parts[parts.length - 1] || '',
+    };
+  } else if (parts.length === 3) {
+    return {
+      houseStreet: parts[0] || '',
+      barangay: '',
+      municipalityCity: parts[1] || '',
+      province: parts[2] || '',
+    };
+  }
+  return { houseStreet: addr.trim(), barangay: '', municipalityCity: '', province: '' };
+}
+
+/**
+ * Validates whether an address is complete (either non-empty string or all 4 normalized parts filled).
+ */
+export function isAddressComplete(address?: Partial<NormalizedAddress> | string | null): boolean {
+  if (!address) return false;
+  if (typeof address === 'string') {
+    return address.trim() !== '';
+  }
+  return Boolean(
+    address.houseStreet && address.houseStreet.trim() !== '' &&
+    address.barangay && address.barangay.trim() !== '' &&
+    address.municipalityCity && address.municipalityCity.trim() !== '' &&
+    address.province && address.province.trim() !== ''
   );
 }
 
@@ -67,14 +130,17 @@ export function isProfileComplete(user: Partial<User> | null | undefined): boole
 
   if (user.role === 'student') {
     const hasBirthday = isValidBirthday(user.birthday);
-    const hasPermanentAddress = typeof user.permanentAddress === 'string' && user.permanentAddress.trim() !== '';
+    const hasPermanentAddress =
+      isAddressComplete(user.permanentAddressDetails) ||
+      (typeof user.permanentAddress === 'string' && user.permanentAddress.trim() !== '');
     const hasContactNumber = typeof user.contactNumber === 'string' && user.contactNumber.trim() !== '';
     const hasParentContactNumber =
       typeof user.parentContactNumber === 'string' && user.parentContactNumber.trim() !== '';
 
     const hasPresentAddress = user.sameAsPermanentAddress
       ? hasPermanentAddress
-      : typeof user.presentAddress === 'string' && user.presentAddress.trim() !== '';
+      : isAddressComplete(user.presentAddressDetails) ||
+        (typeof user.presentAddress === 'string' && user.presentAddress.trim() !== '');
 
     const hasYearLevel =
       typeof user.yearLevel === 'number' &&
@@ -99,7 +165,11 @@ export function isProfileComplete(user: Partial<User> | null | undefined): boole
 
   // All academic and administrative personnel (faculty, staff, administrators, deans, chairpersons, superadmin)
   // require professional credentials: address, contact number, birthday, years of teaching, and educational background.
-  const hasAddress = typeof user.address === 'string' && user.address.trim() !== '';
+  const hasAddress =
+    isAddressComplete(user.addressDetails) ||
+    isAddressComplete(user.permanentAddressDetails) ||
+    (typeof user.address === 'string' && user.address.trim() !== '') ||
+    (typeof user.permanentAddress === 'string' && user.permanentAddress.trim() !== '');
   const hasContactNumber = typeof user.contactNumber === 'string' && user.contactNumber.trim() !== '';
   const hasBirthday = isValidBirthday(user.birthday);
   const hasTeachingExperience =

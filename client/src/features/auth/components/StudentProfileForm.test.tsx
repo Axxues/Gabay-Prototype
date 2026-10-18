@@ -21,8 +21,20 @@ describe('StudentProfileForm Component', () => {
     yearLevel: 2,
     birthday: '2004-05-15',
     contactNumber: '09123456789',
-    permanentAddress: '123 Rizal Street, San Fernando, La Union',
-    presentAddress: '456 Mabini Street, San Fernando, La Union',
+    permanentAddress: '123 Rizal Street, Catbangen, San Fernando, La Union',
+    presentAddress: '456 Mabini Street, Ilocanos Sur, San Fernando, La Union',
+    permanentAddressDetails: {
+      houseStreet: '123 Rizal Street',
+      barangay: 'Catbangen',
+      municipalityCity: 'San Fernando',
+      province: 'La Union',
+    },
+    presentAddressDetails: {
+      houseStreet: '456 Mabini Street',
+      barangay: 'Ilocanos Sur',
+      municipalityCity: 'San Fernando',
+      province: 'La Union',
+    },
     sameAsPermanentAddress: false,
     hasGuardianOnly: false,
     motherName: {
@@ -58,8 +70,12 @@ describe('StudentProfileForm Component', () => {
     );
 
     expect(screen.getByLabelText(/birthday/i)).toHaveValue('2004-05-15');
-    expect(screen.getByLabelText(/^permanent address/i)).toHaveValue('123 Rizal Street, San Fernando, La Union');
-    expect(screen.getByRole('textbox', { name: /^present address/i })).toHaveValue('456 Mabini Street, San Fernando, La Union');
+    expect(screen.getByLabelText(/permanent house\/street/i)).toHaveValue('123 Rizal Street');
+    expect(screen.getByLabelText(/permanent barangay/i)).toHaveValue('Catbangen');
+    expect(screen.getByLabelText(/permanent municipality\/city/i)).toHaveValue('San Fernando');
+    expect(screen.getByLabelText(/permanent province/i)).toHaveValue('La Union');
+    expect(screen.getByLabelText(/present house\/street/i)).toHaveValue('456 Mabini Street');
+    expect(screen.getByLabelText(/present barangay/i)).toHaveValue('Ilocanos Sur');
     expect(screen.getByLabelText(/^contact number/i)).toHaveValue('09123456789');
     expect(screen.getByLabelText(/year level/i)).toBeDisabled();
     expect(screen.getByLabelText(/year level/i)).toHaveValue('Year 2');
@@ -76,26 +92,26 @@ describe('StudentProfileForm Component', () => {
     );
 
     const sameAsCheckbox = screen.getByLabelText(/same as permanent address/i);
-    const presentAddressInput = screen.getByRole('textbox', { name: /^present address/i });
+    const presentStreetInput = screen.getByLabelText(/present house\/street/i);
 
     expect(sameAsCheckbox).not.toBeChecked();
-    expect(presentAddressInput).not.toBeDisabled();
+    expect(presentStreetInput).not.toBeDisabled();
 
     // Check the box
     fireEvent.click(sameAsCheckbox);
     expect(sameAsCheckbox).toBeChecked();
-    expect(presentAddressInput).toBeDisabled();
-    expect(presentAddressInput).toHaveValue('123 Rizal Street, San Fernando, La Union');
+    expect(presentStreetInput).toBeDisabled();
+    expect(presentStreetInput).toHaveValue('123 Rizal Street');
 
     // Modifying permanent address also updates present address while checkbox is active
-    const permanentAddressInput = screen.getByLabelText(/^permanent address/i);
-    fireEvent.change(permanentAddressInput, { target: { value: '999 New Highway, Agoo, La Union' } });
-    expect(presentAddressInput).toHaveValue('999 New Highway, Agoo, La Union');
+    const permanentStreetInput = screen.getByLabelText(/permanent house\/street/i);
+    fireEvent.change(permanentStreetInput, { target: { value: '999 New Highway' } });
+    expect(presentStreetInput).toHaveValue('999 New Highway');
 
     // Unchecking re-enables present address for manual editing
     fireEvent.click(sameAsCheckbox);
     expect(sameAsCheckbox).not.toBeChecked();
-    expect(presentAddressInput).not.toBeDisabled();
+    expect(presentStreetInput).not.toBeDisabled();
   });
 
   it('toggles between Parents mode and Guardian mode', () => {
@@ -143,8 +159,8 @@ describe('StudentProfileForm Component', () => {
       expect(mockUpdateUser).toHaveBeenCalledWith('student-123', expect.objectContaining({
         contactNumber: '09998887777',
         birthday: '2004-05-15',
-        permanentAddress: '123 Rizal Street, San Fernando, La Union',
-        presentAddress: '456 Mabini Street, San Fernando, La Union',
+        permanentAddress: '123 Rizal Street, Catbangen, San Fernando, La Union',
+        presentAddress: '456 Mabini Street, Ilocanos Sur, San Fernando, La Union',
         hasGuardianOnly: false,
         parentContactNumber: '09987654321',
       }));

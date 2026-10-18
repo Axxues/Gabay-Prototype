@@ -57,6 +57,13 @@ export interface NormalizedPersonName {
   lastName: string;
 }
 
+export interface NormalizedAddress {
+  houseStreet: string;
+  barangay: string;
+  municipalityCity: string;
+  province: string;
+}
+
 export type DegreeLevel = 'bachelors' | 'masters' | 'post_masters' | 'doctorate' | 'post_doctorate';
 
 export interface EducationalDegree {
@@ -98,10 +105,14 @@ export interface User {
   birthday?: string;
   contactNumber?: string;
 
-  // Student specific:
+  // Address details (normalized & formatted):
   permanentAddress?: string;
   presentAddress?: string;
+  permanentAddressDetails?: NormalizedAddress;
+  presentAddressDetails?: NormalizedAddress;
   sameAsPermanentAddress?: boolean;
+
+  // Student specific:
   hasGuardianOnly?: boolean;
   motherName?: NormalizedPersonName;
   fatherName?: NormalizedPersonName;
@@ -111,6 +122,7 @@ export interface User {
 
   // Faculty/Staff specific:
   address?: string;
+  addressDetails?: NormalizedAddress;
   yearsOfTeaching?: number;
   educationalBackground?: EducationalDegree[];
 
@@ -125,6 +137,7 @@ export const Department = {} as unknown as Department;
 export const PendingRegistration = {} as unknown as PendingRegistration;
 export const SchoolYear = {} as unknown as SchoolYear;
 export const NormalizedPersonName = {} as unknown as NormalizedPersonName;
+export const NormalizedAddress = {} as unknown as NormalizedAddress;
 export const EducationalDegree = {} as unknown as EducationalDegree;
 
 import type { OfficialSyllabusData } from '../data/syllabusData';
