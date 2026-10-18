@@ -226,6 +226,8 @@ export const AppShell: React.FC = () => {
           <div className={
             currentTab === 'courses' || currentTab === 'inbox' || currentTab === 'gabay-rag'
               ? "flex h-full min-h-0 w-full min-w-0 flex-1 flex-col"
+              : currentTab === 'chair-sheet'
+              ? "flex min-h-full w-full min-w-0 flex-1 flex-col p-5 sm:p-8 lg:p-10"
               : currentTab === 'profile'
               ? "flex min-h-full w-full min-w-0 flex-1 flex-col p-5 sm:p-8 lg:p-10"
               : "mx-auto flex min-h-full w-full max-w-[1600px] flex-col p-5 sm:p-8 lg:p-10"

@@ -37,6 +37,18 @@ const mockUsers: User[] = [
     title: 'Associate Professor',
     avatar: '',
   },
+  {
+    id: 'u-jayvee',
+    name: 'Jayvee Geneta Reyes',
+    firstName: 'Jayvee',
+    middleName: 'Geneta',
+    lastName: 'Reyes',
+    email: 'jreyes@dmmmsu.edu.ph',
+    role: 'faculty',
+    department: 'Department of Computer Science',
+    title: 'Instructor',
+    avatar: '',
+  },
 ];
 
 const mockCreateCourse = vi.fn(async (data: Partial<Course>) => ({
@@ -89,7 +101,7 @@ describe('Chair-Sheet End-to-End Real Sample Verification', () => {
     const fileBuffer = fs.readFileSync(realSamplePath);
     const rows = parseChairSheet(fileBuffer);
 
-    expect(rows).toHaveLength(3);
+    expect(rows).toHaveLength(4);
 
     // Row 0: Charlie Seli Marzan (trims 'Charlie ')
     expect(rows[0]).toEqual({
@@ -101,9 +113,9 @@ describe('Chair-Sheet End-to-End Real Sample Verification', () => {
       yearAndSection: '4-E',
     });
 
-    // Row 1: Charlie Seli Marzan
+    // Row 1: Cherlie Seli Marzan (fuzzy matches Charlie Seli Marzan)
     expect(rows[1]).toEqual({
-      firstName: 'Charlie',
+      firstName: 'Cherlie',
       middleName: 'Seli',
       lastName: 'Marzan',
       courseCode: 'CCSC 303',
@@ -121,15 +133,32 @@ describe('Chair-Sheet End-to-End Real Sample Verification', () => {
       yearAndSection: '4-E',
     });
 
-    // Validate faculty matches
+    // Row 3: Jayvee Geneta Reyes
+    expect(rows[3]).toEqual({
+      firstName: 'Jayvee',
+      middleName: 'Geneta',
+      lastName: 'Reyes',
+      courseCode: 'CSCB 101',
+      descriptiveTitle: 'test Course',
+      yearAndSection: '3-A',
+    });
+
+    // Validate faculty matches: row 1 has 'Cherlie' typo, so it requires correction or suggests Charlie
     const validated = validateChairSheetRows(rows, mockUsers);
-    expect(validated.every(r => r.facultyStatus === 'valid')).toBe(true);
+    expect(validated[0].facultyStatus).toBe('valid');
     expect(validated[0].matchedUser?.id).toBe('u-charlie');
-    expect(validated[1].matchedUser?.id).toBe('u-charlie');
+
+    expect(validated[1].facultyStatus).toBe('invalid');
+    expect(validated[1].suggestedUser?.id).toBe('u-charlie');
+
+    expect(validated[2].facultyStatus).toBe('valid');
     expect(validated[2].matchedUser?.id).toBe('u-raymund');
+
+    expect(validated[3].facultyStatus).toBe('valid');
+    expect(validated[3].matchedUser?.id).toBe('u-jayvee');
   });
 
-  it('uploads the real chair-sheet.xlsx through ChairSheetUploadView and generates all courses upon approval', async () => {
+  it('uploads the real chair-sheet.xlsx through ChairSheetUploadView, gates on typo, and generates all 4 courses upon correction', async () => {
     render(
       <ChairSheetUploadView
         onNavigateCourse={mockOnNavigateCourse}
@@ -149,20 +178,35 @@ describe('Chair-Sheet End-to-End Real Sample Verification', () => {
       expect(screen.getByDisplayValue('CSCC 103')).toBeInTheDocument();
       expect(screen.getByDisplayValue('CCSC 303')).toBeInTheDocument();
       expect(screen.getByDisplayValue('CSPC 112')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('CSCB 101')).toBeInTheDocument();
     });
 
-    // All 3 faculty matched
+    // 3 faculty matched, 1 typo ('Cherlie') flagged as Not Found / Spelled Wrongly
     expect(screen.getAllByText(/^Matched:/i)).toHaveLength(3);
+    expect(screen.getByText(/Not Found \/ Spelled Wrongly/i)).toBeInTheDocument();
+
+    // Save button gated
+    const resolveBtn = screen.getByRole('button', { name: /Resolve Unmatched Faculty/i });
+    expect(resolveBtn).toBeDisabled();
+
+    // Fix typo in row 1: 'Cherlie' -> 'Charlie'
+    const cherlieInput = screen.getByDisplayValue('Cherlie');
+    fireEvent.change(cherlieInput, { target: { value: 'Charlie' } });
+
+    // Now all 4 match
+    await waitFor(() => {
+      expect(screen.getAllByText(/^Matched:/i)).toHaveLength(4);
+    });
 
     // Save button enabled
-    const approveBtn = screen.getByRole('button', { name: /Approve & Create 3 Courses/i });
+    const approveBtn = screen.getByRole('button', { name: /Approve & Create 4 Courses/i });
     expect(approveBtn).not.toBeDisabled();
 
     // Trigger approve
     fireEvent.click(approveBtn);
 
     await waitFor(() => {
-      expect(mockCreateCourse).toHaveBeenCalledTimes(3);
+      expect(mockCreateCourse).toHaveBeenCalledTimes(4);
     });
 
     expect(mockCreateCourse).toHaveBeenNthCalledWith(
@@ -195,6 +239,17 @@ describe('Chair-Sheet End-to-End Real Sample Verification', () => {
         section: '4-E',
         instructorId: 'u-raymund',
         instructorName: 'Raymund Ezekiel Dilan',
+      })
+    );
+
+    expect(mockCreateCourse).toHaveBeenNthCalledWith(
+      4,
+      expect.objectContaining({
+        code: 'CSCB 101',
+        title: 'test Course',
+        section: '3-A',
+        instructorId: 'u-jayvee',
+        instructorName: 'Jayvee Geneta Reyes',
       })
     );
 
