@@ -100,4 +100,24 @@ describe('NotificationBell Profile Incomplete Card', () => {
     expect(screen.queryByText('Profile Information Required')).not.toBeInTheDocument();
     expect(screen.getByText('Nothing needs your action right now.')).toBeInTheDocument();
   });
+
+  it('shows badge and renders Profile Information Required card when an admin/dean has an incomplete profile', () => {
+    mockLMS.activeUser = {
+      id: 'dean-1',
+      role: 'admin',
+      adminSubrole: 'dean',
+    };
+    mockLMS.activeRole = 'admin';
+
+    render(
+      <MemoryRouter>
+        <NotificationBell />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText('1')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTitle('Notifications'));
+    expect(screen.getByText('Profile Information Required')).toBeInTheDocument();
+  });
 });

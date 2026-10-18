@@ -168,7 +168,7 @@ describe('AcademicStructureTab - Dean School Year Management', () => {
     mockSetActiveSchoolYear.mockResolvedValue({ success: true, message: 'School year "2026-2027" is now active.' });
   });
 
-  test('Dean sees school years section for their college with active badge and can roll over to another year', async () => {
+  test('Dean sees school years section for their college with active badge and can roll over to the university baseline year', async () => {
     sampleSchoolYears = [
       {
         id: 'sy-cet-2025-2026',
@@ -181,6 +181,8 @@ describe('AcademicStructureTab - Dean School Year Management', () => {
         isActive: false,
       },
     ];
+    // Set university baseline to 2026-2027
+    mockGetBaselineSchoolYear.mockReturnValue({ id: 'sy-cet-2026-2027', year: '2026-2027', isActive: true });
 
     render(<AcademicStructureTab />);
 
@@ -198,8 +200,9 @@ describe('AcademicStructureTab - Dean School Year Management', () => {
     const rolloverBtn = screen.getByRole('button', { name: /roll over/i });
     expect(rolloverBtn).toBeInTheDocument();
 
-    // Select another year and initiate roll over
+    // Select baseline year (2026-2027) and initiate roll over
     fireEvent.change(sySelect, { target: { value: 'sy-cet-2026-2027' } });
+    expect(rolloverBtn).toBeEnabled();
 
     await act(async () => {
       fireEvent.click(rolloverBtn);
@@ -223,6 +226,51 @@ describe('AcademicStructureTab - Dean School Year Management', () => {
         type: 'success',
       })
     );
+  });
+
+  test('Dean cannot roll over to a school year that is not the current university baseline', async () => {
+    sampleSchoolYears = [
+      {
+        id: 'sy-cet-2025-2026',
+        year: '2025-2026',
+        isActive: true,
+      },
+      {
+        id: 'sy-cet-2026-2027',
+        year: '2026-2027',
+        isActive: false,
+      },
+      {
+        id: 'sy-cet-2027-2028',
+        year: '2027-2028',
+        isActive: false,
+      },
+    ];
+    // Baseline is 2025-2026
+    mockGetBaselineSchoolYear.mockReturnValue({ id: 'sy-cet-2025-2026', year: '2025-2026', isActive: true });
+
+    render(<AcademicStructureTab />);
+
+    const sySelect = screen.getByLabelText(/select school year to roll over for college of engineering and technology/i);
+    const rolloverBtn = screen.getByRole('button', { name: /roll over/i });
+
+    // Select a future non-baseline year (2026-2027)
+    fireEvent.change(sySelect, { target: { value: 'sy-cet-2026-2027' } });
+
+    // Rollover button must be disabled
+    expect(rolloverBtn).toBeDisabled();
+
+    // Guidance message must inform that only the current university baseline can be rolled over to
+    expect(
+      screen.getByText(/colleges can only roll over to the current university baseline academic year \(sy 2025-2026\)/i)
+    ).toBeInTheDocument();
+
+    // Even if clicked, no dialog opens
+    await act(async () => {
+      fireEvent.click(rolloverBtn);
+    });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(mockSetActiveSchoolYear).not.toHaveBeenCalled();
   });
 
   test('Add School Year button is removed from Academic Governance header for all roles', () => {

@@ -595,12 +595,14 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
             </div>
           )}
 
-          {/* Faculty / Staff Profile Form (Teaching Experience & Educational Background) */}
-          {(activeRole === 'faculty' || activeRole === 'staff') && (
+          {/* Faculty, Staff, Admin, Dean, and Chairperson Profile Form (Credentials & Experience) */}
+          {activeRole !== 'student' && (
             <div className="bg-card border border-border rounded-2xl p-6 shadow-none space-y-5">
               <div>
                 <h3 className="font-bold text-foreground text-sm">
-                  Faculty & Staff Credentials
+                  {activeRole === 'admin' || activeRole === 'superadmin'
+                    ? 'Academic, Faculty & Leadership Credentials'
+                    : 'Faculty & Staff Credentials'}
                 </h3>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   Update your professional teaching experience, contact information, and educational background.

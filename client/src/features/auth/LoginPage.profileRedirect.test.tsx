@@ -151,6 +151,85 @@ describe('LoginPage Profile Redirect', () => {
     }, { timeout: 1000 });
   });
 
+  it('navigates to /profile when admin or dean logs in with incomplete profile', async () => {
+    const incompleteDean = {
+      id: 'dean-inc',
+      name: 'Dean Incomplete',
+      email: 'dean@dmmmsu.edu.ph',
+      role: 'admin',
+      adminSubrole: 'dean',
+    };
+
+    mockLogin.mockResolvedValueOnce({
+      success: true,
+      user: incompleteDean,
+    });
+
+    render(
+      <MemoryRouter>
+        <LoginPage />
+      </MemoryRouter>
+    );
+
+    const emailInput = screen.getByPlaceholderText('name@dmmmsu.edu.ph');
+    const passwordInput = screen.getByPlaceholderText('••••••••');
+    const submitBtn = screen.getByRole('button', { name: /sign in/i });
+
+    fireEvent.change(emailInput, { target: { value: 'dean@dmmmsu.edu.ph' } });
+    fireEvent.change(passwordInput, { target: { value: 'password123' } });
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/profile', { replace: true });
+    });
+  });
+
+  it('navigates to /dashboard when admin or dean logs in with complete credentials', async () => {
+    const completeDean = {
+      id: 'dean-comp',
+      name: 'Dean Complete',
+      email: 'dean.comp@dmmmsu.edu.ph',
+      role: 'admin',
+      adminSubrole: 'dean',
+      address: 'Faculty Village, Campus',
+      contactNumber: '09123456780',
+      birthday: '1975-03-20',
+      yearsOfTeaching: 14,
+      educationalBackground: [
+        {
+          id: 'deg-d1',
+          degreeLevel: 'doctorate',
+          school: 'DMMMSU',
+          yearGraduated: 2012,
+          specialization: 'Computer Engineering',
+        },
+      ],
+    };
+
+    mockLogin.mockResolvedValueOnce({
+      success: true,
+      user: completeDean,
+    });
+
+    render(
+      <MemoryRouter>
+        <LoginPage />
+      </MemoryRouter>
+    );
+
+    const emailInput = screen.getByPlaceholderText('name@dmmmsu.edu.ph');
+    const passwordInput = screen.getByPlaceholderText('••••••••');
+    const submitBtn = screen.getByRole('button', { name: /sign in/i });
+
+    fireEvent.change(emailInput, { target: { value: 'dean.comp@dmmmsu.edu.ph' } });
+    fireEvent.change(passwordInput, { target: { value: 'password123' } });
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/dashboard', { replace: true });
+    });
+  });
+
   describe('LoginRoute redirect', () => {
     it('redirects authenticated user to /profile if profile is incomplete', () => {
       mockLMS.isAuthenticated = true;

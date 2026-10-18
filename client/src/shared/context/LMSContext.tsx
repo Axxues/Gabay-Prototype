@@ -4899,9 +4899,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const found = list.find(sy => sy.year.trim().toLowerCase() === activeYearName.trim().toLowerCase());
         if (found) return { ...found, isActive: true };
       }
-      // Fallback: first active year in list, or first year in list
-      const fallback = list.find(sy => sy.isActive) || list[0];
-      return fallback ? { ...fallback, isActive: true } : undefined;
+      // If college has no explicit active year recorded, default to 2025-2026 so admin baseline changes
+      // do not inadvertently roll over colleges without Dean action
+      const initialDefault = list.find(sy => sy.year === '2025-2026') || list.find(sy => sy.isActive) || list[0];
+      return initialDefault ? { ...initialDefault, isActive: true } : undefined;
     },
     [schoolYears, collegeActiveSchoolYears]
   );
@@ -4931,6 +4932,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         return sy;
       });
+      schoolYearsRef.current = next;
       safeSetLocalStorage(STORAGE_KEY_SCHOOL_YEARS, JSON.stringify(next));
       return next;
     });
@@ -4983,6 +4985,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setSchoolYears(prev => {
       const next = [...prev, newSY];
+      schoolYearsRef.current = next;
       safeSetLocalStorage(STORAGE_KEY_SCHOOL_YEARS, JSON.stringify(next));
       return next;
     });
@@ -5002,6 +5005,14 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: false, message: 'School year not found.' };
     }
 
+    const baseline = getBaselineSchoolYear();
+    if (baseline && target.year.trim().toLowerCase() !== baseline.year.trim().toLowerCase()) {
+      return {
+        success: false,
+        message: `Colleges can only roll over to the current university baseline academic year (SY ${baseline.year}).`,
+      };
+    }
+
     // Rollover: Set the target school year as the active school year for this college
     setCollegeActiveSchoolYears(prev => {
       const next = { ...prev, [collegeId]: target.year };
@@ -5017,11 +5028,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         return sy;
       });
+      schoolYearsRef.current = next;
       safeSetLocalStorage(STORAGE_KEY_SCHOOL_YEARS, JSON.stringify(next));
       return next;
     });
 
-    // Auto-increment student year levels and faculty/staff teaching experience for matching college
+    // Auto-increment student year levels and collegiate personnel teaching experience for matching college
     setDb(prev => {
       const updatedUsers = (prev.users || []).map(u => {
         const matchesCollege = u.collegeId === collegeId || (!u.collegeId && collegeId === 'col-ccs');
@@ -5031,7 +5043,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             yearLevel: Math.min(4, (u.yearLevel ?? 1) + 1),
           };
         }
-        if ((u.role === 'faculty' || u.role === 'staff') && matchesCollege) {
+        if (u.role !== 'student' && matchesCollege) {
           return {
             ...u,
             yearsOfTeaching: (u.yearsOfTeaching ?? 0) + 1,
@@ -5054,7 +5066,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           yearLevel: Math.min(4, (prev.yearLevel ?? 1) + 1),
         };
       }
-      if ((prev.role === 'faculty' || prev.role === 'staff') && matchesCollege) {
+      if (prev.role !== 'student' && matchesCollege) {
         return {
           ...prev,
           yearsOfTeaching: (prev.yearsOfTeaching ?? 0) + 1,

@@ -78,10 +78,43 @@ describe('isProfileComplete', () => {
     expect(isProfileComplete(undefined)).toBe(false);
   });
 
-  it('returns true for admin and superadmin without profile fields', () => {
+  it('returns false for admin, dean, chair, and superadmin when credentials are missing', () => {
     const admin = { role: 'admin' } as User;
+    const dean = { role: 'admin', adminSubrole: 'dean' } as User;
+    const chair = { role: 'admin', adminSubrole: 'chairperson' } as User;
     const superadmin = { role: 'superadmin' } as User;
+
+    expect(isProfileComplete(admin)).toBe(false);
+    expect(isProfileComplete(dean)).toBe(false);
+    expect(isProfileComplete(chair)).toBe(false);
+    expect(isProfileComplete(superadmin)).toBe(false);
+  });
+
+  it('returns true for admin, dean, chair, and superadmin when credentials are complete', () => {
+    const adminCredentials: Partial<User> = {
+      address: 'Admin Complex, Central Campus',
+      contactNumber: '09198887777',
+      birthday: '1978-08-12',
+      yearsOfTeaching: 15,
+      educationalBackground: [
+        {
+          id: 'deg-adm-1',
+          degreeLevel: 'doctorate',
+          school: 'University of the Philippines',
+          yearGraduated: 2010,
+          specialization: 'Educational Leadership',
+        },
+      ],
+    };
+
+    const admin = { role: 'admin', ...adminCredentials } as User;
+    const dean = { role: 'admin', adminSubrole: 'dean', ...adminCredentials } as User;
+    const chair = { role: 'faculty', adminSubrole: 'chairperson', ...adminCredentials } as User;
+    const superadmin = { role: 'superadmin', ...adminCredentials } as User;
+
     expect(isProfileComplete(admin)).toBe(true);
+    expect(isProfileComplete(dean)).toBe(true);
+    expect(isProfileComplete(chair)).toBe(true);
     expect(isProfileComplete(superadmin)).toBe(true);
   });
 

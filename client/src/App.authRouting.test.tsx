@@ -17,6 +17,19 @@ const mockUser = {
   name: 'Test Student',
   email: 'student@example.com',
   role: 'student',
+  address: '123 Campus St, San Fernando',
+  contactNumber: '09123456789',
+  birthday: '1995-05-15',
+  yearsOfTeaching: 5,
+  educationalBackground: [
+    {
+      id: 'deg-mock-1',
+      degreeLevel: 'bachelors',
+      school: 'DMMMSU',
+      yearGraduated: 2017,
+      specialization: 'Information Technology',
+    },
+  ],
 };
 
 vi.mock('./shared/context/LMSContext', () => ({

@@ -72,28 +72,26 @@ export function isProfileComplete(user: Partial<User> | null | undefined): boole
     );
   }
 
-  if (user.role === 'faculty' || user.role === 'staff') {
-    const hasAddress = typeof user.address === 'string' && user.address.trim() !== '';
-    const hasContactNumber = typeof user.contactNumber === 'string' && user.contactNumber.trim() !== '';
-    const hasBirthday = typeof user.birthday === 'string' && user.birthday.trim() !== '';
-    const hasTeachingExperience =
-      typeof user.yearsOfTeaching === 'number' &&
-      !isNaN(user.yearsOfTeaching) &&
-      user.yearsOfTeaching >= 0;
+  // All academic and administrative personnel (faculty, staff, administrators, deans, chairpersons, superadmin)
+  // require professional credentials: address, contact number, birthday, years of teaching, and educational background.
+  const hasAddress = typeof user.address === 'string' && user.address.trim() !== '';
+  const hasContactNumber = typeof user.contactNumber === 'string' && user.contactNumber.trim() !== '';
+  const hasBirthday = typeof user.birthday === 'string' && user.birthday.trim() !== '';
+  const hasTeachingExperience =
+    typeof user.yearsOfTeaching === 'number' &&
+    !isNaN(user.yearsOfTeaching) &&
+    user.yearsOfTeaching >= 0;
 
-    const hasDegrees =
-      Array.isArray(user.educationalBackground) &&
-      user.educationalBackground.length > 0 &&
-      user.educationalBackground.every((deg) => isDegreeComplete(deg));
+  const hasDegrees =
+    Array.isArray(user.educationalBackground) &&
+    user.educationalBackground.length > 0 &&
+    user.educationalBackground.every((deg) => isDegreeComplete(deg));
 
-    return Boolean(
-      hasAddress &&
-      hasContactNumber &&
-      hasBirthday &&
-      hasTeachingExperience &&
-      hasDegrees
-    );
-  }
-
-  return true;
+  return Boolean(
+    hasAddress &&
+    hasContactNumber &&
+    hasBirthday &&
+    hasTeachingExperience &&
+    hasDegrees
+  );
 }

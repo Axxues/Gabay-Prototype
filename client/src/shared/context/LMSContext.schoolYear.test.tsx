@@ -191,6 +191,20 @@ describe('School Year Management & Scoping State in LMSContext', () => {
     const targetYear = ccsYears.find((sy: SchoolYear) => sy.year === '2026-2027');
     expect(targetYear).toBeDefined();
 
+    // Attempting to roll over when target year is not the baseline fails
+    await act(async () => {
+      const failRes = await contextValues.setActiveSchoolYear('col-ccs', targetYear!.id);
+      expect(failRes.success).toBe(false);
+      expect(failRes.message).toContain('Colleges can only roll over to the current university baseline academic year');
+    });
+
+    // Admin sets university baseline to 2026-2027
+    await act(async () => {
+      const baseRes = await contextValues.setBaselineSchoolYear(targetYear!.id);
+      expect(baseRes.success).toBe(true);
+    });
+
+    // Dean can now roll over college to the new baseline year
     await act(async () => {
       const switchRes = await contextValues.setActiveSchoolYear('col-ccs', targetYear!.id);
       expect(switchRes.success).toBe(true);

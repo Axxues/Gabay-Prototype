@@ -77,6 +77,26 @@ const mockUsers: any[] = [
     college_id: 'col-ccs',
     years_of_teaching: 2,
   },
+  {
+    id: 'u-dean-ccs',
+    first_name: 'Dean',
+    last_name: 'Alan',
+    email: 'dean.ccs@dmmmsu.edu.ph',
+    role: { name: 'Admin' },
+    admin_subrole: 'dean',
+    college_id: 'col-ccs',
+    years_of_teaching: 12,
+  },
+  {
+    id: 'u-chair-cs',
+    first_name: 'Chair',
+    last_name: 'Grace',
+    email: 'chair.cs@dmmmsu.edu.ph',
+    role: { name: 'Admin' },
+    admin_subrole: 'chairperson',
+    college_id: 'col-ccs',
+    years_of_teaching: 8,
+  },
 ];
 
 const loginLikhaMock = vi.fn(async (email: string) => {
@@ -177,6 +197,8 @@ describe('School Year Rollover Auto-Increment in LMSContext', () => {
     const facNewBefore = contextValues.db.users.find((u: User) => u.id === 'u-fac-new');
     const facOtherBefore = contextValues.db.users.find((u: User) => u.id === 'u-fac-other');
     const staff1Before = contextValues.db.users.find((u: User) => u.id === 'u-staff-1');
+    const deanBefore = contextValues.db.users.find((u: User) => u.id === 'u-dean-ccs');
+    const chairBefore = contextValues.db.users.find((u: User) => u.id === 'u-chair-cs');
 
     expect(stud1Before?.yearLevel).toBe(1);
     expect(stud4Before?.yearLevel).toBe(4);
@@ -186,11 +208,14 @@ describe('School Year Rollover Auto-Increment in LMSContext', () => {
     expect(facNewBefore?.yearsOfTeaching).toBeUndefined();
     expect(facOtherBefore?.yearsOfTeaching).toBe(5);
     expect(staff1Before?.yearsOfTeaching).toBe(2);
+    expect(deanBefore?.yearsOfTeaching).toBe(12);
+    expect(chairBefore?.yearsOfTeaching).toBe(8);
     expect(contextValues.currentUser?.yearLevel).toBe(1);
 
-    // Add target rollover year
+    // Add target rollover year and set as baseline
     await act(async () => {
       await contextValues.addSchoolYear('2026-2027');
+      await contextValues.setBaselineSchoolYear('2026-2027');
     });
 
     // Perform school year rollover for col-ccs
@@ -208,6 +233,8 @@ describe('School Year Rollover Auto-Increment in LMSContext', () => {
     const facNewAfter = contextValues.db.users.find((u: User) => u.id === 'u-fac-new');
     const facOtherAfter = contextValues.db.users.find((u: User) => u.id === 'u-fac-other');
     const staff1After = contextValues.db.users.find((u: User) => u.id === 'u-staff-1');
+    const deanAfter = contextValues.db.users.find((u: User) => u.id === 'u-dean-ccs');
+    const chairAfter = contextValues.db.users.find((u: User) => u.id === 'u-chair-cs');
 
     // Student year 1 -> 2
     expect(stud1After?.yearLevel).toBe(2);
@@ -225,6 +252,10 @@ describe('School Year Rollover Auto-Increment in LMSContext', () => {
     expect(facOtherAfter?.yearsOfTeaching).toBe(5);
     // Staff with 2 years -> 3
     expect(staff1After?.yearsOfTeaching).toBe(3);
+    // Dean with 12 years -> 13
+    expect(deanAfter?.yearsOfTeaching).toBe(13);
+    // Chair with 8 years -> 9
+    expect(chairAfter?.yearsOfTeaching).toBe(9);
 
     // currentUser (u-stud-1) is affected by rollover, should also be updated
     expect(contextValues.currentUser?.yearLevel).toBe(2);
@@ -267,6 +298,7 @@ describe('School Year Rollover Auto-Increment in LMSContext', () => {
 
     await act(async () => {
       await contextValues.addSchoolYear('2026-2027');
+      await contextValues.setBaselineSchoolYear('2026-2027');
     });
 
     // Rollover col-coe only

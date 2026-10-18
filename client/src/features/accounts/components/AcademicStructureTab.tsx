@@ -188,10 +188,45 @@ export const AcademicStructureTab: React.FC = () => {
   } | null>(null);
   const [isRollingOver, setIsRollingOver] = useState(false);
 
+  // Admin / Chancellor authority to manage the University-Wide Default Baseline Academic Year
+  const canManageBaselineSchoolYear =
+    isSuperadminOrChancellor || (activeRole === 'admin' && !activeUser?.adminSubrole);
+
+  const universalSchoolYears = (() => {
+    const withoutCollege = (schoolYears || []).filter(sy => !sy.collegeId);
+    if (withoutCollege.length > 0) return withoutCollege;
+    const seen = new Set<string>();
+    return (schoolYears || []).filter(sy => {
+      if (seen.has(sy.year)) return false;
+      seen.add(sy.year);
+      return true;
+    });
+  })();
+  const currentBaseline = getBaselineSchoolYear
+    ? getBaselineSchoolYear()
+    : universalSchoolYears.find(sy => sy.isActive) || universalSchoolYears[0];
+
+  const [selectedBaselineId, setSelectedBaselineId] = useState<string>('');
+  const [baselineConfirmData, setBaselineConfirmData] = useState<{
+    targetId: string;
+    targetYear: string;
+    currentYear: string;
+  } | null>(null);
+  const [isUpdatingBaseline, setIsUpdatingBaseline] = useState(false);
+
   const handleInitiateRollover = (college: College, targetSchoolYearId: string) => {
     const targetSY = getColYears(college.id).find(sy => sy.id === targetSchoolYearId);
     const activeSY = getActiveSchoolYearForCollege ? getActiveSchoolYearForCollege(college.id) : undefined;
     if (!targetSY) return;
+
+    if (currentBaseline && targetSY.year.trim().toLowerCase() !== currentBaseline.year.trim().toLowerCase()) {
+      showAlert({
+        title: 'Rollover Restricted',
+        message: `Colleges can only roll over to the current university baseline academic year (SY ${currentBaseline.year}).`,
+        type: 'warning',
+      });
+      return;
+    }
 
     setRolloverConfirmData({
       collegeId: college.id,
@@ -225,32 +260,6 @@ export const AcademicStructureTab: React.FC = () => {
       setIsRollingOver(false);
     }
   };
-
-  // Admin / Chancellor authority to manage the University-Wide Default Baseline Academic Year
-  const canManageBaselineSchoolYear =
-    isSuperadminOrChancellor || (activeRole === 'admin' && !activeUser?.adminSubrole);
-
-  const universalSchoolYears = (() => {
-    const withoutCollege = (schoolYears || []).filter(sy => !sy.collegeId);
-    if (withoutCollege.length > 0) return withoutCollege;
-    const seen = new Set<string>();
-    return (schoolYears || []).filter(sy => {
-      if (seen.has(sy.year)) return false;
-      seen.add(sy.year);
-      return true;
-    });
-  })();
-  const currentBaseline = getBaselineSchoolYear
-    ? getBaselineSchoolYear()
-    : universalSchoolYears.find(sy => sy.isActive) || universalSchoolYears[0];
-
-  const [selectedBaselineId, setSelectedBaselineId] = useState<string>('');
-  const [baselineConfirmData, setBaselineConfirmData] = useState<{
-    targetId: string;
-    targetYear: string;
-    currentYear: string;
-  } | null>(null);
-  const [isUpdatingBaseline, setIsUpdatingBaseline] = useState(false);
 
   const handleInitiateBaselineChange = (targetSchoolYearId: string) => {
     const targetSY = universalSchoolYears.find(sy => sy.id === targetSchoolYearId);
@@ -880,9 +889,6 @@ export const AcademicStructureTab: React.FC = () => {
                     </div>
                     <div>
                       <h4 className="text-xs font-bold text-foreground">Collegiate School Year & Rollover</h4>
-                      <p className="text-[11px] text-muted-foreground">
-                        Dean authority: roll over college to an available academic year (automatically generated 5 years in advance).
-                      </p>
                     </div>
                   </div>
                 </div>
@@ -899,86 +905,114 @@ export const AcademicStructureTab: React.FC = () => {
                     );
                   }
 
-                  // Default the selection to the first non-active year, or active year if none
+                  // Default the selection to the current baseline year if available, else first non-active, else active, else first
                   const currentSelectedId =
                     selectedSYByCollege[college.id] ||
+                    (currentBaseline ? collegeYears.find(sy => sy.year === currentBaseline.year)?.id : undefined) ||
                     collegeYears.find(sy => (activeSY ? sy.year !== activeSY.year : !sy.isActive))?.id ||
                     activeSY?.id ||
                     collegeYears[0]?.id;
 
                   const canRollover = canRolloverCollegeSchoolYear(college);
+                  const selectedTargetSY = collegeYears.find(sy => sy.id === currentSelectedId);
+                  const isSelectedBaseline = currentBaseline && selectedTargetSY ? selectedTargetSY.year === currentBaseline.year : false;
+                  const isSelectedActive = activeSY && selectedTargetSY ? activeSY.year === selectedTargetSY.year : false;
+                  const isRolloverAllowed = Boolean(isSelectedBaseline && !isSelectedActive);
 
                   return (
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
-                      {/* Current Active Badge Display */}
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground font-medium">Active School Year:</span>
-                        <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-primary/10 text-primary border border-primary/20">
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>{activeSY?.year || '2025-2026'}</span>
-                          <span className="text-[10px] px-1.5 py-0.5 rounded font-extrabold uppercase bg-primary text-primary-foreground">
-                            Active
-                          </span>
+                    <div className="flex flex-col gap-2 pt-1">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        {/* Current Active Badge Display */}
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground font-medium">Active School Year:</span>
+                          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-primary/10 text-primary border border-primary/20">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>{activeSY?.year || '2025-2026'}</span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded font-extrabold uppercase bg-primary text-primary-foreground">
+                              Active
+                            </span>
+                          </div>
                         </div>
-                      </div>
 
-                      {/* Select / Combo Box and Rollover Action */}
-                      {canRollover ? (
-                        <div className="flex items-center gap-2">
-                          <label
-                            htmlFor={`sy-select-${college.id}`}
-                            className="text-xs text-muted-foreground font-medium shrink-0"
-                          >
-                            Academic Year:
-                          </label>
-                          <select
-                            id={`sy-select-${college.id}`}
-                            aria-label={`Select school year to roll over for ${college.name}`}
-                            value={currentSelectedId}
-                            onChange={(e) => {
-                              setSelectedSYByCollege(prev => ({
-                                ...prev,
-                                [college.id]: e.target.value,
-                              }));
-                            }}
-                            className="px-3 py-1.5 bg-background border border-border rounded-xl text-xs font-semibold text-foreground outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer"
-                          >
-                            {collegeYears.map((sy: SchoolYear) => {
-                              const isCurrentActive = activeSY ? activeSY.year === sy.year : sy.isActive;
-                              return (
+                        {/* Select / Combo Box and Rollover Action */}
+                        {canRollover ? (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <label
+                              htmlFor={`sy-select-${college.id}`}
+                              className="text-xs text-muted-foreground font-medium shrink-0"
+                            >
+                              Academic Year:
+                            </label>
+                            <select
+                              id={`sy-select-${college.id}`}
+                              aria-label={`Select school year to roll over for ${college.name}`}
+                              value={currentSelectedId}
+                              onChange={(e) => {
+                                setSelectedSYByCollege(prev => ({
+                                  ...prev,
+                                  [college.id]: e.target.value,
+                                }));
+                              }}
+                              className="px-3 py-1.5 bg-background border border-border rounded-xl text-xs font-semibold text-foreground outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer"
+                            >
+                              {collegeYears.map((sy: SchoolYear) => {
+                                const isCurrentActive = activeSY ? activeSY.year === sy.year : sy.isActive;
+                                const isBaseline = currentBaseline ? currentBaseline.year === sy.year : false;
+                                let labelSuffix = '';
+                                if (isCurrentActive && isBaseline) {
+                                  labelSuffix = ' (Current Active & Baseline)';
+                                } else if (isCurrentActive) {
+                                  labelSuffix = ' (Current Active)';
+                                } else if (isBaseline) {
+                                  labelSuffix = ' (University Baseline)';
+                                }
+                                return (
+                                  <option key={sy.id} value={sy.id}>
+                                    {sy.year}{labelSuffix}
+                                  </option>
+                                );
+                              })}
+                            </select>
+                            <button
+                              type="button"
+                              disabled={!isRolloverAllowed}
+                              title={
+                                !isSelectedBaseline
+                                  ? `Colleges can only roll over to the current university baseline academic year (SY ${currentBaseline?.year || ''}).`
+                                  : isSelectedActive
+                                  ? 'This academic year is already active for this college.'
+                                  : `Roll over ${college.name} to SY ${selectedTargetSY?.year || ''}`
+                              }
+                              onClick={() => handleInitiateRollover(college, currentSelectedId)}
+                              className="px-3.5 py-1.5 bg-card hover:bg-muted active:scale-[0.98] text-foreground font-bold text-xs rounded-xl border border-border hover:border-primary/40 transition-all flex items-center space-x-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <span>Roll Over to Year</span>
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground font-medium shrink-0">
+                              Available Years:
+                            </span>
+                            <select
+                              disabled
+                              aria-label={`Available school years for ${college.name}`}
+                              value={activeSY?.id || ''}
+                              className="px-3 py-1.5 bg-muted/40 border border-border rounded-xl text-xs font-medium text-muted-foreground outline-none cursor-not-allowed"
+                            >
+                              {collegeYears.map((sy: SchoolYear) => (
                                 <option key={sy.id} value={sy.id}>
-                                  {sy.year} {isCurrentActive ? '(Current Active)' : ''}
+                                  {sy.year} {activeSY && activeSY.year === sy.year ? '(Current Active)' : ''}
                                 </option>
-                              );
-                            })}
-                          </select>
-                          <button
-                            type="button"
-                            disabled={activeSY && currentSelectedId === activeSY.id}
-                            onClick={() => handleInitiateRollover(college, currentSelectedId)}
-                            className="px-3.5 py-1.5 bg-card hover:bg-muted active:scale-[0.98] text-foreground font-bold text-xs rounded-xl border border-border hover:border-primary/40 transition-all flex items-center space-x-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            <span>Roll Over to Year</span>
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground font-medium shrink-0">
-                            Available Years:
-                          </span>
-                          <select
-                            disabled
-                            aria-label={`Available school years for ${college.name}`}
-                            value={activeSY?.id || ''}
-                            className="px-3 py-1.5 bg-muted/40 border border-border rounded-xl text-xs font-medium text-muted-foreground outline-none cursor-not-allowed"
-                          >
-                            {collegeYears.map((sy: SchoolYear) => (
-                              <option key={sy.id} value={sy.id}>
-                                {sy.year} {activeSY && activeSY.year === sy.year ? '(Current Active)' : ''}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                      {canRollover && selectedTargetSY && !isSelectedBaseline && (
+                        <p className="text-[11px] text-amber-600 dark:text-amber-400 text-left sm:text-right">
+                          Colleges can only roll over to the current university baseline academic year (SY {currentBaseline?.year}).
+                        </p>
                       )}
                     </div>
                   );
