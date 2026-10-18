@@ -189,7 +189,7 @@ describe('AcademicStructureTab - Dean School Year Management', () => {
     // School Year section should be displayed for the Dean's college with a combo box / select list
     expect(screen.getByText('Collegiate School Year & Rollover')).toBeInTheDocument();
     expect(screen.getByText('2025-2026')).toBeInTheDocument();
-    expect(screen.getByText('Active')).toBeInTheDocument();
+    expect(screen.getByText('Active School Year:')).toBeInTheDocument();
 
     // Select list / combo box is rendered
     const sySelect = screen.getByLabelText(/select school year to roll over for college of engineering and technology/i);

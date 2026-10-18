@@ -214,7 +214,13 @@ export const AppShell: React.FC = () => {
         {sidebarOpen && <div className="fixed left-0 top-16 bottom-0 z-20 flex lg:hidden animate-slide-in-right"><AppRail currentTab={currentTab} onNavigateTab={(t) => { nav.handleNavigateTab(t); handleCloseSidebar(); }} /><LMSContextPanel currentTab={currentTab} courseSubTab={courseSubTab} onNavigateTab={(t) => { nav.handleNavigateTab(t); handleCloseSidebar(); }} onSelectCourseTab={(t) => { nav.handleSelectCourseTab(t); handleCloseSidebar(); }} onNavigateCourse={(id, sub) => { nav.handleNavigateCourse(id, sub); handleCloseSidebar(); }} /></div>}
 
         <main className={`relative min-h-0 min-w-0 w-full flex-1 ${currentTab === 'courses' || currentTab === 'inbox' || currentTab === 'gabay-rag' ? 'overflow-hidden flex flex-col' : 'overflow-y-auto custom-scrollbar'}`}>
-          <div className={currentTab === 'courses' || currentTab === 'inbox' || currentTab === 'gabay-rag' ? "flex h-full min-h-0 w-full min-w-0 flex-1 flex-col" : "mx-auto flex min-h-full w-full max-w-[1600px] flex-col p-5 sm:p-8 lg:p-10"}>
+          <div className={
+            currentTab === 'courses' || currentTab === 'inbox' || currentTab === 'gabay-rag'
+              ? "flex h-full min-h-0 w-full min-w-0 flex-1 flex-col"
+              : currentTab === 'profile'
+              ? "flex min-h-full w-full min-w-0 flex-1 flex-col p-5 sm:p-8 lg:p-10"
+              : "mx-auto flex min-h-full w-full max-w-[1600px] flex-col p-5 sm:p-8 lg:p-10"
+          }>
             <PageTransition pageKey={location.pathname} className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
               <React.Suspense fallback={<PageSkeleton />}>
                 <Outlet context={nav} />

@@ -14,7 +14,6 @@ import {
   AlertCircle,
   Trash2,
   Calendar,
-  CheckCircle2
 } from 'lucide-react';
 import { isDeanRole, isChairRole } from '../../../shared/utils/roles';
 import { generateUuid } from '../../../shared/utils/cryptoToken';
@@ -589,15 +588,9 @@ export const AcademicStructureTab: React.FC = () => {
               <Calendar className="w-5 h-5" />
             </div>
             <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h3 className="text-xs sm:text-sm font-extrabold text-foreground">
-                  University-Wide Default Baseline Academic Year
-                </h3>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-primary/10 text-primary border border-primary/20">
-                  <CheckCircle2 className="w-3 h-3" />
-                  {currentBaseline?.year || '2025-2026'} (Active Baseline)
-                </span>
-              </div>
+              <h3 className="text-xs sm:text-sm font-extrabold text-foreground">
+                University-Wide Default Baseline Academic Year
+              </h3>
               <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
                 Institutional fallback for all academic cycles, new colleges, and un-rolled units. Deans independently roll over their own colleges.
               </p>
@@ -925,12 +918,8 @@ export const AcademicStructureTab: React.FC = () => {
                         {/* Current Active Badge Display */}
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-muted-foreground font-medium">Active School Year:</span>
-                          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-primary/10 text-primary border border-primary/20">
-                            <CheckCircle2 className="w-3.5 h-3.5" />
+                          <div className="inline-flex items-center px-3 py-1.5 rounded-xl text-xs font-bold bg-primary/10 text-primary border border-primary/20">
                             <span>{activeSY?.year || '2025-2026'}</span>
-                            <span className="text-[10px] px-1.5 py-0.5 rounded font-extrabold uppercase bg-primary text-primary-foreground">
-                              Active
-                            </span>
                           </div>
                         </div>
 

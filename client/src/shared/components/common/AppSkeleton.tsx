@@ -288,7 +288,7 @@ export const InboxSkeleton: React.FC = () => (
 
 // Mirrors ProfilePage layout: hero banner card + identity grid
 export const ProfilePageSkeleton: React.FC = () => (
-  <div className="mx-auto flex min-h-full w-full max-w-6xl flex-col p-6 gap-6 animate-pulse" data-testid="profile-skeleton">
+  <div className="flex min-h-full w-full flex-col gap-6 animate-pulse" data-testid="profile-skeleton">
     <div className="flex items-start gap-3">
       <div className="h-9 w-36 rounded-xl bg-muted shrink-0" />
       <div className="flex-1 space-y-2">

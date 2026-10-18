@@ -265,7 +265,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
   };
 
   return (
-    <div className="flex min-h-full w-full flex-1 flex-col p-6 max-w-6xl mx-auto space-y-6 animate-fade-in pb-16 select-none">
+    <div className="flex min-h-full w-full flex-1 flex-col space-y-6 animate-fade-in pb-16 select-none">
       {/* Top Action Bar */}
       <div className="flex items-start gap-3">
         <button
