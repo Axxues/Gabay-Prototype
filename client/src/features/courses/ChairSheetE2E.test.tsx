@@ -202,8 +202,12 @@ describe('Chair-Sheet End-to-End Real Sample Verification', () => {
     const approveBtn = screen.getByRole('button', { name: /Approve & Create 4 Courses/i });
     expect(approveBtn).not.toBeDisabled();
 
-    // Trigger approve
+    // Trigger approve opens confirmation modal
     fireEvent.click(approveBtn);
+    expect(screen.getByText('Approve Course Offerings')).toBeInTheDocument();
+
+    const confirmCreateBtn = screen.getByRole('button', { name: /Confirm & Create/i });
+    fireEvent.click(confirmCreateBtn);
 
     await waitFor(() => {
       expect(mockCreateCourse).toHaveBeenCalledTimes(4);

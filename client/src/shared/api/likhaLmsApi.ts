@@ -20,6 +20,7 @@ export interface LikhaUploadedFile {
   url: string;
 }
 
+import { generateUuid } from '../utils/cryptoToken';
 import { likhaCache } from './likhaCache';
 
 let refreshPromise: Promise<string | null> | null = null;
@@ -471,9 +472,13 @@ export const likhaLmsApi = {
     },
 
     async createCourse(course: any): Promise<any> {
+      const payload = {
+        id: course.id || generateUuid(),
+        ...course,
+      };
       return likhaRequest('/items/courses', {
         method: 'POST',
-        body: JSON.stringify(course),
+        body: JSON.stringify(payload),
       });
     },
 

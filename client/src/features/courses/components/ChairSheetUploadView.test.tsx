@@ -142,8 +142,14 @@ describe('ChairSheetUploadView', () => {
     const approveBtn = screen.getByRole('button', { name: /Approve & Create 2 Courses/i });
     expect(approveBtn).not.toBeDisabled();
 
-    // Click approve
+    // Click approve opens confirmation modal
     fireEvent.click(approveBtn);
+    expect(screen.getByText('Approve Course Offerings')).toBeInTheDocument();
+    expect(screen.getByText(/Are you sure you want to approve and initialize/i)).toBeInTheDocument();
+
+    // Confirm creation
+    const confirmBtn = screen.getByRole('button', { name: /Confirm & Create/i });
+    fireEvent.click(confirmBtn);
 
     await waitFor(() => {
       expect(mockCreateCourse).toHaveBeenCalledTimes(2);

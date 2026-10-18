@@ -60,7 +60,7 @@ import { syllabusApi, deleteDraft, withdrawSyllabus } from '../api/syllabus';
 import type { SyllabusRevisionHeader, SyllabusRevisionResponse, SyllabusSectionKey } from '../types/syllabusApi';
 import { settledValue } from '../utils/promise';
 import { formatFileSize, toShortFileType } from '../utils/fileUploader';
-import { isValidUuid, generateSecureActivationToken } from '../utils/cryptoToken';
+import { isValidUuid, generateSecureActivationToken, generateUuid } from '../utils/cryptoToken';
 import { isChairRole, isDeanRole } from '../utils/roles';
 
 export interface LMSContextType {
@@ -3097,10 +3097,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const uniqueJoinCode =
       courseData.joinCode?.trim().toUpperCase() ||
       generateCourseJoinCode(db.courses, courseData.code);
+    const courseId = courseData.id || generateUuid();
 
     try {
       // Likha ERP is the source of truth (Express /api/courses is RAG-only now).
       const row = await likhaLmsApi.courses.createCourse({
+        id: courseId,
         code: courseData.code || 'CMSC 199',
         title: courseData.title || 'Advanced Computer Science Topics',
         section: courseData.section || 'BSCS 4-1',
@@ -3116,7 +3118,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
 
       const course: Course = {
-        id: String((row as any)?.id ?? `crs-${Date.now().toString(36)}`),
+        id: String((row as any)?.id ?? courseId),
         code: (row as any)?.code || courseData.code || 'CMSC 199',
         title: (row as any)?.title || courseData.title || 'Advanced Computer Science Topics',
         section: (row as any)?.section || courseData.section || 'BSCS 4-1',

@@ -44,6 +44,7 @@ export const ChairSheetUploadView: React.FC<ChairSheetUploadViewProps> = ({
 
   const [rows, setRows] = useState<ValidatedChairSheetRow[]>([]);
   const [rowToDelete, setRowToDelete] = useState<ValidatedChairSheetRow | null>(null);
+  const [showApproveConfirm, setShowApproveConfirm] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -280,8 +281,12 @@ export const ChairSheetUploadView: React.FC<ChairSheetUploadViewProps> = ({
 
               <button
                 type="button"
-                onClick={handleApproveAndSave}
-                disabled={!canApprove}
+                onClick={() => {
+                  if (canApprove) {
+                    setShowApproveConfirm(true);
+                  }
+                }}
+                disabled={!canApprove || isSubmitting}
                 className={`px-5 py-2 text-xs font-bold rounded-xl shadow-xs transition-all flex items-center space-x-1.5 cursor-pointer ${
                   canApprove
                     ? 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-primary-sm active:scale-[0.98]'
@@ -516,6 +521,62 @@ export const ChairSheetUploadView: React.FC<ChairSheetUploadViewProps> = ({
             </>
           );
         }}
+      </AnimatedModal>
+
+      {/* Approve Courses Confirmation Modal */}
+      <AnimatedModal
+        isOpen={showApproveConfirm}
+        onClose={() => setShowApproveConfirm(false)}
+        panelClassName="w-full max-w-md bg-card border border-border rounded-2xl shadow-elevated p-6 space-y-4"
+      >
+        {({ startClose }) => (
+          <>
+            <div className="flex items-start justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 rounded-xl bg-primary/10 text-primary border border-primary/20 shrink-0">
+                  <CheckCircle2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-foreground leading-tight font-sans">
+                    Approve Course Offerings
+                  </h3>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={startClose}
+                className="text-muted-foreground hover:text-foreground p-1 rounded-lg hover:bg-muted transition-colors cursor-pointer"
+                aria-label="Close modal"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="text-xs sm:text-sm text-muted-foreground leading-relaxed pl-1 font-sans">
+              Are you sure you want to approve and initialize <span className="font-semibold text-foreground">{totalCount} course shell{totalCount === 1 ? '' : 's'}</span> for Academic Year <span className="font-semibold text-foreground">{activeSchoolYear}</span>? Each course will be officially generated and assigned to its verified faculty.
+            </div>
+
+            <div className="flex items-center justify-end space-x-2 pt-2">
+              <button
+                type="button"
+                onClick={startClose}
+                className="px-4 py-2 text-xs font-semibold rounded-xl border border-border hover:bg-muted text-muted-foreground hover:text-foreground transition-all cursor-pointer font-sans"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowApproveConfirm(false);
+                  void handleApproveAndSave();
+                }}
+                className="px-5 py-2 text-xs font-bold rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground shadow-primary-sm transition-all cursor-pointer active:scale-[0.98] font-sans"
+              >
+                Confirm & Create
+              </button>
+            </div>
+          </>
+        )}
       </AnimatedModal>
     </div>
   );
