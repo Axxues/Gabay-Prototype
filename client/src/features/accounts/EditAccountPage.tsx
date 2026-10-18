@@ -147,14 +147,17 @@ export const EditAccountPage: React.FC<EditAccountPageProps> = ({ user, onNaviga
   const [formEmail, setFormEmail] = useState(user.email || '');
   const [formIdNumber, setFormIdNumber] = useState(user.studentId || '');
   const [formRole, setFormRole] = useState<UserRole>(user.role);
-  const [formDepartment, setFormDepartment] = useState(user.program || user.department || 'Program in Computer Science');
+  const [formYearLevel, setFormYearLevel] = useState<number>(user.yearLevel ?? 1);
+  const rawUserDept = user.program || user.department || 'Computer Science';
+  const initialDept = rawUserDept.replace(/^Program in\s+/i, '');
+  const [formDepartment, setFormDepartment] = useState(initialDept);
   const [formPassword, setFormPassword] = useState(user.password || 'gabay2026');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const departmentSelectOptions: DropdownOption[] = useMemo(() => {
     const list = (programs || departments || []).map(p => p.name);
-    const defaultList = list.length > 0 ? list : ['Program in Computer Science'];
+    const defaultList = list.length > 0 ? list : ['Computer Science'];
     const extras = ['College of Computer Science', 'Office of the College Registrar', 'Office of the Dean'];
     const combined = Array.from(new Set([...defaultList, ...extras]));
     return combined.map(d => ({
@@ -217,7 +220,8 @@ export const EditAccountPage: React.FC<EditAccountPageProps> = ({ user, onNaviga
         department: formDepartment,
         program: formDepartment,
         studentId: cleanIdNumber,
-        password: formPassword.trim() || user.password || 'gabay2026'
+        password: formPassword.trim() || user.password || 'gabay2026',
+        ...(formRole === 'student' ? { yearLevel: formYearLevel } : {})
       });
       if (!ok) return;
 
@@ -369,6 +373,33 @@ export const EditAccountPage: React.FC<EditAccountPageProps> = ({ user, onNaviga
                 placeholder="Select Program"
               />
             </div>
+            {formRole === 'student' && (
+              <div>
+                <label htmlFor="edit-student-year-level" className="block text-[12px] font-semibold text-muted-foreground mb-1.5">
+                  Year Level *
+                </label>
+                <div className="relative">
+                  <select
+                    id="edit-student-year-level"
+                    aria-label="Year Level"
+                    value={formYearLevel}
+                    onChange={e => setFormYearLevel(Number(e.target.value))}
+                    className="w-full p-2.5 bg-background border border-border hover:border-primary/50 focus:border-primary rounded-xl text-foreground text-xs font-semibold font-sans outline-none focus:ring-2 focus:ring-primary/20 appearance-none cursor-pointer transition-all pr-9 shadow-none"
+                  >
+                    <option value={1}>1 - 1st Year</option>
+                    <option value={2}>2 - 2nd Year</option>
+                    <option value={3}>3 - 3rd Year</option>
+                    <option value={4}>4 - 4th Year</option>
+                  </select>
+                  <div className="absolute right-3 top-3 pointer-events-none text-muted-foreground">
+                    <ChevronDown className="w-3.5 h-3.5" />
+                  </div>
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-1.5">
+                  Students cannot modify their own year level. Only Dean, Chairperson, or Administrators can update this.
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="bg-card border border-border rounded-2xl p-5 sm:p-6 shadow-none space-y-4">
