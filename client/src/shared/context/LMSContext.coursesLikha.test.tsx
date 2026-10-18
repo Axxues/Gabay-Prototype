@@ -242,6 +242,31 @@ describe('courses, sections, requests via Likha (Task 4)', () => {
     expect((seenDb.courses || []).some((c: any) => c.id === 'c-new')).toBe(true);
   });
 
+  test('createCourse supports assigning specific instructorId and instructorName', async () => {
+    await renderLoggedInAs('Chair', 'u-chair-1', 'chair@dmmmsu.edu.ph');
+    let created: any = null;
+    await act(async () => {
+      created = await ctx.createCourse({
+        code: 'CSCC 103',
+        title: 'OOP',
+        section: '4-E',
+        instructorId: 'u-fac-charlie',
+        instructorName: 'Charlie Marzan',
+      });
+    });
+    expect(createCourseMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: 'CSCC 103',
+        title: 'OOP',
+        section: '4-E',
+        instructor_id: 'u-fac-charlie',
+        instructor_name: 'Charlie Marzan',
+      })
+    );
+    expect(created.instructorId).toBe('u-fac-charlie');
+    expect(created.instructorName).toBe('Charlie Marzan');
+  });
+
   test('regenerateCourseJoinCode persists via courses.updateCourse, never Express', async () => {
     await renderLoggedInAs('Faculty', 'u-fac-1', 'faculty1@dmmmsu.edu.ph');
     let code = '';
