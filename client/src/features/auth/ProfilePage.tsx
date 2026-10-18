@@ -35,6 +35,7 @@ import {
 } from 'lucide-react';
 import { PageHeader } from '../../shared/components/common/PageHeader';
 import { StudentProfileForm } from './components/StudentProfileForm';
+import { FacultyProfileForm } from './components/FacultyProfileForm';
 
 type ProfileTab = 'overview' | 'preferences' | 'security';
 
@@ -586,6 +587,26 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                 </p>
               </div>
               <StudentProfileForm
+                key={currentUser.id}
+                user={currentUser}
+                updateUser={updateUser}
+                showAlert={showAlert}
+              />
+            </div>
+          )}
+
+          {/* Faculty / Staff Profile Form (Teaching Experience & Educational Background) */}
+          {(activeRole === 'faculty' || activeRole === 'staff') && (
+            <div className="bg-card border border-border rounded-2xl p-6 shadow-none space-y-5">
+              <div>
+                <h3 className="font-bold text-foreground text-sm">
+                  Faculty & Staff Credentials
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Update your professional teaching experience, contact information, and educational background.
+                </p>
+              </div>
+              <FacultyProfileForm
                 key={currentUser.id}
                 user={currentUser}
                 updateUser={updateUser}
