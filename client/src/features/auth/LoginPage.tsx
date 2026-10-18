@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useLMS } from '../../shared/context/LMSContext';
+import { isProfileComplete } from '../../shared/utils/profileCompletion';
 import {
   Lock,
   Mail,
@@ -13,7 +14,7 @@ import {
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
-  const { login, theme, toggleTheme, showAlert } = useLMS();
+  const { login, theme, toggleTheme, showAlert, currentUser } = useLMS();
 
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -41,7 +42,9 @@ export const LoginPage: React.FC = () => {
       if (!res.success) {
         setErrorMessage(res.message || 'Invalid credentials. Please try again.');
       } else {
-        navigate('/dashboard', { replace: true });
+        const loggedUser = res.user || currentUser;
+        const targetRoute = isProfileComplete(loggedUser) ? '/dashboard' : '/profile';
+        navigate(targetRoute, { replace: true });
       }
     } catch {
       setErrorMessage('An unexpected error occurred. Please try again.');
@@ -59,7 +62,9 @@ export const LoginPage: React.FC = () => {
       const res = await login(email, pw);
       setIsLoading(false);
       if (res?.success) {
-        navigate('/dashboard', { replace: true });
+        const loggedUser = res.user || currentUser;
+        const targetRoute = isProfileComplete(loggedUser) ? '/dashboard' : '/profile';
+        navigate(targetRoute, { replace: true });
       }
     }, 200);
   };

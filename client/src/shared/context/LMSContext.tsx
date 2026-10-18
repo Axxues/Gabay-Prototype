@@ -46,7 +46,7 @@ import {
   termGrade,
 } from '../utils/spr';
 import { commonsTemplates } from '../data/commonsTemplates';
-import { DEFAULT_COLLEGES, DEFAULT_DEPARTMENTS, DEFAULT_SCHOOL_YEARS } from '../data/collegesData';
+import { DEFAULT_COLLEGES, DEFAULT_DEPARTMENTS, generateAutomaticSchoolYears } from '../data/collegesData';
 import { effectiveTerms, normalizeGradesReleased, normalizeTermId } from '../utils/gradingTerms';
 import { isSyllabusGradeReady } from '../utils/syllabusGradeGate';
 import { AlertModal, type AlertModalOptions } from '../components/common/AlertModal';
@@ -77,7 +77,7 @@ export interface LMSContextType {
   currentUser: User | null;
   activeUser: User;
   activeRole: UserRole;
-  login: (emailOrId: string, password: string) => Promise<{ success: boolean; message?: string }>;
+  login: (emailOrId: string, password: string) => Promise<{ success: boolean; message?: string; user?: User }>;
   logout: () => void;
   switchRole: (role: UserRole) => void; // Keep for testing convenience if needed
   isLoading: boolean;
@@ -1625,14 +1625,23 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [departments]);
 
   const [schoolYears, setSchoolYears] = useState<SchoolYear[]>(() => {
+    const autoYears = generateAutomaticSchoolYears();
     try {
       const saved = localStorage.getItem(STORAGE_KEY_SCHOOL_YEARS);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const merged = [...parsed];
+          for (const auto of autoYears) {
+            if (!merged.some(m => m.year.trim().toLowerCase() === auto.year.trim().toLowerCase())) {
+              merged.push(auto);
+            }
+          }
+          return merged;
+        }
       }
     } catch (_) {}
-    return DEFAULT_SCHOOL_YEARS;
+    return autoYears;
   });
 
   const schoolYearsRef = useRef(schoolYears);
@@ -1640,6 +1649,26 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     schoolYearsRef.current = schoolYears;
     safeSetLocalStorage(STORAGE_KEY_SCHOOL_YEARS, JSON.stringify(schoolYears));
   }, [schoolYears]);
+
+  // Ensure automatically generated 5-year-in-advance school years are always present
+  useEffect(() => {
+    const autoYears = generateAutomaticSchoolYears();
+    setSchoolYears(prev => {
+      let changed = false;
+      const merged = [...prev];
+      for (const auto of autoYears) {
+        if (!merged.some(m => m.year.trim().toLowerCase() === auto.year.trim().toLowerCase())) {
+          merged.push(auto);
+          changed = true;
+        }
+      }
+      if (changed) {
+        safeSetLocalStorage(STORAGE_KEY_SCHOOL_YEARS, JSON.stringify(merged));
+        return merged;
+      }
+      return prev;
+    });
+  }, []);
 
   const [collegeActiveSchoolYears, setCollegeActiveSchoolYears] = useState<Record<string, string>>(() => {
     try {
@@ -2596,7 +2625,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const activeUser = currentUser || db.users[0];
   const activeRole: UserRole = currentUser?.role || 'student';
 
-  const login = async (emailOrId: string, password: string): Promise<{ success: boolean; message?: string }> => {
+  const login = async (emailOrId: string, password: string): Promise<{ success: boolean; message?: string; user?: User }> => {
     const cleanEmail = emailOrId.trim().toLowerCase();
     const pendingList = pendingRegistrationsRef.current || pendingRegistrations;
     const pending = pendingList.find(
@@ -2680,7 +2709,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const essentialLikha = await refreshEssential(mappedUser);
           void refreshDeferred(essentialLikha.fresh, essentialLikha.courses, essentialLikha.run);
           setCurrentUser(mappedUser);
-          return { success: true };
+          return { success: true, user: mappedUser };
         }
       } catch (likhaErr: any) {
         const msg = String(likhaErr?.message || '');
@@ -2699,7 +2728,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return { success: false, message: 'Invalid email or password.' };
       }
       setCurrentUser(effectiveUser);
-      return { success: true };
+      return { success: true, user: effectiveUser };
     }
 
     return { success: false, message: 'Login failed.' };

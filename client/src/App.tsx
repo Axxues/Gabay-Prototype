@@ -13,6 +13,7 @@ import { GlobalSearchDialog } from './shared/components/common/GlobalSearchDialo
 import { PageTransition } from './shared/components/common/PageTransition';
 import { AppSkeleton, ProfileSkeleton, PageSkeleton, AuthCardSkeleton } from './shared/components/common/AppSkeleton';
 import { tabToPath, courseToPath, pathToTab } from './shared/config/routes';
+import { isProfileComplete } from './shared/utils/profileCompletion';
 
 const DashboardPage = React.lazy(() => import('./features/dashboard/DashboardPage').then(m => ({ default: m.DashboardPage })));
 const CoursesPage = React.lazy(() => import('./features/courses/CoursesPage').then(m => ({ default: m.CoursesPage })));
@@ -100,8 +101,8 @@ const RequireAdmin: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   return <>{children}</>;
 };
 
-const LoginRoute: React.FC = () => {
-  const { isAuthenticated, authReady, isSessionExpired } = useLMS();
+export const LoginRoute: React.FC = () => {
+  const { isAuthenticated, authReady, isSessionExpired, currentUser, activeUser } = useLMS();
 
   if (!authReady) {
     return <AuthLoadingScreen />;
@@ -110,7 +111,8 @@ const LoginRoute: React.FC = () => {
     return <LoginPage />;
   }
   if (isAuthenticated) {
-    return <Navigate to="/dashboard" replace />;
+    const user = currentUser || activeUser;
+    return <Navigate to={isProfileComplete(user) ? '/dashboard' : '/profile'} replace />;
   }
   return <LoginPage />;
 };
