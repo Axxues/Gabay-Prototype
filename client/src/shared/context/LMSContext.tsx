@@ -1002,7 +1002,10 @@ const mapLikhaCourseFileRow = (f: any, fallbackCourseId?: string): CourseFile =>
 export const resolveDirectusUserName = (userOrId: any, fallbackName = ''): string => {
   if (!userOrId) return fallbackName;
   if (typeof userOrId === 'object' && userOrId !== null) {
-    const full = `${userOrId.first_name || ''} ${userOrId.last_name || ''}`.trim();
+    const full = [userOrId.first_name, userOrId.middle_name, userOrId.last_name]
+      .filter(Boolean)
+      .join(' ')
+      .trim();
     if (full) return full;
     if (userOrId.name) return userOrId.name;
     if (userOrId.email) return userOrId.email;
@@ -1043,6 +1046,9 @@ export const mapLikhaUserRowToUser = (row: any): User => {
     avatar: resolveDirectusUserAvatar(row, ''),
     department: row?.department || 'College of Computer Science',
     title: row?.title || (role === 'student' ? 'Undergraduate Student' : 'Faculty Instructor'),
+    firstName: row?.first_name || undefined,
+    middleName: row?.middle_name || undefined,
+    lastName: row?.last_name || undefined,
     yearLevel: row?.year_level !== undefined ? Number(row.year_level) : (row?.yearLevel !== undefined ? Number(row.yearLevel) : undefined),
     yearsOfTeaching: row?.years_of_teaching !== undefined ? Number(row.years_of_teaching) : (row?.yearsOfTeaching !== undefined ? Number(row.yearsOfTeaching) : undefined),
   };
@@ -1978,7 +1984,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               }
               const baseUser: User = {
                 id: u.id,
-                name: `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email,
+                name: resolveDirectusUserName(u, u.email),
+                firstName: u.first_name || undefined,
+                middleName: u.middle_name || undefined,
+                lastName: u.last_name || undefined,
                 email: u.email,
                 role: mapped.role,
                 adminSubrole: mapped.adminSubrole,
@@ -2625,7 +2634,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               }
               const rawMeUser: User = {
                 id: me.id,
-                name: `${me.first_name || ''} ${me.last_name || ''}`.trim() || me.email,
+                name: resolveDirectusUserName(me, me.email),
+                firstName: me.first_name || undefined,
+                middleName: me.middle_name || undefined,
+                lastName: me.last_name || undefined,
                 email: me.email,
                 role: mapped.role,
                 adminSubrole: mapped.adminSubrole,
@@ -2759,7 +2771,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
           const rawMappedUser: User = {
             id: likhaAuth.user.id,
-            name: `${likhaAuth.user.first_name || ''} ${likhaAuth.user.last_name || ''}`.trim() || likhaAuth.user.email,
+            name: resolveDirectusUserName(likhaAuth.user, likhaAuth.user.email),
+            firstName: likhaAuth.user.first_name || undefined,
+            middleName: likhaAuth.user.middle_name || undefined,
+            lastName: likhaAuth.user.last_name || undefined,
             email: likhaAuth.user.email,
             role: mapped.role,
             adminSubrole: mapped.adminSubrole,
@@ -3825,13 +3840,18 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // Directus owns identity fields plus the role UUID FK. Avatar URLs and
       // titles stay client-side (no known writable field / upload UX yet).
       // Unknown role names resolve to null and stay local-only as before.
+      const resolvedFirstName = userData.firstName || first_name;
+      const resolvedLastName = userData.lastName || last_name;
       const payload: Record<string, string> = {
-        first_name,
-        last_name,
+        first_name: resolvedFirstName,
+        last_name: resolvedLastName,
         email: userData.email?.trim() || '',
         password: userData.password || 'password123',
         department: userData.department || 'College of Computer Science',
       };
+      if (userData.middleName) {
+        payload.middle_name = userData.middleName;
+      }
       if (userData.role !== undefined) {
         // /roles unreachable → null → role stays local-only, write proceeds.
         let roleId: string | null = null;
@@ -3898,6 +3918,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       patchBody.first_name = first_name;
       if (last_name) patchBody.last_name = last_name;
     }
+    if (updates.firstName !== undefined) patchBody.first_name = updates.firstName;
+    if (updates.middleName !== undefined) patchBody.middle_name = updates.middleName;
+    if (updates.lastName !== undefined) patchBody.last_name = updates.lastName;
     if (updates.email !== undefined) patchBody.email = updates.email;
     if (updates.password !== undefined) patchBody.password = updates.password;
     if (updates.department !== undefined) patchBody.department = updates.department;
