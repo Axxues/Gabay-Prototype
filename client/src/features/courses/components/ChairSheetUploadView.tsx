@@ -411,9 +411,6 @@ export const ChairSheetUploadView: React.FC<ChairSheetUploadViewProps> = ({
               <span className="text-xs font-bold text-foreground">
                 Sheet Preview & Validation ({fileName || 'chair-sheet.xlsx'})
               </span>
-              <span className="text-[10px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full border border-border">
-                Editable Table
-              </span>
             </div>
 
             <button
