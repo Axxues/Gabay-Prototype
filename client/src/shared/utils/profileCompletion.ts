@@ -30,6 +30,31 @@ export function isDegreeComplete(degree?: EducationalDegree | null): boolean {
 }
 
 /**
+ * Returns the maximum allowed date string (YYYY-MM-DD) for a birthday.
+ * A birthday must be from a previous date (strictly before today).
+ */
+export function getMaxBirthdayDate(referenceDate: Date = new Date()): string {
+  const d = new Date(referenceDate);
+  d.setDate(d.getDate() - 1);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Validates that a birthday string is not empty, is well-formed,
+ * and is from a previous date (strictly before today, not tomorrow or future dates).
+ */
+export function isValidBirthday(birthday?: string | null, referenceDate: Date = new Date()): boolean {
+  if (!birthday || typeof birthday !== 'string') return false;
+  const trimmed = birthday.trim();
+  if (!trimmed) return false;
+  const maxDate = getMaxBirthdayDate(referenceDate);
+  return trimmed <= maxDate;
+}
+
+/**
  * Validates whether a user has fulfilled the institutional profile requirements for their role.
  * - Students require birthday, permanent & present address, contact number, parent/guardian info, and yearLevel.
  * - Faculty & staff require address, contact number, birthday, years of teaching, and educational background.
@@ -41,7 +66,7 @@ export function isProfileComplete(user: Partial<User> | null | undefined): boole
   }
 
   if (user.role === 'student') {
-    const hasBirthday = typeof user.birthday === 'string' && user.birthday.trim() !== '';
+    const hasBirthday = isValidBirthday(user.birthday);
     const hasPermanentAddress = typeof user.permanentAddress === 'string' && user.permanentAddress.trim() !== '';
     const hasContactNumber = typeof user.contactNumber === 'string' && user.contactNumber.trim() !== '';
     const hasParentContactNumber =
@@ -76,7 +101,7 @@ export function isProfileComplete(user: Partial<User> | null | undefined): boole
   // require professional credentials: address, contact number, birthday, years of teaching, and educational background.
   const hasAddress = typeof user.address === 'string' && user.address.trim() !== '';
   const hasContactNumber = typeof user.contactNumber === 'string' && user.contactNumber.trim() !== '';
-  const hasBirthday = typeof user.birthday === 'string' && user.birthday.trim() !== '';
+  const hasBirthday = isValidBirthday(user.birthday);
   const hasTeachingExperience =
     typeof user.yearsOfTeaching === 'number' &&
     !isNaN(user.yearsOfTeaching) &&

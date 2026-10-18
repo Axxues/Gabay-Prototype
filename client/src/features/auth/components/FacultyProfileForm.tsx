@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Save, AlertCircle, Calendar, MapPin, Phone, Briefcase, GraduationCap, Plus, Trash2, CheckCircle2, Award } from 'lucide-react';
 import type { User, EducationalDegree, DegreeLevel } from '../../../shared/types/lms';
+import { getMaxBirthdayDate, isValidBirthday } from '../../../shared/utils/profileCompletion';
 
 interface FacultyProfileFormProps {
   user: User;
@@ -38,6 +39,8 @@ export const FacultyProfileForm: React.FC<FacultyProfileFormProps> = ({
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  const maxBirthdayDate = getMaxBirthdayDate();
+
   const handleAddDegree = () => {
     const newDegree: EducationalDegree = {
       id: `deg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
@@ -62,6 +65,12 @@ export const FacultyProfileForm: React.FC<FacultyProfileFormProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
+
+    if (!isValidBirthday(birthday)) {
+      setErrorMessage('Birthday must be from a previous date and cannot be in the future (such as tomorrow or later).');
+      return;
+    }
+
     setIsSaving(true);
 
     const parsedYears = typeof yearsOfTeaching === 'string' ? (parseInt(yearsOfTeaching, 10) || 0) : yearsOfTeaching;
@@ -165,10 +174,22 @@ export const FacultyProfileForm: React.FC<FacultyProfileFormProps> = ({
             <input
               id="faculty-birthday"
               type="date"
+              required
+              aria-label="Birthday"
               value={birthday}
-              onChange={e => setBirthday(e.target.value)}
+              max={maxBirthdayDate}
+              onChange={e => {
+                setBirthday(e.target.value);
+                if (errorMessage) setErrorMessage(null);
+              }}
               className="w-full px-3.5 py-2.5 bg-background border border-border focus:ring-2 focus:ring-primary/30 rounded-xl text-xs text-foreground font-sans outline-none transition-all"
             />
+            {birthday && !isValidBirthday(birthday) && (
+              <p className="text-[11px] font-semibold text-destructive mt-1 flex items-center gap-1">
+                <AlertCircle className="w-3 h-3 shrink-0" />
+                <span>Birthday must be from a previous date and cannot be in the future.</span>
+              </p>
+            )}
           </div>
 
           <div className="space-y-1.5">

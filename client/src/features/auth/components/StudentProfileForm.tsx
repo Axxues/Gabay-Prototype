@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Save, AlertCircle, Info, Calendar, MapPin, Phone, Users, CheckCircle2 } from 'lucide-react';
 import type { User, NormalizedPersonName } from '../../../shared/types/lms';
+import { getMaxBirthdayDate, isValidBirthday } from '../../../shared/utils/profileCompletion';
 
 interface StudentProfileFormProps {
   user: User;
@@ -52,6 +53,7 @@ export const StudentProfileForm: React.FC<StudentProfileFormProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const yearLevel = user.yearLevel || 1;
+  const maxBirthdayDate = getMaxBirthdayDate();
 
   const handlePermanentAddressChange = (value: string) => {
     setPermanentAddress(value);
@@ -70,6 +72,12 @@ export const StudentProfileForm: React.FC<StudentProfileFormProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
+
+    if (!isValidBirthday(birthday)) {
+      setErrorMessage('Birthday must be from a previous date and cannot be in the future (such as tomorrow or later).');
+      return;
+    }
+
     setIsSaving(true);
 
     const effectivePresentAddress = sameAsPermanentAddress ? permanentAddress : presentAddress;
@@ -175,9 +183,19 @@ export const StudentProfileForm: React.FC<StudentProfileFormProps> = ({
               required
               aria-label="Birthday"
               value={birthday}
-              onChange={(e) => setBirthday(e.target.value)}
+              max={maxBirthdayDate}
+              onChange={(e) => {
+                setBirthday(e.target.value);
+                if (errorMessage) setErrorMessage(null);
+              }}
               className="w-full px-3.5 py-2 text-xs bg-background border border-border focus:ring-2 focus:ring-primary/30 rounded-xl text-foreground font-sans outline-none"
             />
+            {birthday && !isValidBirthday(birthday) && (
+              <p className="text-[11px] font-semibold text-destructive mt-1 flex items-center gap-1">
+                <AlertCircle className="w-3 h-3 shrink-0" />
+                <span>Birthday must be from a previous date and cannot be in the future.</span>
+              </p>
+            )}
           </div>
 
           <div>

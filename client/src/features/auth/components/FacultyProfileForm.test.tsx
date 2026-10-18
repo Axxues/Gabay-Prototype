@@ -162,4 +162,30 @@ describe('FacultyProfileForm Component', () => {
       title: expect.stringMatching(/profile updated/i),
     }));
   });
+
+  it('restricts birthday input to previous dates and blocks future birthday submission', async () => {
+    render(
+      <FacultyProfileForm
+        user={baseFaculty}
+        updateUser={mockUpdateUser}
+        showAlert={mockShowAlert}
+      />
+    );
+
+    const birthdayInput = screen.getByLabelText(/birthday/i);
+    expect(birthdayInput).toHaveAttribute('max');
+
+    // Attempt to set future birthday
+    fireEvent.change(birthdayInput, { target: { value: '2027-02-27' } });
+
+    const submitBtn = screen.getByRole('button', { name: /save faculty profile|save profile/i });
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Birthday must be from a previous date and cannot be in the future/i)).toBeInTheDocument();
+    });
+
+    expect(mockUpdateUser).not.toHaveBeenCalled();
+  });
 });
+

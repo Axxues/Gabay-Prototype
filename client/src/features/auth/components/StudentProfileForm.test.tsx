@@ -183,4 +183,30 @@ describe('StudentProfileForm Component', () => {
       }));
     });
   });
+
+  it('restricts birthday input to previous dates and blocks future birthday submission', async () => {
+    render(
+      <StudentProfileForm
+        user={baseStudent}
+        updateUser={mockUpdateUser}
+        showAlert={mockShowAlert}
+      />
+    );
+
+    const birthdayInput = screen.getByLabelText(/birthday/i);
+    expect(birthdayInput).toHaveAttribute('max');
+
+    // Attempt to set future birthday
+    fireEvent.change(birthdayInput, { target: { value: '2027-02-27' } });
+
+    const saveButton = screen.getByRole('button', { name: /save profile|save student information/i });
+    fireEvent.click(saveButton);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Birthday must be from a previous date and cannot be in the future/i)).toBeInTheDocument();
+    });
+
+    expect(mockUpdateUser).not.toHaveBeenCalled();
+  });
 });
+

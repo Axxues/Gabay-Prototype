@@ -153,4 +153,32 @@ describe('isProfileComplete', () => {
     } as User;
     expect(isProfileComplete(staff)).toBe(true);
   });
+
+  it('rejects future birthdays and requires previous dates', () => {
+    const fixedToday = new Date('2026-10-18T12:00:00Z');
+    // Yesterday: 2026-10-17
+    // Tomorrow: 2026-10-19
+    // Next year: 2027-02-27
+
+    const completeStudent: Partial<User> = {
+      role: 'student',
+      permanentAddress: '123 Main St, City',
+      presentAddress: '123 Main St, City',
+      sameAsPermanentAddress: true,
+      contactNumber: '09123456789',
+      hasGuardianOnly: false,
+      motherName: { firstName: 'Maria', lastName: 'Cruz' },
+      fatherName: { firstName: 'Juan', lastName: 'Cruz' },
+      parentContactNumber: '09987654321',
+      yearLevel: 1,
+    };
+
+    // Valid past birthday
+    expect(isProfileComplete({ ...completeStudent, birthday: '2004-05-15' } as User)).toBe(true);
+
+    // Future birthday (e.g. tomorrow or 2027-02-27 as reported by user)
+    expect(isProfileComplete({ ...completeStudent, birthday: '2027-02-27' } as User)).toBe(false);
+    expect(isProfileComplete({ ...completeStudent, birthday: '2026-10-19' } as User)).toBe(false);
+  });
 });
+
