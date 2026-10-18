@@ -40,6 +40,7 @@ let mockCoursesState = [
 const mockSchoolYears = [
   { id: 'sy-2526', collegeId: 'col-ccs', year: '2025-2026', isActive: true },
   { id: 'sy-2425', collegeId: 'col-ccs', year: '2024-2025', isActive: false },
+  { id: 'sy-2627', collegeId: 'col-ccs', year: '2026-2027', isActive: false },
 ];
 
 vi.mock('../../shared/context/LMSContext', () => ({
@@ -94,22 +95,30 @@ describe('DashboardPage Academic Scope Horizontal Scrollable Wheel', () => {
     vi.clearAllMocks();
   });
 
-  test('renders Academic Scope horizontal wheel and defaults to active year on Dashboard', () => {
+  test('renders Academic Scope horizontal wheel with current active year first and no All Years button', () => {
     render(<DashboardPage onNavigateCourse={() => {}} onNavigateTab={() => {}} />);
 
     // Academic Scope section exists on dashboard
     expect(screen.getByText('Academic Scope')).toBeInTheDocument();
     expect(screen.getByTestId('academic-scope-wheel')).toBeInTheDocument();
 
+    // "All Years" button should NOT exist
+    expect(screen.queryByRole('button', { name: /All Years/i })).not.toBeInTheDocument();
+
+    // The buttons in wheel should start with current year (2025-2026)
+    const buttons = screen.getAllByRole('button').filter(b => b.textContent?.includes('AY'));
+    expect(buttons[0]).toHaveTextContent('AY 2025-2026');
+
     // Defaults to current active year (2025-2026)
     expect(screen.getByText('Intro to Computer Science')).toBeInTheDocument();
     expect(screen.queryByText('Foundation Computing')).not.toBeInTheDocument();
   });
 
-  test('clicking year in horizontal wheel filters courses on Dashboard', async () => {
+  test('clicking past year in horizontal wheel filters courses on Dashboard', async () => {
     render(<DashboardPage onNavigateCourse={() => {}} onNavigateTab={() => {}} />);
 
     const pastYearBtn = screen.getByRole('button', { name: /AY 2024-2025/i });
+    expect(pastYearBtn).not.toBeDisabled();
     fireEvent.click(pastYearBtn);
 
     await waitFor(() => {
@@ -118,16 +127,13 @@ describe('DashboardPage Academic Scope Horizontal Scrollable Wheel', () => {
     });
   });
 
-  test('clicking All Years shows all courses across historical years on Dashboard', async () => {
+  test('future school year is rendered disabled and cannot be navigated', () => {
     render(<DashboardPage onNavigateCourse={() => {}} onNavigateTab={() => {}} />);
 
-    const allYearsBtn = screen.getByRole('button', { name: /All Years/i });
-    fireEvent.click(allYearsBtn);
-
-    await waitFor(() => {
-      expect(screen.getByText('Intro to Computer Science')).toBeInTheDocument();
-      expect(screen.getByText('Foundation Computing')).toBeInTheDocument();
-    });
+    const futureYearBtn = screen.getByRole('button', { name: /AY 2026-2027/i });
+    expect(futureYearBtn).toBeInTheDocument();
+    expect(futureYearBtn).toBeDisabled();
+    expect(futureYearBtn).toHaveAttribute('aria-disabled', 'true');
   });
 });
 

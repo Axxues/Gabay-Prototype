@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Save, AlertCircle, Calendar, MapPin, Phone, Briefcase, GraduationCap, Plus, Trash2, CheckCircle2, Award } from 'lucide-react';
-import type { User, EducationalDegree, DegreeLevel } from '../../../shared/types/lms';
-import { getMaxBirthdayDate, isValidBirthday } from '../../../shared/utils/profileCompletion';
+import { Save, AlertCircle, Calendar, Phone, Briefcase, GraduationCap, Plus, Trash2, CheckCircle2, Award } from 'lucide-react';
+import type { User, EducationalDegree, DegreeLevel, NormalizedAddress } from '../../../shared/types/lms';
+import { getMaxBirthdayDate, isValidBirthday, parseAddress, formatAddress, isAddressComplete } from '../../../shared/utils/profileCompletion';
+import { NormalizedAddressFields } from './NormalizedAddressFields';
 
 interface FacultyProfileFormProps {
   user: User;
@@ -24,7 +25,20 @@ export const FacultyProfileForm: React.FC<FacultyProfileFormProps> = ({
   showAlert,
   onSuccess,
 }) => {
-  const [address, setAddress] = useState(user.address || '');
+  const initialSameAs = user.sameAsPermanentAddress ?? (
+    Boolean(user.permanentAddress && user.presentAddress && user.permanentAddress === user.presentAddress)
+  );
+
+  const [permanentAddressDetails, setPermanentAddressDetails] = useState<NormalizedAddress>(
+    user.permanentAddressDetails || parseAddress(user.permanentAddress || user.address)
+  );
+  const [sameAsPermanentAddress, setSameAsPermanentAddress] = useState(initialSameAs);
+  const [presentAddressDetails, setPresentAddressDetails] = useState<NormalizedAddress>(
+    initialSameAs
+      ? (user.permanentAddressDetails || parseAddress(user.permanentAddress || user.address))
+      : (user.presentAddressDetails || parseAddress(user.presentAddress || user.address))
+  );
+
   const [contactNumber, setContactNumber] = useState(user.contactNumber || '');
   const [birthday, setBirthday] = useState(user.birthday || '');
   const [yearsOfTeaching, setYearsOfTeaching] = useState<number | string>(user.yearsOfTeaching ?? 0);
@@ -40,6 +54,27 @@ export const FacultyProfileForm: React.FC<FacultyProfileFormProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const maxBirthdayDate = getMaxBirthdayDate();
+
+  const handlePermanentAddressChange = (patch: Partial<NormalizedAddress>) => {
+    setPermanentAddressDetails(prev => {
+      const updated = { ...prev, ...patch };
+      if (sameAsPermanentAddress) {
+        setPresentAddressDetails(updated);
+      }
+      return updated;
+    });
+  };
+
+  const handleSameAsPermanentToggle = (checked: boolean) => {
+    setSameAsPermanentAddress(checked);
+    if (checked) {
+      setPresentAddressDetails(permanentAddressDetails);
+    }
+  };
+
+  const handlePresentAddressChange = (patch: Partial<NormalizedAddress>) => {
+    setPresentAddressDetails(prev => ({ ...prev, ...patch }));
+  };
 
   const handleAddDegree = () => {
     const newDegree: EducationalDegree = {
@@ -71,12 +106,32 @@ export const FacultyProfileForm: React.FC<FacultyProfileFormProps> = ({
       return;
     }
 
+    const effectivePresentDetails = sameAsPermanentAddress ? permanentAddressDetails : presentAddressDetails;
+
+    if (!isAddressComplete(permanentAddressDetails)) {
+      setErrorMessage('Please fill in all permanent address details (House/Street, Barangay, Municipality/City, Province).');
+      return;
+    }
+
+    if (!isAddressComplete(effectivePresentDetails)) {
+      setErrorMessage('Please fill in all present address details (House/Street, Barangay, Municipality/City, Province).');
+      return;
+    }
+
     setIsSaving(true);
 
     const parsedYears = typeof yearsOfTeaching === 'string' ? (parseInt(yearsOfTeaching, 10) || 0) : yearsOfTeaching;
+    const formattedPermanent = formatAddress(permanentAddressDetails);
+    const formattedPresent = formatAddress(effectivePresentDetails);
 
     const updates: Partial<User> = {
-      address,
+      address: formattedPermanent,
+      addressDetails: permanentAddressDetails,
+      permanentAddress: formattedPermanent,
+      presentAddress: formattedPresent,
+      permanentAddressDetails,
+      presentAddressDetails: effectivePresentDetails,
+      sameAsPermanentAddress,
       contactNumber,
       birthday,
       yearsOfTeaching: parsedYears,
@@ -207,22 +262,19 @@ export const FacultyProfileForm: React.FC<FacultyProfileFormProps> = ({
             />
           </div>
         </div>
-
-        <div className="space-y-1.5">
-          <label htmlFor="faculty-address" className="flex items-center space-x-1.5 text-xs font-semibold text-foreground">
-            <MapPin className="w-3.5 h-3.5 text-primary" />
-            <span>Address</span>
-          </label>
-          <input
-            id="faculty-address"
-            type="text"
-            value={address}
-            onChange={e => setAddress(e.target.value)}
-            placeholder="e.g. 123 Academic Blvd, San Fernando, La Union"
-            className="w-full px-3.5 py-2.5 bg-background border border-border focus:ring-2 focus:ring-primary/30 rounded-xl text-xs text-foreground font-sans outline-none transition-all"
-          />
-        </div>
       </div>
+
+      {/* Address Details */}
+      <NormalizedAddressFields
+        labelPrefix="faculty"
+        permanentAddress={permanentAddressDetails}
+        onChangePermanentAddress={handlePermanentAddressChange}
+        sameAsPermanentAddress={sameAsPermanentAddress}
+        onToggleSameAsPermanent={handleSameAsPermanentToggle}
+        presentAddress={presentAddressDetails}
+        onChangePresentAddress={handlePresentAddressChange}
+        disabled={isSaving}
+      />
 
       {/* Educational Background */}
       <div className="space-y-4">

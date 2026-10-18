@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Save, AlertCircle, Info, Calendar, MapPin, Phone, Users, CheckCircle2 } from 'lucide-react';
-import type { User, NormalizedPersonName } from '../../../shared/types/lms';
-import { getMaxBirthdayDate, isValidBirthday } from '../../../shared/utils/profileCompletion';
+import { Save, AlertCircle, Info, Calendar, Phone, Users, CheckCircle2 } from 'lucide-react';
+import type { User, NormalizedPersonName, NormalizedAddress } from '../../../shared/types/lms';
+import { getMaxBirthdayDate, isValidBirthday, parseAddress, formatAddress, isAddressComplete } from '../../../shared/utils/profileCompletion';
+import { NormalizedAddressFields } from './NormalizedAddressFields';
 
 interface StudentProfileFormProps {
   user: User;
@@ -21,10 +22,14 @@ export const StudentProfileForm: React.FC<StudentProfileFormProps> = ({
   );
 
   const [birthday, setBirthday] = useState(user.birthday || '');
-  const [permanentAddress, setPermanentAddress] = useState(user.permanentAddress || '');
+  const [permanentAddressDetails, setPermanentAddressDetails] = useState<NormalizedAddress>(
+    user.permanentAddressDetails || parseAddress(user.permanentAddress)
+  );
   const [sameAsPermanentAddress, setSameAsPermanentAddress] = useState(initialSameAs);
-  const [presentAddress, setPresentAddress] = useState(
-    initialSameAs ? (user.permanentAddress || '') : (user.presentAddress || '')
+  const [presentAddressDetails, setPresentAddressDetails] = useState<NormalizedAddress>(
+    initialSameAs
+      ? (user.permanentAddressDetails || parseAddress(user.permanentAddress))
+      : (user.presentAddressDetails || parseAddress(user.presentAddress))
   );
   const [contactNumber, setContactNumber] = useState(user.contactNumber || '');
   const [hasGuardianOnly, setHasGuardianOnly] = useState(user.hasGuardianOnly || false);
@@ -55,18 +60,25 @@ export const StudentProfileForm: React.FC<StudentProfileFormProps> = ({
   const yearLevel = user.yearLevel || 1;
   const maxBirthdayDate = getMaxBirthdayDate();
 
-  const handlePermanentAddressChange = (value: string) => {
-    setPermanentAddress(value);
-    if (sameAsPermanentAddress) {
-      setPresentAddress(value);
-    }
+  const handlePermanentAddressChange = (patch: Partial<NormalizedAddress>) => {
+    setPermanentAddressDetails(prev => {
+      const updated = { ...prev, ...patch };
+      if (sameAsPermanentAddress) {
+        setPresentAddressDetails(updated);
+      }
+      return updated;
+    });
   };
 
   const handleSameAsPermanentToggle = (checked: boolean) => {
     setSameAsPermanentAddress(checked);
     if (checked) {
-      setPresentAddress(permanentAddress);
+      setPresentAddressDetails(permanentAddressDetails);
     }
+  };
+
+  const handlePresentAddressChange = (patch: Partial<NormalizedAddress>) => {
+    setPresentAddressDetails(prev => ({ ...prev, ...patch }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -78,14 +90,29 @@ export const StudentProfileForm: React.FC<StudentProfileFormProps> = ({
       return;
     }
 
+    const effectivePresentDetails = sameAsPermanentAddress ? permanentAddressDetails : presentAddressDetails;
+
+    if (!isAddressComplete(permanentAddressDetails)) {
+      setErrorMessage('Please fill in all permanent address details (House/Street, Barangay, Municipality/City, Province).');
+      return;
+    }
+
+    if (!isAddressComplete(effectivePresentDetails)) {
+      setErrorMessage('Please fill in all present address details (House/Street, Barangay, Municipality/City, Province).');
+      return;
+    }
+
     setIsSaving(true);
 
-    const effectivePresentAddress = sameAsPermanentAddress ? permanentAddress : presentAddress;
+    const formattedPermanent = formatAddress(permanentAddressDetails);
+    const formattedPresent = formatAddress(effectivePresentDetails);
 
     const updates: Partial<User> = {
       birthday,
-      permanentAddress,
-      presentAddress: effectivePresentAddress,
+      permanentAddress: formattedPermanent,
+      presentAddress: formattedPresent,
+      permanentAddressDetails,
+      presentAddressDetails: effectivePresentDetails,
       sameAsPermanentAddress,
       contactNumber,
       hasGuardianOnly,
@@ -220,63 +247,16 @@ export const StudentProfileForm: React.FC<StudentProfileFormProps> = ({
       </div>
 
       {/* Address Details */}
-      <div className="space-y-4">
-        <h4 className="text-xs font-bold text-foreground uppercase tracking-wider flex items-center gap-2">
-          <MapPin className="w-4 h-4 text-primary" />
-          Address Details
-        </h4>
-
-        <div>
-          <label htmlFor="student-permanent-address" className="block text-xs font-bold text-muted-foreground mb-1">
-            Permanent Address <span className="text-destructive">*</span>
-          </label>
-          <textarea
-            id="student-permanent-address"
-            rows={2}
-            required
-            aria-label="Permanent Address"
-            placeholder="House/Street, Barangay, Municipality/City, Province"
-            value={permanentAddress}
-            onChange={(e) => handlePermanentAddressChange(e.target.value)}
-            className="w-full p-3 text-xs bg-background border border-border focus:ring-2 focus:ring-primary/30 rounded-xl text-foreground font-sans outline-none leading-relaxed"
-          />
-        </div>
-
-        <div className="flex items-center space-x-2.5 py-1">
-          <input
-            id="student-same-address-checkbox"
-            type="checkbox"
-            checked={sameAsPermanentAddress}
-            onChange={(e) => handleSameAsPermanentToggle(e.target.checked)}
-            aria-label="Same as permanent address"
-            className="w-4 h-4 rounded border-border text-primary focus:ring-primary/30 cursor-pointer"
-          />
-          <label htmlFor="student-same-address-checkbox" className="text-xs font-medium text-foreground cursor-pointer select-none">
-            Present address is the same as permanent address
-          </label>
-        </div>
-
-        <div>
-          <label htmlFor="student-present-address" className="block text-xs font-bold text-muted-foreground mb-1">
-            Present Address <span className="text-destructive">*</span>
-          </label>
-          <textarea
-            id="student-present-address"
-            rows={2}
-            required={!sameAsPermanentAddress}
-            disabled={sameAsPermanentAddress}
-            aria-label="Present Address"
-            placeholder={sameAsPermanentAddress ? 'Matches permanent address' : 'House/Street, Barangay, Municipality/City, Province'}
-            value={sameAsPermanentAddress ? permanentAddress : presentAddress}
-            onChange={(e) => setPresentAddress(e.target.value)}
-            className={`w-full p-3 text-xs border rounded-xl font-sans outline-none leading-relaxed transition-all ${
-              sameAsPermanentAddress
-                ? 'bg-muted/50 border-border text-muted-foreground cursor-not-allowed select-none'
-                : 'bg-background border-border text-foreground focus:ring-2 focus:ring-primary/30'
-            }`}
-          />
-        </div>
-      </div>
+      <NormalizedAddressFields
+        labelPrefix="student"
+        permanentAddress={permanentAddressDetails}
+        onChangePermanentAddress={handlePermanentAddressChange}
+        sameAsPermanentAddress={sameAsPermanentAddress}
+        onToggleSameAsPermanent={handleSameAsPermanentToggle}
+        presentAddress={presentAddressDetails}
+        onChangePresentAddress={handlePresentAddressChange}
+        disabled={isSaving}
+      />
 
       {/* Family Information */}
       <div className="space-y-4">

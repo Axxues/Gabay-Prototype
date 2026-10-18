@@ -104,7 +104,17 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     }
   }, [currentActiveSchoolYear, selectedSchoolYear]);
 
-  // Distinct school years for the horizontal scrollable wheel
+  // Parse starting calendar year from string (e.g. "2025-2026" -> 2025)
+  const parseStartYear = (sy: string): number => {
+    const match = sy.match(/^(\d{4})/);
+    return match ? parseInt(match[1], 10) : 0;
+  };
+
+  const currentStartYear = useMemo(() => parseStartYear(currentActiveSchoolYear), [currentActiveSchoolYear]);
+
+  // Distinct school years for the horizontal scrollable wheel:
+  // Sorted ascending starting with the current active school year first, then future (disabled) / historical
+  // Or: sorted in chronological order with current active school year at the start of the view
   const availableSchoolYears = useMemo(() => {
     const years = new Set<string>();
     const list = getSchoolYearsByCollege ? getSchoolYearsByCollege(userCollegeId) : (schoolYears || []);
@@ -119,8 +129,16 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       }
     });
     years.add('2025-2026');
-    return Array.from(years).sort((a, b) => b.localeCompare(a));
-  }, [getSchoolYearsByCollege, userCollegeId, schoolYears, userCourses]);
+
+    // Sort ascending by year number:
+    // With current active school year pinned as the start of the list, followed by past/other years in ascending order,
+    // and any future years at the end (disabled).
+    const arr = Array.from(years);
+    const nonCurrent = arr.filter(y => y !== currentActiveSchoolYear).sort((a, b) => {
+      return parseStartYear(a) - parseStartYear(b);
+    });
+    return [currentActiveSchoolYear, ...nonCurrent];
+  }, [getSchoolYearsByCollege, userCollegeId, schoolYears, userCourses, currentActiveSchoolYear]);
 
   const wheelTrackRef = useRef<HTMLDivElement>(null);
 
@@ -134,16 +152,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     }
   };
 
-  // Filter courses by selected school year
+  // Filter courses by selected school year (defaulting to currentActiveSchoolYear)
   const filteredCourses = useMemo(() => {
-    if (selectedSchoolYear === 'all') {
-      return userCourses;
-    }
+    const activeYearToFilter = selectedSchoolYear || currentActiveSchoolYear;
     return userCourses.filter(c => {
       const courseYear = c.schoolYear || '2025-2026';
-      return courseYear === selectedSchoolYear;
+      return courseYear === activeYearToFilter;
     });
-  }, [userCourses, selectedSchoolYear]);
+  }, [userCourses, selectedSchoolYear, currentActiveSchoolYear]);
 
   const [coursePage, setCoursePage] = useState(1);
   const COURSES_PER_PAGE = 12;
@@ -325,7 +341,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   Academic Scope
                 </span>
                 <span className="text-xs font-extrabold text-foreground">
-                  {selectedSchoolYear === 'all' ? 'All Academic Years' : `AY ${selectedSchoolYear}`}
+                  AY {selectedSchoolYear || currentActiveSchoolYear}
                 </span>
               </div>
             </div>
@@ -352,20 +368,29 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 className="flex items-center gap-1.5 overflow-x-auto py-1 px-0.5 no-scrollbar scroll-smooth"
                 style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
               >
-                <button
-                  type="button"
-                  onClick={() => setSelectedSchoolYear('all')}
-                  className={`px-3 py-1.5 text-xs rounded-xl font-bold transition-all cursor-pointer border whitespace-nowrap shrink-0 ${
-                    selectedSchoolYear === 'all'
-                      ? 'bg-foreground text-background border-foreground shadow-2xs'
-                      : 'bg-muted/50 text-muted-foreground hover:text-foreground border-border hover:bg-muted'
-                  }`}
-                >
-                  All Years
-                </button>
                 {availableSchoolYears.map((yr) => {
-                  const isSelected = selectedSchoolYear === yr;
+                  const isSelected = (selectedSchoolYear || currentActiveSchoolYear) === yr;
                   const isCurrent = yr === currentActiveSchoolYear;
+                  const isFuture = parseStartYear(yr) > currentStartYear;
+
+                  if (isFuture) {
+                    return (
+                      <button
+                        key={yr}
+                        type="button"
+                        disabled
+                        aria-disabled="true"
+                        title="Future academic year cannot be navigated yet"
+                        className="px-3 py-1.5 text-xs rounded-xl font-bold border flex items-center gap-1.5 whitespace-nowrap shrink-0 opacity-40 bg-muted/30 text-muted-foreground/60 border-border/40 cursor-not-allowed select-none"
+                      >
+                        <span>AY {yr}</span>
+                        <span className="text-[9px] px-1 py-0.2 rounded font-semibold border bg-muted/50 text-muted-foreground/60 border-border/40">
+                          Upcoming
+                        </span>
+                      </button>
+                    );
+                  }
+
                   return (
                     <button
                       key={yr}
@@ -451,7 +476,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 ? (activeRole === 'student'
                     ? 'You are not enrolled in any courses yet. Ask your faculty instructor for the course join code and click below to enter your code.'
                     : 'No course shells assigned to your account.')
-                : `You do not have any courses for AY ${selectedSchoolYear}. Select another year or 'All Years' from above.`}
+                : `You do not have any courses for AY ${selectedSchoolYear || currentActiveSchoolYear}. Select another academic year from above.`}
               actionLabel={userCourses.length === 0 && activeRole === 'student' ? 'Enter course join code' : undefined}
               onAction={userCourses.length === 0 && activeRole === 'student' ? () => setIsJoinModalOpen(true) : undefined}
             />
