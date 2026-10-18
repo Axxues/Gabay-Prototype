@@ -128,11 +128,6 @@ export const ChairSheetPreviewTable: React.FC<ChairSheetPreviewTableProps> = ({
                           <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                           <span>Not Found / Spelled Wrongly</span>
                         </div>
-                        {row.facultyErrorMessage && (
-                          <p className="text-[10px] text-destructive leading-tight max-w-[200px]">
-                            {row.facultyErrorMessage}
-                          </p>
-                        )}
                       </div>
                     )}
 

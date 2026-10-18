@@ -243,16 +243,6 @@ export const ChairSheetUploadView: React.FC<ChairSheetUploadViewProps> = ({
         </div>
 
         <div className="flex items-center space-x-2">
-          <button
-            type="button"
-            onClick={() => downloadChairSheetTemplate()}
-            className="px-3.5 py-2 text-xs font-semibold text-foreground bg-muted hover:bg-muted/80 border border-border rounded-xl transition-colors cursor-pointer flex items-center space-x-1.5"
-            title="Download blank Excel chair-sheet template with sample format"
-          >
-            <Download className="w-3.5 h-3.5 text-primary" />
-            <span>Download Template (.xlsx)</span>
-          </button>
-
           {rows.length > 0 && (
             <>
               <button
@@ -265,7 +255,7 @@ export const ChairSheetUploadView: React.FC<ChairSheetUploadViewProps> = ({
                 className="px-3.5 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-colors cursor-pointer disabled:opacity-50"
               >
                 <RefreshCw className="w-3.5 h-3.5 inline mr-1.5" />
-                Reset & Re-upload
+                Reupload
               </button>
 
               <button

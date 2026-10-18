@@ -193,9 +193,13 @@ describe('ChairSheetUploadView', () => {
 
     const approveBtn = screen.getByRole('button', { name: /Approve & Create 1 Course/i });
     expect(approveBtn).not.toBeDisabled();
+
+    // Reupload button should be present in preview mode
+    const reuploadBtn = screen.getByRole('button', { name: /Reupload/i });
+    expect(reuploadBtn).toBeInTheDocument();
   });
 
-  it('renders download template button in header and dropzone', async () => {
+  it('renders download template button in dropzone', async () => {
     render(
       <ChairSheetUploadView
         onNavigateCourse={mockOnNavigateCourse}
@@ -203,13 +207,9 @@ describe('ChairSheetUploadView', () => {
       />
     );
 
-    // Both the header button and dropzone action button should exist and be enabled
-    const downloadBtns = screen.getAllByRole('button', { name: /Download Template/i });
-    expect(downloadBtns.length).toBeGreaterThanOrEqual(1);
-    for (const btn of downloadBtns) {
-      expect(btn).toBeInTheDocument();
-      expect(btn).not.toBeDisabled();
-    }
+    const downloadBtn = screen.getByRole('button', { name: /Download Template/i });
+    expect(downloadBtn).toBeInTheDocument();
+    expect(downloadBtn).not.toBeDisabled();
   });
 });
 
