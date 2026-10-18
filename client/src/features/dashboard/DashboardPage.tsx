@@ -23,8 +23,10 @@ import {
   ShieldCheck,
   Trash2,
   Users,
-  Loader2
+  Loader2,
+  UploadCloud
 } from 'lucide-react';
+import { isChairRole } from '../../shared/utils/roles';
 import { useProcessing } from '../../shared/hooks/useProcessing';
 
 interface DashboardPageProps {
@@ -210,14 +212,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                     <span>Join course</span>
                   </button>
                 )}
-                {(activeRole === 'faculty' || activeRole === 'admin' || activeRole === 'superadmin') && (
+                {isChairRole(activeUser, activeRole) && (
                   <button
                     type="button"
-                    onClick={() => onNavigateTab('create-course')}
+                    onClick={() => onNavigateTab('chair-sheet')}
                     className="px-3.5 py-2 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all flex items-center space-x-1.5 cursor-pointer"
                   >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Create course</span>
+                    <UploadCloud className="w-3.5 h-3.5" />
+                    <span>Upload Chair-Sheet</span>
                   </button>
                 )}
                 <span className="text-xs font-sans text-muted-foreground bg-muted px-2.5 py-1 rounded-full border border-border tabular-nums">

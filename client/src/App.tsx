@@ -13,10 +13,12 @@ import { PageTransition } from './shared/components/common/PageTransition';
 import { AppSkeleton, ProfileSkeleton, PageSkeleton, AuthCardSkeleton } from './shared/components/common/AppSkeleton';
 import { tabToPath, courseToPath, pathToTab } from './shared/config/routes';
 import { isProfileComplete } from './shared/utils/profileCompletion';
+import { isChairRole } from './shared/utils/roles';
 
 const DashboardPage = React.lazy(() => import('./features/dashboard/DashboardPage').then(m => ({ default: m.DashboardPage })));
 const CoursesPage = React.lazy(() => import('./features/courses/CoursesPage').then(m => ({ default: m.CoursesPage })));
 const CreateCoursePage = React.lazy(() => import('./features/courses/CreateCoursePage').then(m => ({ default: m.CreateCoursePage })));
+const ChairSheetUploadView = React.lazy(() => import('./features/courses/components/ChairSheetUploadView').then(m => ({ default: m.ChairSheetUploadView })));
 const CalendarPage = React.lazy(() => import('./features/calendar/CalendarPage').then(m => ({ default: m.CalendarPage })));
 const InboxPage = React.lazy(() => import('./features/inbox/InboxPage').then(m => ({ default: m.InboxPage })));
 const ProfilePage = React.lazy(() => import('./features/auth/ProfilePage').then(m => ({ default: m.ProfilePage })));
@@ -95,6 +97,14 @@ const RequireAuth: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 const RequireAdmin: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { activeRole } = useLMS();
   if (activeRole !== 'admin' && activeRole !== 'superadmin') {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return <>{children}</>;
+};
+
+const RequireChair: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { activeUser, activeRole } = useLMS();
+  if (!isChairRole(activeUser, activeRole)) {
     return <Navigate to="/dashboard" replace />;
   }
   return <>{children}</>;
@@ -259,7 +269,8 @@ export const AppContent: React.FC = () => {
       <Route element={<RequireAuth><AppShell /></RequireAuth>}>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<RouteWithNav element={(nav) => <DashboardPage onNavigateCourse={nav.handleNavigateCourse} onNavigateTab={nav.handleNavigateTab} />} />} />
-        <Route path="/courses/new" element={<RouteWithNav element={(nav) => <CreateCoursePage onNavigateCourse={nav.handleNavigateCourse} onNavigateTab={nav.handleNavigateTab} />} />} />
+        <Route path="/courses/chair-sheet" element={<RequireChair><RouteWithNav element={(nav) => <ChairSheetUploadView onNavigateCourse={nav.handleNavigateCourse} onNavigateTab={nav.handleNavigateTab} />} /></RequireChair>} />
+        <Route path="/courses/new" element={<RequireChair><RouteWithNav element={(nav) => <ChairSheetUploadView onNavigateCourse={nav.handleNavigateCourse} onNavigateTab={nav.handleNavigateTab} />} /></RequireChair>} />
         <Route path="/courses" element={<CoursesRoute />} />
         <Route path="/courses/:courseId" element={<CoursesRoute />} />
         <Route path="/courses/:courseId/:subTab" element={<CoursesRoute />} />

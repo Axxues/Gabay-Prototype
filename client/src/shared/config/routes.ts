@@ -1,6 +1,7 @@
 export const TAB_PATHS: Record<string, string> = {
   dashboard: '/dashboard',
-  'create-course': '/courses/new',
+  'chair-sheet': '/courses/chair-sheet',
+  'create-course': '/courses/chair-sheet',
   calendar: '/calendar',
   inbox: '/inbox',
   'gabay-rag': '/gabay-rag',
@@ -53,7 +54,7 @@ export function pathToTab(pathname: string): { tab: string; courseId?: string; s
     return { tab: 'governance' };
   }
   if (first === 'courses') {
-    if (second === 'new') return { tab: 'create-course' };
+    if (second === 'new' || second === 'chair-sheet') return { tab: 'chair-sheet' };
     if (!second) return { tab: 'courses' };
     return { tab: 'courses', courseId: decodeURIComponent(second), subTab: third ? decodeURIComponent(third) : 'modules' };
   }
