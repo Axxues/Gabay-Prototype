@@ -5,7 +5,7 @@ import { ShieldCheck, UserCheck, GraduationCap, Building, X, AlertTriangle, Crow
 import { ModalPortal, useModalAnimate } from './ModalPortal';
 
 export const RoleSwitcherModal: React.FC = () => {
-  const { isRoleModalOpen, setIsRoleModalOpen, activeRole, switchRole } = useLMS();
+  const { isRoleModalOpen, setIsRoleModalOpen, activeRole, switchRole, db } = useLMS();
   const { isClosing, startClose } = useModalAnimate(() => setIsRoleModalOpen(false), 200);
 
   useEffect(() => {
@@ -23,6 +23,12 @@ export const RoleSwitcherModal: React.FC = () => {
 
   if (!isRoleModalOpen) return null;
 
+  const superadminUser = db?.users?.find(u => u.role === 'superadmin');
+  const adminUser = db?.users?.find(u => u.role === 'admin');
+  const facultyUser = db?.users?.find(u => u.role === 'faculty');
+  const staffUser = db?.users?.find(u => u.role === 'staff');
+  const studentUser = db?.users?.find(u => u.role === 'student');
+
   const roles: {
     role: UserRole;
     title: string;
@@ -37,7 +43,7 @@ export const RoleSwitcherModal: React.FC = () => {
     {
       role: 'superadmin',
       title: '0. Chancellor (Superadmin)',
-      personName: 'Chancellor (Jayvee)',
+      personName: superadminUser?.name || 'Chancellor (Jayvee)',
       icon: <Crown className="w-5 h-5 text-purple-600 dark:text-purple-400" />,
       badgeColor: 'bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/20',
       scope: 'Institution-wide oversight across all colleges, academic programs & course shells.',
@@ -47,7 +53,7 @@ export const RoleSwitcherModal: React.FC = () => {
     {
       role: 'admin',
       title: '1. Administrator (Dean / Chairperson)',
-      personName: 'Dean / Chair',
+      personName: adminUser?.name || 'Dean / Chair',
       icon: <Building className="w-5 h-5 text-primary" />,
       badgeColor: 'bg-primary/10 text-primary border-primary/20',
       scope: 'College-wide visibility across all course shells, instructors & enrollments.',
@@ -57,7 +63,7 @@ export const RoleSwitcherModal: React.FC = () => {
     {
       role: 'faculty',
       title: '2. Faculty Member (Instructor)',
-      personName: 'Faculty 1',
+      personName: facultyUser?.name || 'Faculty Member',
       icon: <UserCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />,
       badgeColor: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20',
       scope: 'Assigned course sections (CMSC 131, CMSC 150, CMSC 170).',
@@ -67,7 +73,7 @@ export const RoleSwitcherModal: React.FC = () => {
     {
       role: 'staff',
       title: '3. Non-Teaching Staff (Registrar)',
-      personName: 'Staff 1',
+      personName: staffUser?.name || 'Staff 1',
       icon: <ShieldCheck className="w-5 h-5 text-amber-600 dark:text-amber-400" />,
       badgeColor: 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20',
       scope: 'College student directory, section placements & official roster records.',
@@ -77,8 +83,8 @@ export const RoleSwitcherModal: React.FC = () => {
     {
       role: 'student',
       title: '4. Enrolled Student',
-      personName: 'Student 1',
-      studentId: '2022-00412-SLUC',
+      personName: studentUser?.name || 'Student 1',
+      studentId: studentUser?.studentId || '2022-00412-SLUC',
       icon: <GraduationCap className="w-5 h-5 text-primary" />,
       badgeColor: 'bg-primary/10 text-primary border-primary/20',
       scope: 'Personal course enrollments, active activity submissions & individual grade records.',
