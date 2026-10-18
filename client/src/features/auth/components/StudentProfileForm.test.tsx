@@ -156,7 +156,7 @@ describe('StudentProfileForm Component', () => {
     }));
   });
 
-  it('defaults yearLevel to 1 if not defined and disables editing with badge', () => {
+  it('defaults yearLevel to 1 if not defined and disables editing with badge', async () => {
     const studentNoYear: User = {
       ...baseStudent,
       yearLevel: undefined,
@@ -173,5 +173,14 @@ describe('StudentProfileForm Component', () => {
     const yearInput = screen.getByLabelText(/year level/i);
     expect(yearInput).toBeDisabled();
     expect(yearInput).toHaveValue('Year 1');
+
+    const saveButton = screen.getByRole('button', { name: /save profile|save student information/i });
+    fireEvent.click(saveButton);
+
+    await waitFor(() => {
+      expect(mockUpdateUser).toHaveBeenCalledWith('student-123', expect.objectContaining({
+        yearLevel: 1,
+      }));
+    });
   });
 });

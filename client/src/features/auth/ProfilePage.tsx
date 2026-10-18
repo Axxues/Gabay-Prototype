@@ -586,6 +586,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                 </p>
               </div>
               <StudentProfileForm
+                key={currentUser.id}
                 user={currentUser}
                 updateUser={updateUser}
                 showAlert={showAlert}

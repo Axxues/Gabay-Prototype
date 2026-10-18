@@ -15,13 +15,15 @@ export const StudentProfileForm: React.FC<StudentProfileFormProps> = ({
   showAlert,
   onSuccess,
 }) => {
+  const initialSameAs = user.sameAsPermanentAddress ?? (
+    Boolean(user.permanentAddress && user.presentAddress && user.permanentAddress === user.presentAddress)
+  );
+
   const [birthday, setBirthday] = useState(user.birthday || '');
   const [permanentAddress, setPermanentAddress] = useState(user.permanentAddress || '');
-  const [sameAsPermanentAddress, setSameAsPermanentAddress] = useState(
-    user.sameAsPermanentAddress ?? (user.permanentAddress && user.presentAddress ? user.permanentAddress === user.presentAddress : false)
-  );
+  const [sameAsPermanentAddress, setSameAsPermanentAddress] = useState(initialSameAs);
   const [presentAddress, setPresentAddress] = useState(
-    user.sameAsPermanentAddress ? (user.permanentAddress || '') : (user.presentAddress || '')
+    initialSameAs ? (user.permanentAddress || '') : (user.presentAddress || '')
   );
   const [contactNumber, setContactNumber] = useState(user.contactNumber || '');
   const [hasGuardianOnly, setHasGuardianOnly] = useState(user.hasGuardianOnly || false);
@@ -83,6 +85,7 @@ export const StudentProfileForm: React.FC<StudentProfileFormProps> = ({
       fatherName,
       guardianName,
       parentContactNumber,
+      yearLevel: user.yearLevel ?? 1,
     };
 
     try {
