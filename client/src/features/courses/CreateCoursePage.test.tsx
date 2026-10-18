@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
-import { describe, expect, test, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, expect, test, vi, afterEach } from 'vitest';
+import * as matchers from '@testing-library/jest-dom/matchers';
+expect.extend(matchers);
+import { render, screen, cleanup } from '@testing-library/react';
 import React from 'react';
+
+afterEach(() => {
+  cleanup();
+});
 
 const createCourseMock = vi.fn().mockImplementation(async (data: any) => ({
   id: 'crs-math101',

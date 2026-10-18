@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
-import { describe, expect, test, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { describe, expect, test, vi, afterEach } from 'vitest';
+import * as matchers from '@testing-library/jest-dom/matchers';
+expect.extend(matchers);
+import { render, screen, waitFor, cleanup } from '@testing-library/react';
 import React from 'react';
+
+afterEach(() => {
+  cleanup();
+});
 
 vi.mock('../../shared/context/LMSContext', () => ({
   useLMS: () => ({

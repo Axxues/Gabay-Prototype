@@ -2,9 +2,7 @@ import React from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
-  Trash2,
-  UserCheck,
-  ChevronDown
+  Trash2
 } from 'lucide-react';
 import type { User } from '../../../shared/types/lms';
 import type { ValidatedChairSheetRow, RawChairSheetRow } from '../utils/chairSheetParser';

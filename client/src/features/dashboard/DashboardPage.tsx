@@ -14,7 +14,6 @@ import {
   FileSpreadsheet,
   Award,
   ArrowRight,
-  Plus,
   Megaphone,
   Folder,
   KeyRound,

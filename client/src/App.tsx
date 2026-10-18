@@ -17,7 +17,6 @@ import { isChairRole } from './shared/utils/roles';
 
 const DashboardPage = React.lazy(() => import('./features/dashboard/DashboardPage').then(m => ({ default: m.DashboardPage })));
 const CoursesPage = React.lazy(() => import('./features/courses/CoursesPage').then(m => ({ default: m.CoursesPage })));
-const CreateCoursePage = React.lazy(() => import('./features/courses/CreateCoursePage').then(m => ({ default: m.CreateCoursePage })));
 const ChairSheetUploadView = React.lazy(() => import('./features/courses/components/ChairSheetUploadView').then(m => ({ default: m.ChairSheetUploadView })));
 const CalendarPage = React.lazy(() => import('./features/calendar/CalendarPage').then(m => ({ default: m.CalendarPage })));
 const InboxPage = React.lazy(() => import('./features/inbox/InboxPage').then(m => ({ default: m.InboxPage })));

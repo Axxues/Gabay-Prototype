@@ -6,7 +6,6 @@ import {
   AlertTriangle,
   ArrowLeft,
   Loader2,
-  Sparkles,
   RefreshCw,
   PlusCircle,
   HelpCircle

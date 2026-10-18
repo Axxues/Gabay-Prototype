@@ -1,8 +1,14 @@
 // @vitest-environment jsdom
-import { describe, expect, test, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { describe, expect, test, vi, beforeEach, afterEach } from 'vitest';
+import * as matchers from '@testing-library/jest-dom/matchers';
+expect.extend(matchers);
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import React from 'react';
 import { CoursesPage } from './CoursesPage';
+
+afterEach(() => {
+  cleanup();
+});
 
 let mockActiveCourseId: string | null = 'c-curr';
 const mockSetActiveCourseId = vi.fn((id: string | null) => {
