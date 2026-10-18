@@ -103,6 +103,9 @@ describe('FacultyProfileForm Component', () => {
     expect(degreeSelects).toHaveLength(3);
 
     const newSelect = degreeSelects[2];
+    expect(newSelect).toHaveValue('');
+    expect(screen.getAllByRole('option', { name: /select degree/i })[0]).toBeInTheDocument();
+
     fireEvent.change(newSelect, { target: { value: 'doctorate' } });
 
     const schoolInputs = screen.getAllByLabelText(/school \/ institution/i);
@@ -118,6 +121,32 @@ describe('FacultyProfileForm Component', () => {
     expect(schoolInputs[2]).toHaveValue('Ateneo de Manila University');
     expect(yearInputs[2]).toHaveValue('2018');
     expect(specInputs[2]).toHaveValue('Ph.D. in Computer Science');
+  });
+
+  it('blocks submission if newly added degree level is left on "Select Degree"', async () => {
+    render(
+      <FacultyProfileForm
+        user={baseFaculty}
+        updateUser={mockUpdateUser}
+        showAlert={mockShowAlert}
+      />
+    );
+
+    const addBtn = screen.getByRole('button', { name: /add degree/i });
+    fireEvent.click(addBtn);
+
+    // Fill in other fields but leave degree level unselected
+    const schoolInputs = screen.getAllByLabelText(/school \/ institution/i);
+    fireEvent.change(schoolInputs[2], { target: { value: 'Test University' } });
+
+    const submitBtn = screen.getByRole('button', { name: /save faculty profile|save profile/i });
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Please select a degree level for all educational degree entries/i)).toBeInTheDocument();
+    });
+
+    expect(mockUpdateUser).not.toHaveBeenCalled();
   });
 
   it('can remove an educational degree', () => {

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Save, AlertCircle, Calendar, Phone, Briefcase, GraduationCap, Plus, Trash2, CheckCircle2, Award } from 'lucide-react';
 import type { User, EducationalDegree, DegreeLevel, NormalizedAddress } from '../../../shared/types/lms';
-import { getMaxBirthdayDate, isValidBirthday, parseAddress, formatAddress, isAddressComplete } from '../../../shared/utils/profileCompletion';
+import { getMaxBirthdayDate, isValidBirthday, parseAddress, formatAddress, isAddressComplete, isDegreeComplete } from '../../../shared/utils/profileCompletion';
 import { NormalizedAddressFields } from './NormalizedAddressFields';
 
 interface FacultyProfileFormProps {
@@ -79,7 +79,7 @@ export const FacultyProfileForm: React.FC<FacultyProfileFormProps> = ({
   const handleAddDegree = () => {
     const newDegree: EducationalDegree = {
       id: `deg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      degreeLevel: 'bachelors',
+      degreeLevel: '',
       school: '',
       yearGraduated: '',
       specialization: '',
@@ -115,6 +115,16 @@ export const FacultyProfileForm: React.FC<FacultyProfileFormProps> = ({
 
     if (!isAddressComplete(effectivePresentDetails)) {
       setErrorMessage('Please fill in all required present address details (Barangay, Municipality/City, Province).');
+      return;
+    }
+
+    const invalidDegree = educationalBackground.find(deg => !deg.degreeLevel || !isDegreeComplete(deg));
+    if (educationalBackground.length > 0 && invalidDegree) {
+      if (!invalidDegree.degreeLevel) {
+        setErrorMessage('Please select a degree level for all educational degree entries.');
+        return;
+      }
+      setErrorMessage('Please fill in all degree details (School, Year Graduated, Field of Specialization).');
       return;
     }
 
@@ -337,13 +347,14 @@ export const FacultyProfileForm: React.FC<FacultyProfileFormProps> = ({
                     </label>
                     <select
                       id={`degree-level-${degree.id}`}
-                      value={degree.degreeLevel}
+                      value={degree.degreeLevel || ''}
                       aria-label="Degree Level"
                       onChange={e =>
                         handleUpdateDegree(degree.id, 'degreeLevel', e.target.value as DegreeLevel)
                       }
                       className="w-full px-3 py-2 bg-background border border-border focus:ring-2 focus:ring-primary/30 rounded-xl text-xs text-foreground font-sans outline-none"
                     >
+                      <option value="">Select Degree</option>
                       {DEGREE_OPTIONS.map(opt => (
                         <option key={opt.value} value={opt.value}>
                           {opt.label}

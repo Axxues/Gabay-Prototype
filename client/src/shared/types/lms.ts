@@ -64,7 +64,7 @@ export interface NormalizedAddress {
   province: string;
 }
 
-export type DegreeLevel = 'bachelors' | 'masters' | 'post_masters' | 'doctorate' | 'post_doctorate';
+export type DegreeLevel = 'bachelors' | 'masters' | 'post_masters' | 'doctorate' | 'post_doctorate' | '';
 
 export interface EducationalDegree {
   id: string;
