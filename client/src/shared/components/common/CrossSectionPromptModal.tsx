@@ -10,7 +10,6 @@ import {
   FileText,
   Copy,
   Users,
-  Check,
   Loader2
 } from 'lucide-react';
 

@@ -1181,7 +1181,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               )}
               <button
                 type="button"
-                onClick={handleApplySyllabus}
+                onClick={() => handleApplySyllabus()}
                 disabled={upload.isUploading || isApplying}
                 className="w-full py-2.5 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all shadow-primary-sm cursor-pointer flex items-center justify-center space-x-2 disabled:opacity-60 disabled:cursor-wait"
               >
