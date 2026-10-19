@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import { describe, expect, test, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 const mocks = vi.hoisted(() => ({
   isLoading: false,
   isSyncing: false,
+  uploadCourseFile: vi.fn(),
   db: {
     courses: [],
     courseFolders: [],
@@ -26,7 +27,7 @@ vi.mock('../../shared/context/LMSContext', () => ({
     isLoading: mocks.isLoading,
     isSyncing: mocks.isSyncing,
     createCourseFolder: vi.fn(),
-    uploadCourseFile: vi.fn(),
+    uploadCourseFile: mocks.uploadCourseFile,
     deleteCourseFile: vi.fn(),
     deleteCourseFolder: vi.fn(),
     renameCourseFile: vi.fn(),
@@ -93,5 +94,54 @@ describe('FilesView PDF preview', () => {
     expect(frame).toHaveAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms');
     expect(screen.queryByText(/Built-in PDF Reader/)).not.toBeInTheDocument();
     mocks.db.courseFiles = [];
+  });
+});
+
+describe('FilesView Cross-Section replication', () => {
+  test('prompts with CrossSectionPromptModal and uploads file to selected sibling courses', async () => {
+    mocks.uploadCourseFile.mockResolvedValue({ id: 'f-new' });
+    mocks.db.courses = [
+      {
+        id: 'c1',
+        code: 'CS101',
+        title: 'Computer Science 1',
+        section: 'BSCS 3-1',
+        schoolYear: '2026-2027',
+        term: '1st Semester',
+        instructorId: 'u-fac-1',
+      },
+      {
+        id: 'c2',
+        code: 'CS101',
+        title: 'Computer Science 1',
+        section: 'BSCS 3-2',
+        schoolYear: '2026-2027',
+        term: '1st Semester',
+        instructorId: 'u-fac-1',
+      },
+    ];
+
+    render(<FilesView courseId="c1" />);
+
+    // Simulate file input change
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const fakeFile = new File(['content'], 'lecture1.pdf', { type: 'application/pdf' });
+    fireEvent.change(fileInput, {
+      target: {
+        files: [fakeFile],
+      },
+    });
+
+    expect(await screen.findByText(/Replicate Course File Across Sections/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Publish to Selected Sections/i }));
+
+    await waitFor(() => {
+      expect(mocks.uploadCourseFile).toHaveBeenCalledWith(
+        expect.objectContaining({ courseId: 'c1', name: 'lecture1.pdf' })
+      );
+      expect(mocks.uploadCourseFile).toHaveBeenCalledWith(
+        expect.objectContaining({ courseId: 'c2', name: 'lecture1.pdf' })
+      );
+    });
   });
 });

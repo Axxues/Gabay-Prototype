@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { useLMS } from '../../shared/context/LMSContext';
 import type { CourseFile, CourseFolder } from '../../shared/types/lms';
 import {
@@ -30,6 +30,8 @@ import { UploadProgress } from '../../shared/components/common/UploadProgress';
 import { useCourseFiles } from '../../shared/hooks/useCourseFiles';
 import { isFolderEmptyRecursive } from '../../shared/utils/autoFolder';
 import { canManageCourseContent } from '../../shared/utils/roles';
+import { findMatchingSiblingCourses } from '../../shared/utils/crossSectionSync';
+import { CrossSectionPromptModal } from '../../shared/components/common/CrossSectionPromptModal';
 
 interface FilesViewProps {
   courseId?: string; // If undefined or 'personal', loads account-level storage
@@ -56,6 +58,13 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
   const course = !isPersonal ? db.courses.find(c => c.id === courseId) : null;
 
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+
+  const siblingCourses = useMemo(() => {
+    return (!isPersonal && course) ? findMatchingSiblingCourses(course, db.courses || [], activeUser?.id) : [];
+  }, [isPersonal, course, db.courses, activeUser?.id]);
+
+  const [isCrossSectionModalOpen, setIsCrossSectionModalOpen] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
 
   // Mark the files tab visited on entry AND on folder navigation, so opening
   // the folder containing a new file clears the Files badge (countNewFiles
@@ -179,9 +188,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || upload.isUploading) return;
+  const executeUploadFile = async (file: File, targetCourseIds: string[]) => {
     upload.start(file.name);
 
     let type: CourseFile['type'] = 'document';
@@ -199,30 +206,47 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
       type = 'code';
 
     try {
-      // Bytes go ONLY via the server upload endpoint (rawFile) — no
-      // client-side public-uploader double write.
-      await uploadCourseFile({
-        courseId: effectiveScopeId,
-        folderId: currentFolderId,
-        name: file.name,
-        rawFile: file,
-        size: file.size,
-        type,
-        visibility: 'published',
-      });
+      for (const targetId of targetCourseIds) {
+        // Upload to root folder for other sections or currentFolderId for the current course
+        const targetFolderId = targetId === effectiveScopeId ? currentFolderId : null;
+        await uploadCourseFile({
+          courseId: targetId,
+          folderId: targetFolderId,
+          name: file.name,
+          rawFile: file,
+          size: file.size,
+          type,
+          visibility: 'published',
+        });
+      }
 
       showAlert({
         title: 'File Uploaded',
-        message: `File "${file.name}" has been uploaded.`,
+        message: targetCourseIds.length > 1
+          ? `File "${file.name}" has been uploaded to ${targetCourseIds.length} sections.`
+          : `File "${file.name}" has been uploaded.`,
         type: 'success'
       });
       upload.complete();
     } catch (err) {
       console.error('Failed to upload file in FilesView:', err);
       upload.fail();
-    } finally {
-      if (e.target) e.target.value = '';
     }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || upload.isUploading) return;
+
+    if (e.target) e.target.value = '';
+
+    if (siblingCourses.length > 0) {
+      setPendingFile(file);
+      setIsCrossSectionModalOpen(true);
+      return;
+    }
+
+    await executeUploadFile(file, [effectiveScopeId]);
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -231,30 +255,13 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
     const file = e.dataTransfer.files?.[0];
     if (!file || upload.isUploading) return;
 
-    void (async () => {
-      upload.start(file.name);
-      try {
-        await uploadCourseFile({
-          courseId: effectiveScopeId,
-          folderId: currentFolderId,
-          name: file.name,
-          rawFile: file,
-          size: file.size,
-          type: file.name.endsWith('.pdf') ? 'pdf' : file.type.includes('image') ? 'image' : 'document',
-          visibility: 'published'
-        });
+    if (siblingCourses.length > 0) {
+      setPendingFile(file);
+      setIsCrossSectionModalOpen(true);
+      return;
+    }
 
-        upload.complete();
-        showAlert({
-          title: 'File Uploaded',
-          message: `File "${file.name}" dropped and saved.`,
-          type: 'success'
-        });
-      } catch (err) {
-        console.error('Failed to upload file in FilesView:', err);
-        upload.fail();
-      }
-    })();
+    void executeUploadFile(file, [effectiveScopeId]);
   };
 
   const handleStartRename = (file: CourseFile) => {
@@ -867,6 +874,32 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
           ) : null}
         </div>
       </div>
+
+      <CrossSectionPromptModal
+        isOpen={isCrossSectionModalOpen}
+        onClose={() => {
+          setIsCrossSectionModalOpen(false);
+          setPendingFile(null);
+        }}
+        itemType="file"
+        itemTitle={pendingFile?.name || 'Course File'}
+        siblingCourses={siblingCourses}
+        onConfirm={async (selectedIds) => {
+          setIsCrossSectionModalOpen(false);
+          if (pendingFile) {
+            await executeUploadFile(pendingFile, [effectiveScopeId, ...selectedIds]);
+            setPendingFile(null);
+          }
+        }}
+        onSkipToCurrentOnly={async () => {
+          setIsCrossSectionModalOpen(false);
+          if (pendingFile) {
+            await executeUploadFile(pendingFile, [effectiveScopeId]);
+            setPendingFile(null);
+          }
+        }}
+        isSubmitting={upload.isUploading}
+      />
     </div>
   );
 };

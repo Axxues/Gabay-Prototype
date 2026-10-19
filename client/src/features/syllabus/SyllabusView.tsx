@@ -6,6 +6,8 @@ import { resolveSPRWeights } from '../../shared/utils/spr';
 import { effectiveTerms, resolveCourseTerms } from '../../shared/utils/gradingTerms';
 import type { TermId } from '../../shared/types/lms';
 import { isFacultyRole, canManageCourseContent } from '../../shared/utils/roles';
+import { findMatchingSiblingCourses } from '../../shared/utils/crossSectionSync';
+import { CrossSectionPromptModal } from '../../shared/components/common/CrossSectionPromptModal';
 import { PageHeader } from '../../shared/components/common/PageHeader';
 import { DialogFrame } from '../../shared/components/common/DialogFrame';
 import { ModalPortal } from '../../shared/components/common/ModalPortal';
@@ -257,6 +259,12 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
 
   // Check if current user is the assigned instructor for this course
   const isFacultyCreator = canManageCourseContent(currentCourse, activeUser);
+
+  const siblingCourses = useMemo(() => {
+    return currentCourse ? findMatchingSiblingCourses(currentCourse, db.courses || [], activeUser?.id) : [];
+  }, [currentCourse, db.courses, activeUser?.id]);
+
+  const [isCrossSectionModalOpen, setIsCrossSectionModalOpen] = useState(false);
 
   // Deletion Modal State
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -593,7 +601,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
     }];
   }, [data?.facultyMembers, currentCourse, activeUser]);
 
-  const handleApplySyllabus = async () => {
+  const handleApplySyllabus = async (targetCourseIdsOverride?: string[]) => {
     if (!scanResult || !currentCourse || upload.isUploading || isApplying) return;
 
     // Find the chosen faculty member
@@ -635,69 +643,101 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
       }
     };
 
-    setIsApplying(true);
-    try {
+    const executeApplySyllabus = async (targetCourseIds: string[]) => {
+      setIsApplying(true);
       try {
-        await updateCourseSyllabus(courseId, boundSyllabus);
-      } catch {
-        // Context already surfaced the alert; do not file the document.
-        return;
-      }
-      // Syllabus apply sends the file: server files it (area: syllabus) and
-      // the scanned bytes ride the multipart upload when still retained.
-      upload.start(scannedFile?.name ?? scanResult.fileName);
-      try {
-        const uploaded = await uploadCourseFile({
-          courseId,
-          area: 'syllabus',
-          name: scanResult.fileName,
-          rawFile: scannedFile ?? undefined,
-          formattedSize: scanResult.fileSize,
-          type: scanResult.fileType === 'pdf' ? 'pdf' : 'document',
-          visibility: 'published',
-        });
-        upload.complete();
-        if (uploaded && typeof uploaded.id === 'string') {
-          if (uploaded.courseId !== courseId) {
-            showAlert({
-              title: 'Syllabus Update Blocked',
-              message: `The uploaded file belongs to another course and cannot be linked to ${currentCourse.code}.`,
-              type: 'error'
-            });
-            return;
+        for (const targetId of targetCourseIds) {
+          const targetCourse = db.courses.find(c => c.id === targetId);
+          const targetBoundSyllabus: OfficialSyllabusData = {
+            ...boundSyllabus,
+            courseId: targetId,
+            courseInfo: {
+              ...boundSyllabus.courseInfo,
+              code: targetCourse?.code || boundSyllabus.courseInfo.code,
+              title: targetCourse?.title || boundSyllabus.courseInfo.title,
+            },
+            facultyMembers: [
+              {
+                ...boundFacultySchedule,
+                sections: [
+                  { section: targetCourse?.section || boundFacultySchedule.sections?.[0]?.section || '', schedule: boundFacultySchedule.sections?.[0]?.schedule || '', room: boundFacultySchedule.sections?.[0]?.room || '' }
+                ]
+              }
+            ]
+          };
+
+          try {
+            await updateCourseSyllabus(targetId, targetBoundSyllabus);
+          } catch {
+            // Context already surfaced the alert; do not file the document for this target
+            continue;
+          }
+
+          if (targetId === courseId) {
+            upload.start(scannedFile?.name ?? scanResult.fileName);
           }
           try {
-            await updateSyllabusSection(
-              courseId,
-              'sourceDocument',
-              buildSourceDocumentValue(
-                {
-                  fileName: scanResult.fileName,
-                  fileSize: scanResult.fileSize,
-                  fileType: scanResult.fileType === 'docx' ? 'docx' : 'pdf',
-                },
-                { id: uploaded.id }
-              )
-            );
+            const uploaded = await uploadCourseFile({
+              courseId: targetId,
+              area: 'syllabus',
+              name: scanResult.fileName,
+              rawFile: scannedFile ?? undefined,
+              formattedSize: scanResult.fileSize,
+              type: scanResult.fileType === 'pdf' ? 'pdf' : 'document',
+              visibility: 'published',
+            });
+            if (targetId === courseId) {
+              upload.complete();
+            }
+            if (uploaded && typeof uploaded.id === 'string') {
+              try {
+                await updateSyllabusSection(
+                  targetId,
+                  'sourceDocument',
+                  buildSourceDocumentValue(
+                    {
+                      fileName: scanResult.fileName,
+                      fileSize: scanResult.fileSize,
+                      fileType: scanResult.fileType === 'docx' ? 'docx' : 'pdf',
+                    },
+                    { id: uploaded.id }
+                  )
+                );
+              } catch {
+              }
+            }
           } catch {
+            if (targetId === courseId) {
+              upload.fail();
+            }
           }
         }
-      } catch {
-        // Context already surfaced the alert; the syllabus itself is saved.
-        upload.fail();
-        return;
+
+        showAlert({
+          title: 'Syllabus Updated Successfully',
+          message: `Course syllabus for ${currentCourse.code} synchronized with "${scanResult.fileName}".` +
+            (targetCourseIds.length > 1 ? ` (Replicated across ${targetCourseIds.length} sections)` : ''),
+          type: 'success'
+        });
+        setIsUploadModalOpen(false);
+        setScanResult(null);
+        setScannedFile(null);
+      } finally {
+        setIsApplying(false);
       }
-      showAlert({
-        title: 'Syllabus Updated Successfully',
-        message: `Course syllabus for ${currentCourse.code} synchronized with "${scanResult.fileName}". Assigned Faculty: ${chosenFaculty.name}.`,
-        type: 'success'
-      });
-      setIsUploadModalOpen(false);
-      setScanResult(null);
-      setScannedFile(null);
-    } finally {
-      setIsApplying(false);
+    };
+
+    if (targetCourseIdsOverride) {
+      await executeApplySyllabus(targetCourseIdsOverride);
+      return;
     }
+
+    if (siblingCourses.length > 0) {
+      setIsCrossSectionModalOpen(true);
+      return;
+    }
+
+    await executeApplySyllabus([courseId]);
   };
 
   const handleResetToDefault = async () => {
@@ -3828,6 +3868,23 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
           onSelect={handleSelectExistingFile}
         />
       )}
+
+      <CrossSectionPromptModal
+        isOpen={isCrossSectionModalOpen}
+        onClose={() => setIsCrossSectionModalOpen(false)}
+        itemType="syllabus"
+        itemTitle={scanResult?.fileName || 'Official Syllabus'}
+        siblingCourses={siblingCourses}
+        onConfirm={async (selectedIds) => {
+          setIsCrossSectionModalOpen(false);
+          await handleApplySyllabus([courseId, ...selectedIds]);
+        }}
+        onSkipToCurrentOnly={async () => {
+          setIsCrossSectionModalOpen(false);
+          await handleApplySyllabus([courseId]);
+        }}
+        isSubmitting={isApplying}
+      />
     </div>
   );
 };
