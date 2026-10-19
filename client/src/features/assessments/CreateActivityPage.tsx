@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useLMS } from '../../shared/context/LMSContext';
 import type { TermId } from '../../shared/types/lms';
 import {
@@ -23,6 +23,8 @@ import {
   buildActivityPayload as buildQuestionSetPayload,
   type QuestionSetValue
 } from './components/forms/QuestionSetFields';
+import { findMatchingSiblingCourses } from '../../shared/utils/crossSectionSync';
+import { CrossSectionPromptModal } from '../../shared/components/common/CrossSectionPromptModal';
 
 interface CreateActivityPageProps {
   courseId: string;
@@ -35,8 +37,16 @@ export const CreateActivityPage: React.FC<CreateActivityPageProps> = ({
   onBack,
   onActivityCreated
 }) => {
-  const { db, createActivity, showAlert, effectiveTermsForCourse } = useLMS();
+  const { db, currentUser, createActivity, showAlert, effectiveTermsForCourse } = useLMS();
   const course = db.courses.find(c => c.id === courseId);
+
+  const siblingCourses = useMemo(() => {
+    if (!course) return [];
+    return findMatchingSiblingCourses(course, db.courses, currentUser?.id);
+  }, [course, db.courses, currentUser?.id]);
+
+  const [showCrossSectionModal, setShowCrossSectionModal] = useState(false);
+  const [pendingAction, setPendingAction] = useState<{ kind: 'classic'; publish: boolean } | { kind: 'question_set' } | null>(null);
 
   const [activityType, setActivityType] = useState<'classic' | 'question_set'>('classic');
 
@@ -59,6 +69,34 @@ export const CreateActivityPage: React.FC<CreateActivityPageProps> = ({
   // double-clicks can't double-submit.
   const [savingAction, setSavingAction] = useState<'publish' | 'draft' | null>(null);
 
+  const executeSaveClassic = async (targetCourseIds: string[], publish: boolean) => {
+    setSavingAction(publish ? 'publish' : 'draft');
+    try {
+      let firstCreatedId = '';
+      for (let i = 0; i < targetCourseIds.length; i++) {
+        const targetId = targetCourseIds[i];
+        const payload = buildActivityPayload(targetId, form, publish);
+        const created = await createActivity(payload);
+        if (i === 0) {
+          firstCreatedId = created.id;
+        }
+      }
+
+      showAlert({
+        title: publish ? 'Activity Published' : 'Activity Draft Saved',
+        message: `"${form.title.trim()}" has been created successfully for ${course?.code || 'this course'}.` +
+          (targetCourseIds.length > 1 ? ` (Replicated to ${targetCourseIds.length} sections)` : ''),
+        type: 'success'
+      });
+
+      if (firstCreatedId) {
+        onActivityCreated(firstCreatedId);
+      }
+    } finally {
+      setSavingAction(null);
+    }
+  };
+
   const handleSaveClassic = async (publish: boolean) => {
     if (savingAction) return;
     const validationError = validateActivityForm(form);
@@ -71,17 +109,40 @@ export const CreateActivityPage: React.FC<CreateActivityPageProps> = ({
       return;
     }
 
-    setSavingAction(publish ? 'publish' : 'draft');
+    if (siblingCourses.length > 0) {
+      setPendingAction({ kind: 'classic', publish });
+      setShowCrossSectionModal(true);
+      return;
+    }
+
+    await executeSaveClassic([courseId], publish);
+  };
+
+  const executeSaveQuestionSet = async (targetCourseIds: string[]) => {
+    const { totalPoints, gradableCount } = questionSetTotals(builder);
+
+    setSavingAction('publish');
     try {
-      const created = await createActivity(buildActivityPayload(courseId, form, publish));
+      let firstCreatedId = '';
+      for (let i = 0; i < targetCourseIds.length; i++) {
+        const targetId = targetCourseIds[i];
+        const payload = buildQuestionSetPayload(targetId, builder);
+        const created = await createActivity(payload);
+        if (i === 0) {
+          firstCreatedId = created.id;
+        }
+      }
 
       showAlert({
-        title: publish ? 'Activity Published' : 'Activity Draft Saved',
-        message: `"${form.title.trim()}" has been created successfully for ${course?.code || 'this course'}.`,
+        title: 'Activity Published',
+        message: `"${builder.title.trim()}" created with ${gradableCount} question(s), totaling ${totalPoints} pts.` +
+          (targetCourseIds.length > 1 ? ` (Replicated to ${targetCourseIds.length} sections)` : ''),
         type: 'success'
       });
 
-      onActivityCreated(created.id);
+      if (firstCreatedId) {
+        onActivityCreated(firstCreatedId);
+      }
     } finally {
       setSavingAction(null);
     }
@@ -99,22 +160,13 @@ export const CreateActivityPage: React.FC<CreateActivityPageProps> = ({
       return;
     }
 
-    const { totalPoints, gradableCount } = questionSetTotals(builder);
-
-    setSavingAction('publish');
-    try {
-      const created = await createActivity(buildQuestionSetPayload(courseId, builder));
-
-      showAlert({
-        title: 'Activity Published',
-        message: `"${builder.title.trim()}" created with ${gradableCount} question(s), totaling ${totalPoints} pts.`,
-        type: 'success'
-      });
-
-      onActivityCreated(created.id);
-    } finally {
-      setSavingAction(null);
+    if (siblingCourses.length > 0) {
+      setPendingAction({ kind: 'question_set' });
+      setShowCrossSectionModal(true);
+      return;
     }
+
+    await executeSaveQuestionSet([courseId]);
   };
 
   return (
@@ -301,6 +353,36 @@ export const CreateActivityPage: React.FC<CreateActivityPageProps> = ({
         </div>
       </form>
       )}
+
+      <CrossSectionPromptModal
+        isOpen={showCrossSectionModal}
+        onClose={() => {
+          setShowCrossSectionModal(false);
+          setPendingAction(null);
+        }}
+        itemType="assessment"
+        itemTitle={form.title.trim() || builder.title.trim() || 'Activity'}
+        siblingCourses={siblingCourses}
+        onConfirm={async (selectedIds) => {
+          setShowCrossSectionModal(false);
+          const targets = [courseId, ...selectedIds];
+          if (pendingAction?.kind === 'classic') {
+            await executeSaveClassic(targets, pendingAction.publish);
+          } else if (pendingAction?.kind === 'question_set') {
+            await executeSaveQuestionSet(targets);
+          }
+        }}
+        onSkipToCurrentOnly={async () => {
+          setShowCrossSectionModal(false);
+          const targets = [courseId];
+          if (pendingAction?.kind === 'classic') {
+            await executeSaveClassic(targets, pendingAction.publish);
+          } else if (pendingAction?.kind === 'question_set') {
+            await executeSaveQuestionSet(targets);
+          }
+        }}
+        isSubmitting={savingAction !== null}
+      />
     </div>
   );
 };

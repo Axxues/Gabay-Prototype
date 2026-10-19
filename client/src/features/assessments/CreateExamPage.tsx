@@ -1,6 +1,8 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { useLMS } from '../../shared/context/LMSContext';
 import type { QuizQuestion, QuizItemType, TermId } from '../../shared/types/lms';
+import { findMatchingSiblingCourses } from '../../shared/utils/crossSectionSync';
+import { CrossSectionPromptModal } from '../../shared/components/common/CrossSectionPromptModal';
 import type { QuizImportDraft } from '../../shared/utils/quizImport';
 import { applyQuizTextLimit, classifyQuizImportFile, isQuizImportTooLarge, parseQuizText } from '../../shared/utils/quizImport';
 import { extractDocxText, extractPdfText } from '../../shared/utils/quizExtract';
@@ -105,8 +107,16 @@ export const CreateExamPage: React.FC<CreateExamPageProps> = ({
   onBack,
   onExamCreated
 }) => {
-  const { db, createExam, showAlert, effectiveTermsForCourse } = useLMS();
+  const { db, currentUser, createExam, showAlert, effectiveTermsForCourse } = useLMS();
   const course = db.courses.find(c => c.id === courseId);
+
+  const siblingCourses = useMemo(() => {
+    if (!course) return [];
+    return findMatchingSiblingCourses(course, db.courses, currentUser?.id);
+  }, [course, db.courses, currentUser?.id]);
+
+  const [showCrossSectionModal, setShowCrossSectionModal] = useState(false);
+  const [pendingPublish, setPendingPublish] = useState(false);
 
   // General Exam Information (Google Form Header Card)
   const [title, setTitle] = useState('');
@@ -371,7 +381,7 @@ export const CreateExamPage: React.FC<CreateExamPageProps> = ({
   ).length;
   const totalPages = items.filter(i => i.type === 'page_break').length + 1;
 
-  const handleSaveExam = async (published: boolean) => {
+  const handleSaveExam = async (published: boolean, targetCourseIdsOverride?: string[]) => {
     if (savingAction) return;
     if (!title.trim()) {
       showAlert({
@@ -493,28 +503,53 @@ export const CreateExamPage: React.FC<CreateExamPageProps> = ({
       };
     });
 
-    setSavingAction(published ? 'publish' : 'draft');
-    try {
-      const created = await createExam({
-        courseId,
-        title: title.trim(),
-        instructions: instructions.trim() || 'Answer all questions carefully within the allotted time limit.',
-        timeLimitMinutes: Number(timeLimitMinutes) || 30,
-        published,
-        term: safeTerm,
-        questions: compiledQuestions
-      });
+    const executeSaveExam = async (targetCourseIds: string[], isPublished: boolean) => {
+      setSavingAction(isPublished ? 'publish' : 'draft');
+      try {
+        let firstCreatedId = '';
+        for (let i = 0; i < targetCourseIds.length; i++) {
+          const targetId = targetCourseIds[i];
+          const created = await createExam({
+            courseId: targetId,
+            title: title.trim(),
+            instructions: instructions.trim() || 'Answer all questions carefully within the allotted time limit.',
+            timeLimitMinutes: Number(timeLimitMinutes) || 30,
+            published: isPublished,
+            term: safeTerm,
+            questions: compiledQuestions
+          });
+          if (i === 0) {
+            firstCreatedId = created.id;
+          }
+        }
 
-      showAlert({
-        title: published ? 'Exam Published' : 'Exam Draft Saved',
-        message: `"${title.trim()}" created with ${totalQuestions} question(s) across ${totalPages} page(s), totaling ${totalPoints} pts.`,
-        type: 'success'
-      });
+        showAlert({
+          title: isPublished ? 'Exam Published' : 'Exam Draft Saved',
+          message: `"${title.trim()}" created with ${totalQuestions} question(s) across ${totalPages} page(s), totaling ${totalPoints} pts.` +
+            (targetCourseIds.length > 1 ? ` (Replicated to ${targetCourseIds.length} sections)` : ''),
+          type: 'success'
+        });
 
-      onExamCreated(created.id);
-    } finally {
-      setSavingAction(null);
+        if (firstCreatedId) {
+          onExamCreated(firstCreatedId);
+        }
+      } finally {
+        setSavingAction(null);
+      }
+    };
+
+    if (targetCourseIdsOverride) {
+      await executeSaveExam(targetCourseIdsOverride, published);
+      return;
     }
+
+    if (siblingCourses.length > 0) {
+      setPendingPublish(published);
+      setShowCrossSectionModal(true);
+      return;
+    }
+
+    await executeSaveExam([courseId], published);
   };
 
   const handleUploadExamFile = async (file: File) => {
@@ -1661,6 +1696,23 @@ export const CreateExamPage: React.FC<CreateExamPageProps> = ({
           </button>
         </div>
       </div>
+
+      <CrossSectionPromptModal
+        isOpen={showCrossSectionModal}
+        onClose={() => setShowCrossSectionModal(false)}
+        itemType="assessment"
+        itemTitle={title.trim() || 'Exam'}
+        siblingCourses={siblingCourses}
+        onConfirm={async (selectedIds) => {
+          setShowCrossSectionModal(false);
+          await handleSaveExam(pendingPublish, [courseId, ...selectedIds]);
+        }}
+        onSkipToCurrentOnly={async () => {
+          setShowCrossSectionModal(false);
+          await handleSaveExam(pendingPublish, [courseId]);
+        }}
+        isSubmitting={savingAction !== null}
+      />
     </div>
   );
 };

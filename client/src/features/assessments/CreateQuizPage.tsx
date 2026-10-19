@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useLMS } from '../../shared/context/LMSContext';
 import type { TermId } from '../../shared/types/lms';
 import {
@@ -16,6 +16,8 @@ import {
   Upload,
   Loader2
 } from 'lucide-react';
+import { findMatchingSiblingCourses } from '../../shared/utils/crossSectionSync';
+import { CrossSectionPromptModal } from '../../shared/components/common/CrossSectionPromptModal';
 
 interface CreateQuizPageProps {
   courseId: string;
@@ -28,8 +30,16 @@ export const CreateQuizPage: React.FC<CreateQuizPageProps> = ({
   onBack,
   onQuizCreated
 }) => {
-  const { db, createQuiz, showAlert, effectiveTermsForCourse } = useLMS();
+  const { db, currentUser, createQuiz, showAlert, effectiveTermsForCourse } = useLMS();
   const course = db.courses.find(c => c.id === courseId);
+
+  const siblingCourses = useMemo(() => {
+    if (!course) return [];
+    return findMatchingSiblingCourses(course, db.courses, currentUser?.id);
+  }, [course, db.courses, currentUser?.id]);
+
+  const [showCrossSectionModal, setShowCrossSectionModal] = useState(false);
+  const [pendingPublish, setPendingPublish] = useState(false);
 
   // Syllabus-driven grading terms for this course; new quizzes default to
   // the first effective term (midterm for legacy 2-term courses).
@@ -48,6 +58,38 @@ export const CreateQuizPage: React.FC<CreateQuizPageProps> = ({
   // double-clicks can't double-submit.
   const [savingAction, setSavingAction] = useState<'publish' | 'draft' | null>(null);
 
+  const executeSaveQuiz = async (targetCourseIds: string[], published: boolean) => {
+    setSavingAction(published ? 'publish' : 'draft');
+    try {
+      let firstCreatedId = '';
+      for (let i = 0; i < targetCourseIds.length; i++) {
+        const targetId = targetCourseIds[i];
+        const payload = buildQuizPayload(targetId, builder, published);
+        const created = await createQuiz(payload);
+        if (i === 0) {
+          firstCreatedId = created.id;
+        }
+      }
+
+      const { totalPoints, totalQuestions, totalPages } = quizTotals(builder);
+
+      showAlert({
+        title: builder.delayPosting ? 'Quiz Scheduled' : published ? 'Quiz Published' : 'Quiz Draft Saved',
+        message: builder.delayPosting
+          ? `"${builder.title.trim()}" has been scheduled for release on ${new Date(builder.delayedDate).toLocaleString()}.`
+          : `"${builder.title.trim()}" created with ${totalQuestions} question(s) across ${totalPages} page(s), totaling ${totalPoints} pts.` +
+            (targetCourseIds.length > 1 ? ` (Replicated to ${targetCourseIds.length} sections)` : ''),
+        type: 'success'
+      });
+
+      if (firstCreatedId) {
+        onQuizCreated(firstCreatedId);
+      }
+    } finally {
+      setSavingAction(null);
+    }
+  };
+
   const handleSaveQuiz = async (published: boolean) => {
     if (savingAction) return;
     const error = validateQuizBuilder(builder);
@@ -60,23 +102,13 @@ export const CreateQuizPage: React.FC<CreateQuizPageProps> = ({
       return;
     }
 
-    setSavingAction(published ? 'publish' : 'draft');
-    try {
-      const created = await createQuiz(buildQuizPayload(courseId, builder, published));
-      const { totalPoints, totalQuestions, totalPages } = quizTotals(builder);
-
-      showAlert({
-        title: builder.delayPosting ? 'Quiz Scheduled' : published ? 'Quiz Published' : 'Quiz Draft Saved',
-        message: builder.delayPosting
-          ? `"${builder.title.trim()}" has been scheduled for release on ${new Date(builder.delayedDate).toLocaleString()}.`
-          : `"${builder.title.trim()}" created with ${totalQuestions} question(s) across ${totalPages} page(s), totaling ${totalPoints} pts.`,
-        type: 'success'
-      });
-
-      onQuizCreated(created.id);
-    } finally {
-      setSavingAction(null);
+    if (siblingCourses.length > 0) {
+      setPendingPublish(published);
+      setShowCrossSectionModal(true);
+      return;
     }
+
+    await executeSaveQuiz([courseId], published);
   };
 
   return (
@@ -193,6 +225,23 @@ export const CreateQuizPage: React.FC<CreateQuizPageProps> = ({
           </div>
         </div>
       </form>
+
+      <CrossSectionPromptModal
+        isOpen={showCrossSectionModal}
+        onClose={() => setShowCrossSectionModal(false)}
+        itemType="assessment"
+        itemTitle={builder.title.trim() || 'Quiz'}
+        siblingCourses={siblingCourses}
+        onConfirm={async (selectedIds) => {
+          setShowCrossSectionModal(false);
+          await executeSaveQuiz([courseId, ...selectedIds], pendingPublish);
+        }}
+        onSkipToCurrentOnly={async () => {
+          setShowCrossSectionModal(false);
+          await executeSaveQuiz([courseId], pendingPublish);
+        }}
+        isSubmitting={savingAction !== null}
+      />
     </div>
   );
 };

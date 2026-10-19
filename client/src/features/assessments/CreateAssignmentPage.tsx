@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useLMS } from '../../shared/context/LMSContext';
+import { findMatchingSiblingCourses } from '../../shared/utils/crossSectionSync';
+import { CrossSectionPromptModal } from '../../shared/components/common/CrossSectionPromptModal';
 import type { TermId, RubricCriterion } from '../../shared/types/lms';
 import { ArrowLeft, FileText, Check, Plus, Trash2 } from 'lucide-react';
 import { TermFilterSelect } from '../../shared/components/common/TermSelect';
@@ -15,7 +17,7 @@ export const CreateAssignmentPage: React.FC<CreateAssignmentPageProps> = ({
   onBack,
   onCreated,
 }) => {
-  const { db, createActivity, showAlert, effectiveTermsForCourse } = useLMS();
+  const { db, activeUser, createActivity, showAlert, effectiveTermsForCourse } = useLMS();
   const course = db.courses.find(c => c.id === courseId);
 
   const effectiveTerms: TermId[] =
@@ -30,6 +32,12 @@ export const CreateAssignmentPage: React.FC<CreateAssignmentPageProps> = ({
   const [dueDate, setDueDate] = useState('');
   const [rubrics, setRubrics] = useState<RubricCriterion[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+  const [isCrossSectionModalOpen, setIsCrossSectionModalOpen] = useState(false);
+  const [pendingPublished, setPendingPublished] = useState(true);
+
+  const siblingCourses = useMemo(() => {
+    return course ? findMatchingSiblingCourses(course, db.courses || [], activeUser?.id) : [];
+  }, [course, db.courses, activeUser?.id]);
 
   const handleAddCriterion = () => {
     setRubrics(prev => [
@@ -51,6 +59,47 @@ export const CreateAssignmentPage: React.FC<CreateAssignmentPageProps> = ({
     setRubrics(prev => prev.filter(r => r.id !== id));
   };
 
+  const executeSave = async (targetCourseIds: string[], published: boolean) => {
+    setIsSaving(true);
+    try {
+      let firstCreatedId = 'new';
+      for (const targetId of targetCourseIds) {
+        const payload: any = {
+          courseId: targetId,
+          title: title.trim(),
+          instructions: instructions.trim(),
+          term,
+          pointsPossible: Number(pointsPossible) || 0,
+          dueDate: dueDate ? new Date(dueDate).toISOString() : new Date().toISOString(),
+          published,
+          format: 'classic',
+          assessmentType: 'assignment',
+          submissionTypes: ['online_text', 'file'],
+          rubric: rubrics,
+        };
+
+        const created = await createActivity(payload);
+        if (targetId === courseId && created?.id) {
+          firstCreatedId = created.id;
+        }
+      }
+
+      showAlert({
+        title: published ? 'Assignment Published' : 'Draft Saved',
+        message: targetCourseIds.length > 1
+          ? `"${title.trim()}" published across ${targetCourseIds.length} sections successfully.`
+          : `"${title.trim()}" has been created successfully.`,
+        type: 'success',
+      });
+      onCreated(firstCreatedId);
+    } catch {
+      // Handled in context
+    } finally {
+      setIsSaving(false);
+      setIsCrossSectionModalOpen(false);
+    }
+  };
+
   const handleSave = async (published: boolean) => {
     if (!title.trim()) {
       showAlert('Please enter an assignment title.');
@@ -61,34 +110,13 @@ export const CreateAssignmentPage: React.FC<CreateAssignmentPageProps> = ({
       return;
     }
 
-    setIsSaving(true);
-    try {
-      const payload: any = {
-        courseId,
-        title: title.trim(),
-        instructions: instructions.trim(),
-        term,
-        pointsPossible: Number(pointsPossible) || 0,
-        dueDate: dueDate ? new Date(dueDate).toISOString() : new Date().toISOString(),
-        published,
-        format: 'classic',
-        assessmentType: 'assignment',
-        submissionTypes: ['online_text', 'file'],
-        rubric: rubrics,
-      };
-
-      const created = await createActivity(payload);
-      showAlert({
-        title: published ? 'Assignment Published' : 'Draft Saved',
-        message: `"${title.trim()}" has been created successfully.`,
-        type: 'success',
-      });
-      onCreated(created?.id || 'new');
-    } catch {
-      // Handled in context
-    } finally {
-      setIsSaving(false);
+    if (siblingCourses.length > 0) {
+      setPendingPublished(published);
+      setIsCrossSectionModalOpen(true);
+      return;
     }
+
+    await executeSave([courseId], published);
   };
 
   return (
@@ -256,6 +284,23 @@ export const CreateAssignmentPage: React.FC<CreateAssignmentPageProps> = ({
           </button>
         </div>
       </div>
+
+      <CrossSectionPromptModal
+        isOpen={isCrossSectionModalOpen}
+        onClose={() => setIsCrossSectionModalOpen(false)}
+        itemType="assessment"
+        itemTitle={title.trim() || 'Assignment'}
+        siblingCourses={siblingCourses}
+        onConfirm={async (selectedIds) => {
+          setIsCrossSectionModalOpen(false);
+          await executeSave([courseId, ...selectedIds], pendingPublished);
+        }}
+        onSkipToCurrentOnly={async () => {
+          setIsCrossSectionModalOpen(false);
+          await executeSave([courseId], pendingPublished);
+        }}
+        isSubmitting={isSaving}
+      />
     </div>
   );
 };
