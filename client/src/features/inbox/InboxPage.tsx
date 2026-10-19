@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useLMS } from '../../shared/context/LMSContext';
-import { getDisplayRoleLabel } from '../../shared/utils/roles';
+import { getDisplayRoleLabel, isFacultyRole } from '../../shared/utils/roles';
 import {
   Send,
   Smile,
@@ -243,7 +243,7 @@ export const InboxPage: React.FC = () => {
 
       if (activeFilter === 'unread') return t.unreadCount > 0;
       if (activeFilter === 'groups') return t.isGroup;
-      if (activeFilter === 'faculty') return !t.isGroup && t.partner?.role === 'faculty';
+      if (activeFilter === 'faculty') return !t.isGroup && isFacultyRole(t.partner, t.partner?.role);
       if (activeFilter === 'student') return !t.isGroup && t.partner?.role === 'student';
       return true;
     });

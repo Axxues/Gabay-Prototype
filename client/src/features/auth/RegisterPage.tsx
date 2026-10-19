@@ -5,6 +5,7 @@ import { useLMS } from '../../shared/context/LMSContext';
 import { formatIdNumber, isValidIdNumber, ID_NUMBER_EXAMPLE, EMPLOYEE_ID_EXAMPLE } from '../../shared/utils/idNumber';
 import { isValidInstitutionalEmail } from '../../shared/utils/institutionalEmail';
 import type { PendingRegistration } from '../../shared/types/lms';
+import { CustomDropdown } from '../../shared/components/common/CustomDropdown';
 import {
   Lock,
   Mail,
@@ -691,12 +692,10 @@ export const RegisterPage: React.FC = () => {
               <label htmlFor="reg-college" className="text-[12px] font-semibold text-muted-foreground">
                 College *
               </label>
-              <select
+              <CustomDropdown
                 id="reg-college"
-                required
                 value={collegeId}
-                onChange={e => {
-                  const nextCol = e.target.value;
+                onChange={nextCol => {
                   setDepartment('');
                   if (nextCol) {
                     const activeSy = getActiveSchoolYearForCollege?.(nextCol);
@@ -712,23 +711,17 @@ export const RegisterPage: React.FC = () => {
                   }
                   handleFieldChange('collegeId', nextCol, setCollegeId);
                 }}
+                ariaDescribedBy={fieldErrors.collegeId ? 'reg-college-error' : undefined}
+                invalid={Boolean(fieldErrors.collegeId)}
                 onBlur={() => handleBlur('collegeId')}
-                aria-invalid={fieldErrors.collegeId ? true : undefined}
-                aria-describedby={fieldErrors.collegeId ? 'reg-college-error' : undefined}
-                className={`w-full px-3 py-2.5 bg-background border rounded-xl text-xs text-foreground focus:outline-hidden focus:ring-2 transition-all font-sans cursor-pointer ${
-                  fieldErrors.collegeId
-                    ? 'border-destructive focus:ring-destructive/30 focus:border-destructive'
-                    : 'border-border focus:ring-primary/30 focus:border-primary'
-                }`}
+                placeholder="Select College"
+                searchable
                 disabled={isSubmitting}
-              >
-                <option value="">Select College</option>
-                {colleges.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} ({c.code})
-                  </option>
-                ))}
-              </select>
+                options={[
+                  { value: '', label: 'Select College' },
+                  ...colleges.map(c => ({ value: c.id, label: `${c.name} (${c.code})` })),
+                ]}
+              />
               {fieldErrors.collegeId && (
                 <FieldError id="reg-college-error" message={fieldErrors.collegeId} />
               )}
@@ -738,28 +731,21 @@ export const RegisterPage: React.FC = () => {
               <label htmlFor="reg-department" className="text-[12px] font-semibold text-muted-foreground">
                 Program *
               </label>
-              <select
+              <CustomDropdown
                 id="reg-department"
-                required
                 value={department}
-                disabled={!collegeId || isSubmitting}
-                onChange={e => handleFieldChange('department', e.target.value, setDepartment)}
+                onChange={nextDept => handleFieldChange('department', nextDept, setDepartment)}
+                ariaDescribedBy={fieldErrors.department ? 'reg-department-error' : undefined}
+                invalid={Boolean(fieldErrors.department)}
                 onBlur={() => handleBlur('department')}
-                aria-invalid={fieldErrors.department ? true : undefined}
-                aria-describedby={fieldErrors.department ? 'reg-department-error' : undefined}
-                className={`w-full px-3 py-2.5 bg-background border rounded-xl text-xs text-foreground focus:outline-hidden focus:ring-2 transition-all font-sans cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
-                  fieldErrors.department
-                    ? 'border-destructive focus:ring-destructive/30 focus:border-destructive'
-                    : 'border-border focus:ring-primary/30 focus:border-primary'
-                }`}
-              >
-                <option value="">{collegeId ? 'Select Program' : 'Select a College first'}</option>
-                {filteredDepartments.map(d => (
-                  <option key={d.id} value={d.name}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
+                placeholder={collegeId ? 'Select Program' : 'Select a College first'}
+                searchable
+                disabled={!collegeId || isSubmitting}
+                options={[
+                  { value: '', label: collegeId ? 'Select Program' : 'Select a College first' },
+                  ...filteredDepartments.map(d => ({ value: d.name, label: d.name })),
+                ]}
+              />
               {fieldErrors.department && (
                 <FieldError id="reg-department-error" message={fieldErrors.department} />
               )}

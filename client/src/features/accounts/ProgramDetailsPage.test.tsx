@@ -148,25 +148,21 @@ describe('ProgramDetailsPage', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/governance');
   });
 
-  it('renders incumbent chairperson card and triggers handover modal with Program copy', async () => {
+  it('renders incumbent chairperson card and does not render reassign button', async () => {
     render(<ProgramDetailsPage />);
 
     const chairCard = screen.getByTestId('incumbent-chairperson-card');
     expect(within(chairCard).getByText('Prof. Alan Turing')).toBeInTheDocument();
     expect(within(chairCard).getByText('Program Chairperson')).toBeInTheDocument();
 
-    const reassignButton = screen.getByRole('button', { name: /reassign chairperson/i });
-    expect(reassignButton).toBeInTheDocument();
-    fireEvent.click(reassignButton);
-
-    expect(screen.getByText('Appoint Chairperson')).toBeInTheDocument();
-    expect(screen.getByText(/Program: Computer Science/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /reassign chairperson/i })).not.toBeInTheDocument();
   });
 
   it('renders 4 key program metrics', () => {
     render(<ProgramDetailsPage />);
 
-    expect(screen.getByTestId('metric-total-faculty')).toHaveTextContent('2');
+    // Only teaching faculty (Prof. Grace Hopper) is counted; Chairperson (Prof. Alan Turing) is excluded
+    expect(screen.getByTestId('metric-total-faculty')).toHaveTextContent('1');
     expect(screen.getByTestId('metric-total-students')).toHaveTextContent('1');
     expect(screen.getByTestId('metric-active-courses')).toHaveTextContent('2');
     expect(screen.getByTestId('metric-class-sections')).toHaveTextContent('2');

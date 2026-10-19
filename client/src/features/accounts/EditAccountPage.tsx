@@ -1,17 +1,16 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useLMS } from '../../shared/context/LMSContext';
 import { formatIdNumber, isValidIdNumber, ID_NUMBER_EXAMPLE } from '../../shared/utils/idNumber';
 import type { User, UserRole } from '../../shared/types/lms';
 import { UserAvatar } from '../../shared/components/common/UserAvatar';
+import { CustomDropdown, type DropdownOption } from '../../shared/components/common/CustomDropdown';
 import {
   ArrowLeft,
   UserPlus,
   Mail,
   Eye,
   EyeOff,
-  ChevronDown,
   Check,
-  Search,
   Building,
   UserCheck,
   GraduationCap,
@@ -19,130 +18,37 @@ import {
   CheckCircle2
 } from 'lucide-react';
 
-interface DropdownOption {
-  value: string;
-  label: string;
-  icon?: React.ReactNode;
-}
-
-interface CustomDropdownProps {
-  value: string;
-  onChange: (value: string) => void;
-  options: DropdownOption[];
-  placeholder?: string;
-  icon?: React.ReactNode;
-  searchable?: boolean;
-}
-
-const CustomDropdown: React.FC<CustomDropdownProps> = ({
-  value,
-  onChange,
-  options,
-  placeholder = 'Select an option',
-  icon,
-  searchable = false
-}) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [search, setSearch] = useState('');
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    if (isOpen) document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isOpen]);
-
-  const selectedOption = options.find(o => o.value === value);
-  const filteredOptions = searchable && search.trim()
-    ? options.filter(o => o.label.toLowerCase().includes(search.toLowerCase().trim()))
-    : options;
-
-  return (
-    <div className="relative" ref={dropdownRef}>
-      <button
-        type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className={`w-full flex items-center justify-between p-2.5 bg-background border rounded-xl text-xs font-sans transition-all cursor-pointer ${
-          isOpen
-            ? 'border-primary ring-2 ring-primary/20 shadow-none'
-            : 'border-border hover:border-primary/50 text-foreground'
-        }`}
-      >
-        <div className="flex items-center space-x-2 truncate min-w-0 mr-2">
-          {selectedOption?.icon || icon ? (
-            <span className="shrink-0">{selectedOption?.icon || icon}</span>
-          ) : null}
-          <span className="truncate font-semibold text-foreground">
-            {selectedOption ? selectedOption.label : placeholder}
-          </span>
-        </div>
-        <div className={`w-5 h-5 rounded-lg flex items-center justify-center shrink-0 transition-colors ${isOpen ? 'bg-primary/10 text-primary' : 'text-muted-foreground'}`}>
-          <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isOpen ? 'rotate-180 text-primary' : ''}`} />
-        </div>
-      </button>
-
-      {isOpen && (
-        <div className="absolute left-0 right-0 top-full mt-1.5 dropdown-panel p-1.5 z-[120] animate-dropdown max-h-64 flex flex-col shadow-xl">
-          {searchable && options.length > 4 && (
-            <div className="p-1 pb-1.5 border-b border-border/60 mb-1">
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 text-muted-foreground absolute left-2.5 top-2.5" />
-                <input
-                  type="text"
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  placeholder="Filter options..."
-                  className="w-full pl-8 pr-2.5 py-1.5 bg-muted/40 border border-border rounded-lg text-xs font-sans outline-none focus:border-primary/50 text-foreground placeholder:text-muted-foreground"
-                  autoFocus
-                  onClick={e => e.stopPropagation()}
-                />
-              </div>
-            </div>
-          )}
-          <div className="overflow-y-auto custom-scrollbar space-y-0.5 max-h-52">
-            {filteredOptions.length === 0 ? (
-              <div className="py-4 text-center text-xs text-muted-foreground">No matching options</div>
-            ) : (
-              filteredOptions.map(opt => {
-                const isSelected = opt.value === value;
-                return (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => { onChange(opt.value); setIsOpen(false); setSearch(''); }}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs transition-colors cursor-pointer text-left ${
-                      isSelected
-                        ? 'bg-primary text-primary-foreground font-bold shadow-xs'
-                        : 'text-foreground hover:bg-primary/10 hover:text-primary font-medium'
-                    }`}
-                  >
-                    <div className="flex items-center space-x-2 truncate mr-2">
-                      {opt.icon && <span className="shrink-0">{opt.icon}</span>}
-                      <span className="truncate">{opt.label}</span>
-                    </div>
-                    {isSelected && <Check className="w-3.5 h-3.5 shrink-0" />}
-                  </button>
-                );
-              })
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
 interface EditAccountPageProps {
   user: User;
   onNavigateTab: (tab: string) => void;
 }
 
+const parseInitialName = (u: User) => {
+  if (u.firstName !== undefined || u.lastName !== undefined) {
+    return {
+      firstName: u.firstName || '',
+      middleName: u.middleName || '',
+      lastName: u.lastName || '',
+    };
+  }
+  const parts = (u.name || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { firstName: '', middleName: '', lastName: '' };
+  if (parts.length === 1) return { firstName: parts[0], middleName: '', lastName: '' };
+  if (parts.length === 2) return { firstName: parts[0], middleName: '', lastName: parts[1] };
+  return {
+    firstName: parts[0],
+    middleName: parts.slice(1, -1).join(' '),
+    lastName: parts[parts.length - 1],
+  };
+};
+
 export const EditAccountPage: React.FC<EditAccountPageProps> = ({ user, onNavigateTab }) => {
   const { updateUser, showAlert, programs, departments } = useLMS();
+
+  const initialNames = parseInitialName(user);
+  const [formFirstName, setFormFirstName] = useState(initialNames.firstName);
+  const [formMiddleName, setFormMiddleName] = useState(initialNames.middleName);
+  const [formLastName, setFormLastName] = useState(initialNames.lastName);
 
   const [formEmail, setFormEmail] = useState(user.email || '');
   const [formIdNumber, setFormIdNumber] = useState(user.studentId || '');
@@ -180,10 +86,15 @@ export const EditAccountPage: React.FC<EditAccountPageProps> = ({ user, onNaviga
     return { defaultTitle, roleLabel };
   }, [formRole]);
 
+  const previewFullName = [formFirstName.trim(), formMiddleName.trim(), formLastName.trim()].filter(Boolean).join(' ') || user.name || formEmail.trim() || 'Unnamed Account';
+
   const handleBack = () => onNavigateTab('accounts');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const cleanFirstName = formFirstName.trim();
+    const cleanMiddleName = formMiddleName.trim();
+    const cleanLastName = formLastName.trim();
     const cleanEmail = formEmail.trim();
     const cleanIdNumber = formIdNumber.trim();
     if (!cleanEmail) {
@@ -212,9 +123,12 @@ export const EditAccountPage: React.FC<EditAccountPageProps> = ({ user, onNaviga
     }
     setIsSubmitting(true);
     try {
-      const finalName = user.name?.trim() || cleanEmail;
+      const computedName = [cleanFirstName, cleanMiddleName, cleanLastName].filter(Boolean).join(' ') || user.name?.trim() || cleanEmail;
       const ok = await updateUser(user.id, {
-        name: finalName,
+        firstName: cleanFirstName,
+        middleName: cleanMiddleName,
+        lastName: cleanLastName,
+        name: computedName,
         email: cleanEmail,
         role: formRole,
         department: formDepartment,
@@ -227,7 +141,7 @@ export const EditAccountPage: React.FC<EditAccountPageProps> = ({ user, onNaviga
 
       showAlert({
         title: 'Account Updated',
-        message: `Account settings for "${cleanEmail}" (email, password, role, program, ID number) have been saved successfully.`,
+        message: `Account settings for "${cleanEmail}" (name, email, password, role, program, ID number) have been saved successfully.`,
         type: 'success'
       });
       onNavigateTab('accounts');
@@ -300,6 +214,51 @@ export const EditAccountPage: React.FC<EditAccountPageProps> = ({ user, onNaviga
                 1. Account identity
               </span>
             </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label htmlFor="edit-first-name" className="block text-[12px] font-semibold text-muted-foreground mb-1.5">
+                  First name *
+                </label>
+                <input
+                  id="edit-first-name"
+                  type="text"
+                  required
+                  value={formFirstName}
+                  onChange={e => setFormFirstName(e.target.value)}
+                  placeholder="e.g. Maria"
+                  className="w-full px-3.5 py-2.5 bg-background border border-border hover:border-primary/40 focus:border-primary rounded-xl text-foreground text-xs font-sans focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all shadow-none"
+                />
+              </div>
+              <div>
+                <label htmlFor="edit-middle-name" className="block text-[12px] font-semibold text-muted-foreground mb-1.5">
+                  Middle name
+                </label>
+                <input
+                  id="edit-middle-name"
+                  type="text"
+                  value={formMiddleName}
+                  onChange={e => setFormMiddleName(e.target.value)}
+                  placeholder="e.g. Delos"
+                  className="w-full px-3.5 py-2.5 bg-background border border-border hover:border-primary/40 focus:border-primary rounded-xl text-foreground text-xs font-sans focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all shadow-none"
+                />
+              </div>
+              <div>
+                <label htmlFor="edit-last-name" className="block text-[12px] font-semibold text-muted-foreground mb-1.5">
+                  Last name *
+                </label>
+                <input
+                  id="edit-last-name"
+                  type="text"
+                  required
+                  value={formLastName}
+                  onChange={e => setFormLastName(e.target.value)}
+                  placeholder="e.g. Santos"
+                  className="w-full px-3.5 py-2.5 bg-background border border-border hover:border-primary/40 focus:border-primary rounded-xl text-foreground text-xs font-sans focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all shadow-none"
+                />
+              </div>
+            </div>
+
             <div>
               <label className="block text-[12px] font-semibold text-muted-foreground mb-1.5">
                 Institutional email *
@@ -378,23 +337,18 @@ export const EditAccountPage: React.FC<EditAccountPageProps> = ({ user, onNaviga
                 <label htmlFor="edit-student-year-level" className="block text-[12px] font-semibold text-muted-foreground mb-1.5">
                   Year Level *
                 </label>
-                <div className="relative">
-                  <select
-                    id="edit-student-year-level"
-                    aria-label="Year Level"
-                    value={formYearLevel}
-                    onChange={e => setFormYearLevel(Number(e.target.value))}
-                    className="w-full p-2.5 bg-background border border-border hover:border-primary/50 focus:border-primary rounded-xl text-foreground text-xs font-semibold font-sans outline-none focus:ring-2 focus:ring-primary/20 appearance-none cursor-pointer transition-all pr-9 shadow-none"
-                  >
-                    <option value={1}>1 - 1st Year</option>
-                    <option value={2}>2 - 2nd Year</option>
-                    <option value={3}>3 - 3rd Year</option>
-                    <option value={4}>4 - 4th Year</option>
-                  </select>
-                  <div className="absolute right-3 top-3 pointer-events-none text-muted-foreground">
-                    <ChevronDown className="w-3.5 h-3.5" />
-                  </div>
-                </div>
+                <CustomDropdown
+                  id="edit-student-year-level"
+                  ariaLabel="Year Level"
+                  value={String(formYearLevel)}
+                  onChange={v => setFormYearLevel(Number(v))}
+                  options={[
+                    { value: '1', label: '1 - 1st Year' },
+                    { value: '2', label: '2 - 2nd Year' },
+                    { value: '3', label: '3 - 3rd Year' },
+                    { value: '4', label: '4 - 4th Year' },
+                  ]}
+                />
                 <p className="text-[11px] text-muted-foreground mt-1.5">
                   Students cannot modify their own year level. Only Dean, Chairperson, or Administrators can update this.
                 </p>
@@ -447,13 +401,13 @@ export const EditAccountPage: React.FC<EditAccountPageProps> = ({ user, onNaviga
             <div className="p-4 rounded-xl border border-border bg-muted/20 space-y-2.5 shadow-none">
               <div className="flex items-center space-x-3">
                 <UserAvatar
-                  name={user.name || formEmail.trim() || 'Unnamed Account'}
+                  name={previewFullName}
                   src={user.avatar}
                   className="w-10 h-10 rounded-full object-cover border border-border shadow-xs shrink-0"
                 />
                 <div className="min-w-0">
                   <div className="font-bold text-xs text-foreground truncate">
-                    {user.name || formEmail.trim() || 'Unnamed Account'}
+                    {previewFullName}
                   </div>
                   <div className="text-[11px] text-muted-foreground truncate">
                     {formEmail.trim() || 'Institutional email'}

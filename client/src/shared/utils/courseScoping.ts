@@ -1,4 +1,5 @@
 import type { Course, User, UserRole, College, Department } from '../types/lms';
+import { isDeanRole, isChairRole } from './roles';
 
 export interface CourseScopingParams {
   courses: Course[];
@@ -8,16 +9,178 @@ export interface CourseScopingParams {
   approvedCourseIds?: Set<string>;
   colleges?: College[];
   departments?: Department[];
+  selectedCollegeId?: string;
+  selectedProgramId?: string;
 }
 
 /**
- * Filter courses based on user role and hierarchy:
+ * Normalizes an academic department/program name or description for flexible comparison.
+ * Strips common prefixes like "Department of ", "Program in ", "Bachelor of Science in ", "BS in ", "BS ", etc.
+ */
+export function normalizeDepartmentName(str?: string | null): string {
+  if (!str || typeof str !== 'string') return '';
+  return str
+    .trim()
+    .toLowerCase()
+    .replace(/^department\s+of\s+/i, '')
+    .replace(/^college\s+of\s+/i, '')
+    .replace(/^program\s+in\s+/i, '')
+    .replace(/^bachelor\s+of\s+science\s+in\s+/i, '')
+    .replace(/^bachelor\s+in\s+/i, '')
+    .replace(/^bachelor\s+of\s+/i, '')
+    .replace(/^bs\s+in\s+/i, '')
+    .replace(/^bs\s+/i, '')
+    .replace(/\s+department$/i, '')
+    .replace(/\s+program$/i, '')
+    .replace(/[-_]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Checks whether a given course belongs to or is affiliated with an academic program/department.
+ */
+export function courseMatchesProgram(course: Course, dept: Department, users: User[] = []): boolean {
+  if (!dept) return false;
+  const deptId = (dept.id || '').toLowerCase().trim();
+  const deptName = (dept.name || '').toLowerCase().trim();
+  const deptCode = (dept.code || '').toLowerCase().trim();
+  const normDeptName = normalizeDepartmentName(dept.name);
+
+  const c = course as any;
+
+  // 1. Explicit ID matches
+  if (c.departmentId && c.departmentId.toLowerCase().trim() === deptId) return true;
+  if (c.programId && c.programId.toLowerCase().trim() === deptId) return true;
+
+  // 2. Direct course.department matching
+  if (c.department) {
+    const cDeptRaw = String(c.department).toLowerCase().trim();
+    const cDeptNorm = normalizeDepartmentName(String(c.department));
+    if (cDeptRaw === deptId || cDeptRaw === deptCode || cDeptRaw === deptName) return true;
+    if (cDeptNorm && normDeptName && (cDeptNorm === normDeptName || cDeptNorm.includes(normDeptName) || normDeptName.includes(cDeptNorm))) return true;
+    if ((deptCode === 'cs' || deptCode === 'bscs') && (cDeptRaw === 'bscs' || cDeptRaw === 'cs')) return true;
+    if ((deptCode === 'it' || deptCode === 'bsit') && (cDeptRaw === 'it' || cDeptRaw === 'bsit' || cDeptNorm.includes('information technology'))) return true;
+  }
+
+  // 3. Instructor affiliation
+  const instId = course.instructorId || c.instructor_id || (typeof c.instructor === 'object' ? c.instructor?.id : c.instructor);
+  if (instId) {
+    const instructor = users.find(u => u.id === instId);
+    if (instructor) {
+      if ((instructor as any).departmentId && (instructor as any).departmentId.toLowerCase().trim() === deptId) return true;
+      for (const field of [instructor.department, instructor.program]) {
+        if (!field) continue;
+        const fRaw = String(field).toLowerCase().trim();
+        const fNorm = normalizeDepartmentName(String(field));
+        if (fRaw === deptId || fRaw === deptCode || fRaw === deptName) return true;
+        if (fNorm && normDeptName && (fNorm === normDeptName || fNorm.includes(normDeptName) || normDeptName.includes(fNorm))) return true;
+        if ((deptCode === 'cs' || deptCode === 'bscs') && (fRaw === 'bscs' || fRaw === 'cs' || fNorm.includes('computer science'))) return true;
+        if ((deptCode === 'it' || deptCode === 'bsit') && (fRaw === 'it' || fRaw === 'bsit' || fNorm.includes('information technology'))) return true;
+      }
+    }
+  }
+
+  // 4. Section prefix matching (e.g. BSCS 4-1, BSIT 1-A, CS 1-A, IT 2-B)
+  if (course.section) {
+    const sec = course.section.trim().toUpperCase();
+    if (deptCode === 'cs' || deptCode === 'bscs' || normDeptName === 'computer science') {
+      if (/^BSCS/i.test(sec) || /^CS[\s\-_0-9]/i.test(sec) || sec === 'CS') return true;
+    }
+    if (deptCode === 'it' || deptCode === 'bsit' || normDeptName === 'information technology') {
+      if (/^BSIT/i.test(sec) || /^IT[\s\-_0-9]/i.test(sec) || sec === 'IT') return true;
+    }
+    if (deptCode && (sec.startsWith(deptCode.toUpperCase() + ' ') || sec.startsWith(deptCode.toUpperCase() + '-') || sec === deptCode.toUpperCase())) {
+      return true;
+    }
+  }
+
+  // 5. Course Code prefix matching (e.g. CSCC 103, CCSC 303, CSPC 112, CSCB 101, CMSC 199, IT 201, ITEC 101)
+  if (course.code) {
+    const code = course.code.trim().toUpperCase();
+    if (deptCode === 'cs' || deptCode === 'bscs' || normDeptName === 'computer science') {
+      if (/^(CS|CMSC|CCSC|CSPC|CSCB)\b/i.test(code) || /^(CS|CMSC|CCSC|CSPC|CSCB)\s*[0-9]/i.test(code)) return true;
+    }
+    if (deptCode === 'it' || deptCode === 'bsit' || normDeptName === 'information technology') {
+      if (/^(IT|BSIT|ITEC|IS|BSIS)\b/i.test(code) || /^(IT|BSIT|ITEC|IS|BSIS)\s*[0-9]/i.test(code)) return true;
+    }
+    if (deptCode && (code.startsWith(deptCode.toUpperCase() + ' ') || code.startsWith(deptCode.toUpperCase() + '-') || code === deptCode.toUpperCase())) {
+      if (!/^(IT|IS)/i.test(code) || deptCode === 'it' || deptCode === 'bsit') {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Checks whether a given course belongs to or is affiliated with a collegiate unit.
+ */
+export function courseMatchesCollege(
+  course: Course,
+  collegeId: string,
+  collegeName: string,
+  departments: Department[] = [],
+  users: User[] = []
+): boolean {
+  if (!collegeId && !collegeName) return false;
+  const c = course as any;
+  const cleanColId = (collegeId || '').toLowerCase().trim();
+  const cleanColName = (collegeName || '').toLowerCase().trim();
+
+  // 1. Direct collegeId match
+  if (c.collegeId && c.collegeId.toLowerCase().trim() === cleanColId) return true;
+
+  // 2. Direct college name or alias match
+  if (c.college) {
+    const cCol = String(c.college).toLowerCase().trim();
+    if (cCol === cleanColId || cCol === cleanColName || (cleanColName && cCol.includes(cleanColName))) {
+      return true;
+    }
+  }
+
+  // 3. Check all departments belonging to this college
+  const deptsInCollege = departments.filter(
+    d => cleanColId && d.collegeId && d.collegeId.toLowerCase().trim() === cleanColId
+  );
+
+  for (const dept of deptsInCollege) {
+    if (courseMatchesProgram(course, dept, users)) return true;
+  }
+
+  // 4. Check instructor's college affiliation
+  const instId = course.instructorId || c.instructor_id || (typeof c.instructor === 'object' ? c.instructor?.id : c.instructor);
+  if (instId) {
+    const instructor = users.find(u => u.id === instId);
+    if (instructor) {
+      if (cleanColId && instructor.collegeId && instructor.collegeId.toLowerCase().trim() === cleanColId) return true;
+      if (
+        cleanColName &&
+        instructor.collegeName &&
+        instructor.collegeName.toLowerCase().trim() === cleanColName
+      ) {
+        return true;
+      }
+      if (instructor.department) {
+        const instDept = instructor.department.toLowerCase().trim();
+        if (cleanColName && (instDept === cleanColName || instDept.includes(cleanColName) || cleanColName.includes(instDept))) {
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Filter courses based on user role, jurisdiction, and active navigation filters:
  * - student: only enrolled courses (via enrolledCourseIds or approved requests)
- * - superadmin / chancellor: all courses across the entire institution
- * - dean: courses where instructor belongs to their college (or course belongs to college) + own courses
- * - chairperson: courses where instructor belongs to their department + own courses
- * - admin (general): courses where instructorId === activeUser.id
- * - faculty: only courses where instructorId === activeUser.id
+ * - faculty: only courses where instructorId === activeUser.id (faculty have no manual course creation or oversight)
+ * - chairperson: only courses in the academic program handled by the chair
+ * - dean: courses throughout their college, with optional program filter
+ * - admin / superadmin: courses throughout the university, with optional college and program filters
  * - staff: empty on dashboard; catalog inspect on CoursesPage
  */
 export function getScopedCourses({
@@ -28,6 +191,8 @@ export function getScopedCourses({
   approvedCourseIds = new Set(),
   colleges = [],
   departments = [],
+  selectedCollegeId,
+  selectedProgramId,
 }: CourseScopingParams): Course[] {
   if (!activeUser) return [];
 
@@ -38,106 +203,7 @@ export function getScopedCourses({
     );
   }
 
-  // Chancellor (Superadmin) sees all courses across all colleges
-  if (activeRole === 'superadmin' || activeUser.adminSubrole === 'chancellor') {
-    return courses;
-  }
-
-  // Dean scoping: courses where instructor belongs to their college, plus their own courses
-  if (activeRole === 'admin' && activeUser.adminSubrole === 'dean') {
-    const deanCollegeId = activeUser.collegeId || colleges.find(c => c.deanId === activeUser.id)?.id;
-    const deanCollege = colleges.find(
-      c => c.id === deanCollegeId || (activeUser.collegeName && c.name.toLowerCase() === activeUser.collegeName.toLowerCase())
-    );
-    const effectiveCollegeId = deanCollegeId || deanCollege?.id;
-    const effectiveCollegeName = (deanCollege?.name || activeUser.collegeName || '').toLowerCase();
-
-    const collegeDeptNames = new Set(
-      departments
-        .filter(d => effectiveCollegeId && d.collegeId === effectiveCollegeId)
-        .map(d => d.name.toLowerCase())
-    );
-    const collegeDeptCodes = new Set(
-      departments
-        .filter(d => effectiveCollegeId && d.collegeId === effectiveCollegeId)
-        .map(d => d.code.toLowerCase())
-    );
-
-    return courses.filter(course => {
-      // Always include courses authored by the active user
-      if (course.instructorId === activeUser.id) return true;
-
-      // Direct course collegeId check if available
-      if (effectiveCollegeId && (course as any).collegeId === effectiveCollegeId) return true;
-
-      // Match instructor's affiliation
-      const instructor = users.find(u => u.id === course.instructorId);
-      if (!instructor) return false;
-
-      if (effectiveCollegeId && instructor.collegeId === effectiveCollegeId) return true;
-      if (effectiveCollegeName && instructor.collegeName && instructor.collegeName.toLowerCase() === effectiveCollegeName) {
-        return true;
-      }
-      if (instructor.department) {
-        const deptLower = instructor.department.toLowerCase();
-        if (effectiveCollegeName && deptLower === effectiveCollegeName) return true;
-        if (collegeDeptNames.has(deptLower) || collegeDeptCodes.has(deptLower)) return true;
-      }
-
-      return false;
-    });
-  }
-
-  // Chairperson scoping: courses where instructor belongs to their department, plus their own courses
-  if (activeRole === 'admin' && activeUser.adminSubrole === 'chairperson') {
-    const chairDeptObj = departments.find(
-      d =>
-        d.chairpersonId === activeUser.id ||
-        (activeUser.department &&
-          (d.name.toLowerCase() === activeUser.department.toLowerCase() ||
-            d.id === activeUser.department ||
-            d.code.toLowerCase() === activeUser.department.toLowerCase()))
-    );
-    const chairDeptName = (chairDeptObj?.name || activeUser.department || '').toLowerCase();
-    const chairDeptCode = chairDeptObj?.code?.toLowerCase();
-    const chairDeptId = chairDeptObj?.id;
-
-    return courses.filter(course => {
-      // Always include courses authored by the active user
-      if (course.instructorId === activeUser.id) return true;
-
-      // Direct course department check if available
-      if ((course as any).department) {
-        const cDept = String((course as any).department).toLowerCase();
-        if (chairDeptName && cDept === chairDeptName) return true;
-        if (chairDeptCode && cDept === chairDeptCode) return true;
-        if (chairDeptId && cDept === chairDeptId) return true;
-      }
-
-      // Match instructor's department affiliation
-      const instructor = users.find(u => u.id === course.instructorId);
-      if (!instructor) return false;
-
-      if (chairDeptId && ((instructor as any).departmentId === chairDeptId || instructor.collegeId === chairDeptId)) {
-        return true;
-      }
-      if (instructor.department) {
-        const instDept = instructor.department.toLowerCase();
-        if (chairDeptName && instDept === chairDeptName) return true;
-        if (chairDeptCode && instDept === chairDeptCode) return true;
-        if (chairDeptId && instDept === chairDeptId.toLowerCase()) return true;
-      }
-
-      return false;
-    });
-  }
-
-  // General Admin without subrole: default to own courses (or college/department if specified)
-  if (activeRole === 'admin') {
-    return courses.filter(course => course.instructorId === activeUser.id);
-  }
-
-  // Faculty: only courses where they are the instructor
+  // Faculty see only their own assigned teaching courses
   if (activeRole === 'faculty') {
     return courses.filter(course => course.instructorId === activeUser.id);
   }
@@ -145,6 +211,110 @@ export function getScopedCourses({
   // Staff: empty for dashboard scoping (has read-only course catalog inspect in CoursesPage)
   if (activeRole === 'staff') {
     return [];
+  }
+
+  // Chairperson: sees only courses in the program they handle
+  if (isChairRole(activeUser, activeRole)) {
+    const chairDeptObj = departments.find(
+      d =>
+        d.chairpersonId === activeUser.id ||
+        (activeUser.department &&
+          (d.name.toLowerCase() === activeUser.department.toLowerCase() ||
+            d.id === activeUser.department ||
+            d.code.toLowerCase() === activeUser.department.toLowerCase())) ||
+        (activeUser.program &&
+          (d.name.toLowerCase() === activeUser.program.toLowerCase() ||
+            d.id === activeUser.program ||
+            d.code.toLowerCase() === activeUser.program.toLowerCase()))
+    );
+
+    if (chairDeptObj) {
+      return courses.filter(course => courseMatchesProgram(course, chairDeptObj, users));
+    }
+
+    // Fallback if no matching department entity found
+    const fallbackDeptName = (activeUser.program || activeUser.department || '').toLowerCase();
+    if (!fallbackDeptName) return [];
+
+    return courses.filter(course => {
+      const c = course as any;
+      if (c.department && String(c.department).toLowerCase() === fallbackDeptName) return true;
+      const instructor = users.find(u => u.id === course.instructorId);
+      if (instructor) {
+        const instDept = (instructor.program || instructor.department || '').toLowerCase();
+        if (instDept === fallbackDeptName) return true;
+      }
+      return false;
+    });
+  }
+
+  // Dean: sees courses across their college, optionally filtered by program
+  if (isDeanRole(activeUser, activeRole)) {
+    const deanCollegeId =
+      (selectedCollegeId && selectedCollegeId !== 'all' ? selectedCollegeId : undefined) ||
+      activeUser.collegeId ||
+      colleges.find(c => c.deanId === activeUser.id)?.id;
+    const deanCollege = colleges.find(
+      c =>
+        c.id === deanCollegeId ||
+        (activeUser.collegeName && c.name.toLowerCase() === activeUser.collegeName.toLowerCase())
+    );
+    const effectiveCollegeId = deanCollegeId || deanCollege?.id || '';
+    const effectiveCollegeName = (deanCollege?.name || activeUser.collegeName || '').toLowerCase();
+
+    let collegeCourses = courses.filter(course =>
+      courseMatchesCollege(course, effectiveCollegeId, effectiveCollegeName, departments, users)
+    );
+
+    if (selectedProgramId && selectedProgramId !== 'all') {
+      const targetDept = departments.find(
+        d => d.id === selectedProgramId || d.code.toLowerCase() === selectedProgramId.toLowerCase()
+      );
+      if (targetDept) {
+        collegeCourses = collegeCourses.filter(course =>
+          courseMatchesProgram(course, targetDept, users)
+        );
+      }
+    }
+
+    return collegeCourses;
+  }
+
+  // Admin / Superadmin: monitors university-wide, with optional college and program filtering
+  if (
+    activeRole === 'admin' ||
+    activeRole === 'superadmin' ||
+    activeUser.adminSubrole === 'chancellor'
+  ) {
+    let result = [...courses];
+
+    // Filter by college if selected
+    if (selectedCollegeId && selectedCollegeId !== 'all') {
+      const collegeObj = colleges.find(
+        c => c.id === selectedCollegeId || c.code?.toLowerCase() === selectedCollegeId.toLowerCase()
+      );
+      result = result.filter(course =>
+        courseMatchesCollege(
+          course,
+          selectedCollegeId,
+          collegeObj?.name || '',
+          departments,
+          users
+        )
+      );
+    }
+
+    // Filter by program if selected
+    if (selectedProgramId && selectedProgramId !== 'all') {
+      const targetDept = departments.find(
+        d => d.id === selectedProgramId || d.code.toLowerCase() === selectedProgramId.toLowerCase()
+      );
+      if (targetDept) {
+        result = result.filter(course => courseMatchesProgram(course, targetDept, users));
+      }
+    }
+
+    return result;
   }
 
   return courses;

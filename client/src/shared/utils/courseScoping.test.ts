@@ -26,11 +26,18 @@ describe('getScopedCourses utility', () => {
       avatar: '',
     },
     {
+      id: 'u-admin-gen',
+      name: 'University Admin',
+      email: 'admin@dmmmsu.edu.ph',
+      role: 'admin',
+      title: 'Administrator',
+      avatar: '',
+    },
+    {
       id: 'u-dean-ccs',
       name: 'Dean CCS',
       email: 'dean.ccs@dmmmsu.edu.ph',
-      role: 'admin',
-      adminSubrole: 'dean',
+      role: 'dean',
       collegeId: 'col-ccs',
       collegeName: 'College of Computer Science',
       department: 'College of Computer Science',
@@ -41,8 +48,7 @@ describe('getScopedCourses utility', () => {
       id: 'u-chair-cs',
       name: 'Chair CS',
       email: 'chair.cs@dmmmsu.edu.ph',
-      role: 'admin',
-      adminSubrole: 'chairperson',
+      role: 'chairperson',
       collegeId: 'col-ccs',
       department: 'Department of Computer Science',
       title: 'Department Chair',
@@ -99,6 +105,7 @@ describe('getScopedCourses utility', () => {
       term: '1st Sem',
       instructorId: 'u-fac-cs',
       instructorName: 'Faculty CS',
+      department: 'Department of Computer Science',
       published: true,
       enrolledCount: 25,
     },
@@ -110,6 +117,7 @@ describe('getScopedCourses utility', () => {
       term: '1st Sem',
       instructorId: 'u-fac-it',
       instructorName: 'Faculty IT',
+      department: 'Department of Information Technology',
       published: true,
       enrolledCount: 20,
     },
@@ -121,19 +129,21 @@ describe('getScopedCourses utility', () => {
       term: '1st Sem',
       instructorId: 'u-fac-coe',
       instructorName: 'Faculty COE',
+      department: 'Department of Elementary Education',
       published: true,
       enrolledCount: 15,
     },
     {
-      id: 'crs-dean-special',
-      code: 'CCS 400',
-      title: 'Dean Seminar',
-      section: '4A',
+      id: 'crs-cs302',
+      code: 'CS 302',
+      title: 'Algorithms',
+      section: '3A',
       term: '1st Sem',
-      instructorId: 'u-dean-ccs',
-      instructorName: 'Dean CCS',
+      instructorId: 'u-fac-cs',
+      instructorName: 'Faculty CS',
+      department: 'Department of Computer Science',
       published: true,
-      enrolledCount: 10,
+      enrolledCount: 18,
     },
   ];
 
@@ -148,64 +158,90 @@ describe('getScopedCourses utility', () => {
       departments,
     });
     expect(scoped).toHaveLength(4);
-    expect(scoped.map(c => c.id)).toEqual(['crs-cs101', 'crs-it201', 'crs-coe301', 'crs-dean-special']);
+    expect(scoped.map(c => c.id)).toEqual(['crs-cs101', 'crs-it201', 'crs-coe301', 'crs-cs302']);
   });
 
-  it('dean sees courses where instructor belongs to their college (CS and IT) plus own courses, but not COE courses', () => {
+  it('admin sees all courses university-wide and can filter by college and program', () => {
+    const admin = users.find(u => u.id === 'u-admin-gen')!;
+    const allUniversity = getScopedCourses({
+      courses,
+      users,
+      activeUser: admin,
+      activeRole: 'admin',
+      colleges,
+      departments,
+    });
+    expect(allUniversity).toHaveLength(4);
+
+    // Filter by CCS college
+    const ccsOnly = getScopedCourses({
+      courses,
+      users,
+      activeUser: admin,
+      activeRole: 'admin',
+      colleges,
+      departments,
+      selectedCollegeId: 'col-ccs',
+    });
+    expect(ccsOnly.map(c => c.id)).toEqual(['crs-cs101', 'crs-it201', 'crs-cs302']);
+
+    // Filter by CS program under CCS
+    const csOnly = getScopedCourses({
+      courses,
+      users,
+      activeUser: admin,
+      activeRole: 'admin',
+      colleges,
+      departments,
+      selectedCollegeId: 'col-ccs',
+      selectedProgramId: 'dept-cs',
+    });
+    expect(csOnly.map(c => c.id)).toEqual(['crs-cs101', 'crs-cs302']);
+  });
+
+  it('dean sees courses throughout their college (CS and IT) but not other colleges, and can filter by program', () => {
     const deanCCS = users.find(u => u.id === 'u-dean-ccs')!;
     const scoped = getScopedCourses({
       courses,
       users,
       activeUser: deanCCS,
-      activeRole: 'admin',
+      activeRole: 'dean',
       colleges,
       departments,
     });
     const ids = scoped.map(c => c.id);
-    expect(ids).toContain('crs-cs101'); // instructor in CCS CS dept
-    expect(ids).toContain('crs-it201'); // instructor in CCS IT dept
-    expect(ids).toContain('crs-dean-special'); // own course
-    expect(ids).not.toContain('crs-coe301'); // instructor in COE
+    expect(ids).toContain('crs-cs101');
+    expect(ids).toContain('crs-it201');
+    expect(ids).toContain('crs-cs302');
+    expect(ids).not.toContain('crs-coe301'); // COE course excluded
+
+    // Program tab filter for IT
+    const itOnly = getScopedCourses({
+      courses,
+      users,
+      activeUser: deanCCS,
+      activeRole: 'dean',
+      colleges,
+      departments,
+      selectedProgramId: 'dept-it',
+    });
+    expect(itOnly.map(c => c.id)).toEqual(['crs-it201']);
   });
 
-  it('chairperson sees courses where instructor belongs to their department plus own courses, but not other departments', () => {
+  it('chairperson sees courses only in their handled program, never other programs', () => {
     const chairCS = users.find(u => u.id === 'u-chair-cs')!;
     const scoped = getScopedCourses({
       courses,
       users,
       activeUser: chairCS,
-      activeRole: 'admin',
+      activeRole: 'chairperson',
       colleges,
       departments,
     });
     const ids = scoped.map(c => c.id);
-    expect(ids).toContain('crs-cs101'); // instructor in CS dept
-    expect(ids).not.toContain('crs-it201'); // instructor in IT dept
-    expect(ids).not.toContain('crs-coe301'); // instructor in COE
-  });
-
-  it('always includes courses where course.instructorId === activeUser.id', () => {
-    const chairCS = users.find(u => u.id === 'u-chair-cs')!;
-    const courseAuthoredByChair: Course = {
-      id: 'crs-chair-course',
-      code: 'CS 999',
-      title: 'Chair Authored Course',
-      section: '1A',
-      term: '1st Sem',
-      instructorId: 'u-chair-cs',
-      instructorName: 'Chair CS',
-      published: true,
-      enrolledCount: 5,
-    };
-    const scoped = getScopedCourses({
-      courses: [...courses, courseAuthoredByChair],
-      users,
-      activeUser: chairCS,
-      activeRole: 'admin',
-      colleges,
-      departments,
-    });
-    expect(scoped.map(c => c.id)).toContain('crs-chair-course');
+    expect(ids).toEqual(['crs-cs101', 'crs-cs302']);
+    expect(ids).not.toContain('crs-it201');
+    expect(ids).not.toContain('crs-coe301');
   });
 
   it('faculty sees only courses where course.instructorId === activeUser.id', () => {
@@ -218,7 +254,7 @@ describe('getScopedCourses utility', () => {
       colleges,
       departments,
     });
-    expect(scoped.map(c => c.id)).toEqual(['crs-cs101']);
+    expect(scoped.map(c => c.id)).toEqual(['crs-cs101', 'crs-cs302']);
   });
 
   it('student sees only enrolled courses or approved requests', () => {
@@ -236,6 +272,95 @@ describe('getScopedCourses utility', () => {
     expect(ids).toContain('crs-cs101'); // from enrolledCourseIds
     expect(ids).toContain('crs-it201'); // from approvedCourseIds
     expect(ids).not.toContain('crs-coe301');
-    expect(ids).not.toContain('crs-dean-special');
+  });
+
+  it('matches assigned courses by code prefix and normalized department names under their college filter', () => {
+    const csDept = departments.find(d => d.id === 'dept-cs')!;
+    const itDept = departments.find(d => d.id === 'dept-it')!;
+
+    const assignedCourses: Course[] = [
+      {
+        id: 'c-1',
+        code: 'CSCC 103',
+        title: 'Object Oriented Programming',
+        section: '4-E',
+        term: '1st Sem AY 2026-2027',
+        instructorId: 'u-fac-cs',
+        instructorName: 'Charlie Marzan',
+        published: true,
+        enrolledCount: 0,
+      },
+      {
+        id: 'c-2',
+        code: 'CCSC 303',
+        title: 'Computer Programming 1',
+        section: '1-A',
+        term: 'Midyear AY 2026-2027',
+        instructorId: 'u-fac-cs',
+        instructorName: 'Cherlie Marzan',
+        published: true,
+        enrolledCount: 0,
+      },
+      {
+        id: 'c-3',
+        code: 'CSPC 112',
+        title: 'Software Engineering 2',
+        section: '4-E',
+        term: '2nd Sem AY 2026-2027',
+        instructorId: 'u-fac-cs',
+        instructorName: 'Raymund Dilan',
+        published: true,
+        enrolledCount: 0,
+      },
+      {
+        id: 'c-4',
+        code: 'ITEC 101',
+        title: 'Living in the IT Era',
+        section: 'BSIT 1-A',
+        term: '1st Sem AY 2026-2027',
+        instructorId: 'u-fac-it',
+        instructorName: 'Faculty IT',
+        published: true,
+        enrolledCount: 0,
+      },
+    ];
+
+    const deanCCS = users.find(u => u.id === 'u-dean-ccs')!;
+
+    // Dean sees all 4 courses under their college
+    const allColCourses = getScopedCourses({
+      courses: assignedCourses,
+      users,
+      activeUser: deanCCS,
+      activeRole: 'dean',
+      colleges,
+      departments,
+      selectedProgramId: 'all',
+    });
+    expect(allColCourses).toHaveLength(4);
+
+    // Dean filters by CS program tab -> sees all 3 CS courses
+    const csFiltered = getScopedCourses({
+      courses: assignedCourses,
+      users,
+      activeUser: deanCCS,
+      activeRole: 'dean',
+      colleges,
+      departments,
+      selectedProgramId: 'dept-cs',
+    });
+    expect(csFiltered.map(c => c.id)).toEqual(['c-1', 'c-2', 'c-3']);
+
+    // Dean filters by IT program tab -> sees only ITEC course
+    const itFiltered = getScopedCourses({
+      courses: assignedCourses,
+      users,
+      activeUser: deanCCS,
+      activeRole: 'dean',
+      colleges,
+      departments,
+      selectedProgramId: 'dept-it',
+    });
+    expect(itFiltered.map(c => c.id)).toEqual(['c-4']);
   });
 });

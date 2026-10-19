@@ -68,7 +68,7 @@ describe('Chair-Sheet RBAC and Dashboard Course Creation Access', () => {
     );
 
     expect(screen.queryByText(/Create course/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Upload Chair-Sheet/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Upload Assigned Courses/i)).not.toBeInTheDocument();
   });
 
   it('hides individual "Create course" button for dean users', () => {
@@ -83,10 +83,10 @@ describe('Chair-Sheet RBAC and Dashboard Course Creation Access', () => {
     );
 
     expect(screen.queryByText(/Create course/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Upload Chair-Sheet/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Upload Assigned Courses/i)).not.toBeInTheDocument();
   });
 
-  it('shows "Upload Chair-Sheet" button ONLY for Chairperson', () => {
+  it('shows "Upload Assigned Courses" button ONLY for Chairperson', () => {
     mockUser = {
       id: 'u-chair',
       name: 'Chair Member',
@@ -103,6 +103,6 @@ describe('Chair-Sheet RBAC and Dashboard Course Creation Access', () => {
     );
 
     expect(screen.queryByText(/Create course/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/Upload Chair-Sheet/i)).toBeInTheDocument();
+    expect(screen.getByText(/Upload Assigned Courses/i)).toBeInTheDocument();
   });
 });

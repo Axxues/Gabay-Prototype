@@ -3,6 +3,7 @@ import { useLMS } from '../../shared/context/LMSContext';
 import type { TermId } from '../../shared/types/lms';
 import { normalizeTermId } from '../../shared/utils/gradingTerms';
 import { TERM_LABELS, TermFilterSelect } from '../../shared/components/common/TermSelect';
+import { canManageCourseContent } from '../../shared/utils/roles';
 import { SourceFilterSelect } from '../../shared/components/common/SourceFilterSelect';
 import {
   buildAssessmentSourceIndex,
@@ -60,6 +61,9 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
     // Sibling-WIP refresh flag: read when the provider supplies it.
     isSyncing?: boolean;
   };
+
+  const course = db.courses.find(c => c.id === courseId);
+  const isAssignedInstructor = canManageCourseContent(course, activeUser);
 
   const courseActivities = (db.activities || []).filter(
     a => a.courseId === courseId && (!a.assessmentType || a.assessmentType === 'activity')
@@ -226,7 +230,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
           title="Activities"
           description="Course activities and laboratory tasks."
           actions={
-            (activeRole === 'faculty' || activeRole === 'admin') && (
+            isAssignedInstructor && (
               <button
                 onClick={() => setIsCreatingActivity(true)}
                 className="px-3.5 py-2 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all shadow-subtle flex items-center space-x-1.5 cursor-pointer"
@@ -443,7 +447,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                         </span>
                       )
                     )}
-                    {(activeRole === 'faculty' || activeRole === 'admin') && (
+                    {isAssignedInstructor && (
                       <button
                         type="button"
                         title="Delete Question Set"
@@ -488,7 +492,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
           <span>{onBackToModules ? 'Back to modules' : 'Back to activities'}</span>
         </button>
 
-        {(activeRole === 'faculty' || activeRole === 'admin') && (
+        {activeRole !== 'student' && (
           <div className="flex items-center gap-2">
             <button
               onClick={() => {
@@ -507,13 +511,15 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
             >
               Inspect in SpeedGrader
             </button>
-            <button
-              onClick={() => handleDelete(selectedActivity.id)}
-              className="p-1.5 text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
-              title="Delete activity"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
+            {isAssignedInstructor && (
+              <button
+                onClick={() => handleDelete(selectedActivity.id)}
+                className="p-1.5 text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
+                title="Delete activity"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )}
           </div>
         )}
       </div>

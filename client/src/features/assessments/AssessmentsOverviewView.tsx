@@ -3,6 +3,7 @@ import { useLMS } from '../../shared/context/LMSContext';
 import type { TermId } from '../../shared/types/lms';
 import { normalizeTermId } from '../../shared/utils/gradingTerms';
 import { TERM_LABELS, TermFilterSelect } from '../../shared/components/common/TermSelect';
+import { canManageCourseContent } from '../../shared/utils/roles';
 import { EmptyState } from '../../shared/components/common/EmptyState';
 import {
   ClipboardList,
@@ -55,6 +56,8 @@ export const AssessmentsOverviewView: React.FC<AssessmentsOverviewViewProps> = (
   onNavigateCategory,
 }) => {
   const { db, activeRole, activeUser, effectiveTermsForCourse } = useLMS();
+  const course = db.courses.find(c => c.id === courseId);
+  const isAssignedInstructor = canManageCourseContent(course, activeUser);
 
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
   const [selectedTerm, setSelectedTerm] = useState<TermId | 'all'>('all');
@@ -292,7 +295,7 @@ export const AssessmentsOverviewView: React.FC<AssessmentsOverviewViewProps> = (
           </p>
         </div>
 
-        {activeRole !== 'student' && (
+        {isAssignedInstructor && (
           <div className="relative">
             <button
               type="button"

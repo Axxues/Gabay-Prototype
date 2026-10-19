@@ -87,7 +87,7 @@ export const SourceFilterSelect: React.FC<{
           <div
             role="listbox"
             aria-labelledby={id}
-            className="absolute left-0 top-full mt-1.5 min-w-full w-max max-w-[220px] bg-card/95 backdrop-blur-md border border-border rounded-xl shadow-elevated p-1.5 z-50 animate-in fade-in zoom-in-95 duration-150"
+            className="absolute left-0 top-full mt-1 min-w-full w-max max-w-[14rem] bg-card border border-border rounded-xl shadow-elevated overflow-hidden p-1 z-50"
           >
             {OPTIONS.map(opt => {
               const isSelected = opt.value === value;
@@ -108,10 +108,10 @@ export const SourceFilterSelect: React.FC<{
                       setOpen(false);
                     }
                   }}
-                  className={`w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg text-left text-[12.5px] transition-all cursor-pointer border ${
+                  className={`w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg text-left text-[12.5px] transition-colors cursor-pointer ${
                     isSelected
-                      ? 'bg-primary/10 text-primary font-bold border-primary/20'
-                      : 'hover:bg-muted/60 text-foreground border-transparent'
+                      ? 'bg-primary text-primary-foreground font-bold'
+                      : 'text-foreground hover:bg-primary/10 hover:text-primary font-medium'
                   }`}
                 >
                   <span className="flex items-center gap-2 min-w-0">

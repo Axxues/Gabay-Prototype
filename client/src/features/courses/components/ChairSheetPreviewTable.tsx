@@ -6,6 +6,13 @@ import {
 } from 'lucide-react';
 import type { User } from '../../../shared/types/lms';
 import type { ValidatedChairSheetRow, RawChairSheetRow } from '../utils/chairSheetParser';
+import { CustomDropdown } from '../../../shared/components/common/CustomDropdown';
+
+const SEMESTER_OPTIONS = [
+  { value: 'First', label: 'First' },
+  { value: 'Mid-Year', label: 'Mid-Year' },
+  { value: 'Second', label: 'Second' },
+];
 
 interface ChairSheetPreviewTableProps {
   rows: ValidatedChairSheetRow[];
@@ -34,6 +41,7 @@ export const ChairSheetPreviewTable: React.FC<ChairSheetPreviewTableProps> = ({
             <th className="py-3 px-3 min-w-[110px]">Course Code</th>
             <th className="py-3 px-3 min-w-[200px]">Descriptive Title</th>
             <th className="py-3 px-3 min-w-[100px]">Year & Sec</th>
+            <th className="py-3 px-3 min-w-[110px]">Semester</th>
             <th className="py-3 px-3 min-w-[220px]">Faculty Verification</th>
             <th className="py-3 px-3 w-12 text-center">Actions</th>
           </tr>
@@ -113,6 +121,16 @@ export const ChairSheetPreviewTable: React.FC<ChairSheetPreviewTableProps> = ({
                   />
                 </td>
 
+                <td className="py-2 px-2 min-w-[125px]">
+                  <CustomDropdown
+                    variant="compact"
+                    ariaLabel={`Semester for row ${idx + 1}`}
+                    value={row.semester || 'First'}
+                    onChange={value => onUpdateRow(row.id, { semester: value })}
+                    options={SEMESTER_OPTIONS}
+                  />
+                </td>
+
                 <td className="py-2 px-3">
                   <div className="space-y-1.5">
                     {isValid ? (
@@ -132,32 +150,30 @@ export const ChairSheetPreviewTable: React.FC<ChairSheetPreviewTableProps> = ({
                     )}
 
                     {/* Quick Faculty Picker Dropdown */}
-                    <div className="relative mt-1">
-                      <select
-                        aria-label="Assign registered faculty"
-                        value={row.matchedUser?.id || ''}
-                        onChange={e => {
-                          const chosenUser = eligibleFaculty.find(u => u.id === e.target.value);
-                          if (chosenUser) {
-                            onUpdateRow(row.id, {
-                              firstName: chosenUser.firstName || chosenUser.name.split(' ')[0] || '',
-                              middleName: chosenUser.middleName || '',
-                              lastName: chosenUser.lastName || chosenUser.name.split(' ').slice(1).join(' ') || '',
-                            });
-                          }
-                        }}
-                        className="w-full text-[11px] py-1 px-2 border border-border/80 rounded-md bg-background/80 hover:bg-background text-muted-foreground hover:text-foreground cursor-pointer outline-none"
-                      >
-                        <option value="">
-                          {isValid ? 'Change assigned faculty...' : 'Choose registered faculty...'}
-                        </option>
-                        {eligibleFaculty.map(f => (
-                          <option key={f.id} value={f.id}>
-                            {f.name} ({f.title || f.role})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                    <CustomDropdown
+                      variant="compact"
+                      ariaLabel="Assign registered faculty"
+                      value={row.matchedUser?.id || ''}
+                      placeholder={isValid ? 'Change assigned faculty...' : 'Choose registered faculty...'}
+                      className="mt-1"
+                      onChange={value => {
+                        const chosenUser = eligibleFaculty.find(u => u.id === value);
+                        if (chosenUser) {
+                          onUpdateRow(row.id, {
+                            firstName: chosenUser.firstName || chosenUser.name.split(' ')[0] || '',
+                            middleName: chosenUser.middleName || '',
+                            lastName: chosenUser.lastName || chosenUser.name.split(' ').slice(1).join(' ') || '',
+                          });
+                        }
+                      }}
+                      options={[
+                        { value: '', label: isValid ? 'Change assigned faculty...' : 'Choose registered faculty...' },
+                        ...eligibleFaculty.map(f => ({
+                          value: f.id,
+                          label: `${f.name} (${f.title || f.role})`,
+                        })),
+                      ]}
+                    />
                   </div>
                 </td>
 
@@ -180,3 +196,6 @@ export const ChairSheetPreviewTable: React.FC<ChairSheetPreviewTableProps> = ({
     </div>
   );
 };
+
+export type AssignedCoursesPreviewTableProps = ChairSheetPreviewTableProps;
+export const AssignedCoursesPreviewTable: React.FC<AssignedCoursesPreviewTableProps> = ChairSheetPreviewTable;

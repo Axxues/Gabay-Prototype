@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useLMS } from '../../shared/context/LMSContext';
-import { getDisplayRoleLabel } from '../../shared/utils/roles';
+import { getDisplayRoleLabel, canManageCourseContent } from '../../shared/utils/roles';
 import type { Module, ModuleItem } from '../../shared/types/lms';
 import {
   FileText,
@@ -45,7 +45,6 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
   onSelectQuiz
 }) => {
   const {
-    activeRole,
     activeUser,
     db,
     isLoading,
@@ -116,20 +115,12 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
     setExpandedItems(prev => ({ ...prev, [itemId]: !prev[itemId] }));
   };
 
-  // Permission helpers (Faculty and admin can author and edit course modules)
-  const canEditModule = (mod: Module) => {
-    if (activeRole === 'faculty' || activeRole === 'admin') {
-      return !mod.authorId || mod.authorId === activeUser.id || activeUser.role === 'faculty' || activeUser.role === 'admin';
-    }
-    return false;
-  };
+  const course = db.courses.find(c => c.id === courseId);
+  const isAssignedInstructor = canManageCourseContent(course, activeUser);
 
-  const canEditItem = (mod: Module, item: ModuleItem) => {
-    if (activeRole === 'faculty' || activeRole === 'admin') {
-      return !item.authorId || item.authorId === activeUser.id || !mod.authorId || mod.authorId === activeUser.id || activeUser.role === 'faculty' || activeUser.role === 'admin';
-    }
-    return false;
-  };
+  // Permission helpers: strictly limited to the assigned faculty instructor
+  const canEditModule = (_mod: Module) => isAssignedInstructor;
+  const canEditItem = (_mod: Module, _item: ModuleItem) => isAssignedInstructor;
 
   const toggleExpand = (modId: string) => {
     setExpandedModules(prev => ({ ...prev, [modId]: !prev[modId] }));
@@ -377,7 +368,7 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
         title="Modules"
         description="Course learning units, syllabus readings, and downloadable laboratory materials."
         actions={
-          (activeRole === 'faculty' || activeRole === 'admin') && (
+          isAssignedInstructor && (
             <button
               type="button"
               onClick={() => {
@@ -396,7 +387,7 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
       />
 
       {/* Inline Add Module Input Form at the Top Part */}
-      {isAddModuleOpen && (activeRole === 'faculty' || activeRole === 'admin') && (
+      {isAddModuleOpen && isAssignedInstructor && (
         <form
           onSubmit={handleCreateModule}
           className="p-4 bg-card border border-primary/40 rounded-2xl shadow-subtle animate-fade-in space-y-3"

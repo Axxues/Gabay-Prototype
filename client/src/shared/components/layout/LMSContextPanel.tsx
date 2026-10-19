@@ -353,7 +353,6 @@ const CourseNavigationPanel: React.FC<CourseNavigationPanelProps> = ({
           })}
         </nav>
       </div>
-      <div className="px-2 pt-3 text-[10px] text-muted-foreground">Trail: LMS &gt; courses &gt; {courseSubTab}</div>
     </aside>
   );
 };

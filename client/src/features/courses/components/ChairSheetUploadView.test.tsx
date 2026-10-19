@@ -44,6 +44,38 @@ const mockUsers: User[] = [
     title: 'Assistant Professor',
     avatar: '',
   },
+  {
+    id: 'u-chair-brody',
+    name: 'Marcus Brody',
+    firstName: 'Marcus',
+    lastName: 'Brody',
+    email: 'mbrody@dmmmsu.edu.ph',
+    role: 'admin',
+    adminSubrole: 'chairperson',
+    title: 'Program Chairperson',
+    avatar: '',
+  },
+  {
+    id: 'u-dean-eleanor',
+    name: 'Dean Eleanor',
+    firstName: 'Eleanor',
+    lastName: 'Vance',
+    email: 'evance@dmmmsu.edu.ph',
+    role: 'admin',
+    adminSubrole: 'dean',
+    title: 'College Dean',
+    avatar: '',
+  },
+  {
+    id: 'u-admin-jayvee',
+    name: 'Jayvee Admin',
+    firstName: 'Jayvee',
+    lastName: 'Admin',
+    email: 'admin@dmmmsu.edu.ph',
+    role: 'admin',
+    title: 'System Administrator',
+    avatar: '',
+  },
 ];
 
 const mockCreateCourse = vi.fn(async (data: Partial<Course>) => ({
@@ -111,7 +143,7 @@ describe('ChairSheetUploadView', () => {
       />
     );
 
-    expect(screen.getByRole('heading', { level: 1, name: /Upload Department Chair-Sheet/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: /Upload Department Assigned Courses/i })).toBeInTheDocument();
     expect(screen.getByText(/Drag and drop your/i)).toBeInTheDocument();
   });
 
@@ -129,7 +161,7 @@ describe('ChairSheetUploadView', () => {
       ['Raymund', 'Ezekiel', 'Dilan', 'CSPC 112', 'Software Engineering 2', '4-E'],
     ]);
 
-    const input = screen.getByTestId('chair-sheet-file-input');
+    const input = screen.getByTestId('assigned-courses-file-input');
     fireEvent.change(input, { target: { files: [file] } });
 
     await waitFor(() => {
@@ -178,7 +210,7 @@ describe('ChairSheetUploadView', () => {
       ['CharlyTypo', 'Seli', 'Marzan', 'CSCC 103', 'Object Oriented Programming', '4-E'],
     ]);
 
-    const input = screen.getByTestId('chair-sheet-file-input');
+    const input = screen.getByTestId('assigned-courses-file-input');
     fireEvent.change(input, { target: { files: [file] } });
 
     await waitFor(() => {
@@ -220,7 +252,7 @@ describe('ChairSheetUploadView', () => {
       ['Charlie', 'Seli', 'Marzan', 'CSCC 103', 'Object Oriented Programming', '4-E'],
     ]);
 
-    fireEvent.change(screen.getByTestId('chair-sheet-file-input'), { target: { files: [file] } });
+    fireEvent.change(screen.getByTestId('assigned-courses-file-input'), { target: { files: [file] } });
 
     const reuploadBtn = await screen.findByRole('button', { name: /Reupload/i });
     const approveBtn = screen.getByRole('button', { name: /Approve & Create 1 Course/i });
@@ -263,7 +295,7 @@ describe('ChairSheetUploadView', () => {
       ['Charlie', 'Seli', 'Marzan', 'CSCC 103', 'Object Oriented Programming', '4-E'],
     ]);
 
-    const input = screen.getByTestId('chair-sheet-file-input');
+    const input = screen.getByTestId('assigned-courses-file-input');
     fireEvent.change(input, { target: { files: [file] } });
 
     await waitFor(() => {
@@ -295,6 +327,92 @@ describe('ChairSheetUploadView', () => {
     fireEvent.click(confirmDeleteBtn);
 
     expect(screen.queryByDisplayValue('CSCC 103')).not.toBeInTheDocument();
+  });
+
+  it('excludes Chairperson, Dean, and Admin from the Faculty Verification picker dropdown', async () => {
+    render(
+      <ChairSheetUploadView
+        onNavigateTab={mockOnNavigateTab}
+        onNavigateCourse={mockOnNavigateCourse}
+      />
+    );
+
+    const input = screen.getByTestId('assigned-courses-file-input');
+    const file = createTestWorkbookBuffer([
+      ['First Name', 'Middle Name', 'Last Name', 'Course Code', 'Descriptive Title', 'Year and Section'],
+      ['Charlie', 'Seli', 'Marzan', 'CSCC 103', 'Object Oriented Programming', '4-E'],
+    ]);
+
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('CSCC 103')).toBeInTheDocument();
+    });
+
+    const facultySelect = screen.getByLabelText(/Assign registered faculty/i);
+    const options = Array.from(facultySelect.querySelectorAll('option')).map(o => o.textContent);
+
+    // Pure faculty must be in the options
+    expect(options.some(t => t?.includes('Charlie Seli Marzan'))).toBe(true);
+    expect(options.some(t => t?.includes('Raymund Ezekiel Dilan'))).toBe(true);
+
+    // Administrative monitors must NOT be in the options
+    expect(options.some(t => t?.includes('Marcus Brody'))).toBe(false);
+    expect(options.some(t => t?.includes('Dean Eleanor'))).toBe(false);
+    expect(options.some(t => t?.includes('Jayvee Admin'))).toBe(false);
+  });
+
+  it('displays Semester column, allows editing it, and generates course with corresponding term', async () => {
+    render(
+      <ChairSheetUploadView
+        onNavigateTab={mockOnNavigateTab}
+        onNavigateCourse={mockOnNavigateCourse}
+      />
+    );
+
+    const input = screen.getByTestId('assigned-courses-file-input');
+    const file = createTestWorkbookBuffer([
+      ['First Name', 'Middle Name', 'Last Name', 'Course Code', 'Descriptive Title', 'Year and Section', 'Semester'],
+      ['Charlie', 'Seli', 'Marzan', 'CSCC 103', 'Object Oriented Programming', '4-E', 'Second'],
+    ]);
+
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('CSCC 103')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('Second')).toBeInTheDocument();
+    });
+
+    // Check table header
+    expect(screen.getByRole('columnheader', { name: /^Semester$/i })).toBeInTheDocument();
+
+    // Edit semester from 'Second' to 'Mid-Year'
+    const semInput = screen.getByDisplayValue('Second');
+    fireEvent.change(semInput, { target: { value: 'Mid-Year' } });
+    expect(screen.getByDisplayValue('Mid-Year')).toBeInTheDocument();
+
+    // Approve & Create
+    const approveBtn = screen.getByRole('button', { name: /Approve & Create 1 Course/i });
+    fireEvent.click(approveBtn);
+
+    const confirmBtn = screen.getByRole('button', { name: /Confirm & Create/i });
+    fireEvent.click(confirmBtn);
+
+    await waitFor(() => {
+      expect(mockCreateCourse).toHaveBeenCalledTimes(1);
+    });
+
+    expect(mockCreateCourse).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: 'CSCC 103',
+        title: 'Object Oriented Programming',
+        section: '4-E',
+        instructorId: 'u-charlie',
+        instructorName: 'Charlie Seli Marzan',
+        term: 'Midyear AY 2025-2026',
+        semester: 'Mid-Year',
+      })
+    );
   });
 });
 

@@ -8,6 +8,9 @@ const mocks = vi.hoisted(() => ({
   activeRole: 'faculty',
   activeUser: { id: 'u-fac-1', name: 'Faculty', role: 'faculty' } as any,
   pendingRequests: [] as any[],
+  baselineSchoolYear: { year: '2025-2026', isActive: true } as any,
+  activeCollegeSchoolYear: undefined as any,
+  collegeSchoolYears: undefined as any,
   db: {
     courses: [],
     enrollmentRequests: [],
@@ -30,10 +33,15 @@ vi.mock('../../shared/context/LMSContext', () => ({
     studentApproveInvitation: vi.fn(),
     studentDeclineInvitation: vi.fn(),
     deleteCourse: vi.fn(),
+    updateCourse: vi.fn(),
     showConfirm: vi.fn(),
     showAlert: vi.fn(),
     getApprovedRequestsForCourse: vi.fn().mockResolvedValue([]),
+    getBaselineSchoolYear: () => mocks.baselineSchoolYear,
+    getActiveSchoolYearForCollege: () => mocks.activeCollegeSchoolYear,
+    getSchoolYearsByCollege: () => mocks.collegeSchoolYears || [],
   }),
+  getOrGenerateCourseJoinCode: (c: any) => c?.joinCode || c?.join_code || `${(c?.code || 'GBY').replace(/[^a-zA-Z0-9]/g, '').slice(0, 4).toUpperCase()}-TEST`,
 }));
 
 import { DashboardPage } from './DashboardPage';
@@ -142,19 +150,140 @@ describe('DashboardPage admin access', () => {
     } as any;
   });
 
-  test('admin only sees scoped courses and does not see removed to-grade or system overview cards', () => {
+  test('admin monitors university-wide courses with college selector and program tabs', () => {
     renderPage();
 
-    // Admin only sees courses they created
+    // Admin sees university-wide monitoring title
+    expect(screen.getByText('University Course Monitoring')).toBeInTheDocument();
+
+    // Admin sees all courses across the university
     expect(screen.getByText('Data Structures')).toBeInTheDocument();
-    expect(screen.queryByText('Algorithms & Complexity')).not.toBeInTheDocument();
+    expect(screen.getByText('Algorithms & Complexity')).toBeInTheDocument();
+
+    // Option 1 controls are present
+    expect(screen.getByTestId('college-scope-selector')).toBeInTheDocument();
+    expect(screen.getByTestId('program-tabs-container')).toBeInTheDocument();
 
     // Removed cards should not be rendered
     expect(screen.queryByText('To grade')).not.toBeInTheDocument();
     expect(screen.queryByText('College system overview')).not.toBeInTheDocument();
   });
 
+  test('admin Academic Scope is based on the university baseline academic year', () => {
+    mocks.activeRole = 'admin';
+    mocks.activeUser = { id: 'u-admin-1', name: 'University Admin', role: 'admin' } as any;
+    mocks.baselineSchoolYear = { year: '2026-2027', isActive: true };
+
+    renderPage();
+
+    // The Academic Scope reflects the baseline year
+    expect(screen.getAllByText('AY 2026-2027').length).toBeGreaterThanOrEqual(1);
+    const ayButtons = screen.getAllByRole('button').filter(b => b.textContent?.includes('AY 2026-2027'));
+    expect(ayButtons.length).toBeGreaterThan(0);
+  });
+
+  test('renders baseline indicator badge when college active academic year differs from baseline', () => {
+    mocks.activeRole = 'dean';
+    mocks.activeUser = {
+      id: 'u-dean-1',
+      name: 'Dean CCS',
+      role: 'dean',
+      collegeId: 'col-ccs',
+      collegeName: 'College of Computer Science',
+    } as any;
+    // College has rolled over to 2026-2027, while university baseline is 2025-2026
+    mocks.activeCollegeSchoolYear = { id: 'sy-col-2026', year: '2026-2027', isActive: true };
+    mocks.baselineSchoolYear = { id: 'sy-base-2025', year: '2025-2026', isActive: true };
+
+    renderPage();
+
+    // Wheel contains both Current and Baseline badges
+    expect(screen.getByText('Current')).toBeInTheDocument();
+    const baselineBadge = screen.getByTestId('academic-scope-baseline-badge');
+    expect(baselineBadge).toBeInTheDocument();
+    expect(baselineBadge.textContent).toBe('Baseline');
+
+    // The baseline badge is on the AY 2025-2026 button
+    const baselineBtn = baselineBadge.closest('button');
+    expect(baselineBtn?.textContent).toContain('AY 2025-2026');
+
+    // Clicking the baseline button switches selected year to baseline
+    fireEvent.click(baselineBtn!);
+    expect(screen.getAllByText('AY 2025-2026').length).toBeGreaterThanOrEqual(2);
+  });
+
+  test('does not render baseline indicator badge when college active academic year matches baseline', () => {
+    mocks.activeRole = 'dean';
+    mocks.activeUser = {
+      id: 'u-dean-1',
+      name: 'Dean CCS',
+      role: 'dean',
+      collegeId: 'col-ccs',
+      collegeName: 'College of Computer Science',
+    } as any;
+    // Both active and baseline are 2025-2026
+    mocks.activeCollegeSchoolYear = { id: 'sy-col-2025', year: '2025-2026', isActive: true };
+    mocks.baselineSchoolYear = { id: 'sy-base-2025', year: '2025-2026', isActive: true };
+
+    renderPage();
+
+    expect(screen.getByText('Current')).toBeInTheDocument();
+    expect(screen.queryByTestId('academic-scope-baseline-badge')).not.toBeInTheDocument();
+  });
+
+  test('dean monitors collegiate courses with horizontal program tabs', () => {
+    mocks.activeRole = 'dean';
+    mocks.activeUser = {
+      id: 'u-dean-1',
+      name: 'Dean CCS',
+      role: 'dean',
+      collegeId: 'col-ccs',
+      collegeName: 'College of Computer Science',
+    } as any;
+
+    renderPage();
+
+    expect(screen.getByText('Collegiate Course Monitoring')).toBeInTheDocument();
+    expect(screen.getByTestId('program-tabs-container')).toBeInTheDocument();
+    expect(screen.getByTestId('program-tab-all')).toBeInTheDocument();
+    // College selector is NOT shown for Dean (Dean is scoped strictly to their college)
+    expect(screen.queryByTestId('college-scope-selector')).not.toBeInTheDocument();
+  });
+
+  test('chairperson monitors program courses with jurisdiction badge and upload chair-sheet action', () => {
+    mocks.activeRole = 'chairperson';
+    mocks.activeUser = {
+      id: 'u-chair-1',
+      name: 'Chair CS',
+      role: 'chairperson',
+      department: 'Department of Computer Science',
+      program: 'Computer Science',
+    } as any;
+
+    renderPage();
+
+    expect(screen.getByText('Program Course Monitoring')).toBeInTheDocument();
+    expect(screen.getByTestId('chair-jurisdiction-banner')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /upload assigned courses/i })).toBeInTheDocument();
+    // Chairperson has no college selector or multi-program tabs
+    expect(screen.queryByTestId('college-scope-selector')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('program-tabs-container')).not.toBeInTheDocument();
+  });
+
+  test('faculty views My Teaching Courses without manual course creation button', () => {
+    mocks.activeRole = 'faculty';
+    mocks.activeUser = { id: 'u-fac-1', name: 'Prof Alice', role: 'faculty' } as any;
+
+    renderPage();
+
+    expect(screen.getByText('My Teaching Courses')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /create course|new course/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /upload assigned courses/i })).not.toBeInTheDocument();
+  });
+
   test('hides into small card on left side and shows Academic Scope wheel when clicked', async () => {
+    mocks.activeRole = 'admin';
+    mocks.activeUser = { id: 'u-admin-1', name: 'Dean Admin', role: 'admin' } as any;
     renderPage();
 
     // Initially expanded
@@ -179,4 +308,192 @@ describe('DashboardPage admin access', () => {
     });
     expect(localStorage.getItem('gabay_academic_scope_collapsed')).toBe('false');
   });
+
+  test('faculty has authority to edit courses but NOT delete courses', () => {
+    mocks.activeRole = 'faculty';
+    mocks.activeUser = { id: 'u-fac-1', name: 'Prof Alice', role: 'faculty' } as any;
+    mocks.db = {
+      courses: [
+        { id: 'c1', code: 'CMSC 131', title: 'Data Structures', instructorId: 'u-fac-1', schoolYear: '2025-2026' }
+      ],
+      enrollmentRequests: [],
+      users: [{ id: 'u-fac-1', name: 'Prof Alice', role: 'faculty' }],
+      submissions: [],
+      activities: [],
+      quizzes: [],
+      modules: []
+    } as any;
+
+    const onNavigateCourse = vi.fn();
+    render(
+      <DashboardPage onNavigateCourse={onNavigateCourse} onNavigateTab={() => {}} />
+    );
+
+    // Faculty has Edit Course button
+    expect(screen.getByTitle('Edit Course')).toBeInTheDocument();
+    // Faculty does NOT have Delete Course button
+    expect(screen.queryByTitle('Delete Course')).not.toBeInTheDocument();
+
+    // Clicking Edit Course navigates to edit page
+    fireEvent.click(screen.getByTitle('Edit Course'));
+    expect(onNavigateCourse).toHaveBeenCalledWith('c1', 'edit');
+  });
+
+  test('admin has authority to both edit and delete courses', () => {
+    mocks.activeRole = 'admin';
+    mocks.activeUser = { id: 'u-admin-1', name: 'Dean Admin', role: 'admin' } as any;
+    mocks.baselineSchoolYear = { year: '2025-2026', isActive: true };
+    mocks.db = {
+      courses: [
+        { id: 'c1', code: 'CMSC 131', title: 'Data Structures', instructorId: 'u-admin-1', schoolYear: '2025-2026' }
+      ],
+      enrollmentRequests: [],
+      users: [{ id: 'u-admin-1', name: 'Dean Admin', role: 'admin' }],
+      submissions: [],
+      activities: [],
+      quizzes: [],
+      modules: []
+    } as any;
+
+    renderPage();
+
+    expect(screen.getByTitle('Edit Course')).toBeInTheDocument();
+    expect(screen.getByTitle('Delete Course')).toBeInTheDocument();
+  });
 });
+
+describe('DashboardPage semester filter', () => {
+  beforeEach(() => {
+    mocks.isLoading = false;
+    mocks.activeRole = 'faculty';
+    mocks.activeUser = { id: 'u-fac-1', name: 'Dr. Faculty', role: 'faculty' } as any;
+    mocks.baselineSchoolYear = { year: '2025-2026', isActive: true };
+    mocks.db = {
+      courses: [
+        {
+          id: 'c-sem-1',
+          code: 'CMSC 131',
+          title: 'Object-Oriented Programming',
+          instructorId: 'u-fac-1',
+          schoolYear: '2025-2026',
+          semester: 'First',
+          term: '1st Sem AY 2025-2026',
+        },
+        {
+          id: 'c-sem-2',
+          code: 'CMSC 142',
+          title: 'Design and Analysis of Algorithms',
+          instructorId: 'u-fac-1',
+          schoolYear: '2025-2026',
+          semester: 'Second',
+          term: '2nd Sem AY 2025-2026',
+        },
+        {
+          id: 'c-sem-3',
+          code: 'CMSC 198',
+          title: 'Practicum',
+          instructorId: 'u-fac-1',
+          schoolYear: '2025-2026',
+          semester: 'Mid-Year',
+          term: 'Midyear AY 2025-2026',
+        },
+      ],
+      enrollmentRequests: [],
+      users: [{ id: 'u-fac-1', name: 'Dr. Faculty', role: 'faculty' }],
+      submissions: [],
+      activities: [],
+      quizzes: [],
+      modules: [],
+    } as any;
+  });
+
+  test('renders semester filter tabs with correct labels and live course counts', () => {
+    renderPage();
+
+    expect(screen.getByTestId('semester-filter-container')).toBeInTheDocument();
+    expect(screen.getByTestId('semester-tab-all')).toHaveTextContent('All Semesters');
+    expect(screen.getByTestId('semester-tab-First')).toHaveTextContent('First Semester');
+    expect(screen.getByTestId('semester-tab-Second')).toHaveTextContent('Second Semester');
+    expect(screen.getByTestId('semester-tab-Mid-Year')).toHaveTextContent('Mid-Year');
+
+    // Counts
+    expect(screen.getByTestId('semester-tab-all')).toHaveTextContent('3');
+    expect(screen.getByTestId('semester-tab-First')).toHaveTextContent('1');
+    expect(screen.getByTestId('semester-tab-Second')).toHaveTextContent('1');
+    expect(screen.getByTestId('semester-tab-Mid-Year')).toHaveTextContent('1');
+
+    // Initially displays all 3 courses
+    expect(screen.getByText('Object-Oriented Programming')).toBeInTheDocument();
+    expect(screen.getByText('Design and Analysis of Algorithms')).toBeInTheDocument();
+    expect(screen.getByText('Practicum')).toBeInTheDocument();
+  });
+
+  test('filters courses by clicking specific semester tab', () => {
+    renderPage();
+
+    // Click First Semester
+    fireEvent.click(screen.getByTestId('semester-tab-First'));
+    expect(screen.getByText('Object-Oriented Programming')).toBeInTheDocument();
+    expect(screen.queryByText('Design and Analysis of Algorithms')).not.toBeInTheDocument();
+    expect(screen.queryByText('Practicum')).not.toBeInTheDocument();
+
+    // Click Second Semester
+    fireEvent.click(screen.getByTestId('semester-tab-Second'));
+    expect(screen.queryByText('Object-Oriented Programming')).not.toBeInTheDocument();
+    expect(screen.getByText('Design and Analysis of Algorithms')).toBeInTheDocument();
+    expect(screen.queryByText('Practicum')).not.toBeInTheDocument();
+
+    // Click Mid-Year
+    fireEvent.click(screen.getByTestId('semester-tab-Mid-Year'));
+    expect(screen.queryByText('Object-Oriented Programming')).not.toBeInTheDocument();
+    expect(screen.queryByText('Design and Analysis of Algorithms')).not.toBeInTheDocument();
+    expect(screen.getByText('Practicum')).toBeInTheDocument();
+
+    // Click All Semesters
+    fireEvent.click(screen.getByTestId('semester-tab-all'));
+    expect(screen.getByText('Object-Oriented Programming')).toBeInTheDocument();
+    expect(screen.getByText('Design and Analysis of Algorithms')).toBeInTheDocument();
+    expect(screen.getByText('Practicum')).toBeInTheDocument();
+  });
+
+  test('displays join code directly from Likha ERP on course cards', () => {
+    mocks.activeRole = 'faculty';
+    mocks.activeUser = { id: 'u1', name: 'Prof Alice', role: 'faculty' };
+    mocks.db.courses = [
+      {
+        id: 'c-join-1',
+        code: 'CSPC 112',
+        title: 'Software Engineering 2',
+        section: '4-E',
+        instructorId: 'u1',
+        published: true,
+        joinCode: 'CSPC-JOIN'
+      },
+      {
+        id: 'c-join-2',
+        code: 'CCSC 303',
+        title: 'Computer Programming 1',
+        section: '1-A',
+        instructorId: 'u1',
+        published: true,
+        join_code: 'CCSC-G983'
+      },
+      {
+        id: 'c-join-3',
+        code: 'CSCC 103',
+        title: 'Object Oriented Programming',
+        section: '4-E',
+        instructorId: 'u1',
+        published: true,
+        // No joinCode or join_code from Likha ERP
+      }
+    ];
+
+    renderPage();
+
+    expect(screen.getByText('CSPC-JOIN')).toBeInTheDocument();
+    expect(screen.getByText('CCSC-G983')).toBeInTheDocument();
+    expect(screen.getByText('N/A')).toBeInTheDocument();
+  });
+});
+

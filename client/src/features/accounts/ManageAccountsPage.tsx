@@ -1,12 +1,13 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLMS } from '../../shared/context/LMSContext';
 import type { User, UserRole, PendingRegistration } from '../../shared/types/lms';
 import { PageHeader } from '../../shared/components/common/PageHeader';
 import { UserAvatar } from '../../shared/components/common/UserAvatar';
 import { DialogFrame } from '../../shared/components/common/DialogFrame';
-import { getDisplayRoleLabel, compareUsersByAuthority } from '../../shared/utils/roles';
+import { getDisplayRoleLabel, compareUsersByAuthority, isFacultyRole, isChairRole, isDeanRole } from '../../shared/utils/roles';
 import { normalizeProgramName } from '../../shared/data/collegesData';
+import { CustomDropdown, type DropdownOption } from '../../shared/components/common/CustomDropdown';
 import {
   Users,
   Search,
@@ -19,8 +20,6 @@ import {
   X,
   AlertTriangle,
   Mail,
-  ChevronDown,
-  Check,
   Clock,
   CheckCircle2,
   XCircle,
@@ -30,140 +29,6 @@ import {
   Eye
 } from 'lucide-react';
 
-
-interface DropdownOption {
-  value: string;
-  label: string;
-  icon?: React.ReactNode;
-  badge?: string;
-}
-
-interface CustomDropdownProps {
-  value: string;
-  onChange: (value: string) => void;
-  options: DropdownOption[];
-  placeholder?: string;
-  icon?: React.ReactNode;
-  className?: string;
-  buttonClassName?: string;
-  searchable?: boolean;
-  disabled?: boolean;
-}
-
-const CustomDropdown: React.FC<CustomDropdownProps> = ({
-  value,
-  onChange,
-  options,
-  placeholder = 'Select an option',
-  icon,
-  className = '',
-  buttonClassName = '',
-  searchable = false,
-  disabled = false
-}) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [search, setSearch] = useState('');
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isOpen]);
-
-  const selectedOption = options.find(o => o.value === value);
-
-  const filteredOptions = searchable && search.trim()
-    ? options.filter(o => o.label.toLowerCase().includes(search.toLowerCase().trim()))
-    : options;
-
-  return (
-    <div className={`relative ${className}`} ref={dropdownRef}>
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => setIsOpen(!isOpen)}
-        className={`w-full flex items-center justify-between p-2.5 bg-background border rounded-xl text-xs font-sans transition-all cursor-pointer ${
-          disabled ? 'opacity-50 cursor-not-allowed border-border' : ''
-        } ${
-          isOpen
-            ? 'border-primary ring-2 ring-primary/20 shadow-none'
-            : 'border-border hover:border-primary/50 text-foreground'
-        } ${buttonClassName}`}
-      >
-        <div className="flex items-center space-x-2 truncate mr-2">
-          {icon || selectedOption?.icon}
-          <span className="truncate font-medium">
-            {selectedOption ? selectedOption.label : placeholder}
-          </span>
-        </div>
-        <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-      </button>
-
-      {isOpen && (
-        <div className="absolute z-50 left-0 right-0 mt-1 bg-card border border-border rounded-xl shadow-elevated overflow-hidden animate-scale-in">
-          {searchable && (
-            <div className="p-2 border-b border-border bg-muted/30">
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 text-muted-foreground absolute left-2.5 top-2.5" />
-                <input
-                  type="text"
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  placeholder="Filter..."
-                  className="w-full pl-8 pr-3 py-1.5 bg-background border border-border rounded-lg text-xs font-sans text-foreground outline-none focus:ring-1 focus:ring-primary/40"
-                  autoFocus
-                />
-              </div>
-            </div>
-          )}
-
-          <div className="max-h-56 overflow-y-auto p-1 space-y-0.5 custom-scrollbar">
-            {filteredOptions.length === 0 ? (
-              <div className="p-3 text-center text-xs text-muted-foreground font-sans">
-                No matching options
-              </div>
-            ) : (
-              filteredOptions.map(opt => {
-                const isSelected = opt.value === value;
-                return (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => {
-                      onChange(opt.value);
-                      setIsOpen(false);
-                      setSearch('');
-                    }}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs transition-colors cursor-pointer text-left ${
-                      isSelected
-                        ? 'bg-primary text-primary-foreground font-bold shadow-xs'
-                        : 'text-foreground hover:bg-primary/10 hover:text-primary font-medium'
-                    }`}
-                  >
-                    <div className="flex items-center space-x-2 truncate mr-2">
-                      {opt.icon && <span className="shrink-0">{opt.icon}</span>}
-                      <span className="truncate">{opt.label}</span>
-                    </div>
-                    {isSelected && <Check className="w-3.5 h-3.5 shrink-0" />}
-                  </button>
-                );
-              })
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
 
 interface ManageAccountsPageProps {
   onNavigateTab?: (tab: string) => void;
@@ -302,6 +167,11 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
 
   // Role scoping helpers
   const isDean = activeRole === 'admin' && activeUser?.adminSubrole === 'dean';
+  const isChair =
+    (activeRole === 'admin' && activeUser?.adminSubrole === 'chairperson') ||
+    isChairRole(activeUser, activeRole);
+  const canCreateLeadership =
+    (activeRole === 'superadmin' || activeRole === 'admin') && !isDean && !isChair;
   const deanCollegeId = activeUser?.collegeId;
   const deanCollegeName = activeUser?.collegeName?.toLowerCase();
   const effectiveDeanCollegeId =
@@ -728,93 +598,110 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
             </span>
           )}
         </button>
+
+        {canCreateLeadership && (
+          <button
+            type="button"
+            onClick={() => {
+              if (onNavigateTab) {
+                onNavigateTab('create-leadership');
+              } else {
+                navigate('/accounts/create-leadership');
+              }
+            }}
+            className="ml-auto px-3.5 py-1.5 sm:px-4 sm:py-2 bg-primary text-primary-foreground font-bold text-xs rounded-xl shadow-xs hover:bg-primary/90 transition-all cursor-pointer flex items-center space-x-1.5 shrink-0"
+          >
+            <ShieldCheck className="w-3.5 h-3.5" />
+            <span>Create Leadership Account</span>
+          </button>
+        )}
       </div>
 
       {/* TAB 1: ACTIVE DIRECTORY */}
       {activeMainTab === 'active-directory' && (
         <div className="space-y-6">
           {/* 5-Card Metric Overview */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 sm:gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             {/* Card 1: Total Accounts */}
-            <div className="p-4 sm:p-4.5 bg-card border border-border hover:border-primary/40 rounded-2xl shadow-none flex flex-col justify-between transition-all duration-200 group col-span-2 sm:col-span-1">
+            <div className="p-3.5 bg-card border border-border hover:border-primary/40 rounded-xl shadow-none flex flex-col justify-between transition-all duration-200 group col-span-2 sm:col-span-1">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-bold text-muted-foreground truncate">
+                <span className="text-[11px] font-bold text-muted-foreground truncate">
                   Total Accounts
                 </span>
-                <div className="w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                  <Users className="w-4 h-4" />
+                <div className="w-7 h-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <Users className="w-3.5 h-3.5" />
                 </div>
               </div>
-              <div className="mt-3">
-                <div className="text-2xl sm:text-3xl font-black text-foreground font-sans tracking-tight">
+              <div className="mt-2">
+                <div className="text-xl sm:text-2xl font-black text-foreground font-sans tracking-tight">
                   {stats.total}
                 </div>
               </div>
             </div>
 
             {/* Card 2: Faculty Instructors */}
-            <div className="p-4 sm:p-4.5 bg-card border border-border hover:border-emerald-500/40 rounded-2xl shadow-none flex flex-col justify-between transition-all duration-200 group">
+            <div className="p-3.5 bg-card border border-border hover:border-emerald-500/40 rounded-xl shadow-none flex flex-col justify-between transition-all duration-200 group">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-bold text-muted-foreground truncate">
+                <span className="text-[11px] font-bold text-muted-foreground truncate">
                   Faculty Instructors
                 </span>
-                <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                  <UserCheck className="w-4 h-4" />
+                <div className="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <UserCheck className="w-3.5 h-3.5" />
                 </div>
               </div>
-              <div className="mt-3">
-                <div className="text-2xl sm:text-3xl font-black text-foreground font-sans tracking-tight">
+              <div className="mt-2">
+                <div className="text-xl sm:text-2xl font-black text-foreground font-sans tracking-tight">
                   {stats.faculty}
                 </div>
               </div>
             </div>
 
             {/* Card 3: Enrolled Students */}
-            <div className="p-4 sm:p-4.5 bg-card border border-border hover:border-blue-500/40 rounded-2xl shadow-none flex flex-col justify-between transition-all duration-200 group">
+            <div className="p-3.5 bg-card border border-border hover:border-blue-500/40 rounded-xl shadow-none flex flex-col justify-between transition-all duration-200 group">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-bold text-muted-foreground truncate">
+                <span className="text-[11px] font-bold text-muted-foreground truncate">
                   Enrolled Students
                 </span>
-                <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                  <GraduationCap className="w-4 h-4" />
+                <div className="w-7 h-7 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <GraduationCap className="w-3.5 h-3.5" />
                 </div>
               </div>
-              <div className="mt-3">
-                <div className="text-2xl sm:text-3xl font-black text-foreground font-sans tracking-tight">
+              <div className="mt-2">
+                <div className="text-xl sm:text-2xl font-black text-foreground font-sans tracking-tight">
                   {stats.students}
                 </div>
               </div>
             </div>
 
             {/* Card 4: College Administrators */}
-            <div className="p-4 sm:p-4.5 bg-card border border-border hover:border-primary/40 rounded-2xl shadow-none flex flex-col justify-between transition-all duration-200 group">
+            <div className="p-3.5 bg-card border border-border hover:border-primary/40 rounded-xl shadow-none flex flex-col justify-between transition-all duration-200 group">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-bold text-muted-foreground truncate">
+                <span className="text-[11px] font-bold text-muted-foreground truncate">
                   College Administrators
                 </span>
-                <div className="w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                  <Building className="w-4 h-4" />
+                <div className="w-7 h-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <Building className="w-3.5 h-3.5" />
                 </div>
               </div>
-              <div className="mt-3">
-                <div className="text-2xl sm:text-3xl font-black text-foreground font-sans tracking-tight">
+              <div className="mt-2">
+                <div className="text-xl sm:text-2xl font-black text-foreground font-sans tracking-tight">
                   {stats.admin}
                 </div>
               </div>
             </div>
 
             {/* Card 5: Non-Teaching Staff */}
-            <div className="p-4 sm:p-4.5 bg-card border border-border hover:border-amber-500/40 rounded-2xl shadow-none flex flex-col justify-between transition-all duration-200 group">
+            <div className="p-3.5 bg-card border border-border hover:border-amber-500/40 rounded-xl shadow-none flex flex-col justify-between transition-all duration-200 group">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-bold text-muted-foreground truncate">
+                <span className="text-[11px] font-bold text-muted-foreground truncate">
                   Non-Teaching Staff
                 </span>
-                <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                  <ShieldCheck className="w-4 h-4" />
+                <div className="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <ShieldCheck className="w-3.5 h-3.5" />
                 </div>
               </div>
-              <div className="mt-3">
-                <div className="text-2xl sm:text-3xl font-black text-foreground font-sans tracking-tight">
+              <div className="mt-2">
+                <div className="text-xl sm:text-2xl font-black text-foreground font-sans tracking-tight">
                   {stats.staff}
                 </div>
               </div>
@@ -968,7 +855,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
 
                       // Course count
                       let courseCount = 0;
-                      if (user.role === 'faculty') {
+                      if (isFacultyRole(user, user.role)) {
                         courseCount = (db?.courses || []).filter(c => c.instructorId === user.id).length;
                       } else if (user.role === 'student') {
                         courseCount = (user.enrolledCourseIds || []).length;
@@ -977,7 +864,19 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
                       const userName = user.name || 'Unnamed Account';
                       const userEmail = user.email || 'no-email@dmmmsu.edu.ph';
                       const userDept = normalizeProgramName(user.program || user.department || 'Computer Science');
-                      const userTitle = user.title || (user.role === 'student' ? 'Student' : 'Faculty Instructor');
+                      const userTitle = user.title || (
+                        user.role === 'student'
+                          ? 'Student'
+                          : isChairRole(user, user.role)
+                            ? 'Department Chairperson'
+                            : isDeanRole(user, user.role)
+                              ? 'College Dean'
+                              : user.role === 'admin' || user.role === 'superadmin'
+                                ? 'University Administrator'
+                                : user.role === 'staff'
+                                  ? 'University Staff'
+                                  : 'Faculty Instructor'
+                      );
 
                       return (
                         <tr
@@ -1048,7 +947,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
                           {/* Course Shells */}
                           <td className="py-3.5 px-4">
                             <span className="font-sans text-[11px] text-muted-foreground">
-                              {user.role === 'faculty' ? (
+                              {isFacultyRole(user, user.role) ? (
                                 <span className="text-foreground font-semibold">
                                   {courseCount} {courseCount === 1 ? 'assigned shell' : 'assigned shells'}
                                 </span>

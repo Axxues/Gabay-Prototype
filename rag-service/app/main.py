@@ -109,7 +109,7 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
     )
 
 
-from app.services.email_service import send_activation_email
+from app.services.email_service import send_activation_email, send_leadership_code_email
 
 
 class ActivationEmailRequest(BaseModel):
@@ -142,4 +142,41 @@ async def send_activation_email_endpoint(request: ActivationEmailRequest) -> Act
         activation_url=request.activation_url,
     )
     return ActivationEmailResponse(**result)
+
+
+class LeadershipCodeEmailRequest(BaseModel):
+    """Payload to send a 6-digit leadership appointment verification code."""
+
+    email: str = Field(..., min_length=3, max_length=254)
+    recipient_name: Optional[str] = Field(None, max_length=150)
+    code: str = Field(..., min_length=6, max_length=6)
+    role_type: str = Field("dean", max_length=50)
+    unit_name: Optional[str] = Field("", max_length=200)
+
+
+class LeadershipCodeEmailResponse(BaseModel):
+    """Response returned when a leadership code email is dispatched."""
+
+    success: bool
+    delivered: Optional[bool] = False
+    simulated: Optional[bool] = False
+    message: Optional[str] = None
+    recipient: Optional[str] = None
+    code: Optional[str] = None
+    error: Optional[str] = None
+
+
+@app.post("/api/auth/send-leadership-code", response_model=LeadershipCodeEmailResponse)
+async def send_leadership_code_endpoint(request: LeadershipCodeEmailRequest) -> LeadershipCodeEmailResponse:
+    """Send 6-digit verification code to incoming Dean/Chairperson institutional email."""
+    if "@" not in request.email:
+        raise HTTPException(status_code=422, detail="Invalid email address.")
+    result = send_leadership_code_email(
+        to_email=request.email,
+        recipient_name=request.recipient_name or "",
+        code=request.code,
+        role_type=request.role_type,
+        unit_name=request.unit_name or "",
+    )
+    return LeadershipCodeEmailResponse(**result)
 

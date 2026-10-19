@@ -340,5 +340,113 @@ describe('FacultyProfileForm Component', () => {
       }));
     });
   });
+
+  it('can edit first name, middle name, and last name and save them along with computed full name', async () => {
+    render(
+      <FacultyProfileForm
+        user={baseFaculty}
+        updateUser={mockUpdateUser}
+        showAlert={mockShowAlert}
+      />
+    );
+
+    const firstNameInput = screen.getByLabelText(/first name/i);
+    const middleNameInput = screen.getByLabelText(/middle name/i);
+    const lastNameInput = screen.getByLabelText(/last name/i);
+
+    fireEvent.change(firstNameInput, { target: { value: 'Elena' } });
+    fireEvent.change(middleNameInput, { target: { value: 'Cortez' } });
+    fireEvent.change(lastNameInput, { target: { value: 'Rivera' } });
+
+    const submitBtn = screen.getByRole('button', { name: /save profile/i });
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(mockUpdateUser).toHaveBeenCalledWith('faculty-123', expect.objectContaining({
+        firstName: 'Elena',
+        middleName: 'Cortez',
+        lastName: 'Rivera',
+        name: 'Elena Cortez Rivera',
+      }));
+    });
+  });
+
+  it('hides teaching experience and educational background when isAdministrative is true', async () => {
+    const adminUser: User = {
+      ...baseFaculty,
+      id: 'admin-1',
+      role: 'admin',
+      adminSubrole: 'dean',
+      name: 'Dean Alan',
+      yearsOfTeaching: 15,
+      educationalBackground: [
+        {
+          id: 'deg-dean-1',
+          degreeLevel: 'doctorate',
+          school: 'UP',
+          yearGraduated: 2010,
+          specialization: 'Ed.D.',
+        },
+      ],
+    };
+
+    render(
+      <FacultyProfileForm
+        user={adminUser}
+        updateUser={mockUpdateUser}
+        showAlert={mockShowAlert}
+        isAdministrative={true}
+      />
+    );
+
+    // Assert absence of teaching experience and degree builder
+    expect(screen.queryByLabelText(/years of teaching experience/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /add degree/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/auto-increments/i)).not.toBeInTheDocument();
+
+    // Verify first name, middle name, last name, and contact details are still present
+    expect(screen.getByLabelText(/first name/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/last name/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/birthday/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/contact number/i)).toBeInTheDocument();
+
+    // Submit form and verify teaching experience and educationalBackground are not in payload
+    const submitBtn = screen.getByRole('button', { name: /save profile/i });
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(mockUpdateUser).toHaveBeenCalled();
+    });
+
+    const callArgs = mockUpdateUser.mock.calls[0];
+    expect(callArgs[0]).toBe('admin-1');
+    expect(callArgs[1]).not.toHaveProperty('yearsOfTeaching');
+    expect(callArgs[1]).not.toHaveProperty('educationalBackground');
+    expect(callArgs[1]).toHaveProperty('firstName');
+    expect(callArgs[1]).toHaveProperty('lastName');
+    expect(callArgs[1]).toHaveProperty('name');
+  });
+
+  it('validates first name and last name as required fields', async () => {
+    render(
+      <FacultyProfileForm
+        user={baseFaculty}
+        updateUser={mockUpdateUser}
+        showAlert={mockShowAlert}
+      />
+    );
+
+    const firstNameInput = screen.getByLabelText(/first name/i);
+    fireEvent.change(firstNameInput, { target: { value: '   ' } });
+
+    const submitBtn = screen.getByRole('button', { name: /save profile/i });
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Please enter a First Name/i)).toBeInTheDocument();
+    });
+
+    expect(mockUpdateUser).not.toHaveBeenCalled();
+  });
 });
 

@@ -5,6 +5,7 @@ import { scanSyllabusDocument, formatBytes, type ScanResult } from '../../shared
 import { resolveSPRWeights } from '../../shared/utils/spr';
 import { effectiveTerms, resolveCourseTerms } from '../../shared/utils/gradingTerms';
 import type { TermId } from '../../shared/types/lms';
+import { isFacultyRole, canManageCourseContent } from '../../shared/utils/roles';
 import { PageHeader } from '../../shared/components/common/PageHeader';
 import { DialogFrame } from '../../shared/components/common/DialogFrame';
 import { ModalPortal } from '../../shared/components/common/ModalPortal';
@@ -40,10 +41,18 @@ import {
 } from 'lucide-react';
 import { FilePickerModal } from '../../shared/components/common/FilePickerModal';
 import { UploadProgress } from '../../shared/components/common/UploadProgress';
+import { CustomDropdown, type DropdownOption } from '../../shared/components/common/CustomDropdown';
 import { SyllabusRevisionBar } from './components/SyllabusRevisionBar';
 import type { SyllabusSectionKey } from '../../shared/types/syllabusApi';
 import { useSimulatedUpload } from '../../shared/hooks/useSimulatedUpload';
 import type { AggregatedCourseFile } from '../../shared/hooks/useCourseFiles';
+
+const PO_ALIGNMENT_OPTIONS: DropdownOption[] = [
+  { value: '', label: '–' },
+  { value: 'I', label: 'I' },
+  { value: 'P', label: 'P' },
+  { value: 'D', label: 'D' },
+];
 
 interface SyllabusViewProps {
   courseId: string;
@@ -128,7 +137,7 @@ const syllabusEditorSectionPayloads = (
 };
 
 export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
-  const { db, activeRole, activeUser, updateCourseSyllabus, removeCourseSyllabus, showAlert, showConfirm, uploadCourseFile, updateCourseGradingTerms, syllabusRevisions, updateSyllabusSection, publishSyllabusDraft } = useLMS();
+  const { db, activeUser, updateCourseSyllabus, removeCourseSyllabus, showAlert, showConfirm, uploadCourseFile, updateCourseGradingTerms, syllabusRevisions, updateSyllabusSection, publishSyllabusDraft } = useLMS();
   const currentCourse = db.courses.find(c => c.id === courseId);
   const rawData = currentCourse?.syllabus || null;
   const data = useMemo<OfficialSyllabusData | null>(() => {
@@ -229,11 +238,11 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
   const revision = syllabusRevisions[courseId] ?? null;
   const isPublishedRevision = revision?.status === 'published';
   const isCustomSyllabus = Boolean(currentCourse?.syllabus);
-  const canManageSyllabus = activeRole === 'faculty' || activeRole === 'admin';
+  const canManageSyllabus = canManageCourseContent(currentCourse, activeUser);
 
-  // All faculty members in the college
+  // All eligible faculty members
   const facultyUsers = useMemo(() => {
-    return db.users.filter(u => u.role === 'faculty' || u.role === 'admin');
+    return db.users.filter(u => isFacultyRole(u, u.role));
   }, [db.users]);
 
   const gradingWeights = useMemo(() => resolveSPRWeights(data?.gradingSystem ?? null), [data]);
@@ -246,13 +255,8 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
   const activeTerms = useMemo(() => effectiveTerms(currentCourse ?? null, data), [currentCourse, data]);
   const isTermsOverridden = Boolean(currentCourse?.gradingTerms && currentCourse.gradingTerms.length > 0);
 
-  // Check if current user is the faculty member or admin that created/instructs this course
-  const isFacultyCreator = (activeRole === 'faculty' || activeRole === 'admin') && (
-    (currentCourse && currentCourse.instructorId === activeUser.id) ||
-    (currentCourse && currentCourse.instructorName?.toLowerCase() === activeUser.name?.toLowerCase()) ||
-    activeUser.id === 'usr-fac-1' ||
-    activeRole === 'admin'
-  );
+  // Check if current user is the assigned instructor for this course
+  const isFacultyCreator = canManageCourseContent(currentCourse, activeUser);
 
   // Deletion Modal State
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -3161,24 +3165,22 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                           return (
                             <div key={po}>
                               <label className={labelCls}>PO{po}</label>
-                              <select
+                              <CustomDropdown
+                                variant="compact"
+                                className="min-w-0"
                                 value={row.poAlignments[po] || ''}
-                                onChange={e => {
-                                  const v = e.target.value as '' | 'I' | 'P' | 'D';
+                                placeholder="–"
+                                options={PO_ALIGNMENT_OPTIONS}
+                                onChange={v => {
+                                  const val = v as '' | 'I' | 'P' | 'D';
                                   setDraft(prev => {
                                     if (!prev) return prev;
                                     const next = cloneSyllabus(prev);
-                                    next.courseMap[rIdx].poAlignments[po] = v;
+                                    next.courseMap[rIdx].poAlignments[po] = val;
                                     return next;
                                   });
                                 }}
-                                className={inputCls}
-                              >
-                                <option value="">–</option>
-                                <option value="I">I</option>
-                                <option value="P">P</option>
-                                <option value="D">D</option>
-                              </select>
+                              />
                             </div>
                           );
                         })}

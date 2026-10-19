@@ -186,10 +186,20 @@ describe('AcademicStructureTab - Dean School Year Management', () => {
 
     render(<AcademicStructureTab />);
 
+    // Expand college card since colleges are minimized by default
+    const toggleBtn = screen.getByRole('button', { name: /toggle programs for college of engineering and technology/i });
+    fireEvent.click(toggleBtn);
+
     // School Year section should be displayed for the Dean's college with a combo box / select list
     expect(screen.getByText('Collegiate School Year & Rollover')).toBeInTheDocument();
     expect(screen.getByText('2025-2026')).toBeInTheDocument();
     expect(screen.getByText('Active School Year:')).toBeInTheDocument();
+
+    // Baseline is 2026-2027 while college active year is 2025-2026 -> baseline mismatch badge appears
+    const mismatchBadge = screen.getByTestId('baseline-mismatch-badge-col-cet');
+    expect(mismatchBadge).toBeInTheDocument();
+    expect(within(mismatchBadge).getByText('Current Baseline:')).toBeInTheDocument();
+    expect(within(mismatchBadge).getByText('2026-2027')).toBeInTheDocument();
 
     // Select list / combo box is rendered
     const sySelect = screen.getByLabelText(/select school year to roll over for college of engineering and technology/i);
@@ -250,6 +260,10 @@ describe('AcademicStructureTab - Dean School Year Management', () => {
     mockGetBaselineSchoolYear.mockReturnValue({ id: 'sy-cet-2025-2026', year: '2025-2026', isActive: true });
 
     render(<AcademicStructureTab />);
+
+    // Expand college card since colleges are minimized by default
+    const toggleBtn = screen.getByRole('button', { name: /toggle programs for college of engineering and technology/i });
+    fireEvent.click(toggleBtn);
 
     const sySelect = screen.getByLabelText(/select school year to roll over for college of engineering and technology/i);
     const rolloverBtn = screen.getByRole('button', { name: /roll over/i });
@@ -348,6 +362,12 @@ describe('AcademicStructureTab - Dean School Year Management', () => {
 
     render(<AcademicStructureTab />);
 
+    // Expand college cards to inspect their contents
+    for (const college of sampleColleges) {
+      const toggleBtn = screen.getByRole('button', { name: new RegExp(`toggle programs for ${college.name}`, 'i') });
+      fireEvent.click(toggleBtn);
+    }
+
     // Individual college card section should only show school years and rollover, without an individual Add button
     const sySections = screen.getAllByText('Collegiate School Year & Rollover');
     for (const sectionHeader of sySections) {
@@ -434,5 +454,58 @@ describe('AcademicStructureTab - Dean School Year Management', () => {
     // Dean sees collegiate rollover, but NOT the university-wide baseline management card
     expect(screen.queryByText('University-Wide Default Baseline Academic Year')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Select University-Wide Default Baseline School Year')).not.toBeInTheDocument();
+  });
+
+  test('Available Years only renders on the college card the viewer leads as Dean', () => {
+    mockActiveRole = 'superadmin';
+    mockActiveUser = {
+      id: 'u-dean-cet',
+      name: 'Dr. Chancellor Dean',
+      email: 'chancellor@dmmmsu.edu.ph',
+      role: 'superadmin',
+      adminSubrole: 'chancellor',
+      collegeId: 'col-cet',
+    };
+
+    render(<AcademicStructureTab />);
+
+    // Expand college cards to inspect their contents
+    for (const college of sampleColleges) {
+      const toggleBtn = screen.getByRole('button', { name: new RegExp(`toggle programs for ${college.name}`, 'i') });
+      fireEvent.click(toggleBtn);
+    }
+
+    // Chancellor authority is university-wide, so no collegiate rollover control renders...
+    expect(screen.queryByRole('button', { name: /roll over/i })).not.toBeInTheDocument();
+
+    // ...and the read-only summary survives only on their own (CET) card.
+    expect(screen.getAllByText('Available Years:')).toHaveLength(1);
+    expect(
+      screen.getByLabelText(/available school years for college of engineering and technology/i)
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(/available school years for college of arts and sciences/i)
+    ).not.toBeInTheDocument();
+  });
+
+  test('Available Years is hidden on every college card when the viewer leads no college', () => {
+    mockActiveRole = 'admin';
+    mockActiveUser = {
+      id: 'u-admin-general',
+      name: 'General Admin',
+      email: 'admin@dmmmsu.edu.ph',
+      role: 'admin',
+    };
+
+    render(<AcademicStructureTab />);
+
+    // Expand college cards
+    for (const college of sampleColleges) {
+      const toggleBtn = screen.getByRole('button', { name: new RegExp(`toggle programs for ${college.name}`, 'i') });
+      fireEvent.click(toggleBtn);
+    }
+
+    expect(screen.queryByText('Available Years:')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/available school years for/i)).not.toBeInTheDocument();
   });
 });

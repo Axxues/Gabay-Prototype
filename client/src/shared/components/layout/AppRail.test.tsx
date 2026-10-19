@@ -5,14 +5,18 @@ import React from 'react';
 import { AppRail } from './AppRail';
 import { GabayChatContext } from '../../context/GabayChatContext';
 
+let mockLMSContext = {
+  activeRole: 'student',
+  activeUser: { id: 'u1' } as any,
+  logout: vi.fn(),
+  showConfirm: vi.fn(),
+  db: { messages: [] },
+  getBaselineSchoolYear: () => ({ id: 'sy-1', year: '2026-2027', isActive: true }),
+  getActiveSchoolYearForCollege: (colId: string) => ({ id: 'sy-col', year: '2025-2026', isActive: true, collegeId: colId }),
+};
+
 vi.mock('../../context/LMSContext', () => ({
-  useLMS: () => ({
-    activeRole: 'student',
-    activeUser: { id: 'u1' },
-    logout: vi.fn(),
-    showConfirm: vi.fn(),
-    db: { messages: [] },
-  }),
+  useLMS: () => mockLMSContext,
 }));
 
 describe('AppRail Navigation', () => {
@@ -76,5 +80,78 @@ describe('AppRail Navigation', () => {
     // With activeRole student from mock, accounts and governance are hidden
     expect(screen.queryByTitle(/Academic Governance/i)).toBeNull();
     expect(screen.queryByTitle(/Manage College Accounts/i)).toBeNull();
+  });
+
+  it('renders circular yellow warning tag on Academic Governance for Dean when college active year differs from baseline', () => {
+    mockLMSContext = {
+      ...mockLMSContext,
+      activeRole: 'admin',
+      activeUser: {
+        id: 'u-dean',
+        role: 'admin',
+        adminSubrole: 'dean',
+        collegeId: 'col-ccs',
+      } as any,
+      getBaselineSchoolYear: () => ({ id: 'sy-base', year: '2026-2027', isActive: true }),
+      getActiveSchoolYearForCollege: () => ({ id: 'sy-ccs', year: '2025-2026', isActive: true, collegeId: 'col-ccs' }),
+    };
+
+    render(
+      <GabayChatContext.Provider value={{ executingSessionIds: [] } as any}>
+        <AppRail currentTab="dashboard" onNavigateTab={vi.fn()} />
+      </GabayChatContext.Provider>
+    );
+
+    const warningTag = screen.getByTestId('governance-baseline-warning');
+    expect(warningTag).toBeInTheDocument();
+    expect(warningTag).toHaveClass('bg-amber-400');
+  });
+
+  it('does NOT render yellow warning tag on Academic Governance when Dean college active year matches baseline', () => {
+    mockLMSContext = {
+      ...mockLMSContext,
+      activeRole: 'admin',
+      activeUser: {
+        id: 'u-dean',
+        role: 'admin',
+        adminSubrole: 'dean',
+        collegeId: 'col-ccs',
+      } as any,
+      getBaselineSchoolYear: () => ({ id: 'sy-base', year: '2026-2027', isActive: true }),
+      getActiveSchoolYearForCollege: () => ({ id: 'sy-ccs', year: '2026-2027', isActive: true, collegeId: 'col-ccs' }),
+    };
+
+    render(
+      <GabayChatContext.Provider value={{ executingSessionIds: [] } as any}>
+        <AppRail currentTab="dashboard" onNavigateTab={vi.fn()} />
+      </GabayChatContext.Provider>
+    );
+
+    expect(screen.queryByTestId('governance-baseline-warning')).toBeNull();
+  });
+
+  it('renders circular yellow warning tag on Academic Governance for Chair when college active year differs from baseline', () => {
+    mockLMSContext = {
+      ...mockLMSContext,
+      activeRole: 'admin',
+      activeUser: {
+        id: 'u-chair',
+        role: 'admin',
+        adminSubrole: 'chairperson',
+        collegeId: 'col-ccs',
+      } as any,
+      getBaselineSchoolYear: () => ({ id: 'sy-base', year: '2026-2027', isActive: true }),
+      getActiveSchoolYearForCollege: () => ({ id: 'sy-ccs', year: '2025-2026', isActive: true, collegeId: 'col-ccs' }),
+    };
+
+    render(
+      <GabayChatContext.Provider value={{ executingSessionIds: [] } as any}>
+        <AppRail currentTab="dashboard" onNavigateTab={vi.fn()} />
+      </GabayChatContext.Provider>
+    );
+
+    const warningTag = screen.getByTestId('governance-baseline-warning');
+    expect(warningTag).toBeInTheDocument();
+    expect(warningTag).toHaveClass('bg-amber-400');
   });
 });

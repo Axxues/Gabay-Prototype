@@ -6,6 +6,7 @@ import {
   compareUsersByAuthority,
   canCreateCourse,
   isAdministrativeMonitor,
+  isFacultyRole,
 } from './roles';
 
 describe('roles utility', () => {
@@ -105,5 +106,41 @@ describe('roles utility', () => {
     expect(isAdministrativeMonitor({ role: 'faculty' })).toBe(false);
     expect(isAdministrativeMonitor({ role: 'student' })).toBe(false);
     expect(isAdministrativeMonitor({ role: 'staff' })).toBe(false);
+  });
+
+  it('evaluates isFacultyRole strictly: true for pure faculty/instructors, false for deans, chairs, admins', () => {
+    // Pure faculty/instructors
+    expect(isFacultyRole({ role: 'faculty' })).toBe(true);
+    expect(isFacultyRole({ role: 'instructor' })).toBe(true);
+    expect(isFacultyRole({ role: 'faculty', title: 'Assistant Professor' })).toBe(true);
+    expect(isFacultyRole({ role: 'faculty', title: 'Instructor' })).toBe(true);
+    expect(isFacultyRole(null, 'faculty')).toBe(true);
+
+    // Deans (must be false)
+    expect(isFacultyRole({ role: 'dean' })).toBe(false);
+    expect(isFacultyRole({ role: 'admin', adminSubrole: 'dean' })).toBe(false);
+    expect(isFacultyRole({ role: 'admin', title: 'College Dean' })).toBe(false);
+    expect(isFacultyRole({ role: 'faculty', adminSubrole: 'dean' })).toBe(false);
+    expect(isFacultyRole({ role: 'faculty', title: 'College Dean' })).toBe(false);
+
+    // Chairpersons (must be false)
+    expect(isFacultyRole({ role: 'chairperson' })).toBe(false);
+    expect(isFacultyRole({ role: 'chair' })).toBe(false);
+    expect(isFacultyRole({ role: 'admin', adminSubrole: 'chairperson' })).toBe(false);
+    expect(isFacultyRole({ role: 'admin', title: 'Program Chairperson' })).toBe(false);
+    expect(isFacultyRole({ role: 'faculty', adminSubrole: 'chairperson' })).toBe(false);
+    expect(isFacultyRole({ role: 'faculty', title: 'Department Chairperson' })).toBe(false);
+
+    // Admins and Chancellors (must be false)
+    expect(isFacultyRole({ role: 'admin' })).toBe(false);
+    expect(isFacultyRole({ role: 'superadmin' })).toBe(false);
+    expect(isFacultyRole({ role: 'admin', adminSubrole: 'chancellor' })).toBe(false);
+    expect(isFacultyRole({ role: 'admin', title: 'University Chancellor' })).toBe(false);
+
+    // Students and Staff (must be false)
+    expect(isFacultyRole({ role: 'student' })).toBe(false);
+    expect(isFacultyRole({ role: 'staff' })).toBe(false);
+    expect(isFacultyRole(null)).toBe(false);
+    expect(isFacultyRole(undefined)).toBe(false);
   });
 });

@@ -13,11 +13,12 @@ import { PageTransition } from './shared/components/common/PageTransition';
 import { AppSkeleton, ProfileSkeleton, PageSkeleton, AuthCardSkeleton } from './shared/components/common/AppSkeleton';
 import { tabToPath, courseToPath, pathToTab } from './shared/config/routes';
 import { isProfileComplete } from './shared/utils/profileCompletion';
-import { isChairRole } from './shared/utils/roles';
+import { isChairRole, canManageCourseContent } from './shared/utils/roles';
 
 const DashboardPage = React.lazy(() => import('./features/dashboard/DashboardPage').then(m => ({ default: m.DashboardPage })));
 const CoursesPage = React.lazy(() => import('./features/courses/CoursesPage').then(m => ({ default: m.CoursesPage })));
-const ChairSheetUploadView = React.lazy(() => import('./features/courses/components/ChairSheetUploadView').then(m => ({ default: m.ChairSheetUploadView })));
+const AssignedCoursesUploadView = React.lazy(() => import('./features/courses/components/ChairSheetUploadView').then(m => ({ default: m.AssignedCoursesUploadView || m.ChairSheetUploadView })));
+const EditCoursePage = React.lazy(() => import('./features/courses/EditCoursePage').then(m => ({ default: m.EditCoursePage })));
 const CalendarPage = React.lazy(() => import('./features/calendar/CalendarPage').then(m => ({ default: m.CalendarPage })));
 const InboxPage = React.lazy(() => import('./features/inbox/InboxPage').then(m => ({ default: m.InboxPage })));
 const ProfilePage = React.lazy(() => import('./features/auth/ProfilePage').then(m => ({ default: m.ProfilePage })));
@@ -25,6 +26,7 @@ const HistoryPage = React.lazy(() => import('./features/system/HistoryPage').the
 const HelpPage = React.lazy(() => import('./features/system/HelpPage').then(m => ({ default: m.HelpPage })));
 const EmptyPage = React.lazy(() => import('./features/system/EmptyPage').then(m => ({ default: m.EmptyPage })));
 const ManageAccountsPage = React.lazy(() => import('./features/accounts/ManageAccountsPage').then(m => ({ default: m.ManageAccountsPage })));
+const CreateLeadershipAccountPage = React.lazy(() => import('./features/accounts/CreateLeadershipAccountPage').then(m => ({ default: m.CreateLeadershipAccountPage })));
 const AcademicGovernancePage = React.lazy(() => import('./features/accounts/AcademicGovernancePage').then(m => ({ default: m.AcademicGovernancePage })));
 const ProgramDetailsPage = React.lazy(() => import('./features/accounts/ProgramDetailsPage').then(m => ({ default: m.ProgramDetailsPage })));
 const EditAccountPage = React.lazy(() => import('./features/accounts/EditAccountPage').then(m => ({ default: m.EditAccountPage })));
@@ -40,6 +42,11 @@ function useAppNavigation() {
     if (tab === 'edit-account') {
       navigate('/accounts');
       logHistory('/accounts', 'LMS > Edit Account');
+      return;
+    }
+    if (tab === 'create-leadership' || tab === 'create-account') {
+      navigate('/accounts/create-leadership');
+      logHistory('/accounts/create-leadership', 'LMS > Create Leadership Account');
       return;
     }
     const path = tabToPath(tab, activeCourseId);
@@ -146,12 +153,33 @@ const CoursesRoute: React.FC = () => {
   return <CoursesPage key={`${courseId ?? activeCourseId ?? 'none'}-${effectiveSubTab}`} initialSubTab={effectiveSubTab} />;
 };
 
-const ChairSheetRoute: React.FC = () => {
+const AssignedCoursesRoute: React.FC = () => {
   const nav = useAppNavigation();
   return (
-    <ChairSheetUploadView
+    <AssignedCoursesUploadView
       onNavigateCourse={nav.handleNavigateCourse}
       onNavigateTab={nav.handleNavigateTab}
+    />
+  );
+};
+
+const EditCourseRoute: React.FC<{ nav: ReturnType<typeof useAppNavigation> }> = ({ nav }) => {
+  const { courseId } = useParams<{ courseId: string }>();
+  const { db, activeUser } = useLMS();
+  const decodedId = courseId ? decodeURIComponent(courseId) : undefined;
+  const course = decodedId ? db.courses.find(c => c.id === decodedId) : undefined;
+  if (!course) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  if (!canManageCourseContent(course, activeUser)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return (
+    <EditCoursePage
+      key={course.id}
+      course={course}
+      onNavigateTab={nav.handleNavigateTab}
+      onNavigateCourse={nav.handleNavigateCourse}
     />
   );
 };
@@ -207,7 +235,7 @@ export const AppShell: React.FC = () => {
         navigate('/inbox', { replace: true });
       }
     } else if (activeRole !== 'admin' && activeRole !== 'superadmin') {
-      if (currentTab === 'accounts' || currentTab === 'create-account' || currentTab === 'edit-account' || currentTab === 'account-profile' || currentTab === 'governance') {
+      if (currentTab === 'accounts' || currentTab === 'create-account' || currentTab === 'create-leadership' || currentTab === 'edit-account' || currentTab === 'account-profile' || currentTab === 'governance') {
         navigate('/dashboard', { replace: true });
       }
     }
@@ -254,7 +282,7 @@ export const AppShell: React.FC = () => {
           <div className={
             currentTab === 'courses' || currentTab === 'inbox' || currentTab === 'gabay-rag'
               ? "flex h-full min-h-0 w-full min-w-0 flex-1 flex-col"
-              : currentTab === 'chair-sheet'
+              : currentTab === 'assigned-courses' || currentTab === 'chair-sheet'
               ? "flex min-h-full w-full min-w-0 flex-1 flex-col p-5 sm:p-8 lg:p-10"
               : currentTab === 'profile' || currentTab === 'account-profile'
               ? "flex min-h-full w-full min-w-0 flex-1 flex-col p-5 sm:p-8 lg:p-10"
@@ -298,8 +326,10 @@ export const AppContent: React.FC = () => {
       <Route element={<RequireAuth><AppShell /></RequireAuth>}>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<RouteWithNav element={(nav) => <DashboardPage onNavigateCourse={nav.handleNavigateCourse} onNavigateTab={nav.handleNavigateTab} />} />} />
-        <Route path="/courses/chair-sheet" element={<RequireChair><ChairSheetRoute /></RequireChair>} />
-        <Route path="/courses/new" element={<RequireChair><ChairSheetRoute /></RequireChair>} />
+        <Route path="/courses/assigned-courses" element={<RequireChair><AssignedCoursesRoute /></RequireChair>} />
+        <Route path="/courses/chair-sheet" element={<RequireChair><AssignedCoursesRoute /></RequireChair>} />
+        <Route path="/courses/new" element={<RequireChair><AssignedCoursesRoute /></RequireChair>} />
+        <Route path="/courses/:courseId/edit" element={<RouteWithNav element={(nav) => <EditCourseRoute nav={nav} />} />} />
         <Route path="/courses" element={<CoursesRoute />} />
         <Route path="/courses/:courseId" element={<CoursesRoute />} />
         <Route path="/courses/:courseId/:subTab" element={<CoursesRoute />} />
@@ -313,6 +343,7 @@ export const AppContent: React.FC = () => {
         <Route path="/governance/programs/:deptId" element={<RequireAdmin><RouteWithNav element={(nav) => <ProgramDetailsPage onNavigateTab={nav.handleNavigateTab} />} /></RequireAdmin>} />
         <Route path="/governance/departments/:deptId" element={<RequireAdmin><RouteWithNav element={(nav) => <ProgramDetailsPage onNavigateTab={nav.handleNavigateTab} />} /></RequireAdmin>} />
         <Route path="/accounts" element={<RequireAdmin><RouteWithNav element={(nav) => <ManageAccountsPage onNavigateTab={nav.handleNavigateTab} onEditAccount={nav.handleEditAccount} onViewAccount={nav.handleViewAccount} />} /></RequireAdmin>} />
+        <Route path="/accounts/create-leadership" element={<RequireAdmin><RouteWithNav element={(nav) => <CreateLeadershipAccountPage onNavigateTab={nav.handleNavigateTab} />} /></RequireAdmin>} />
         <Route path="/accounts/new" element={<Navigate to="/accounts" replace />} />
         <Route path="/accounts/:userId/view" element={<RequireAdmin><RouteWithNav element={(nav) => <AccountProfileRoute nav={nav} />} /></RequireAdmin>} />
         <Route path="/accounts/:userId" element={<RequireAdmin><RouteWithNav element={(nav) => <AccountProfileRoute nav={nav} />} /></RequireAdmin>} />

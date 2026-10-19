@@ -88,6 +88,8 @@ vi.mock('../../shared/context/LMSContext', () => ({
     markTabVisited: mockMarkTabVisited,
     isCourseGradeReady: () => false,
   }),
+  getOrGenerateCourseJoinCode: (c?: any) => c?.joinCode || 'JOIN123',
+  generateCourseJoinCode: () => 'JOIN123',
 }));
 
 describe('DashboardPage Academic Scope Horizontal Scrollable Wheel', () => {
@@ -156,6 +158,6 @@ describe('CoursesPage Scoped Views (without Academic Scope Banner)', () => {
 
     await waitFor(() => {
       expect(screen.getByRole('heading', { level: 1, name: 'Modules' })).toBeInTheDocument();
-    });
+    }, { timeout: 4000 });
   });
 });

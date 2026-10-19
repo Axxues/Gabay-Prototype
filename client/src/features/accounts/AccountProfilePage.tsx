@@ -4,7 +4,7 @@ import { useLMS } from '../../shared/context/LMSContext';
 import type { User, College, Department } from '../../shared/types/lms';
 import { UserAvatar } from '../../shared/components/common/UserAvatar';
 import { PageHeader } from '../../shared/components/common/PageHeader';
-import { getDisplayRoleLabel } from '../../shared/utils/roles';
+import { getDisplayRoleLabel, isFacultyRole, isAdministrativeMonitor, isDeanRole, isChairRole } from '../../shared/utils/roles';
 import { formatAddress, parseAddress, DEGREE_LABELS } from '../../shared/utils/profileCompletion';
 import {
   ArrowLeft,
@@ -40,6 +40,7 @@ export const AccountProfilePage: React.FC<AccountProfilePageProps> = ({
   const [activeTab, setActiveTab] = useState<AccountProfileTab>('overview');
 
   const roleLabel = getDisplayRoleLabel(user, user.role);
+  const isAdministrative = isAdministrativeMonitor(user, user.role);
 
   // Address normalization
   const permAddr = user.permanentAddressDetails || parseAddress(user.permanentAddress || user.address);
@@ -73,7 +74,7 @@ export const AccountProfilePage: React.FC<AccountProfilePageProps> = ({
   // Courses matching
   const userCourses = (db?.courses || []).filter(c => {
     if (user.role === 'student') return (user.enrolledCourseIds || []).includes(c.id);
-    if (user.role === 'faculty' || user.role === 'admin') return c.instructorId === user.id;
+    if (isFacultyRole(user, user.role)) return c.instructorId === user.id;
     return false;
   });
 
@@ -95,12 +96,12 @@ export const AccountProfilePage: React.FC<AccountProfilePageProps> = ({
 
   const tabs: { id: AccountProfileTab; label: string; icon: React.ReactNode; count?: number }[] = [
     { id: 'overview', label: 'Overview & Placement', icon: <UserCheck className="w-4 h-4" /> },
-    {
-      id: 'records',
+    ...(!isAdministrative ? [{
+      id: 'records' as AccountProfileTab,
       label: user.role === 'student' ? 'Family & Guardian' : 'Educational Background',
       icon: user.role === 'student' ? <Users className="w-4 h-4" /> : <Award className="w-4 h-4" />,
       count: user.role !== 'student' ? (user.educationalBackground?.length || 0) : undefined,
-    },
+    }] : []),
     { id: 'courses', label: 'Courses & Shells', icon: <BookOpen className="w-4 h-4" />, count: userCourses.length },
   ];
 
@@ -250,15 +251,25 @@ export const AccountProfilePage: React.FC<AccountProfilePageProps> = ({
 
         <div className="p-4 bg-card border border-border rounded-2xl space-y-1">
           <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block">
-            {user.role === 'student' ? 'Current Year Level' : 'Teaching Experience'}
+            {user.role === 'student'
+              ? 'Current Year Level'
+              : isAdministrative
+              ? 'Jurisdiction'
+              : 'Teaching Experience'}
           </span>
           <div className="text-sm font-extrabold text-primary truncate">
             {user.role === 'student'
               ? `Year ${user.yearLevel ?? 1}`
+              : isAdministrative
+              ? (isChairRole(user, user.role)
+                  ? 'Program-Wide'
+                  : isDeanRole(user, user.role)
+                  ? 'College-Wide'
+                  : 'University-Wide')
               : `${user.yearsOfTeaching ?? 0} ${Number(user.yearsOfTeaching) === 1 ? 'Year' : 'Years'}`}
           </div>
           <span className="text-[10px] text-muted-foreground block">
-            AY {user.schoolYear || '2025-2026'}
+            {isAdministrative ? 'Administrative Scope' : `AY ${user.schoolYear || '2025-2026'}`}
           </span>
         </div>
 
@@ -270,7 +281,7 @@ export const AccountProfilePage: React.FC<AccountProfilePageProps> = ({
             {userCourses.length} {userCourses.length === 1 ? 'Course' : 'Courses'}
           </div>
           <span className="text-[10px] text-muted-foreground block">
-            {user.role === 'faculty' ? 'Assigned to teach' : 'Active enrollments'}
+            {isFacultyRole(user, user.role) ? 'Assigned to teach' : user.role === 'student' ? 'Active enrollments' : 'Monitored courses'}
           </span>
         </div>
       </div>
@@ -354,13 +365,28 @@ export const AccountProfilePage: React.FC<AccountProfilePageProps> = ({
                 </div>
               )}
 
-              {user.role !== 'student' && (
+              {!isAdministrative && user.role !== 'student' && (
                 <div className="p-3 bg-muted/40 border border-border rounded-xl space-y-1">
                   <span className="text-[10px] text-muted-foreground block font-bold uppercase tracking-wider">
                     Teaching Experience
                   </span>
                   <span className="font-bold text-foreground text-xs">
                     {user.yearsOfTeaching ?? 0} {Number(user.yearsOfTeaching) === 1 ? 'Year' : 'Years'}
+                  </span>
+                </div>
+              )}
+
+              {isAdministrative && (
+                <div className="p-3 bg-muted/40 border border-border rounded-xl space-y-1">
+                  <span className="text-[10px] text-muted-foreground block font-bold uppercase tracking-wider">
+                    Administrative Scope
+                  </span>
+                  <span className="font-bold text-primary text-xs">
+                    {isChairRole(user, user.role)
+                      ? 'Program Monitor'
+                      : isDeanRole(user, user.role)
+                      ? 'College Monitor'
+                      : 'University Monitor'}
                   </span>
                 </div>
               )}

@@ -20,8 +20,7 @@ import {
   RefreshCw,
   CalendarDays,
   ChevronDown,
-  Loader2,
-  Eye
+  Loader2
 } from 'lucide-react';
 
 const PRESET_COLORS = [
@@ -287,6 +286,8 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
         instructorName: activeUser.name,
         term: courseTerm,
         schoolYear: courseSchoolYear.trim() || defaultSchoolYear,
+        collegeId: userCollegeId,
+        department: activeUser.department,
         published: true,
         joinCode: courseJoinCode.trim() || generateCourseJoinCode(db.courses, courseCode.trim())
       });
@@ -480,7 +481,6 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
                     </div>
                   )}
                 </div>
-                <span className="text-[10px] text-muted-foreground">Scoping this course to the college's academic calendar year.</span>
               </div>
 
               <div>
@@ -626,9 +626,6 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
                     className="w-full p-2 bg-muted/40 border border-border rounded-xl font-mono font-bold text-xs uppercase tracking-wider text-foreground outline-none cursor-default select-all placeholder:normal-case"
                   />
                 </div>
-                <p className="text-[10px] text-muted-foreground">
-                  Students will use this unique code to self-enroll in this course once published.
-                </p>
               </div>
 
               <div>
@@ -1033,91 +1030,6 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
                   onChange={e => setCourseColor(e.target.value)}
                   className="w-full p-2 bg-background border border-border rounded-xl text-foreground font-sans text-xs uppercase placeholder:normal-case placeholder:text-muted-foreground"
                 />
-              </div>
-            </div>
-          </div>
-
-          {/* Live Course Card Preview */}
-          <div className="p-6 bg-card border border-border rounded-2xl space-y-4">
-            <div className="flex items-center justify-between pb-2 border-b border-border/70">
-              <div className="flex items-center space-x-2">
-                <Eye className="w-4 h-4 text-muted-foreground" />
-                <h3 className="text-[12px] font-semibold text-muted-foreground">
-                  Live course card preview
-                </h3>
-              </div>
-              <span className="text-[10px] font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded border border-border">
-                Dashboard view
-              </span>
-            </div>
-
-            {/* Simulated Course Card */}
-            <div className="bg-card text-card-foreground border border-border rounded-2xl overflow-hidden shadow-xs">
-              {/* Card Color / Image Header */}
-              <div
-                className="h-24 p-4 flex flex-col justify-between relative overflow-hidden bg-muted/50"
-                style={
-                  courseColor
-                    ? {
-                        backgroundColor: `${courseColor}18`,
-                        boxShadow: `0 12px 32px -12px color-mix(in srgb, ${courseColor} 45%, transparent), inset 0 -28px 36px -24px color-mix(in srgb, ${courseColor} 55%, transparent)`,
-                      }
-                    : undefined
-                }
-              >
-                {courseImage && (
-                  <img
-                    src={courseImage}
-                    alt="Course Preview Cover"
-                    className="absolute inset-0 w-full h-full object-cover opacity-35 pointer-events-none"
-                  />
-                )}
-                {courseImage && courseColor && (
-                  <div
-                    className="absolute inset-0 pointer-events-none"
-                    style={{
-                      background: `linear-gradient(180deg, transparent 20%, color-mix(in srgb, ${courseColor} 40%, transparent) 100%)`,
-                    }}
-                  />
-                )}
-
-                <div className="flex items-center justify-between relative z-10">
-                  <span className="px-2.5 py-0.5 text-[10px] font-sans font-semibold bg-card/85 backdrop-blur-xs text-foreground rounded-full border border-border shadow-2xs">
-                    {courseCode || 'COURSE CODE'} • {courseSection || 'SECTION'}
-                  </span>
-                </div>
-                <h4 className="font-bold text-foreground text-[14px] leading-tight truncate relative z-10 drop-shadow-xs">
-                  {courseTitle || 'Course Title Preview'}
-                </h4>
-              </div>
-
-              {/* Card Body */}
-              <div className="p-4 space-y-2.5 text-xs font-sans">
-                <div className="flex justify-between items-center text-muted-foreground">
-                  <span>Instructor</span>
-                  <span className="font-semibold text-foreground truncate max-w-[150px]">{activeUser.name}</span>
-                </div>
-                <div className="flex justify-between items-center text-muted-foreground">
-                  <span>School Year</span>
-                  <span className="font-semibold text-foreground truncate max-w-[150px]">
-                    AY {courseSchoolYear || defaultSchoolYear}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center text-muted-foreground">
-                  <span>Academic Term</span>
-                  <span className="font-semibold text-foreground truncate max-w-[160px]">
-                    {selectedTerm?.label || courseTerm}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center text-muted-foreground pt-2 border-t border-border/60">
-                  <span className="flex items-center space-x-1">
-                    <KeyRound className="w-3 h-3 text-muted-foreground" />
-                    <span>Join code</span>
-                  </span>
-                  <span className="font-mono font-bold text-foreground bg-muted px-1.5 py-0.5 rounded border border-border text-[10px]">
-                    {courseJoinCode || generateCourseJoinCode(db.courses, courseCode || 'GBY')}
-                  </span>
-                </div>
               </div>
             </div>
           </div>

@@ -37,6 +37,28 @@ const mockUsers: any[] = [
     role: { name: 'Student' },
     college_id: 'col-ccs',
   },
+  {
+    id: 'u-dean1',
+    first_name: 'Dean',
+    last_name: 'CCS',
+    email: 'dean.ccs@dmmmsu.edu.ph',
+    role: { name: 'Administrator' },
+    adminSubrole: 'dean',
+    admin_subrole: 'dean',
+    title: 'Dean of College of Computer Science',
+    college_id: 'col-ccs',
+  },
+  {
+    id: 'u-chair1',
+    first_name: 'Chair',
+    last_name: 'CS',
+    email: 'chair.cs@dmmmsu.edu.ph',
+    role: { name: 'Administrator' },
+    adminSubrole: 'chairperson',
+    admin_subrole: 'chairperson',
+    title: 'Department Chair',
+    college_id: 'col-ccs',
+  },
 ];
 
 vi.mock('../api/client', () => ({
@@ -184,6 +206,14 @@ describe('School Year Management & Scoping State in LMSContext', () => {
     );
 
     await act(async () => {
+      await contextValues.login('jayveegenetareyes@gmail.com', 'pw');
+    });
+
+    await waitFor(() => {
+      expect(contextValues.db.users.length).toBeGreaterThan(0);
+    });
+
+    await act(async () => {
       await contextValues.addSchoolYear('2026-2027');
     });
 
@@ -203,6 +233,15 @@ describe('School Year Management & Scoping State in LMSContext', () => {
       const baseRes = await contextValues.setBaselineSchoolYear(targetYear!.id);
       expect(baseRes.success).toBe(true);
     });
+
+    // Verify notifications sent to Dean and Chair
+    const deanNotifs = contextValues.getNotifications('u-dean1');
+    const chairNotifs = contextValues.getNotifications('u-chair1');
+    const studentNotifs = contextValues.getNotifications('u-stud1');
+
+    expect(deanNotifs.some((n: any) => n.type === 'baseline_changed' && n.content.includes('2026-2027'))).toBe(true);
+    expect(chairNotifs.some((n: any) => n.type === 'baseline_changed' && n.content.includes('2026-2027'))).toBe(true);
+    expect(studentNotifs.some((n: any) => n.type === 'baseline_changed')).toBe(false);
 
     // Dean can now roll over college to the new baseline year
     await act(async () => {

@@ -611,7 +611,7 @@ describe('ManageAccountsPage RBAC & Verification Queue', () => {
     unmountGov();
   });
 
-  it('7. verifies Leadership Handover modal allows selecting an eligible faculty member and calling transferLeadership() on AcademicGovernancePage', async () => {
+  it('7. verifies Leadership Handover button is removed on AcademicGovernancePage', () => {
     mocks.mockState.activeRole = 'admin';
     mocks.mockState.activeUser = {
       id: 'admin-1',
@@ -626,44 +626,10 @@ describe('ManageAccountsPage RBAC & Verification Queue', () => {
       avatar: '',
     };
 
-    mocks.transferLeadership.mockResolvedValueOnce({
-      success: true,
-      message: 'Leadership transferred successfully to Dean successor.',
-    });
-
     render(<AcademicGovernancePage />);
 
-    // Click "Transfer Leadership" button
-    const transferBtn = screen.getByRole('button', { name: /transfer leadership/i });
-    fireEvent.click(transferBtn);
-
-    // Modal should be open, showing current role
-    expect(screen.getByText(/dean of college of computer science/i)).toBeInTheDocument();
-
-    // Eligible faculty dropdown should contain Prof. Alice Rivera, but not Prof. Bob Jones (who is from COE)
-    const selectSuccessor = screen.getByLabelText(/select successor|eligible faculty/i);
-    expect(selectSuccessor).toBeInTheDocument();
-
-    fireEvent.change(selectSuccessor, { target: { value: 'fac-1' } });
-
-    // Review transfer / confirm step
-    const proceedBtn = screen.getByRole('button', { name: /proceed|review|transfer authority/i });
-    fireEvent.click(proceedBtn);
-
-    // Invariant confirmation text should be present
-    expect(
-      screen.getByText(
-        /You will step down to regular Faculty and transfer administrative authority to Prof\. Alice Rivera\. Exactly 1 leader is permitted\./i
-      )
-    ).toBeInTheDocument();
-
-    // Confirm button
-    const confirmBtn = screen.getByRole('button', { name: /confirm leadership transfer|confirm handover/i });
-    fireEvent.click(confirmBtn);
-
-    await waitFor(() => {
-      expect(mocks.transferLeadership).toHaveBeenCalledWith('dean', 'admin-1', 'fac-1', 'col-ccs');
-    });
+    // "Transfer Leadership" button should not exist
+    expect(screen.queryByRole('button', { name: /transfer leadership/i })).not.toBeInTheDocument();
   });
 
   it('8. displays Dean and Chair badges for admin(dean) and admin(chair) accounts in directory table', () => {

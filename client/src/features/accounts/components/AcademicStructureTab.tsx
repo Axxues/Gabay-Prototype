@@ -4,11 +4,11 @@ import { useLMS } from '../../../shared/context/LMSContext';
 import type { College, Department, SchoolYear, User } from '../../../shared/types/lms';
 import { DialogFrame } from '../../../shared/components/common/DialogFrame';
 import { UserAvatar } from '../../../shared/components/common/UserAvatar';
+import { CustomDropdown } from '../../../shared/components/common/CustomDropdown';
 import {
   Building,
   Plus,
   ShieldAlert,
-  ChevronRight,
   ChevronDown,
   FolderTree,
   AlertCircle,
@@ -20,12 +20,12 @@ import { generateUuid } from '../../../shared/utils/cryptoToken';
 
 export const AcademicStructureTab: React.FC = () => {
   const navigate = useNavigate();
-  const [collapsedColleges, setCollapsedColleges] = useState<Record<string, boolean>>({});
+  const [expandedColleges, setExpandedColleges] = useState<Record<string, boolean>>({});
 
   const toggleCollegeCollapse = (collegeId: string) => {
-    setCollapsedColleges(prev => ({
+    setExpandedColleges(prev => ({
       ...prev,
-      [collegeId]: !prev[collegeId],
+      [collegeId]: !(prev[collegeId] ?? true),
     }));
   };
 
@@ -34,7 +34,6 @@ export const AcademicStructureTab: React.FC = () => {
     departments,
     addCollege,
     addDepartment,
-    transferLeadership,
     deleteCollege,
     deleteDepartment,
     getCollegeDeleteBlockers,
@@ -147,16 +146,6 @@ export const AcademicStructureTab: React.FC = () => {
   const [initialChairId, setInitialChairId] = useState('');
   const [isSubmittingDept, setIsSubmittingDept] = useState(false);
 
-  // Appointing / Reassigning leader modal state
-  const [appointModalData, setAppointModalData] = useState<{
-    roleType: 'dean' | 'chairperson';
-    unitId: string;
-    unitName: string;
-    currentLeaderId?: string;
-  } | null>(null);
-  const [selectedCandidateId, setSelectedCandidateId] = useState<string>('');
-  const [isSubmittingLeader, setIsSubmittingLeader] = useState(false);
-
   // ONLY the Dean of this specific college has authority to roll over (Administrators and Chancellors do not)
   const canRolloverCollegeSchoolYear = (college: College) => {
     if (isSuperadminOrChancellor) return false;
@@ -173,6 +162,16 @@ export const AcademicStructureTab: React.FC = () => {
 
     return !!isDeanOfThisCollege;
   };
+
+  // True when the signed-in user leads this specific college as its Dean: either
+  // the college record appoints them, or they hold the dean subrole for it.
+  const viewerIsDeanOfCollege = (college: College) =>
+    Boolean(
+      (college.deanId && activeUser?.id === college.deanId) ||
+        (activeUser?.adminSubrole === 'dean' &&
+          activeUser?.collegeId &&
+          activeUser.collegeId === college.id)
+    );
 
   // State for the selected school year in the rollover combo box / select list per college
   const [selectedSYByCollege, setSelectedSYByCollege] = useState<Record<string, string>>({});
@@ -381,39 +380,6 @@ export const AcademicStructureTab: React.FC = () => {
     }
   };
 
-  // Submit leadership appointment
-  const handleAppointLeader = async () => {
-    if (!appointModalData || !selectedCandidateId || isSubmittingLeader) return;
-
-    setIsSubmittingLeader(true);
-    try {
-      const res = await transferLeadership(
-        appointModalData.roleType,
-        appointModalData.currentLeaderId || 'none',
-        selectedCandidateId,
-        appointModalData.unitId
-      );
-
-      if (res.success) {
-        showAlert({
-          title: 'Leadership Appointed',
-          message: res.message || 'Unit administrative leader appointed successfully.',
-          type: 'success',
-        });
-        setAppointModalData(null);
-        setSelectedCandidateId('');
-      } else {
-        showAlert({
-          title: 'Appointment Failed',
-          message: res.message || 'Could not appoint leader.',
-          type: 'error',
-        });
-      }
-    } finally {
-      setIsSubmittingLeader(false);
-    }
-  };
-
   // Deletion modal states & handlers
   const [blockerModalData, setBlockerModalData] = useState<{
     title: string;
@@ -496,20 +462,6 @@ export const AcademicStructureTab: React.FC = () => {
       setIsDeleting(false);
     }
   };
-
-  // Eligible candidates for the open appointment modal
-  const eligibleCandidates = (db?.users || []).filter(u => {
-    if (!appointModalData) return false;
-    // Don't show current leader
-    if (appointModalData.currentLeaderId && u.id === appointModalData.currentLeaderId) return false;
-    const isRoleEligible = u.role === 'faculty' || u.role === 'admin';
-    if (!isRoleEligible) return false;
-
-    if (isDean) {
-      return isCandidateInCollege(u, effectiveCollegeId, effectiveCollegeName);
-    }
-    return true;
-  });
 
   // Eligible candidates for initial leader selection in creation modals
   const eligibleDeanCandidates = (db?.users || []).filter(
@@ -601,19 +553,18 @@ export const AcademicStructureTab: React.FC = () => {
             <label htmlFor="baseline-sy-select" className="text-xs text-muted-foreground font-medium shrink-0">
               Change Baseline:
             </label>
-            <select
+            <CustomDropdown
               id="baseline-sy-select"
-              aria-label="Select University-Wide Default Baseline School Year"
+              ariaLabel="Select University-Wide Default Baseline School Year"
+              className="w-56"
+              searchable
               value={selectedBaselineId || currentBaseline?.id || ''}
-              onChange={(e) => setSelectedBaselineId(e.target.value)}
-              className="px-3 py-1.5 bg-background border border-border rounded-xl text-xs font-semibold text-foreground outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer"
-            >
-              {universalSchoolYears.map((sy) => (
-                <option key={sy.id} value={sy.id}>
-                  {sy.year} {sy.id === currentBaseline?.id || sy.year === currentBaseline?.year ? '(Current Baseline)' : ''}
-                </option>
-              ))}
-            </select>
+              onChange={setSelectedBaselineId}
+              options={universalSchoolYears.map((sy) => ({
+                value: sy.id,
+                label: `${sy.year} ${sy.id === currentBaseline?.id || sy.year === currentBaseline?.year ? '(Current Baseline)' : ''}`,
+              }))}
+            />
             <button
               type="button"
               disabled={!selectedBaselineId || selectedBaselineId === currentBaseline?.id}
@@ -631,6 +582,7 @@ export const AcademicStructureTab: React.FC = () => {
         {displayedColleges.map(college => {
           const dean = getUserById(college.deanId);
           const collegeDepts = (departments || []).filter(d => d.collegeId === college.id);
+          const isExpanded = expandedColleges[college.id] ?? true;
 
           return (
             <div
@@ -641,7 +593,7 @@ export const AcademicStructureTab: React.FC = () => {
               <div
                 role="button"
                 tabIndex={0}
-                aria-expanded={!collapsedColleges[college.id]}
+                aria-expanded={isExpanded}
                 aria-label={`Toggle programs for ${college.name}`}
                 onClick={() => toggleCollegeCollapse(college.id)}
                 onKeyDown={(e) => {
@@ -651,18 +603,18 @@ export const AcademicStructureTab: React.FC = () => {
                     toggleCollegeCollapse(college.id);
                   }
                 }}
-                className="p-4 sm:p-5 bg-muted/40 border-b border-border flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer select-none hover:bg-muted/60 transition-colors"
+                className={`p-4 sm:p-5 bg-muted/40 ${isExpanded ? 'border-b border-border' : ''} flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer select-none hover:bg-muted/60 transition-colors`}
               >
                 <div className="flex items-center space-x-3">
                   <span
                     aria-hidden="true"
                     className="p-1 rounded-lg text-muted-foreground transition-colors"
                   >
-                    {collapsedColleges[college.id] ? (
-                      <ChevronRight className="w-4 h-4" />
-                    ) : (
-                      <ChevronDown className="w-4 h-4" />
-                    )}
+                    <ChevronDown
+                      className={`w-4 h-4 transition-transform duration-300 ease-in-out ${
+                        isExpanded ? 'rotate-0' : '-rotate-90'
+                      }`}
+                    />
                   </span>
                   <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold text-sm shrink-0 border border-primary/20">
                     <Building className="w-5 h-5" />
@@ -698,23 +650,6 @@ export const AcademicStructureTab: React.FC = () => {
                             {dean.name}
                           </div>
                         </div>
-                        {canManageDeans && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setAppointModalData({
-                                roleType: 'dean',
-                                unitId: college.id,
-                                unitName: college.name,
-                                currentLeaderId: college.deanId,
-                              });
-                            }}
-                            className="px-2.5 py-1 text-[11px] font-semibold text-primary hover:bg-primary/10 rounded-lg transition-colors cursor-pointer"
-                          >
-                            Reassign
-                          </button>
-                        )}
                       </>
                     ) : (
                       <>
@@ -734,12 +669,7 @@ export const AcademicStructureTab: React.FC = () => {
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setAppointModalData({
-                                roleType: 'dean',
-                                unitId: college.id,
-                                unitName: college.name,
-                                currentLeaderId: college.deanId,
-                              });
+                              navigate(`/accounts/create-leadership?role=dean&collegeId=${encodeURIComponent(college.id)}`);
                             }}
                             className="px-2.5 py-1 text-[11px] font-bold bg-primary text-primary-foreground rounded-lg shadow-xs hover:bg-primary/90 transition-colors cursor-pointer"
                           >
@@ -767,246 +697,257 @@ export const AcademicStructureTab: React.FC = () => {
                 </div>
               </div>
 
-              {/* Program Listing Table */}
-              {!collapsedColleges[college.id] && (
-                <div className="divide-y divide-border/60">
-                  {collegeDepts.length === 0 ? (
-                    <div className="p-6 text-center text-xs text-muted-foreground">
-                      No programs added yet for this college.{' '}
-                      {canAddDepartment && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setDeptCollegeId(college.id);
-                            setIsAddDeptOpen(true);
-                          }}
-                          className="text-primary font-bold hover:underline ml-1 cursor-pointer"
-                        >
-                          Add one now
-                        </button>
-                      )}
-                    </div>
-                  ) : (
-                    collegeDepts.map(dept => {
-                      const chair = getUserById(dept.chairpersonId);
-
-                      return (
-                        <div
-                          key={dept.id}
-                          data-testid={`program-row-${dept.id}`}
-                          onClick={() => navigate(`/governance/programs/${encodeURIComponent(dept.id)}`)}
-                          className="p-3.5 sm:px-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-muted/30 transition-colors cursor-pointer group"
-                        >
-                          <div className="flex items-center space-x-3">
-                            <div>
-                              <div className="flex items-center space-x-2">
-                                <span className="font-bold text-foreground text-xs group-hover:text-primary transition-colors">
-                                  {dept.name}
-                                </span>
-                                <span className="px-1.5 py-0.5 text-[9px] font-mono font-bold bg-muted text-muted-foreground rounded border border-border">
-                                  {dept.code}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Chairperson info */}
-                          <div className="flex items-center space-x-3">
-                            {chair ? (
-                              <div className="flex items-center space-x-2 bg-muted/40 px-3 py-1.5 rounded-xl border border-border">
-                                <UserAvatar
-                                  name={chair.name}
-                                  src={chair.avatar}
-                                  className="w-6 h-6 rounded-full border border-border shrink-0"
-                                />
-                                <div className="text-left text-xs">
-                                  <span className="text-[10px] text-muted-foreground font-semibold mr-1.5">
-                                    Chair:
-                                  </span>
-                                  <span className="font-bold text-foreground">{chair.name}</span>
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="flex items-center space-x-2 bg-amber-500/10 px-3 py-1.5 rounded-xl border border-amber-500/20">
-                                <span className="text-xs text-amber-700 dark:text-amber-300 font-semibold">
-                                  No Chair Appointed
-                                </span>
-                                {canAppointChairs && (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setAppointModalData({
-                                        roleType: 'chairperson',
-                                        unitId: dept.id,
-                                        unitName: dept.name,
-                                        currentLeaderId: dept.chairpersonId,
-                                      });
-                                    }}
-                                    className="text-xs text-primary font-bold hover:underline ml-1 cursor-pointer"
-                                  >
-                                    Appoint
-                                  </button>
-                                )}
-                              </div>
-                            )}
-
-                            {canDeleteDepartment && (!isDean || (effectiveCollegeId && dept.collegeId === effectiveCollegeId)) && (
-                              <button
-                                type="button"
-                                aria-label={`Delete ${dept.name}`}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleInitiateDeleteDepartment(dept);
-                                }}
-                                className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors cursor-pointer shrink-0"
-                                title="Delete Program"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              )}
-
-              {/* Collegiate School Years & Academic Cycles Section */}
-              <div className="p-4 sm:p-5 bg-card/60 border-t border-border">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-6 h-6 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20">
-                      <Calendar className="w-3.5 h-3.5" />
-                    </div>
-                    <div>
-                      <h4 className="text-xs font-bold text-foreground">Collegiate School Year & Rollover</h4>
-                    </div>
-                  </div>
-                </div>
-
-                {/* School Year Select / Combo Box */}
-                {(() => {
-                  const collegeYears = getColYears(college.id);
-                  const activeSY = getActiveSchoolYearForCollege ? getActiveSchoolYearForCollege(college.id) : undefined;
-                  if (collegeYears.length === 0) {
-                    return (
-                      <div className="p-3 bg-muted/20 border border-dashed border-border rounded-xl text-center text-xs text-muted-foreground">
-                        No school years registered. School years are automatically generated with 5 years in advance.
-                      </div>
-                    );
-                  }
-
-                  // Default the selection to the current baseline year if available, else first non-active, else active, else first
-                  const currentSelectedId =
-                    selectedSYByCollege[college.id] ||
-                    (currentBaseline ? collegeYears.find(sy => sy.year === currentBaseline.year)?.id : undefined) ||
-                    collegeYears.find(sy => (activeSY ? sy.year !== activeSY.year : !sy.isActive))?.id ||
-                    activeSY?.id ||
-                    collegeYears[0]?.id;
-
-                  const canRollover = canRolloverCollegeSchoolYear(college);
-                  const selectedTargetSY = collegeYears.find(sy => sy.id === currentSelectedId);
-                  const isSelectedBaseline = currentBaseline && selectedTargetSY ? selectedTargetSY.year === currentBaseline.year : false;
-                  const isSelectedActive = activeSY && selectedTargetSY ? activeSY.year === selectedTargetSY.year : false;
-                  const isRolloverAllowed = Boolean(isSelectedBaseline && !isSelectedActive);
-
-                  return (
-                    <div className="flex flex-col gap-2 pt-1">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        {/* Current Active Badge Display */}
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground font-medium">Active School Year:</span>
-                          <div className="inline-flex items-center px-3 py-1.5 rounded-xl text-xs font-bold bg-primary/10 text-primary border border-primary/20">
-                            <span>{activeSY?.year || '2025-2026'}</span>
-                          </div>
-                        </div>
-
-                        {/* Select / Combo Box and Rollover Action */}
-                        {canRollover ? (
-                          <div className="flex flex-wrap items-center gap-2">
-                            <label
-                              htmlFor={`sy-select-${college.id}`}
-                              className="text-xs text-muted-foreground font-medium shrink-0"
-                            >
-                              Academic Year:
-                            </label>
-                            <select
-                              id={`sy-select-${college.id}`}
-                              aria-label={`Select school year to roll over for ${college.name}`}
-                              value={currentSelectedId}
-                              onChange={(e) => {
-                                setSelectedSYByCollege(prev => ({
-                                  ...prev,
-                                  [college.id]: e.target.value,
-                                }));
-                              }}
-                              className="px-3 py-1.5 bg-background border border-border rounded-xl text-xs font-semibold text-foreground outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer"
-                            >
-                              {collegeYears.map((sy: SchoolYear) => {
-                                const isCurrentActive = activeSY ? activeSY.year === sy.year : sy.isActive;
-                                const isBaseline = currentBaseline ? currentBaseline.year === sy.year : false;
-                                let labelSuffix = '';
-                                if (isCurrentActive && isBaseline) {
-                                  labelSuffix = ' (Current Active & Baseline)';
-                                } else if (isCurrentActive) {
-                                  labelSuffix = ' (Current Active)';
-                                } else if (isBaseline) {
-                                  labelSuffix = ' (University Baseline)';
-                                }
-                                return (
-                                  <option key={sy.id} value={sy.id}>
-                                    {sy.year}{labelSuffix}
-                                  </option>
-                                );
-                              })}
-                            </select>
-                            <button
-                              type="button"
-                              disabled={!isRolloverAllowed}
-                              title={
-                                !isSelectedBaseline
-                                  ? `Colleges can only roll over to the current university baseline academic year (SY ${currentBaseline?.year || ''}).`
-                                  : isSelectedActive
-                                  ? 'This academic year is already active for this college.'
-                                  : `Roll over ${college.name} to SY ${selectedTargetSY?.year || ''}`
-                              }
-                              onClick={() => handleInitiateRollover(college, currentSelectedId)}
-                              className="px-3.5 py-1.5 bg-card hover:bg-muted active:scale-[0.98] text-foreground font-bold text-xs rounded-xl border border-border hover:border-primary/40 transition-all flex items-center space-x-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              <span>Roll Over to Year</span>
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground font-medium shrink-0">
-                              Available Years:
-                            </span>
-                            <select
-                              disabled
-                              aria-label={`Available school years for ${college.name}`}
-                              value={activeSY?.id || ''}
-                              className="px-3 py-1.5 bg-muted/40 border border-border rounded-xl text-xs font-medium text-muted-foreground outline-none cursor-not-allowed"
-                            >
-                              {collegeYears.map((sy: SchoolYear) => (
-                                <option key={sy.id} value={sy.id}>
-                                  {sy.year} {activeSY && activeSY.year === sy.year ? '(Current Active)' : ''}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
+              {/* Collapsible Content */}
+              {isExpanded && (
+                <div
+                  id={`college-content-${college.id}`}
+                  data-testid={`college-content-${college.id}`}
+                  aria-hidden={!isExpanded}
+                  className="transition-all duration-300 ease-in-out overflow-hidden"
+                >
+                  <div className="overflow-hidden min-h-0">
+                  {/* Program Listing Table */}
+                  <div className="divide-y divide-border/60">
+                    {collegeDepts.length === 0 ? (
+                      <div className="p-6 text-center text-xs text-muted-foreground">
+                        No programs added yet for this college.{' '}
+                        {canAddDepartment && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDeptCollegeId(college.id);
+                              setIsAddDeptOpen(true);
+                            }}
+                            className="text-primary font-bold hover:underline ml-1 cursor-pointer"
+                          >
+                            Add one now
+                          </button>
                         )}
                       </div>
-                      {canRollover && selectedTargetSY && !isSelectedBaseline && (
-                        <p className="text-[11px] text-amber-600 dark:text-amber-400 text-left sm:text-right">
-                          Colleges can only roll over to the current university baseline academic year (SY {currentBaseline?.year}).
-                        </p>
-                      )}
+                    ) : (
+                      collegeDepts.map(dept => {
+                        const chair = getUserById(dept.chairpersonId);
+
+                        return (
+                          <div
+                            key={dept.id}
+                            data-testid={`program-row-${dept.id}`}
+                            onClick={() => navigate(`/governance/programs/${encodeURIComponent(dept.id)}`)}
+                            className="p-3.5 sm:px-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-muted/30 transition-colors cursor-pointer group"
+                          >
+                            <div className="flex items-center space-x-3">
+                              <div>
+                                <div className="flex items-center space-x-2">
+                                  <span className="font-bold text-foreground text-xs group-hover:text-primary transition-colors">
+                                    {dept.name}
+                                  </span>
+                                  <span className="px-1.5 py-0.5 text-[9px] font-mono font-bold bg-muted text-muted-foreground rounded border border-border">
+                                    {dept.code}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Chairperson info */}
+                            <div className="flex items-center space-x-3">
+                              {chair ? (
+                                <div className="flex items-center space-x-2 bg-muted/40 px-3 py-1.5 rounded-xl border border-border">
+                                  <UserAvatar
+                                    name={chair.name}
+                                    src={chair.avatar}
+                                    className="w-6 h-6 rounded-full border border-border shrink-0"
+                                  />
+                                  <div className="text-left text-xs">
+                                    <span className="text-[10px] text-muted-foreground font-semibold mr-1.5">
+                                      Chair:
+                                    </span>
+                                    <span className="font-bold text-foreground">{chair.name}</span>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="flex items-center space-x-2 bg-amber-500/10 px-3 py-1.5 rounded-xl border border-amber-500/20">
+                                  <span className="text-xs text-amber-700 dark:text-amber-300 font-semibold">
+                                    No Chair Appointed
+                                  </span>
+                                  {canAppointChairs && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        navigate(`/accounts/create-leadership?role=chairperson&departmentId=${encodeURIComponent(dept.id)}&collegeId=${encodeURIComponent(college.id)}`);
+                                      }}
+                                      className="text-xs text-primary font-bold hover:underline ml-1 cursor-pointer"
+                                    >
+                                      Appoint
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+
+                              {canDeleteDepartment && (!isDean || (effectiveCollegeId && dept.collegeId === effectiveCollegeId)) && (
+                                <button
+                                  type="button"
+                                  aria-label={`Delete ${dept.name}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleInitiateDeleteDepartment(dept);
+                                  }}
+                                  className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors cursor-pointer shrink-0"
+                                  title="Delete Program"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  {/* Collegiate School Years & Academic Cycles Section */}
+                  <div className="p-4 sm:p-5 bg-card/60 border-t border-border">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                      <div className="flex items-center space-x-2">
+                        <div className="w-6 h-6 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20">
+                          <Calendar className="w-3.5 h-3.5" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-bold text-foreground">Collegiate School Year & Rollover</h4>
+                        </div>
+                      </div>
                     </div>
-                  );
-                })()}
+
+                    {/* School Year Select / Combo Box */}
+                    {(() => {
+                      const collegeYears = getColYears(college.id);
+                      const activeSY = getActiveSchoolYearForCollege ? getActiveSchoolYearForCollege(college.id) : undefined;
+                      if (collegeYears.length === 0) {
+                        return (
+                          <div className="p-3 bg-muted/20 border border-dashed border-border rounded-xl text-center text-xs text-muted-foreground">
+                            No school years registered. School years are automatically generated with 5 years in advance.
+                          </div>
+                        );
+                      }
+
+                      // Default the selection to the current baseline year if available, else first non-active, else active, else first
+                      const currentSelectedId =
+                        selectedSYByCollege[college.id] ||
+                        (currentBaseline ? collegeYears.find(sy => sy.year === currentBaseline.year)?.id : undefined) ||
+                        collegeYears.find(sy => (activeSY ? sy.year !== activeSY.year : !sy.isActive))?.id ||
+                        activeSY?.id ||
+                        collegeYears[0]?.id;
+
+                      const canRollover = canRolloverCollegeSchoolYear(college);
+                      const selectedTargetSY = collegeYears.find(sy => sy.id === currentSelectedId);
+                      const isSelectedBaseline = currentBaseline && selectedTargetSY ? selectedTargetSY.year === currentBaseline.year : false;
+                      const isSelectedActive = activeSY && selectedTargetSY ? activeSY.year === selectedTargetSY.year : false;
+                      const isRolloverAllowed = Boolean(isSelectedBaseline && !isSelectedActive);
+
+                      return (
+                        <div className="flex flex-col gap-2 pt-1">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            {/* Current Active Badge Display & Baseline Mismatch Badge */}
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-xs text-muted-foreground font-medium">Active School Year:</span>
+                              <div className="inline-flex items-center px-3 py-1.5 rounded-xl text-xs font-bold bg-primary/10 text-primary border border-primary/20">
+                                <span>{activeSY?.year || '2025-2026'}</span>
+                              </div>
+                              {currentBaseline && activeSY && currentBaseline.year.trim().toLowerCase() !== activeSY.year.trim().toLowerCase() && (
+                                <div
+                                  data-testid={`baseline-mismatch-badge-${college.id}`}
+                                  title={`The university baseline is AY ${currentBaseline.year}, which differs from this college's active academic year.`}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/25 shadow-xs"
+                                >
+                                  <span className="h-2 w-2 rounded-full bg-amber-400 shrink-0" />
+                                  <span className="text-muted-foreground font-normal">Current Baseline:</span>
+                                  <span className="font-extrabold">{currentBaseline.year}</span>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Select / Combo Box and Rollover Action */}
+                            {canRollover ? (
+                              <div className="flex flex-wrap items-center gap-2">
+                                <label
+                                  htmlFor={`sy-select-${college.id}`}
+                                  className="text-xs text-muted-foreground font-medium shrink-0"
+                                >
+                                  Academic Year:
+                                </label>
+                                <CustomDropdown
+                                  id={`sy-select-${college.id}`}
+                                  ariaLabel={`Select school year to roll over for ${college.name}`}
+                                  className="w-48"
+                                  searchable
+                                  value={currentSelectedId}
+                                  onChange={(next) => {
+                                    setSelectedSYByCollege(prev => ({
+                                      ...prev,
+                                      [college.id]: next,
+                                    }));
+                                  }}
+                                  options={collegeYears.map((sy: SchoolYear) => {
+                                    const isCurrentActive = activeSY ? activeSY.year === sy.year : sy.isActive;
+                                    const isBaseline = currentBaseline ? currentBaseline.year === sy.year : false;
+                                    let labelSuffix = '';
+                                    if (isCurrentActive && isBaseline) {
+                                      labelSuffix = ' (Current Active & Baseline)';
+                                    } else if (isCurrentActive) {
+                                      labelSuffix = ' (Current Active)';
+                                    } else if (isBaseline) {
+                                      labelSuffix = ' (University Baseline)';
+                                    }
+                                    return { value: sy.id, label: `${sy.year}${labelSuffix}` };
+                                  })}
+                                />
+                                <button
+                                  type="button"
+                                  disabled={!isRolloverAllowed}
+                                  title={
+                                    !isSelectedBaseline
+                                      ? `Colleges can only roll over to the current university baseline academic year (SY ${currentBaseline?.year || ''}).`
+                                      : isSelectedActive
+                                      ? 'This academic year is already active for this college.'
+                                      : `Roll over ${college.name} to SY ${selectedTargetSY?.year || ''}`
+                                  }
+                                  onClick={() => handleInitiateRollover(college, currentSelectedId)}
+                                  className="px-3.5 py-1.5 bg-card hover:bg-muted active:scale-[0.98] text-foreground font-bold text-xs rounded-xl border border-border hover:border-primary/40 transition-all flex items-center space-x-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  <span>Roll Over to Year</span>
+                                </button>
+                              </div>
+                            ) : viewerIsDeanOfCollege(college) ? (
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-muted-foreground font-medium shrink-0">
+                                  Available Years:
+                                </span>
+                                <CustomDropdown
+                                  disabled
+                                  ariaLabel={`Available school years for ${college.name}`}
+                                  className="w-44"
+                                  value={activeSY?.id || ''}
+                                  onChange={() => {}}
+                                  options={collegeYears.map((sy: SchoolYear) => ({
+                                    value: sy.id,
+                                    label: `${sy.year} ${activeSY && activeSY.year === sy.year ? '(Current Active)' : ''}`,
+                                  }))}
+                                />
+                              </div>
+                            ) : null}
+                          </div>
+                          {canRollover && selectedTargetSY && !isSelectedBaseline && (
+                            <p className="text-[11px] text-amber-600 dark:text-amber-400 text-left sm:text-right">
+                              Colleges can only roll over to the current university baseline academic year (SY {currentBaseline?.year}).
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
               </div>
+            )}
             </div>
           );
         })}
@@ -1057,19 +998,20 @@ export const AcademicStructureTab: React.FC = () => {
               <label htmlFor="new-college-dean" className="block text-xs font-bold text-foreground mb-1">
                 Initial Dean (Optional)
               </label>
-              <select
+              <CustomDropdown
                 id="new-college-dean"
+                searchable
+                placeholder="Leave Unassigned (Appoint Later)"
                 value={initialDeanId}
-                onChange={e => setInitialDeanId(e.target.value)}
-                className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs font-sans text-foreground outline-none focus:ring-2 focus:ring-primary/30"
-              >
-                <option value="">Leave Unassigned (Appoint Later)</option>
-                {eligibleDeanCandidates.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} ({c.email}){c.department ? ` - ${c.department}` : ''}
-                  </option>
-                ))}
-              </select>
+                onChange={setInitialDeanId}
+                options={[
+                  { value: '', label: 'Leave Unassigned (Appoint Later)' },
+                  ...eligibleDeanCandidates.map(c => ({
+                    value: c.id,
+                    label: `${c.name} (${c.email})${c.department ? ` - ${c.department}` : ''}`,
+                  })),
+                ]}
+              />
             </div>
             <div className="flex justify-end space-x-2 pt-2 border-t border-border">
               <button
@@ -1114,31 +1056,29 @@ export const AcademicStructureTab: React.FC = () => {
               <label htmlFor="dept-college-select" className="block text-xs font-bold text-foreground mb-1">
                 Select Parent College
               </label>
-              <select
+              <CustomDropdown
                 id="dept-college-select"
-                required
                 disabled={isDean}
+                searchable={!isDean}
+                placeholder="Select College..."
                 value={isDean ? (effectiveCollegeId || deptCollegeId) : deptCollegeId}
-                onChange={e => setDeptCollegeId(e.target.value)}
-                className={`w-full px-3 py-2 bg-background border border-border rounded-xl text-xs font-sans text-foreground outline-none focus:ring-2 focus:ring-primary/30 ${
-                  isDean ? 'opacity-75 cursor-not-allowed bg-muted' : ''
-                }`}
-              >
-                {isDean ? (
-                  <option value={effectiveCollegeId || deptCollegeId}>
-                    {deanCollege ? `${deanCollege.name} (${deanCollege.code})` : (activeUser?.collegeName || 'Current College')}
-                  </option>
-                ) : (
-                  <>
-                    <option value="">Select College...</option>
-                    {(colleges || []).map(c => (
-                      <option key={c.id} value={c.id}>
-                        {c.name} ({c.code})
-                      </option>
-                    ))}
-                  </>
-                )}
-              </select>
+                onChange={setDeptCollegeId}
+                options={
+                  isDean
+                    ? [
+                        {
+                          value: effectiveCollegeId || deptCollegeId,
+                          label: deanCollege
+                            ? `${deanCollege.name} (${deanCollege.code})`
+                            : activeUser?.collegeName || 'Current College',
+                        },
+                      ]
+                    : [
+                        { value: '', label: 'Select College...' },
+                        ...(colleges || []).map(c => ({ value: c.id, label: `${c.name} (${c.code})` })),
+                      ]
+                }
+              />
             </div>
             <div>
               <label htmlFor="new-dept-name" className="block text-xs font-bold text-foreground mb-1">
@@ -1172,19 +1112,20 @@ export const AcademicStructureTab: React.FC = () => {
               <label htmlFor="new-dept-chair" className="block text-xs font-bold text-foreground mb-1">
                 Initial Chairperson (Optional)
               </label>
-              <select
+              <CustomDropdown
                 id="new-dept-chair"
+                searchable
+                placeholder="Leave Unassigned (Appoint Later)"
                 value={initialChairId}
-                onChange={e => setInitialChairId(e.target.value)}
-                className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs font-sans text-foreground outline-none focus:ring-2 focus:ring-primary/30"
-              >
-                <option value="">Leave Unassigned (Appoint Later)</option>
-                {eligibleChairCandidates.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} ({c.email}){c.program || c.department ? ` - ${c.program || c.department}` : ''}
-                  </option>
-                ))}
-              </select>
+                onChange={setInitialChairId}
+                options={[
+                  { value: '', label: 'Leave Unassigned (Appoint Later)' },
+                  ...eligibleChairCandidates.map(c => ({
+                    value: c.id,
+                    label: `${c.name} (${c.email})${c.program || c.department ? ` - ${c.program || c.department}` : ''}`,
+                  })),
+                ]}
+              />
             </div>
             <div className="flex justify-end space-x-2 pt-2 border-t border-border">
               <button
@@ -1209,73 +1150,6 @@ export const AcademicStructureTab: React.FC = () => {
               </button>
             </div>
           </form>
-        </DialogFrame>
-      )}
-
-      {/* APPOINT / REASSIGN LEADER MODAL */}
-      {appointModalData && (
-        <DialogFrame
-          title={`Appoint ${appointModalData.roleType === 'dean' ? 'Dean' : 'Chairperson'}`}
-          subtitle={`Designate unit administrative leader for ${appointModalData.unitName}`}
-          onClose={() => setAppointModalData(null)}
-          footer={
-            <>
-              <button
-                type="button"
-                onClick={() => setAppointModalData(null)}
-                className="px-4 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted rounded-xl cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={!selectedCandidateId || isSubmittingLeader}
-                onClick={handleAppointLeader}
-                className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-xs rounded-xl shadow-xs cursor-pointer disabled:opacity-50 flex items-center space-x-1.5"
-              >
-                <span>{isSubmittingLeader ? 'Appointing...' : 'Confirm Appointment'}</span>
-              </button>
-            </>
-          }
-        >
-          <div className="space-y-4 text-xs font-sans">
-            <div className="p-3 bg-muted/60 border border-border rounded-xl">
-              <div className="font-bold text-foreground">Unit: {appointModalData.unitName}</div>
-              <div className="text-muted-foreground text-[11px]">
-                Role:{' '}
-                {appointModalData.roleType === 'dean'
-                  ? 'College Dean'
-                  : 'Department Chairperson'}
-              </div>
-            </div>
-
-            <div>
-              <label htmlFor="select-candidate" className="block font-bold text-foreground mb-1.5">
-                Select Candidate
-              </label>
-              <select
-                id="select-candidate"
-                value={selectedCandidateId}
-                onChange={e => setSelectedCandidateId(e.target.value)}
-                className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs font-sans text-foreground outline-none focus:ring-2 focus:ring-primary/30"
-              >
-                <option value="">Select faculty member...</option>
-                {eligibleCandidates.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} ({c.email}) - {c.department}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[11px] text-amber-700 dark:text-amber-300 flex items-start space-x-2">
-              <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
-              <span>
-                Appointing a new leader automatically steps down any previous incumbent to faculty,
-                strictly adhering to the single-seat leadership invariant.
-              </span>
-            </div>
-          </div>
         </DialogFrame>
       )}
 

@@ -1,6 +1,25 @@
 import * as xlsx from 'xlsx';
 import type { User } from '../../../shared/types/lms';
-import { isChairRole, isDeanRole } from '../../../shared/utils/roles';
+import { isFacultyRole } from '../../../shared/utils/roles';
+
+export type AssignedCourseSemester = 'First' | 'Mid-Year' | 'Second';
+
+export const ASSIGNED_COURSE_SEMESTERS: readonly AssignedCourseSemester[] = [
+  'First',
+  'Mid-Year',
+  'Second',
+] as const;
+
+export function normalizeAssignedSemester(raw?: string | null): AssignedCourseSemester {
+  const s = (raw || '').trim().toLowerCase().replace(/[-_\s]+/g, ' ');
+  if (s.includes('mid') || s.includes('summer')) {
+    return 'Mid-Year';
+  }
+  if (s.includes('second') || /\b(2nd|2)\b/.test(s) || s.startsWith('2nd') || s.includes('2nd sem')) {
+    return 'Second';
+  }
+  return 'First';
+}
 
 export interface RawChairSheetRow {
   firstName: string;
@@ -9,7 +28,10 @@ export interface RawChairSheetRow {
   courseCode: string;
   descriptiveTitle: string;
   yearAndSection: string;
+  semester?: AssignedCourseSemester | string;
 }
+
+export type RawAssignedCoursesRow = RawChairSheetRow;
 
 export interface ValidatedChairSheetRow extends RawChairSheetRow {
   id: string;
@@ -20,6 +42,8 @@ export interface ValidatedChairSheetRow extends RawChairSheetRow {
   checklistStatus?: 'valid' | 'invalid' | 'unverified';
   checklistErrorMessage?: string;
 }
+
+export type ValidatedAssignedCoursesRow = ValidatedChairSheetRow;
 
 export interface FacultyMatchResult {
   status: 'valid' | 'invalid';
@@ -75,16 +99,12 @@ function stringSimilarity(a: string, b: string): number {
 
 /**
  * Checks if a user is eligible to be assigned as faculty/instructor for a course.
- * Eligible roles: faculty, or admin with chairperson or dean designation.
+ * Strictly teaching faculty/instructors only.
+ * Deans, Program Chairs, and Admins are administrative monitors and cannot be assigned as course faculty.
  */
 export function isEligibleFaculty(user: User): boolean {
   if (!user) return false;
-  const role = (user.role || '').toLowerCase();
-  if (role === 'faculty' || role === 'instructor') return true;
-  if (role === 'admin' || role === 'superadmin') {
-    return isChairRole(user, user.role) || isDeanRole(user, user.role);
-  }
-  return false;
+  return isFacultyRole(user, user.role);
 }
 
 /**
@@ -96,6 +116,7 @@ export function isEligibleFaculty(user: User): boolean {
  * - Course Code
  * - Descriptive Title
  * - Year and Section
+ * - Semester
  */
 export function parseChairSheet(data: ArrayBuffer | Uint8Array): RawChairSheetRow[] {
   const wb = xlsx.read(data, { type: 'array' });
@@ -122,6 +143,8 @@ export function parseChairSheet(data: ArrayBuffer | Uint8Array): RawChairSheetRo
     const courseCode = getVal(['Course Code', 'CourseCode', 'Subject Code', 'SubjectCode']);
     const descriptiveTitle = getVal(['Descriptive Title', 'DescriptiveTitle', 'Course Title', 'Title']);
     const yearAndSection = getVal(['Year and Section', 'Year & Section', 'YearSection', 'Section', 'Year and Sec']);
+    const rawSemester = getVal(['Semester', 'Sem', 'Term']);
+    const semester = rawSemester ? normalizeAssignedSemester(rawSemester) : 'First';
 
     return {
       firstName,
@@ -130,6 +153,7 @@ export function parseChairSheet(data: ArrayBuffer | Uint8Array): RawChairSheetRo
       courseCode,
       descriptiveTitle,
       yearAndSection,
+      semester,
     };
   }).filter(r => r.courseCode || r.descriptiveTitle || r.lastName || r.firstName);
 }
@@ -199,7 +223,7 @@ export function matchFaculty(row: RawChairSheetRow, users: User[]): FacultyMatch
 
   return {
     status: 'invalid',
-    error: `Faculty "${row.firstName} ${row.lastName}".trim() not found in the system.`,
+    error: `Faculty "${[row.firstName, row.lastName].filter(Boolean).join(' ').trim()}" not found in the system.`,
   };
 }
 
@@ -225,7 +249,23 @@ export function validateChairSheetRows(
 }
 
 /**
- * Generates an Excel workbook for the blank chair-sheet template with column headers only.
+ * Formats a course term string from the semester and academic year.
+ * Strictly maps to one of the 3 allowed semesters: "First", "Mid-Year", "Second".
+ */
+export function formatCourseTerm(semester: string | undefined, schoolYear: string): string {
+  const norm = normalizeAssignedSemester(semester);
+  switch (norm) {
+    case 'First':
+      return `1st Sem AY ${schoolYear}`;
+    case 'Second':
+      return `2nd Sem AY ${schoolYear}`;
+    case 'Mid-Year':
+      return `Midyear AY ${schoolYear}`;
+  }
+}
+
+/**
+ * Generates an Excel workbook for the blank assigned-courses template with column headers only.
  */
 export function generateChairSheetTemplateWorkbook(): xlsx.WorkBook {
   const headers = [
@@ -235,6 +275,7 @@ export function generateChairSheetTemplateWorkbook(): xlsx.WorkBook {
     'Course Code',
     'Descriptive Title',
     'Year and Section',
+    'Semester',
   ];
 
   // Creates sheet with headers only (row 1) and no sample data content
@@ -246,17 +287,24 @@ export function generateChairSheetTemplateWorkbook(): xlsx.WorkBook {
     { wch: 16 }, // Course Code
     { wch: 36 }, // Descriptive Title
     { wch: 18 }, // Year and Section
+    { wch: 16 }, // Semester
   ];
 
   const workbook = xlsx.utils.book_new();
-  xlsx.utils.book_append_sheet(workbook, worksheet, 'Chair Sheet');
+  xlsx.utils.book_append_sheet(workbook, worksheet, 'Assigned Courses');
   return workbook;
 }
 
+export const generateAssignedCoursesTemplateWorkbook = generateChairSheetTemplateWorkbook;
+
 /**
- * Downloads the chair-sheet template as an Excel file (.xlsx) in the browser.
+ * Downloads the assigned-courses template as an Excel file (.xlsx) in the browser.
  */
-export function downloadChairSheetTemplate(filename = 'chair-sheet-template.xlsx'): void {
+export function downloadChairSheetTemplate(filename = 'assigned-courses-template.xlsx'): void {
   const wb = generateChairSheetTemplateWorkbook();
   xlsx.writeFile(wb, filename);
 }
+
+export const downloadAssignedCoursesTemplate = downloadChairSheetTemplate;
+export const parseAssignedCourses = parseChairSheet;
+export const validateAssignedCoursesRows = validateChairSheetRows;

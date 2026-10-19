@@ -107,4 +107,46 @@ describe('EditAccountPage - Student Year Level Management', () => {
       })
     );
   });
+
+  it('renders First Name, Middle Name, and Last Name and submits updated name to updateUser', async () => {
+    const deanAccount: User = {
+      id: 'dean-1',
+      name: 'Old Dean Name',
+      email: 'dean@dmmmsu.edu.ph',
+      role: 'admin',
+      adminSubrole: 'dean',
+      studentId: '100-2000-1',
+      department: 'College of Computer Science',
+      program: 'College of Computer Science',
+      title: 'Dean',
+      avatar: '',
+    };
+
+    render(<EditAccountPage user={deanAccount} onNavigateTab={mockNavigateTab} />);
+
+    const firstNameInput = screen.getByLabelText(/first name/i);
+    const middleNameInput = screen.getByLabelText(/middle name/i);
+    const lastNameInput = screen.getByLabelText(/last name/i);
+
+    fireEvent.change(firstNameInput, { target: { value: 'Alexander' } });
+    fireEvent.change(middleNameInput, { target: { value: 'Bautista' } });
+    fireEvent.change(lastNameInput, { target: { value: 'Cruz' } });
+
+    const submitBtn = screen.getByRole('button', { name: /save changes/i });
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(mockUpdateUser).toHaveBeenCalledTimes(1);
+    });
+
+    expect(mockUpdateUser).toHaveBeenCalledWith(
+      'dean-1',
+      expect.objectContaining({
+        firstName: 'Alexander',
+        middleName: 'Bautista',
+        lastName: 'Cruz',
+        name: 'Alexander Bautista Cruz',
+      })
+    );
+  });
 });

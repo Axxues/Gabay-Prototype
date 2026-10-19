@@ -22,6 +22,7 @@ const REQUEST_TYPE_LABELS: Record<EnrollmentRequest['type'], string> = {
 const NOTIFICATION_GROUP_LABELS: Record<string, string> = {
   module_comment_reply: 'Module replies',
   announcement_reply: 'Announcement replies',
+  baseline_changed: 'Academic Baseline',
 };
 
 export const NotificationBell: React.FC<NotificationBellProps> = ({

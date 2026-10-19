@@ -3,6 +3,7 @@ import { useLMS } from '../../shared/context/LMSContext';
 import type { Quiz, QuizQuestion, TermId } from '../../shared/types/lms';
 import { normalizeTermId } from '../../shared/utils/gradingTerms';
 import { TERM_LABELS, TermFilterSelect } from '../../shared/components/common/TermSelect';
+import { canManageCourseContent } from '../../shared/utils/roles';
 import { SourceFilterSelect } from '../../shared/components/common/SourceFilterSelect';
 import {
   buildAssessmentSourceIndex,
@@ -51,6 +52,8 @@ export const QuizzesView: React.FC<QuizzesViewProps> = ({
     effectiveTermsForCourse
   } = useLMS() as ReturnType<typeof useLMS> & { effectiveTermsForCourse?: (courseId: string) => TermId[] };
 
+  const course = db.courses.find(c => c.id === courseId);
+  const isAssignedInstructor = canManageCourseContent(course, activeUser);
   const courseQuizzes = db.quizzes.filter(q => q.courseId === courseId);
   const [activeQuiz, setActiveQuiz] = useState<Quiz | null>(null);
   const [userAnswers, setUserAnswers] = useState<Record<string, string>>({});
@@ -622,7 +625,7 @@ export const QuizzesView: React.FC<QuizzesViewProps> = ({
         title="Quizzes & Assessments"
         description="Standardized evaluation modules, Google Forms-style quizzes, and timed knowledge checks."
         actions={
-          (activeRole === 'faculty' || activeRole === 'admin') && (
+          isAssignedInstructor && (
             <button
               onClick={() => setIsCreatingQuiz(true)}
               className="px-4 py-2 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all shadow-primary-sm flex items-center space-x-1.5 cursor-pointer self-start sm:self-auto"
@@ -666,8 +669,8 @@ export const QuizzesView: React.FC<QuizzesViewProps> = ({
         ) : courseQuizzes.length === 0 ? (
           <EmptyState
             title="No quizzes published for this course yet."
-            actionLabel={activeRole === 'faculty' || activeRole === 'admin' ? 'Create your first quiz now' : undefined}
-            onAction={activeRole === 'faculty' || activeRole === 'admin' ? () => setIsCreatingQuiz(true) : undefined}
+            actionLabel={isAssignedInstructor ? 'Create your first quiz now' : undefined}
+            onAction={isAssignedInstructor ? () => setIsCreatingQuiz(true) : undefined}
           />
         ) : visibleQuizzes.length === 0 ? (
           <p className="text-[12.5px] text-muted-foreground text-center py-6">

@@ -5,8 +5,12 @@ import type { User } from '../../../shared/types/lms';
 import {
   parseChairSheet,
   matchFaculty,
+  isEligibleFaculty,
   validateChairSheetRows,
   generateChairSheetTemplateWorkbook,
+  formatCourseTerm,
+  normalizeAssignedSemester,
+  ASSIGNED_COURSE_SEMESTERS,
   type RawChairSheetRow,
 } from './chairSheetParser';
 
@@ -78,9 +82,9 @@ describe('chairSheetParser', () => {
   it('parses raw Excel data buffer and trims whitespace', () => {
     // Generate a test workbook in memory
     const data = [
-      ['First Name', 'Middle Name', 'Last Name', 'Course Code', 'Descriptive Title', 'Year and Section'],
-      ['Charlie ', 'Seli', 'Marzan', 'CSCC 103', 'Object Oriented Programming', '4-E'],
-      ['Raymund', ' Ezekiel ', 'Dilan', 'CSPC 112', 'Software Engineering 2', '4-E '],
+      ['First Name', 'Middle Name', 'Last Name', 'Course Code', 'Descriptive Title', 'Year and Section', 'Semester'],
+      ['Charlie ', 'Seli', 'Marzan', 'CSCC 103', 'Object Oriented Programming', '4-E', 'First'],
+      ['Raymund', ' Ezekiel ', 'Dilan', 'CSPC 112', 'Software Engineering 2', '4-E ', 'Second'],
     ];
     const ws = xlsx.utils.aoa_to_sheet(data);
     const wb = xlsx.utils.book_new();
@@ -96,6 +100,7 @@ describe('chairSheetParser', () => {
       courseCode: 'CSCC 103',
       descriptiveTitle: 'Object Oriented Programming',
       yearAndSection: '4-E',
+      semester: 'First',
     });
     expect(rows[1]).toEqual({
       firstName: 'Raymund',
@@ -104,6 +109,7 @@ describe('chairSheetParser', () => {
       courseCode: 'CSPC 112',
       descriptiveTitle: 'Software Engineering 2',
       yearAndSection: '4-E',
+      semester: 'Second',
     });
   });
 
@@ -120,7 +126,7 @@ describe('chairSheetParser', () => {
     expect(res1.status).toBe('valid');
     expect(res1.user?.id).toBe('u-charlie');
 
-    // Chair can also be assigned courses
+    // Administrative monitors (Chair, Dean, Admin) CANNOT be assigned courses
     const rowChair: RawChairSheetRow = {
       firstName: 'Alice',
       middleName: 'Chair',
@@ -130,10 +136,10 @@ describe('chairSheetParser', () => {
       yearAndSection: '1-A',
     };
     const resChair = matchFaculty(rowChair, mockUsers);
-    expect(resChair.status).toBe('valid');
-    expect(resChair.user?.id).toBe('u-chair');
+    expect(resChair.status).toBe('invalid');
+    expect(isEligibleFaculty(mockUsers.find(u => u.id === 'u-chair')!)).toBe(false);
 
-    // Dean can also be assigned courses
+    // Dean cannot be assigned courses
     const rowDean: RawChairSheetRow = {
       firstName: 'Bob',
       middleName: '',
@@ -143,8 +149,8 @@ describe('chairSheetParser', () => {
       yearAndSection: '2-B',
     };
     const resDean = matchFaculty(rowDean, mockUsers);
-    expect(resDean.status).toBe('valid');
-    expect(resDean.user?.id).toBe('u-dean');
+    expect(resDean.status).toBe('invalid');
+    expect(isEligibleFaculty(mockUsers.find(u => u.id === 'u-dean')!)).toBe(false);
   });
 
   it('does NOT match students as faculty instructors', () => {
@@ -209,9 +215,9 @@ describe('chairSheetParser', () => {
 
   it('generates a clean blank template workbook with column headers only', () => {
     const wb = generateChairSheetTemplateWorkbook();
-    expect(wb.SheetNames).toContain('Chair Sheet');
+    expect(wb.SheetNames).toContain('Assigned Courses');
 
-    const sheet = wb.Sheets['Chair Sheet'];
+    const sheet = wb.Sheets['Assigned Courses'];
     const rows = xlsx.utils.sheet_to_json(sheet, { header: 1 }) as string[][];
 
     // Only 1 row (the header titles)
@@ -223,12 +229,34 @@ describe('chairSheetParser', () => {
       'Course Code',
       'Descriptive Title',
       'Year and Section',
+      'Semester',
     ]);
 
     // Parsing the blank template buffer returns 0 data rows
     const buf = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
     const parsed = parseChairSheet(buf);
     expect(parsed.length).toBe(0);
+  });
+
+  it('formats course term correctly based on semester and school year', () => {
+    expect(ASSIGNED_COURSE_SEMESTERS).toEqual(['First', 'Mid-Year', 'Second']);
+
+    expect(normalizeAssignedSemester('First')).toBe('First');
+    expect(normalizeAssignedSemester('1st Sem')).toBe('First');
+    expect(normalizeAssignedSemester('Mid-Year')).toBe('Mid-Year');
+    expect(normalizeAssignedSemester('midyear')).toBe('Mid-Year');
+    expect(normalizeAssignedSemester('Summer')).toBe('Mid-Year');
+    expect(normalizeAssignedSemester('Second')).toBe('Second');
+    expect(normalizeAssignedSemester('2nd')).toBe('Second');
+    expect(normalizeAssignedSemester('')).toBe('First');
+    expect(normalizeAssignedSemester(null)).toBe('First');
+
+    expect(formatCourseTerm('First', '2025-2026')).toBe('1st Sem AY 2025-2026');
+    expect(formatCourseTerm('Second', '2025-2026')).toBe('2nd Sem AY 2025-2026');
+    expect(formatCourseTerm('Mid-Year', '2025-2026')).toBe('Midyear AY 2025-2026');
+    expect(formatCourseTerm('midyear', '2025-2026')).toBe('Midyear AY 2025-2026');
+    expect(formatCourseTerm('', '2025-2026')).toBe('1st Sem AY 2025-2026');
+    expect(formatCourseTerm(undefined, '2025-2026')).toBe('1st Sem AY 2025-2026');
   });
 });
 

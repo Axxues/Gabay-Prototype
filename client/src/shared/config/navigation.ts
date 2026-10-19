@@ -51,7 +51,7 @@ export function isVisible(item: NavItem, role: UserRole): boolean { return item.
 // (derived from MAIN_NAV so new top-level pages are excluded automatically).
 const NON_LMS_TOP_LEVEL_TABS: string[] = MAIN_NAV.filter(i => i.id !== 'lms').map(i => i.id);
 // Standalone authoring pages that should render full-width without the LMS context panel.
-const FULL_WIDTH_TABS: string[] = ['create-account', 'edit-account'];
+const FULL_WIDTH_TABS: string[] = ['create-account', 'edit-account', 'account-profile'];
 // Self-contained utility pages reached from the topbar. They live outside the
 // Learning Management section, so the LMS navigation panel is hidden on them too.
 const STANDALONE_TABS: string[] = ['profile', 'history', 'help'];

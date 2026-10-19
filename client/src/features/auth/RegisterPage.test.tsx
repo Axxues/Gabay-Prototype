@@ -82,23 +82,23 @@ describe('RegisterPage Component', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByLabelText(/^college/i)).toBeRequired();
-    expect(screen.getByLabelText(/^program|^department/i)).toBeRequired();
+    // Required markers are shown on both labels. The shared CustomDropdown keeps a
+    // labelled native select for value/semantics, but carries no native `required`;
+    // the form's own validation is what enforces these two fields.
+    expect(screen.getByText('College *')).toBeInTheDocument();
+    expect(screen.getByText(/Program \*|Department \*/)).toBeInTheDocument();
 
-    // With nothing selected, College is invalid (required semantics)
-    expect(screen.getByLabelText(/^college/i)).toBeInvalid();
-
-    // Department stays disabled until a college is chosen, then it too is required
+    // Department stays disabled until a college is chosen
     const departmentSelect = screen.getByLabelText(/^program|^department/i);
     expect(departmentSelect).toBeDisabled();
 
-    fireEvent.change(screen.getByLabelText(/^college/i), { target: { value: 'col-ccs' } });
-    expect(departmentSelect).toBeEnabled();
+    // Submitting with nothing selected flags both dropdowns as invalid
+    fireEvent.click(screen.getByRole('button', { name: /register|create account/i }));
+    expect(screen.getByLabelText(/^college/i)).toBeInvalid();
     expect(departmentSelect).toBeInvalid();
 
-    // Required markers are shown on both labels
-    expect(screen.getByText('College *')).toBeInTheDocument();
-    expect(screen.getByText(/Program \*|Department \*/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/^college/i), { target: { value: 'col-ccs' } });
+    expect(departmentSelect).toBeEnabled();
   });
 
   it('blocks submission when College and Department are not selected', async () => {

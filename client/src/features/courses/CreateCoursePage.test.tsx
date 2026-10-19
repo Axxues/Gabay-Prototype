@@ -200,29 +200,5 @@ describe('CreateCoursePage', () => {
     expect(screen.getByText(/click to browse or drag & drop/i)).toBeInTheDocument();
     expect(screen.queryByAltText('Uploaded course cover')).not.toBeInTheDocument();
   });
-
-  test('live course card preview dynamically mirrors entered title, code, section, and instructor', () => {
-    const { fireEvent } = require('@testing-library/react');
-
-    render(
-      <CreateCoursePage
-        onNavigateCourse={vi.fn()}
-        onNavigateTab={vi.fn()}
-      />
-    );
-
-    expect(screen.getByText(/live course card preview/i)).toBeInTheDocument();
-    expect(screen.getByText(/COURSE CODE • SECTION/i)).toBeInTheDocument();
-    expect(screen.getByText(/Course Title Preview/i)).toBeInTheDocument();
-
-    // Type course code, section, title
-    fireEvent.change(screen.getByPlaceholderText(/CMSC 180/i), { target: { value: 'CSPC 112' } });
-    fireEvent.change(screen.getByPlaceholderText(/4-E/i), { target: { value: '4-E' } });
-    fireEvent.change(screen.getByPlaceholderText(/Artificial Intelligence/i), { target: { value: 'Artificial Intelligence & Expert Systems' } });
-
-    expect(screen.getByText('CSPC 112 • 4-E')).toBeInTheDocument();
-    expect(screen.getByText('Artificial Intelligence & Expert Systems')).toBeInTheDocument();
-    expect(screen.getAllByText('Eleanor').length).toBe(2);
-  });
 });
 

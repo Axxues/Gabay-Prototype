@@ -61,7 +61,7 @@ import type { SyllabusRevisionHeader, SyllabusRevisionResponse, SyllabusSectionK
 import { settledValue } from '../utils/promise';
 import { formatFileSize, toShortFileType } from '../utils/fileUploader';
 import { isValidUuid, generateSecureActivationToken, generateUuid } from '../utils/cryptoToken';
-import { isChairRole, isDeanRole } from '../utils/roles';
+import { isChairRole, isDeanRole, isFacultyRole } from '../utils/roles';
 
 export interface LMSContextType {
   theme: 'dark' | 'light';
@@ -117,6 +117,7 @@ export interface LMSContextType {
 
   // Real CRUD & Interactive Actions
   createCourse: (course: Partial<Course>) => Promise<Course>;
+  updateCourse: (courseId: string, updates: Partial<Course>) => Promise<Course>;
   deleteCourse: (courseId: string) => Promise<void>;
   createModule: (courseId: string, title: string) => Promise<Module>;
   updateModule: (moduleId: string, updates: Partial<Module>) => Promise<void>;
@@ -293,6 +294,11 @@ export interface LMSContextType {
     roleType: 'dean' | 'chairperson',
     currentLeaderId: string,
     successorId: string,
+    unitId: string
+  ) => Promise<{ success: boolean; message: string }>;
+  appointLeadership: (
+    roleType: 'dean' | 'chairperson',
+    leaderId: string,
     unitId: string
   ) => Promise<{ success: boolean; message: string }>;
   addCollege: (college: College, initialDeanId?: string) => Promise<College>;
@@ -515,6 +521,30 @@ export const generateCourseJoinCode = (existingCourses: Course[] = [], prefix?: 
     }
   }
   return `${cleanPrefix}-${Date.now().toString(36).toUpperCase().slice(-4)}`;
+};
+
+export const getOrGenerateCourseJoinCode = (course?: Partial<Course> | any): string => {
+  if (!course) return '';
+  const existing = course.joinCode || course.join_code;
+  if (typeof existing === 'string' && existing.trim()) {
+    return existing.trim().toUpperCase();
+  }
+  const cleanPrefix = (course.code || course.id || 'GBY')
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .slice(0, 4)
+    .toUpperCase() || 'GBY';
+
+  const seed = `${course.id || ''}-${course.code || ''}-${course.section || ''}`;
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  }
+  const chars = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
+  let suffix = '';
+  for (let i = 0; i < 4; i++) {
+    suffix += chars.charAt((hash >>> (i * 5)) % chars.length);
+  }
+  return `${cleanPrefix}-${suffix}`;
 };
 
 /** Upsert one enrollment request into a database snapshot (Task 2 cache scope). */
@@ -1415,6 +1445,13 @@ export const normalizeCourse = (raw: any): Course => {
     syllabus: parsedSyllabus,
     gradingTerms: normalizeCourseGradingTerms(raw?.gradingTerms),
     gradesReleased: normalizeGradesReleased(raw?.gradesReleased ?? raw?.grades_released),
+    joinCode: raw?.joinCode || raw?.join_code || undefined,
+    department: raw?.department || undefined,
+    departmentId: raw?.department_id || raw?.departmentId || undefined,
+    collegeId: raw?.college_id || raw?.collegeId || undefined,
+    programId: raw?.program_id || raw?.programId || undefined,
+    schoolYear: raw?.schoolYear || raw?.school_year || raw?.term?.match(/\b\d{4}-\d{4}\b/)?.[0] || undefined,
+    semester: raw?.semester || undefined,
   };
 };
 
@@ -1975,7 +2012,6 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               code: c.code || c.id,
               title: c.title || c.name || c.id,
               description: c.description || '',
-              department: c.department || '',
               term: c.term || '1st Semester 2026-2027',
               units: Number(c.units) || 3,
               enrolledCount: Number(c.enrolled_count ?? c.enrolledCount) || 0,
@@ -1985,7 +2021,14 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               cover_image: c.cover_image,
               instructor: c.instructor,
               instructor_id: c.instructor_id,
+              instructorId: c.instructorId || c.instructor_id || (typeof c.instructor === 'object' ? c.instructor?.id : c.instructor) || undefined,
+              instructorName: c.instructorName || c.instructor_name || (typeof c.instructor === 'object' ? (c.instructor?.name || `${c.instructor?.first_name || ''} ${c.instructor?.last_name || ''}`.trim()) : undefined) || '',
+              departmentId: c.department_id || c.departmentId || undefined,
+              collegeId: c.college_id || c.collegeId || (c.instructor && typeof c.instructor === 'object' ? c.instructor.college_id || c.instructor.collegeId : undefined) || undefined,
               schoolYear: c.schoolYear || c.school_year || c.term?.match(/\b\d{4}-\d{4}\b/)?.[0] || undefined,
+              semester: c.semester || undefined,
+              joinCode: c.join_code || c.joinCode || undefined,
+              join_code: c.join_code || c.joinCode || undefined,
             })),
           })),
         Promise.resolve()
@@ -3239,8 +3282,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         title: courseData.title || 'Advanced Computer Science Topics',
         section: courseData.section || 'BSCS 4-1',
         term: courseData.term || '1st Sem AY 2026-2027',
-        instructor_name: courseData.instructorName || activeUser.name,
-        instructor_id: courseData.instructorId || activeUser.id,
+        instructor_name: courseData.instructorName || (isFacultyRole(activeUser, activeRole) ? activeUser.name : 'Unassigned Instructor'),
+        instructor_id: courseData.instructorId || (isFacultyRole(activeUser, activeRole) ? activeUser.id : ''),
         published: courseData.published ?? true,
         color: courseData.color !== undefined ? courseData.color : '',
         image: courseData.image || '',
@@ -3255,8 +3298,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         title: (row as any)?.title || courseData.title || 'Advanced Computer Science Topics',
         section: (row as any)?.section || courseData.section || 'BSCS 4-1',
         term: (row as any)?.term || courseData.term || '1st Sem AY 2026-2027',
-        instructorId: courseData.instructorId || activeUser.id,
-        instructorName: courseData.instructorName || activeUser.name,
+        instructorId: courseData.instructorId || (isFacultyRole(activeUser, activeRole) ? activeUser.id : ''),
+        instructorName: courseData.instructorName || (isFacultyRole(activeUser, activeRole) ? activeUser.name : 'Unassigned Instructor'),
         published: (row as any)?.published ?? courseData.published ?? true,
         color: (row as any)?.color ?? (courseData.color !== undefined ? courseData.color : ''),
         image: (row as any)?.image || courseData.image || '',
@@ -3273,6 +3316,16 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             : undefined) ||
           getActiveSchoolYearForCollege('col-ccs')?.year ||
           '2025-2026',
+        semester: courseData.semester || (row as any)?.semester || undefined,
+        department: (row as any)?.department || courseData.department || undefined,
+        departmentId: (row as any)?.department_id || (row as any)?.departmentId || courseData.departmentId || undefined,
+        collegeId:
+          (row as any)?.college_id ||
+          (row as any)?.collegeId ||
+          courseData.collegeId ||
+          (activeUser?.collegeId ? activeUser.collegeId : undefined) ||
+          'col-ccs',
+        programId: (row as any)?.program_id || (row as any)?.programId || courseData.programId || undefined,
       };
 
       setDb(prev => ({
@@ -3291,7 +3344,70 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const updateCourse = async (courseId: string, updates: Partial<Course>): Promise<Course> => {
+    try {
+      const payload: Record<string, any> = {};
+      if (updates.code !== undefined) payload.code = updates.code;
+      if (updates.title !== undefined) payload.title = updates.title;
+      if (updates.section !== undefined) payload.section = updates.section;
+      if (updates.term !== undefined) payload.term = updates.term;
+      if (updates.schoolYear !== undefined) payload.school_year = updates.schoolYear;
+      if (updates.color !== undefined) payload.color = updates.color;
+      if (updates.image !== undefined) payload.image = updates.image;
+      if (updates.credits !== undefined) payload.credits = updates.credits;
+      if (updates.chedComplianceCode !== undefined) payload.ched_compliance_code = updates.chedComplianceCode;
+      if (updates.published !== undefined) payload.published = updates.published;
+      if (updates.instructorId !== undefined) payload.instructor_id = updates.instructorId;
+      if (updates.instructorName !== undefined) payload.instructor_name = updates.instructorName;
+      if (updates.joinCode !== undefined) payload.join_code = updates.joinCode;
+
+      const res = await likhaLmsApi.courses.updateCourse(courseId, payload);
+      let updatedCourse: Course | undefined;
+      setDb(prev => {
+        const nextCourses = (prev.courses || []).map(c => {
+          if (c.id === courseId) {
+            updatedCourse = {
+              ...c,
+              ...updates,
+              ...(res ? normalizeCourse(res) : {}),
+              joinCode: updates.joinCode || (res as any)?.join_code || c.joinCode,
+              id: c.id,
+            };
+            return updatedCourse;
+          }
+          return c;
+        });
+        return {
+          ...prev,
+          courses: nextCourses,
+        };
+      });
+
+      showAlert({
+        title: 'Course Updated',
+        message: `Course "${updates.code || ''} ${updates.title || ''}".trim() has been updated successfully.`,
+        type: 'success'
+      });
+
+      return updatedCourse || (db.courses.find(c => c.id === courseId) as Course);
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to update course.';
+      setLastError(message);
+      showAlert(message, 'Update Course Failed');
+      throw err;
+    }
+  };
+
   const deleteCourse = async (courseId: string): Promise<void> => {
+    if (activeRole === 'faculty') {
+      const message = 'Faculty members do not have permission to delete courses.';
+      showAlert({
+        title: 'Unauthorized Action',
+        message,
+        type: 'error'
+      });
+      throw new Error(message);
+    }
     try {
       // Children-first cascade: Directus has no server-side CASCADE, so a
       // bare course DELETE orphans (or is blocked by) modules, items,
@@ -4533,6 +4649,14 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   };
 
+  const appointLeadership = async (
+    roleType: 'dean' | 'chairperson',
+    leaderId: string,
+    unitId: string
+  ): Promise<{ success: boolean; message: string }> => {
+    return transferLeadership(roleType, 'none', leaderId, unitId);
+  };
+
   const addCollege = async (college: College, initialDeanId?: string): Promise<College> => {
     if (currentUser) {
       const isSuperadminOrChancellor = activeRole === 'superadmin' || currentUser.adminSubrole === 'chancellor';
@@ -5159,6 +5283,31 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
         }
       } catch {}
+    }
+
+    // Notify deans and chairs that the baseline has changed
+    const recipients = (db.users || []).filter(u => isDeanRole(u) || isChairRole(u));
+    if (recipients.length > 0) {
+      const now = new Date().toISOString();
+      const newNotifs: Notification[] = recipients.map(u => ({
+        id: `notif-baseline-${target.year}-${u.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        type: 'baseline_changed',
+        recipientId: u.id,
+        actorId: activeUser?.id || 'admin',
+        actorName: activeUser?.name || 'University Administrator',
+        actorAvatar: activeUser?.avatar || '',
+        relatedId: target.id,
+        relatedTitle: `AY ${target.year}`,
+        content: `The baseline academic year has now changed to AY ${target.year}.`,
+        read: false,
+        createdAt: now,
+      }));
+
+      setNotifications(prev => [...newNotifs, ...prev]);
+      setDb(prev => ({
+        ...prev,
+        notifications: [...newNotifs, ...(prev.notifications || [])],
+      }));
     }
 
     return {
@@ -7955,6 +8104,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         showConfirm,
         closeAlert,
         createCourse,
+        updateCourse,
         deleteCourse,
         createModule,
         updateModule,
@@ -8066,6 +8216,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         rejectRegistration,
         purgeExpiredRegistrations,
         transferLeadership,
+        appointLeadership,
         addCollege,
         addDepartment,
         addProgram,

@@ -97,6 +97,67 @@ async function getLikhaUploadServiceToken(): Promise<string | null> {
   return likhaUploadServicePromise;
 }
 
+export const UUID_ITEM_COLLECTIONS = new Set([
+  'modules',
+  'module_items',
+  'module_comments',
+  'announcements',
+  'announcement_replies',
+  'discussions',
+  'discussion_replies',
+  'messages',
+  'chat_groups',
+  'calendar_events',
+  'advising_slots',
+  'course_files',
+  'course_folders',
+  'quizzes',
+  'exams',
+  'activities',
+  'assessment_questions',
+  'rubric_criteria',
+  'activities_files',
+  'submissions',
+  'submission_answers',
+  'submission_rubric_scores',
+  'submission_comments',
+  'course_sections',
+  'sections',
+  'enrollment_requests',
+  'syllabus_signatories',
+  'syllabus_references',
+  'syllabus_policies',
+  'syllabus_rubrics',
+  'syllabus_learning_plans',
+  'syllabus_course_maps',
+  'spr_cells',
+  'spr_configs',
+  'course_grades',
+]);
+
+function isTokenExpired(token: string | null): boolean {
+  if (!token) return true;
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return false;
+    const base64Url = parts[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    const parsed = JSON.parse(jsonPayload);
+    if (typeof parsed.exp === 'number') {
+      return Date.now() >= (parsed.exp - 30) * 1000;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Robust fetch wrapper that applies Directus JWT auth, transparent in-memory TTL
  * caching for GET requests, request deduplication, silent token refresh, and auto-invalidation on mutations.
@@ -183,17 +244,37 @@ async function likhaRequest<T = any>(
   options: RequestInit = {},
   allowRetry = true
 ): Promise<T> {
-  const method = (options.method || 'GET').toUpperCase();
+  let effectiveOptions = options;
+  const method = (effectiveOptions.method || 'GET').toUpperCase();
+
+  // If creating an item in a UUID-keyed collection and no id is provided, generate a UUID
+  if (method === 'POST') {
+    const match = path.match(/\/items\/([a-zA-Z0-9_-]+)/);
+    if (match && UUID_ITEM_COLLECTIONS.has(match[1])) {
+      if (effectiveOptions.body && typeof effectiveOptions.body === 'string') {
+        try {
+          const parsed = JSON.parse(effectiveOptions.body);
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && parsed.id === undefined) {
+            parsed.id = generateUuid();
+            effectiveOptions = {
+              ...effectiveOptions,
+              body: JSON.stringify(parsed),
+            };
+          }
+        } catch {}
+      }
+    }
+  }
 
   if (method === 'GET') {
     const token = getToken() || 'anon';
     const cacheKey = `${token}:${path}`;
     const ttl = getPathTtl(path);
-    return likhaCache.getOrFetch<T>(cacheKey, () => rawLikhaFetch<T>(path, options, allowRetry), ttl);
+    return likhaCache.getOrFetch<T>(cacheKey, () => rawLikhaFetch<T>(path, effectiveOptions, allowRetry), ttl);
   }
 
   // Mutation: execute and invalidate affected collection cache
-  const result = await rawLikhaFetch<T>(path, options, allowRetry);
+  const result = await rawLikhaFetch<T>(path, effectiveOptions, allowRetry);
   const resourceBase = path.split('?')[0];
   likhaCache.invalidate(resourceBase);
   if (resourceBase.startsWith('/users')) {
@@ -695,9 +776,10 @@ export const likhaLmsApi = {
     },
 
     async createSection(section: any): Promise<any> {
+      const payload = { id: section.id || generateUuid(), ...section };
       return likhaRequest('/items/course_sections', {
         method: 'POST',
-        body: JSON.stringify(section),
+        body: JSON.stringify(payload),
       });
     },
 
@@ -764,9 +846,10 @@ export const likhaLmsApi = {
     },
 
     async createModule(module: any): Promise<any> {
+      const payload = { id: module.id || generateUuid(), ...module };
       return likhaRequest('/items/modules', {
         method: 'POST',
-        body: JSON.stringify(module),
+        body: JSON.stringify(payload),
       });
     },
 
@@ -782,9 +865,10 @@ export const likhaLmsApi = {
     },
 
     async createModuleItem(item: any): Promise<any> {
+      const payload = { id: item.id || generateUuid(), ...item };
       return likhaRequest('/items/module_items', {
         method: 'POST',
-        body: JSON.stringify(item),
+        body: JSON.stringify(payload),
       });
     },
 
@@ -804,9 +888,10 @@ export const likhaLmsApi = {
     },
 
     async addComment(comment: any): Promise<any> {
+      const payload = { id: comment.id || generateUuid(), ...comment };
       return likhaRequest('/items/module_comments', {
         method: 'POST',
-        body: JSON.stringify(comment),
+        body: JSON.stringify(payload),
       });
     },
 
@@ -847,12 +932,12 @@ export const likhaLmsApi = {
     async saveQuiz(quiz: any): Promise<any> {
       const { questions, ...rootPayload } = quiz;
       const isUpdate = Boolean(rootPayload.id);
-      const url = isUpdate ? `/items/quizzes/${encodeURIComponent(rootPayload.id)}` : '/items/quizzes';
+      const quizId = rootPayload.id || generateUuid();
+      const url = isUpdate ? `/items/quizzes/${encodeURIComponent(quizId)}` : '/items/quizzes';
       const saved = await likhaRequest(url, {
         method: isUpdate ? 'PATCH' : 'POST',
-        body: JSON.stringify(rootPayload),
+        body: JSON.stringify({ ...rootPayload, id: quizId }),
       });
-      const quizId = saved.id || rootPayload.id;
 
       if (Array.isArray(questions)) {
         for (let i = 0; i < questions.length; i++) {
@@ -887,12 +972,12 @@ export const likhaLmsApi = {
     async saveExam(exam: any): Promise<any> {
       const { questions, ...rootPayload } = exam;
       const isUpdate = Boolean(rootPayload.id);
-      const url = isUpdate ? `/items/exams/${encodeURIComponent(rootPayload.id)}` : '/items/exams';
+      const examId = rootPayload.id || generateUuid();
+      const url = isUpdate ? `/items/exams/${encodeURIComponent(examId)}` : '/items/exams';
       const saved = await likhaRequest(url, {
         method: isUpdate ? 'PATCH' : 'POST',
-        body: JSON.stringify(rootPayload),
+        body: JSON.stringify({ ...rootPayload, id: examId }),
       });
-      const examId = saved.id || rootPayload.id;
 
       if (Array.isArray(questions)) {
         for (let i = 0; i < questions.length; i++) {
@@ -1033,9 +1118,10 @@ export const likhaLmsApi = {
     },
 
     async createAnnouncement(data: any): Promise<any> {
+      const payload = { id: data.id || generateUuid(), ...data };
       return likhaRequest('/items/announcements', {
         method: 'POST',
-        body: JSON.stringify(data),
+        body: JSON.stringify(payload),
       });
     },
 
@@ -1053,9 +1139,10 @@ export const likhaLmsApi = {
     },
 
     async addAnnouncementReply(announcementId: string, reply: any): Promise<any> {
+      const payload = { id: reply.id || generateUuid(), announcement_id: announcementId, ...reply };
       return likhaRequest('/items/announcement_replies', {
         method: 'POST',
-        body: JSON.stringify({ announcement_id: announcementId, ...reply }),
+        body: JSON.stringify(payload),
       });
     },
 
@@ -1064,9 +1151,10 @@ export const likhaLmsApi = {
     },
 
     async createDiscussion(data: any): Promise<any> {
+      const payload = { id: data.id || generateUuid(), ...data };
       return likhaRequest('/items/discussions', {
         method: 'POST',
-        body: JSON.stringify(data),
+        body: JSON.stringify(payload),
       });
     },
 
@@ -1084,9 +1172,10 @@ export const likhaLmsApi = {
     },
 
     async addDiscussionReply(discussionId: string, reply: any): Promise<any> {
+      const payload = { id: reply.id || generateUuid(), discussion_id: discussionId, ...reply };
       return likhaRequest('/items/discussion_replies', {
         method: 'POST',
-        body: JSON.stringify({ discussion_id: discussionId, ...reply }),
+        body: JSON.stringify(payload),
       });
     },
 
@@ -1132,9 +1221,10 @@ export const likhaLmsApi = {
     },
 
     async sendMessage(data: any): Promise<any> {
+      const payload = { id: data.id || generateUuid(), ...data };
       return likhaRequest('/items/messages', {
         method: 'POST',
-        body: JSON.stringify(data),
+        body: JSON.stringify(payload),
       });
     },
 
@@ -1150,9 +1240,10 @@ export const likhaLmsApi = {
     },
 
     async createChatGroup(data: any): Promise<any> {
+      const payload = { id: data.id || generateUuid(), ...data };
       return likhaRequest('/items/chat_groups', {
         method: 'POST',
-        body: JSON.stringify(data),
+        body: JSON.stringify(payload),
       });
     },
 
@@ -1161,9 +1252,10 @@ export const likhaLmsApi = {
     },
 
     async createCalendarEvent(data: any): Promise<any> {
+      const payload = { id: data.id || generateUuid(), ...data };
       return likhaRequest('/items/calendar_events', {
         method: 'POST',
-        body: JSON.stringify(data),
+        body: JSON.stringify(payload),
       });
     },
 
@@ -1192,9 +1284,10 @@ export const likhaLmsApi = {
     },
 
     async createAdvisingSlot(data: any): Promise<any> {
+      const payload = { id: data.id || generateUuid(), ...data };
       return likhaRequest('/items/advising_slots', {
         method: 'POST',
-        body: JSON.stringify(data),
+        body: JSON.stringify(payload),
       });
     },
   },
@@ -1212,9 +1305,10 @@ export const likhaLmsApi = {
     },
 
     async createCourseFile(data: any): Promise<any> {
+      const payload = { id: data.id || generateUuid(), ...data };
       return likhaRequest('/items/course_files', {
         method: 'POST',
-        body: JSON.stringify(data),
+        body: JSON.stringify(payload),
       });
     },
 
@@ -1236,9 +1330,10 @@ export const likhaLmsApi = {
     },
 
     async createCourseFolder(data: any): Promise<any> {
+      const payload = { id: data.id || generateUuid(), ...data };
       return likhaRequest('/items/course_folders', {
         method: 'POST',
-        body: JSON.stringify(data),
+        body: JSON.stringify(payload),
       });
     },
 
@@ -1446,22 +1541,49 @@ export const likhaLmsApi = {
   },
 
   async uploadFile(file: File): Promise<LikhaUploadedFile> {
+    let token = getToken();
+    const refreshToken = getRefreshToken();
+    if (refreshToken && isTokenExpired(token)) {
+      token = await refreshAccessToken();
+    }
+
     const formData = new FormData();
     formData.append('file', file);
-    const token = getToken();
     const headers: Record<string, string> = {};
     if (token) headers.Authorization = `Bearer ${token}`;
 
     let res = await fetch(`${LIKHA_URL}/files`, { method: 'POST', headers, body: formData });
+
+    if (res.status === 502 || res.status === 503 || res.status === 504) {
+      await new Promise(r => setTimeout(r, 800));
+      const retryFormData = new FormData();
+      retryFormData.append('file', file);
+      res = await fetch(`${LIKHA_URL}/files`, { method: 'POST', headers, body: retryFormData });
+    }
+
     if (res.status === 403 || res.status === 401) {
-      const serviceToken = await getLikhaUploadServiceToken();
-      if (serviceToken) {
-        const serviceHeaders: Record<string, string> = {
-          Authorization: `Bearer ${serviceToken}`,
-        };
-        const retryFormData = new FormData();
-        retryFormData.append('file', file);
-        res = await fetch(`${LIKHA_URL}/files`, { method: 'POST', headers: serviceHeaders, body: retryFormData });
+      if (res.status === 401 && refreshToken) {
+        const refreshed = await refreshAccessToken();
+        if (refreshed) {
+          const retryFormData = new FormData();
+          retryFormData.append('file', file);
+          res = await fetch(`${LIKHA_URL}/files`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${refreshed}` },
+            body: retryFormData,
+          });
+        }
+      }
+      if (!res.ok) {
+        const serviceToken = await getLikhaUploadServiceToken();
+        if (serviceToken) {
+          const serviceHeaders: Record<string, string> = {
+            Authorization: `Bearer ${serviceToken}`,
+          };
+          const retryFormData = new FormData();
+          retryFormData.append('file', file);
+          res = await fetch(`${LIKHA_URL}/files`, { method: 'POST', headers: serviceHeaders, body: retryFormData });
+        }
       }
     }
 
@@ -1486,14 +1608,14 @@ export const likhaLmsApi = {
   async saveActivity(activity: any): Promise<any> {
     const { questions, rubric, ...rootPayload } = activity;
     const isUpdate = Boolean(rootPayload.id);
+    const actId = rootPayload.id || generateUuid();
     const url = isUpdate
-      ? `/items/activities/${encodeURIComponent(rootPayload.id)}`
+      ? `/items/activities/${encodeURIComponent(actId)}`
       : `/items/activities`;
     const saved = await likhaRequest(url, {
       method: isUpdate ? 'PATCH' : 'POST',
-      body: JSON.stringify(rootPayload),
+      body: JSON.stringify({ ...rootPayload, id: actId }),
     });
-    const actId = saved.id || rootPayload.id;
 
     if (Array.isArray(questions) && questions.length > 0) {
       for (let i = 0; i < questions.length; i++) {

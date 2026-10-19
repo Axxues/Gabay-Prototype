@@ -22,6 +22,7 @@ import {
   CalendarDays
 } from 'lucide-react';
 import type { CalendarEvent, Course } from '../../shared/types/lms';
+import { CustomDropdown } from '../../shared/components/common/CustomDropdown';
 
 function toDatetimeLocalValue(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -786,16 +787,18 @@ export const CreateEventPage: React.FC<CreateEventPageProps> = ({
                     <label className="block text-xs font-bold text-foreground mb-1">
                       Conference Platform
                     </label>
-                    <select
-                      value={meetingPlatform}
-                      onChange={e => setMeetingPlatform(e.target.value as CalendarEvent['meetingPlatform'])}
-                      className="w-full p-2.5 bg-background border border-border focus:ring-2 focus:ring-primary/20 focus:border-primary/40 rounded-xl text-foreground text-xs font-sans"
-                    >
-                      <option value="zoom">Zoom Video</option>
-                      <option value="google_meet">Google Meet</option>
-                      <option value="teams">Microsoft Teams</option>
-                      <option value="other">Other Link</option>
-                    </select>
+                    <CustomDropdown
+                      value={meetingPlatform ?? 'zoom'}
+                      onChange={v => setMeetingPlatform(v as CalendarEvent['meetingPlatform'])}
+                      options={[
+                        { value: 'zoom', label: 'Zoom Video' },
+                        { value: 'google_meet', label: 'Google Meet' },
+                        { value: 'teams', label: 'Microsoft Teams' },
+                        { value: 'other', label: 'Other Link' },
+                      ]}
+                      placeholder="Zoom Video"
+                      ariaLabel="Conference Platform"
+                    />
                   </div>
 
                   <div>

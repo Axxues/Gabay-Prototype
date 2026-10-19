@@ -3,6 +3,7 @@ import { Search, Command, ArrowRight, BookOpen, Calendar, Inbox, FileText, Award
 import { useLMS } from '../../context/LMSContext';
 import { AnimatedModal } from './ModalPortal';
 import { useDebounce } from '../../hooks/useDebounce';
+import { getScopedCourses } from '../../utils/courseScoping';
 
 interface GlobalSearchDialogProps {
   isOpen: boolean;
@@ -17,7 +18,7 @@ export const GlobalSearchDialog: React.FC<GlobalSearchDialogProps> = ({
   onNavigateTab,
   onNavigateCourse
 }) => {
-  const { db, activeRole, activeUser } = useLMS();
+  const { db, activeRole, activeUser, colleges, departments } = useLMS();
   const [searchTerm, setSearchTerm] = useState('');
   const debouncedSearchTerm = useDebounce(searchTerm, 150);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -33,7 +34,6 @@ export const GlobalSearchDialog: React.FC<GlobalSearchDialogProps> = ({
   const navItems = [
     { label: 'Dashboard', tab: 'dashboard', category: 'Pages', icon: <Search className="w-4 h-4" /> },
     { label: 'Course Catalog & Sections', tab: 'courses', category: 'Pages', icon: <BookOpen className="w-4 h-4" /> },
-    { label: 'Create New Course Shell', tab: 'create-course', category: 'Actions', icon: <BookOpen className="w-4 h-4" /> },
     { label: 'Create New College Account', tab: 'create-account', category: 'Actions', icon: <BookOpen className="w-4 h-4" /> },
     { label: 'Manage College Accounts', tab: 'accounts', category: 'Pages', icon: <BookOpen className="w-4 h-4" /> },
     { label: 'Academic Calendar & Schedule', tab: 'calendar', category: 'Pages', icon: <Calendar className="w-4 h-4" /> },
@@ -48,10 +48,13 @@ export const GlobalSearchDialog: React.FC<GlobalSearchDialogProps> = ({
     if (!q) return { pages: [], courses: [], activities: [], quizzes: [] };
 
     const pages = navItems.filter(i => i.label.toLowerCase().includes(q));
-    const userCourses = db.courses.filter(c => {
-      if (activeRole === 'student') return (activeUser?.enrolledCourseIds || []).includes(c.id);
-      if (activeRole === 'faculty' || activeRole === 'admin') return c.instructorId === activeUser?.id;
-      return true;
+    const userCourses = getScopedCourses({
+      courses: db.courses,
+      users: db.users,
+      activeUser,
+      activeRole,
+      colleges,
+      departments,
     });
     const userCourseIds = new Set(userCourses.map(c => c.id));
     const courses = userCourses.filter(c =>

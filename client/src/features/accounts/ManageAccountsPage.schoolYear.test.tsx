@@ -149,7 +149,7 @@ describe('ManageAccountsPage - School Year Tagging & Filtering', () => {
     fireEvent.click(syDropdownBtn);
 
     // Click 2024-2025 option
-    const option2425 = screen.getByRole('button', { name: /2024-2025/i });
+    const option2425 = within(screen.getByRole('listbox')).getByRole('option', { name: /2024-2025/i });
     fireEvent.click(option2425);
 
     // Only Ada 2024 should be visible
@@ -166,7 +166,7 @@ describe('ManageAccountsPage - School Year Tagging & Filtering', () => {
     fireEvent.click(syDropdownBtn);
 
     // Click 2025-2026 option
-    const option2526 = screen.getByRole('button', { name: /2025-2026/i });
+    const option2526 = within(screen.getByRole('listbox')).getByRole('option', { name: /2025-2026/i });
     fireEvent.click(option2526);
 
     // Both Grace 2025 and Linus Legacy (fallback 2025-2026) and Dr. Alan Admin should match

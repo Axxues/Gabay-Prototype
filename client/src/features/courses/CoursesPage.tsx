@@ -205,7 +205,7 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
             body={
               showJoinAction
                 ? 'You still haven\u2019t been enrolled in a course. Please ask your instructor for the course join code, then click below to join.'
-                : 'You have not created any courses yet. Please create a course from the Dashboard.'
+                : 'No course shells are currently available under this view.'
             }
             actionLabel={showJoinAction ? 'Enter Course Join Code' : undefined}
             onAction={showJoinAction ? () => setIsJoinModalOpen(true) : undefined}

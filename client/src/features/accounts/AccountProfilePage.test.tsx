@@ -196,4 +196,42 @@ describe('AccountProfilePage Component', () => {
     fireEvent.click(editBtns[0]);
     expect(mockEdit).toHaveBeenCalledWith(sampleStudent);
   });
+
+  it('omits Educational Background tab and teaching experience for administrative accounts', () => {
+    const sampleDean: User = {
+      id: 'dean-1',
+      name: 'Dean Carlos Gomez',
+      email: 'dean.carlos@dmmmsu.edu.ph',
+      role: 'admin',
+      adminSubrole: 'dean',
+      collegeId: 'col-ccs',
+      collegeName: 'College of Computer Science',
+      department: 'Office of the Dean',
+      title: 'Dean, College of Computer Science',
+      birthday: '1975-01-15',
+      contactNumber: '+63 918 222 3344',
+      address: 'San Fernando, La Union',
+      yearsOfTeaching: 20,
+      educationalBackground: [
+        {
+          id: 'deg-dean-1',
+          degreeLevel: 'doctorate',
+          school: 'UP',
+          yearGraduated: '2005',
+          specialization: 'Ed.D.',
+        },
+      ],
+    };
+
+    render(<AccountProfilePage user={sampleDean} />);
+
+    // Assert that "Educational Background" tab does not exist
+    expect(screen.queryByRole('tab', { name: /educational background/i })).not.toBeInTheDocument();
+
+    // Assert that "Teaching Experience" is NOT displayed in stats or placement card
+    expect(screen.queryByText('Teaching Experience')).not.toBeInTheDocument();
+    expect(screen.getByText('Jurisdiction')).toBeInTheDocument();
+    expect(screen.getByText('College-Wide')).toBeInTheDocument();
+    expect(screen.getAllByText('Administrative Scope').length).toBeGreaterThan(0);
+  });
 });

@@ -162,6 +162,11 @@ export interface Course {
   joinCode?: string;
   sectionIds?: string[];
   schoolYear?: string;
+  semester?: string;
+  department?: string;
+  departmentId?: string;
+  collegeId?: string;
+  programId?: string;
 }
 
 export const Course = {} as unknown as Course;
@@ -235,7 +240,7 @@ export interface ModuleComment {
 
 export interface Notification {
   id: string;
-  type: 'module_comment_reply' | 'announcement_reply' | 'quiz_draft_saved' | 'activity_submitted' | 'calendar_event' | 'file_uploaded' | 'grade_posted';
+  type: 'module_comment_reply' | 'announcement_reply' | 'quiz_draft_saved' | 'activity_submitted' | 'calendar_event' | 'file_uploaded' | 'grade_posted' | 'baseline_changed';
   recipientId: string;
   actorId: string;
   actorName: string;

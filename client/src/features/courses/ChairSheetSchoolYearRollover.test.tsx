@@ -111,7 +111,7 @@ describe('Chair-Sheet Upload with Rolled-Over School Year', () => {
       ['Charlie', 'Seli', 'Marzan', 'CSCC 103', 'Object Oriented Programming', 'BSCS 2-1'],
     ]);
 
-    const fileInput = screen.getByTestId('chair-sheet-file-input');
+    const fileInput = screen.getByTestId('assigned-courses-file-input');
     fireEvent.change(fileInput, { target: { files: [file] } });
 
     // 3. Verify preview table loads with valid faculty match
@@ -165,7 +165,7 @@ describe('Chair-Sheet Upload with Rolled-Over School Year', () => {
       ['Charlie', 'Seli', 'Marzan', 'CSCC 103', 'Object Oriented Programming', 'BSCS 2-1'],
     ]);
 
-    const fileInput = screen.getByTestId('chair-sheet-file-input');
+    const fileInput = screen.getByTestId('assigned-courses-file-input');
     fireEvent.change(fileInput, { target: { files: [file] } });
 
     await waitFor(() => {

@@ -3,6 +3,7 @@ import { useLMS } from '../../../shared/context/LMSContext';
 import type { User } from '../../../shared/types/lms';
 import { DialogFrame } from '../../../shared/components/common/DialogFrame';
 import { UserAvatar } from '../../../shared/components/common/UserAvatar';
+import { CustomDropdown } from '../../../shared/components/common/CustomDropdown';
 import { ShieldAlert, ArrowRightLeft, UserCheck, AlertTriangle } from 'lucide-react';
 
 export interface LeadershipTransferModalProps {
@@ -233,20 +234,21 @@ export const LeadershipTransferModal: React.FC<LeadershipTransferModalProps> = (
                   <span>No eligible verified faculty members found in this unit.</span>
                 </div>
               ) : (
-                <select
+                <CustomDropdown
                   id="select-successor"
-                  aria-label="Select Successor (Eligible Faculty)"
+                  ariaLabel="Select Successor (Eligible Faculty)"
                   value={selectedSuccessorId}
-                  onChange={e => setSelectedSuccessorId(e.target.value)}
-                  className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-xs font-sans text-foreground outline-none focus:ring-2 focus:ring-primary/30 transition-all"
-                >
-                  <option value="">Choose an eligible faculty member...</option>
-                  {eligibleFaculty.map(faculty => (
-                    <option key={faculty.id} value={faculty.id}>
-                      {faculty.name} ({faculty.email}) - {faculty.program || faculty.department}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setSelectedSuccessorId}
+                  placeholder="Choose an eligible faculty member..."
+                  searchable
+                  options={[
+                    { value: '', label: 'Choose an eligible faculty member...' },
+                    ...eligibleFaculty.map(faculty => ({
+                      value: faculty.id,
+                      label: `${faculty.name} (${faculty.email}) - ${faculty.program || faculty.department || ''}`,
+                    })),
+                  ]}
+                />
               )}
             </div>
 

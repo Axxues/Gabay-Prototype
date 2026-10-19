@@ -19,6 +19,7 @@ import {
 import { PageHeader } from '../../shared/components/common/PageHeader';
 import { EmptyState } from '../../shared/components/common/EmptyState';
 import { CreateAssignmentPage } from './CreateAssignmentPage';
+import { canManageCourseContent } from '../../shared/utils/roles';
 
 interface AssignmentsViewProps {
   courseId: string;
@@ -51,6 +52,9 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
   const [simulatedFileName, setSimulatedFileName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+
+  const currentCourse = (db.courses || []).find(c => c.id === courseId);
+  const isAssignedInstructor = canManageCourseContent(currentCourse, activeUser);
 
   const effectiveTerms: TermId[] =
     courseId && typeof effectiveTermsForCourse === 'function'
@@ -111,6 +115,7 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
   };
 
   const handleDelete = (id: string) => {
+    if (!isAssignedInstructor) return;
     showConfirm(
       'Are you sure you want to delete this assignment and all associated student submissions?',
       () => {
@@ -122,7 +127,7 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
     );
   };
 
-  if (isCreating) {
+  if (isCreating && isAssignedInstructor) {
     return (
       <CreateAssignmentPage
         courseId={courseId}
@@ -161,7 +166,7 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
                 value={termFilter}
                 onChange={v => setTermFilter(v as 'all' | TermId)}
               />
-              {activeRole !== 'student' && (
+              {isAssignedInstructor && (
                 <button
                   type="button"
                   onClick={() => setIsCreating(true)}
@@ -304,13 +309,15 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
                 <Users className="h-3.5 w-3.5" />
                 <span>SpeedGrader</span>
               </button>
-              <button
-                type="button"
-                onClick={() => handleDelete(selectedAssignment.id)}
-                className="p-1.5 rounded-xl text-destructive hover:bg-destructive/10 cursor-pointer"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
+              {isAssignedInstructor && (
+                <button
+                  type="button"
+                  onClick={() => handleDelete(selectedAssignment.id)}
+                  className="p-1.5 rounded-xl text-destructive hover:bg-destructive/10 cursor-pointer"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              )}
             </div>
           )}
         </div>

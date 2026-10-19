@@ -22,6 +22,7 @@ import {
 import { PageHeader } from '../../shared/components/common/PageHeader';
 import { EmptyState } from '../../shared/components/common/EmptyState';
 import { CreateProjectPage } from './CreateProjectPage';
+import { canManageCourseContent } from '../../shared/utils/roles';
 
 interface ProjectsViewProps {
   courseId: string;
@@ -55,6 +56,9 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   const [simulatedFileName, setSimulatedFileName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+
+  const currentCourse = (db.courses || []).find(c => c.id === courseId);
+  const isAssignedInstructor = canManageCourseContent(currentCourse, activeUser);
 
   const effectiveTerms: TermId[] =
     courseId && typeof effectiveTermsForCourse === 'function'
@@ -124,6 +128,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   };
 
   const handleDelete = (id: string) => {
+    if (!isAssignedInstructor) return;
     showConfirm(
       'Are you sure you want to delete this project and all associated student submissions?',
       () => {
@@ -135,7 +140,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     );
   };
 
-  if (isCreating) {
+  if (isCreating && isAssignedInstructor) {
     return (
       <CreateProjectPage
         courseId={courseId}
@@ -174,7 +179,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                 value={termFilter}
                 onChange={v => setTermFilter(v as 'all' | TermId)}
               />
-              {activeRole !== 'student' && (
+              {isAssignedInstructor && (
                 <button
                   type="button"
                   onClick={() => setIsCreating(true)}
@@ -325,13 +330,15 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                 <Users className="h-3.5 w-3.5" />
                 <span>SpeedGrader</span>
               </button>
-              <button
-                type="button"
-                onClick={() => handleDelete(selectedProject.id)}
-                className="p-1.5 rounded-xl text-destructive hover:bg-destructive/10 cursor-pointer"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
+              {isAssignedInstructor && (
+                <button
+                  type="button"
+                  onClick={() => handleDelete(selectedProject.id)}
+                  className="p-1.5 rounded-xl text-destructive hover:bg-destructive/10 cursor-pointer"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              )}
             </div>
           )}
         </div>

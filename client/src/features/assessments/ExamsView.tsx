@@ -3,6 +3,7 @@ import { useLMS } from '../../shared/context/LMSContext';
 import type { Exam, QuizQuestion, TermId } from '../../shared/types/lms';
 import { normalizeTermId } from '../../shared/utils/gradingTerms';
 import { TERM_LABELS, TermFilterSelect } from '../../shared/components/common/TermSelect';
+import { canManageCourseContent } from '../../shared/utils/roles';
 import {
   HelpCircle,
   Play,
@@ -43,6 +44,8 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
     effectiveTermsForCourse
   } = useLMS() as ReturnType<typeof useLMS> & { effectiveTermsForCourse?: (courseId: string) => TermId[] };
 
+  const course = db.courses.find(c => c.id === courseId);
+  const isAssignedInstructor = canManageCourseContent(course, activeUser);
   const courseExams = (db.exams || []).filter(q => q.courseId === courseId);
   const [activeExam, setActiveExam] = useState<Exam | null>(null);
   const [userAnswers, setUserAnswers] = useState<Record<string, string>>({});
@@ -606,7 +609,7 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
         title="Exams & Assessments"
         description="Standardized evaluation modules, Google Forms-style exams, and timed knowledge checks."
         actions={
-          (activeRole === 'faculty' || activeRole === 'admin') && (
+          isAssignedInstructor && (
             <button
               onClick={() => setIsCreatingExam(true)}
               className="px-4 py-2 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all shadow-primary-sm flex items-center space-x-1.5 cursor-pointer self-start sm:self-auto"
@@ -634,8 +637,8 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
         ) : courseExams.length === 0 ? (
           <EmptyState
             title="No exams published for this course yet."
-            actionLabel={activeRole === 'faculty' || activeRole === 'admin' ? 'Create your first exam now' : undefined}
-            onAction={activeRole === 'faculty' || activeRole === 'admin' ? () => setIsCreatingExam(true) : undefined}
+            actionLabel={isAssignedInstructor ? 'Create your first exam now' : undefined}
+            onAction={isAssignedInstructor ? () => setIsCreatingExam(true) : undefined}
           />
         ) : (
           <>

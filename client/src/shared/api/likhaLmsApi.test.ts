@@ -73,6 +73,93 @@ describe('Likha LMS Direct API Client', () => {
     expect(uploaded.url).toContain('/assets/file-uuid-123');
   });
 
+  it('retries upload on transient 502 gateway error and succeeds', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch')
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 502,
+        statusText: 'Bad Gateway',
+      } as any)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: { id: 'file-retry-502', filename_download: 'avatar.jpg' },
+        }),
+      } as any);
+
+    const dummyFile = new File(['content'], 'avatar.jpg', { type: 'image/jpeg' });
+    const uploaded = await likhaLmsApi.uploadFile(dummyFile);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(uploaded.id).toBe('file-retry-502');
+  });
+
+  it('recovers with service token when initial upload returns 403', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch')
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+      } as any)
+      // Login call to fetch service token
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: { access_token: 'srv-token-fresh', expires: 900 },
+        }),
+      } as any)
+      // Retry upload with service token
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: { id: 'file-recovered', filename_download: 'avatar.jpg' },
+        }),
+      } as any);
+
+    const dummyFile = new File(['content'], 'avatar.jpg', { type: 'image/jpeg' });
+    const uploaded = await likhaLmsApi.uploadFile(dummyFile);
+    expect(uploaded.id).toBe('file-recovered');
+  });
+
+  it('silently refreshes expired user token before uploadFile to avoid 401 Unauthorized', async () => {
+    // Generate a valid base64url payload with exp in the past
+    const expiredExp = Math.floor(Date.now() / 1000) - 300;
+    const payload = Buffer.from(JSON.stringify({ exp: expiredExp })).toString('base64');
+    const expiredJwt = `header.${payload}.signature`;
+    localStorage.setItem('gabay_token', expiredJwt);
+    localStorage.setItem('gabay_refresh_token', 'valid-refresh-token');
+
+    const fetchSpy = vi.spyOn(global, 'fetch')
+      // 1. Silent refresh request
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: { access_token: 'freshly-refreshed-jwt', refresh_token: 'fresh-refresh' },
+        }),
+      } as any)
+      // 2. Upload request with fresh token
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: { id: 'file-refreshed-upload', filename_download: 'cover.jpg' },
+        }),
+      } as any);
+
+    const dummyFile = new File(['content'], 'cover.jpg', { type: 'image/jpeg' });
+    const uploaded = await likhaLmsApi.uploadFile(dummyFile);
+    expect(uploaded.id).toBe('file-refreshed-upload');
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining('/auth/refresh'),
+      expect.any(Object)
+    );
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining('/files'),
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer freshly-refreshed-jwt',
+        }),
+      })
+    );
+  });
+
   it('authenticates user and returns profile and token', async () => {
     vi.spyOn(global, 'fetch')
       .mockResolvedValueOnce({

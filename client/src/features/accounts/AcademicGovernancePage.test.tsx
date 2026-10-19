@@ -100,18 +100,14 @@ describe('AcademicGovernancePage', () => {
     render(<AcademicGovernancePage />);
 
     expect(screen.getByRole('heading', { name: 'Academic Governance' })).toBeInTheDocument();
-    expect(screen.getByText(/Govern collegiate academic structures, (departments|academic programs), and institutional leadership appointments/i)).toBeInTheDocument();
+    expect(screen.getByText(/Govern collegiate academic structures, academic programs, and institutional leadership/i)).toBeInTheDocument();
     expect(screen.getByText(/Academic Structure & Multi-College Governance/i)).toBeInTheDocument();
   });
 
-  it('renders Transfer Leadership action button and opens modal when clicked', () => {
+  it('does not render Transfer Leadership action button', () => {
     render(<AcademicGovernancePage />);
 
-    const transferBtn = screen.getByRole('button', { name: /transfer leadership/i });
-    expect(transferBtn).toBeInTheDocument();
-
-    fireEvent.click(transferBtn);
-    expect(screen.getByText('Leadership Authority Transfer')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /transfer leadership/i })).not.toBeInTheDocument();
   });
 
   it('scopes colleges when viewed by a Dean', () => {
@@ -142,37 +138,42 @@ describe('AcademicGovernancePage', () => {
     expect(screen.getByText('College of Education')).toBeInTheDocument();
   });
 
-  it('shows administrative preview warning when viewing as non-admin', () => {
-    mockContextState.activeRole = 'faculty';
-
-    render(<AcademicGovernancePage />);
-
-    expect(screen.getByText(/Administrative console preview:/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /switch to admin/i })).toBeInTheDocument();
-  });
-
   it('collapses and expands college card hiding and showing department rows on click', () => {
     render(<AcademicGovernancePage />);
 
-    // Department/Program of Computer Science is initially visible
+    // Toggle button should initially indicate collapsed (minimized by default)
+    const toggleBtn = screen.getByRole('button', { name: /toggle (departments|programs) for college of computer science/i });
+    expect(toggleBtn).toHaveAttribute('aria-expanded', 'false');
+
+    // College content container is initially collapsed
+    const collegeContent = screen.getByTestId('college-content-col-ccs');
+    expect(collegeContent).toHaveAttribute('aria-hidden', 'true');
+    expect(collegeContent.className).toContain('grid-rows-[0fr]');
+
+    // Click toggle button for the college to expand it
+    fireEvent.click(toggleBtn);
+
+    // Toggle button and container should now be expanded
+    expect(toggleBtn).toHaveAttribute('aria-expanded', 'true');
+    expect(collegeContent).toHaveAttribute('aria-hidden', 'false');
+    expect(collegeContent.className).toContain('grid-rows-[1fr]');
     expect(screen.getByText(/(Department|Program) of Computer Science/i)).toBeInTheDocument();
 
-    // Click collapse toggle button for the college
-    const collapseBtn = screen.getByRole('button', { name: /toggle (departments|programs) for college of computer science/i });
-    fireEvent.click(collapseBtn);
+    // Click toggle again to minimize/collapse
+    fireEvent.click(toggleBtn);
 
-    // Department/Program should now be hidden
-    expect(screen.queryByText(/(Department|Program) of Computer Science/i)).not.toBeInTheDocument();
-
-    // Click expand
-    fireEvent.click(collapseBtn);
-
-    // Department/Program should be visible again
-    expect(screen.getByText(/(Department|Program) of Computer Science/i)).toBeInTheDocument();
+    // Should be collapsed again
+    expect(toggleBtn).toHaveAttribute('aria-expanded', 'false');
+    expect(collegeContent).toHaveAttribute('aria-hidden', 'true');
+    expect(collegeContent.className).toContain('grid-rows-[0fr]');
   });
 
   it('navigates to department details page when department row is clicked', () => {
     render(<AcademicGovernancePage />);
+
+    // Expand college first since minimized by default
+    const toggleBtn = screen.getByRole('button', { name: /toggle (departments|programs) for college of computer science/i });
+    fireEvent.click(toggleBtn);
 
     const deptRow = screen.getByTestId(/(department|program)-row-dept-cs/);
     expect(deptRow).toBeInTheDocument();

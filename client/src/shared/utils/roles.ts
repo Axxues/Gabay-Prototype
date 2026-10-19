@@ -77,6 +77,21 @@ export function isChairRole(user?: RoleResolvableUser | null, activeRole?: strin
 }
 
 /**
+ * Checks if the user is strictly in a faculty/teaching role (instructor/faculty).
+ * Deans, Program Chairs, and Admins are administrative monitors and do NOT hold faculty roles.
+ */
+export function isFacultyRole(user?: RoleResolvableUser | null, activeRole?: string): boolean {
+  if (!user && !activeRole) return false;
+  if (isAdministrativeMonitor(user, activeRole)) return false;
+  const role = (user?.role || activeRole || '').toLowerCase();
+  const subrole = (user?.adminSubrole || '').toLowerCase();
+  const title = (user?.title || '').toLowerCase();
+  if (subrole === 'dean' || subrole === 'chairperson' || subrole === 'chair' || subrole === 'chancellor') return false;
+  if (title.includes('dean') || title.includes('chair') || title.includes('chancellor') || title.includes('administrator')) return false;
+  return role === 'faculty' || role === 'instructor';
+}
+
+/**
  * Checks if the user is in an administrative monitoring persona (Chancellor/Admin, Dean, or Chairperson).
  */
 export function isAdministrativeMonitor(user?: RoleResolvableUser | null, activeRole?: string): boolean {
@@ -87,6 +102,33 @@ export function isAdministrativeMonitor(user?: RoleResolvableUser | null, active
     isDeanRole(user, activeRole) ||
     isChairRole(user, activeRole)
   );
+}
+
+/**
+ * Checks if a user is the assigned faculty instructor for a specific course.
+ */
+export function isCourseAssignedInstructor(
+  course?: { instructorId?: string; instructor_id?: string; instructor?: any } | null,
+  user?: { id?: string } | null
+): boolean {
+  if (!course || !user?.id) return false;
+  const instructorId =
+    course.instructorId ||
+    course.instructor_id ||
+    (typeof course.instructor === 'object' ? course.instructor?.id : course.instructor);
+  return Boolean(instructorId && String(instructorId) === String(user.id));
+}
+
+/**
+ * Checks if a user has permission to author, edit, or delete content within a course.
+ * Strictly limited to the assigned faculty instructor.
+ * Administrators, Deans, Program Chairs, and other unassigned users act in an audit/monitoring capacity.
+ */
+export function canManageCourseContent(
+  course?: { instructorId?: string; instructor_id?: string; instructor?: any } | null,
+  user?: { id?: string } | null
+): boolean {
+  return isCourseAssignedInstructor(course, user);
 }
 
 /**

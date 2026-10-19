@@ -59,9 +59,11 @@ describe('ProfilePage - Role Credentials Rendering', () => {
 
     render(<ProfilePage />);
 
-    expect(screen.getByText('Academic, Faculty & Leadership Credentials')).toBeInTheDocument();
-    expect(screen.getByLabelText(/years of teaching experience/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /add degree/i })).toBeInTheDocument();
+    expect(screen.getByText('Administrative & Leadership Profile')).toBeInTheDocument();
+    expect(screen.getByLabelText(/first name/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/last name/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/years of teaching experience/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /add degree/i })).not.toBeInTheDocument();
   });
 
   it('renders FacultyProfileForm for chairperson', () => {
@@ -79,8 +81,11 @@ describe('ProfilePage - Role Credentials Rendering', () => {
 
     render(<ProfilePage />);
 
-    expect(screen.getByText('Academic, Faculty & Leadership Credentials')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /add degree/i })).toBeInTheDocument();
+    expect(screen.getByText('Administrative & Leadership Profile')).toBeInTheDocument();
+    expect(screen.getByLabelText(/first name/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/last name/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/years of teaching experience/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /add degree/i })).not.toBeInTheDocument();
   });
 
   it('renders FacultyProfileForm for superadmin', () => {
@@ -98,7 +103,11 @@ describe('ProfilePage - Role Credentials Rendering', () => {
 
     render(<ProfilePage />);
 
-    expect(screen.getByText('Academic, Faculty & Leadership Credentials')).toBeInTheDocument();
+    expect(screen.getByText('Administrative & Leadership Profile')).toBeInTheDocument();
+    expect(screen.getByLabelText(/first name/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/last name/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/years of teaching experience/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /add degree/i })).not.toBeInTheDocument();
   });
 
   it('renders StudentProfileForm and does NOT render FacultyProfileForm for students', () => {
@@ -115,7 +124,7 @@ describe('ProfilePage - Role Credentials Rendering', () => {
     render(<ProfilePage />);
 
     expect(screen.getByText('Institutional Records & Student Information')).toBeInTheDocument();
-    expect(screen.queryByText('Academic, Faculty & Leadership Credentials')).not.toBeInTheDocument();
+    expect(screen.queryByText('Administrative & Leadership Profile')).not.toBeInTheDocument();
     expect(screen.queryByText('Faculty & Staff Credentials')).not.toBeInTheDocument();
   });
 
@@ -134,6 +143,9 @@ describe('ProfilePage - Role Credentials Rendering', () => {
     render(<ProfilePage />);
 
     expect(screen.getByText('Faculty & Staff Credentials')).toBeInTheDocument();
+    expect(screen.getByLabelText(/first name/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/last name/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/years of teaching experience/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /add degree/i })).toBeInTheDocument();
   });
 });

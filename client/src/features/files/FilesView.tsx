@@ -29,6 +29,7 @@ import { useSimulatedUpload } from '../../shared/hooks/useSimulatedUpload';
 import { UploadProgress } from '../../shared/components/common/UploadProgress';
 import { useCourseFiles } from '../../shared/hooks/useCourseFiles';
 import { isFolderEmptyRecursive } from '../../shared/utils/autoFolder';
+import { canManageCourseContent } from '../../shared/utils/roles';
 
 interface FilesViewProps {
   courseId?: string; // If undefined or 'personal', loads account-level storage
@@ -37,7 +38,6 @@ interface FilesViewProps {
 export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
   const {
     activeUser,
-    activeRole,
     db,
     isLoading,
     isSyncing,
@@ -80,7 +80,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const upload = useSimulatedUpload();
 
-  const canManage = isPersonal || activeRole === 'faculty' || activeRole === 'admin';
+  const canManage = isPersonal ? true : canManageCourseContent(course, activeUser);
 
   const { allFiles, virtualFolders } = useCourseFiles(courseId);
 

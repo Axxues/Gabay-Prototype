@@ -336,6 +336,7 @@ describe('courses, sections, requests via Likha (Task 4)', () => {
   });
 
   test('joinCourseByCode falls back to Likha lookup when the cache has no join code', async () => {
+    getCoursesWithRelationsMock.mockResolvedValueOnce([{ ...courseRow, join_code: undefined }]);
     await renderLoggedInAs('Faculty', 'u-fac-1', 'faculty1@dmmmsu.edu.ph');
     let result: any = null;
     await act(async () => {
@@ -472,8 +473,9 @@ describe('courses, sections, requests via Likha (Task 4)', () => {
   });
 
   test('createEnrollmentRequest (self_join) resolves a codeless cached course via getCourses', async () => {
+    getCoursesWithRelationsMock.mockResolvedValueOnce([{ ...courseRow, join_code: undefined }]);
     await renderLoggedInAs('Student', 'u-stud-1', 'stud1@dmmmsu.edu.ph');
-    // Bootstrap drops join_code, so the cached c1 carries no code.
+    // Cached c1 carries no code.
     expect((seenDb.courses || []).find((c: any) => c.id === 'c1')?.joinCode).toBeUndefined();
     let request: any = null;
     await act(async () => {
@@ -530,4 +532,22 @@ describe('courses, sections, requests via Likha (Task 4)', () => {
     );
     expect(task4ExpressCalls()).toEqual([]);
   });
+
+  test('faculty cannot delete course via deleteCourse (unauthorized)', async () => {
+    await renderLoggedInAs('Faculty', 'u-fac-1', 'faculty1@dmmmsu.edu.ph');
+    await act(async () => {
+      await expect(ctx.deleteCourse('c1')).rejects.toThrow('Faculty members do not have permission to delete courses.');
+    });
+  });
+
+  test('updateCourse updates course via likhaLmsApi.courses.updateCourse and updates local state', async () => {
+    await renderLoggedInAs('Faculty', 'u-fac-1', 'faculty1@dmmmsu.edu.ph');
+    updateCourseMock.mockResolvedValueOnce({ id: 'c1', title: 'New Course Title' });
+    await act(async () => {
+      await ctx.updateCourse('c1', { title: 'New Course Title' });
+    });
+    expect(updateCourseMock).toHaveBeenCalledWith('c1', expect.objectContaining({ title: 'New Course Title' }));
+    expect((seenDb.courses || []).find((c: any) => c.id === 'c1')?.title).toBe('New Course Title');
+  });
 });
+

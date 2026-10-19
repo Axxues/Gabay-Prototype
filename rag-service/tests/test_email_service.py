@@ -86,3 +86,67 @@ def test_api_send_activation_email_rejects_invalid_payload():
         json={"email": "not-an-email"},
     )
     assert response.status_code == 422
+
+
+from app.services.email_service import (
+    render_leadership_code_email_html,
+    send_leadership_code_email,
+)
+
+
+def test_render_leadership_code_email_html_contains_branding_and_code():
+    html = render_leadership_code_email_html(
+        recipient_name="Dr. Maria Santos",
+        code="784921",
+        role_type="dean",
+        unit_name="College of Computer Science",
+    )
+    assert "GABAY" in html
+    assert "Dr. Maria Santos" in html
+    assert "784921" in html
+    assert "College Dean" in html
+    assert "College of Computer Science" in html
+
+
+def test_send_leadership_code_email_simulates_when_unconfigured():
+    with patch("app.services.email_service.get_settings") as mock_settings:
+        mock_settings.return_value.smtp_user = None
+        mock_settings.return_value.smtp_password = None
+
+        result = send_leadership_code_email(
+            to_email="dean@dmmmsu.edu.ph",
+            recipient_name="Dr. Maria Santos",
+            code="123456",
+            role_type="dean",
+            unit_name="College of Computer Science",
+        )
+        assert result["success"] is True
+        assert result.get("simulated") is True
+        assert result.get("code") == "123456"
+
+
+def test_api_send_leadership_code_endpoint_success():
+    with patch("app.main.send_leadership_code_email") as mock_send:
+        mock_send.return_value = {"success": True, "delivered": True, "code": "654321"}
+        response = client.post(
+            "/api/auth/send-leadership-code",
+            json={
+                "email": "chair@dmmmsu.edu.ph",
+                "recipient_name": "Prof. Alan Turing",
+                "code": "654321",
+                "role_type": "chairperson",
+                "unit_name": "Department of Computer Science",
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["code"] == "654321"
+        mock_send.assert_called_once_with(
+            to_email="chair@dmmmsu.edu.ph",
+            recipient_name="Prof. Alan Turing",
+            code="654321",
+            role_type="chairperson",
+            unit_name="Department of Computer Science",
+        )
+

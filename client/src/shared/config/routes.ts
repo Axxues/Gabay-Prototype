@@ -1,7 +1,8 @@
 export const TAB_PATHS: Record<string, string> = {
   dashboard: '/dashboard',
-  'chair-sheet': '/courses/chair-sheet',
-  'create-course': '/courses/chair-sheet',
+  'assigned-courses': '/courses/assigned-courses',
+  'chair-sheet': '/courses/assigned-courses',
+  'create-course': '/courses/assigned-courses',
   calendar: '/calendar',
   inbox: '/inbox',
   'gabay-rag': '/gabay-rag',
@@ -10,7 +11,8 @@ export const TAB_PATHS: Record<string, string> = {
   help: '/help',
   governance: '/governance',
   accounts: '/accounts',
-  'create-account': '/accounts/new',
+  'create-account': '/accounts/create-leadership',
+  'create-leadership': '/accounts/create-leadership',
   'account-profile': '/accounts',
   register: '/register',
   activate: '/activate',
@@ -23,7 +25,9 @@ export function tabToPath(tab: string, activeCourseId?: string | null): string {
   if (tab === 'courses') {
     return activeCourseId ? `/courses/${encodeURIComponent(activeCourseId)}/modules` : '/courses';
   }
+  if (tab === 'edit-course') return activeCourseId ? `/courses/${encodeURIComponent(activeCourseId)}/edit` : '/dashboard';
   if (tab === 'edit-account') return '/accounts';
+  if (tab === 'create-leadership') return '/accounts/create-leadership';
   return TAB_PATHS[tab] ?? '/dashboard';
 }
 
@@ -55,12 +59,14 @@ export function pathToTab(pathname: string): { tab: string; courseId?: string; s
     return { tab: 'governance' };
   }
   if (first === 'courses') {
-    if (second === 'new' || second === 'chair-sheet') return { tab: 'chair-sheet' };
+    if (second === 'new' || second === 'chair-sheet' || second === 'assigned-courses') return { tab: 'assigned-courses' };
+    if (second && third === 'edit') return { tab: 'edit-course', courseId: decodeURIComponent(second) };
     if (!second) return { tab: 'courses' };
     return { tab: 'courses', courseId: decodeURIComponent(second), subTab: third ? decodeURIComponent(third) : 'modules' };
   }
   if (first === 'accounts') {
-    if (second === 'new') return { tab: 'create-account' };
+    if (second === 'create-leadership') return { tab: 'create-leadership' };
+    if (second === 'new') return { tab: 'accounts' };
     if (second && third === 'edit') return { tab: 'edit-account', editUserId: decodeURIComponent(second) };
     if (second && (third === 'view' || !third)) return { tab: 'account-profile', editUserId: decodeURIComponent(second) };
     return { tab: 'accounts' };

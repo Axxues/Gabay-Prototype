@@ -1,9 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLMS } from '../../shared/context/LMSContext';
-import { DialogFrame } from '../../shared/components/common/DialogFrame';
 import { UserAvatar } from '../../shared/components/common/UserAvatar';
-import { getDisplayRoleLabel } from '../../shared/utils/roles';
+import { getDisplayRoleLabel, isFacultyRole } from '../../shared/utils/roles';
 import type { User } from '../../shared/types/lms';
 import {
   Building,
@@ -78,18 +77,11 @@ export const ProgramDetailsPage: React.FC<ProgramDetailsPageProps> = ({ onNaviga
     db,
     activeRole,
     activeUser,
-    transferLeadership,
-    showAlert,
   } = useLMS();
 
   // Active roster filter
   const [roleFilter, setRoleFilter] = useState<RosterFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
-
-  // Leadership handover modal state
-  const [isAppointModalOpen, setIsAppointModalOpen] = useState(false);
-  const [selectedCandidateId, setSelectedCandidateId] = useState('');
-  const [isSubmittingLeader, setIsSubmittingLeader] = useState(false);
 
   // Program and College resolution
   const programList = programs || departments || [];
@@ -129,17 +121,16 @@ export const ProgramDetailsPage: React.FC<ProgramDetailsPageProps> = ({ onNaviga
     return (db?.users || []).find(u => u.id === chairId);
   }, [db?.users, dept]);
 
-  // Program faculty list
+  // Program faculty list (strictly teaching faculty, excluding chairperson and administrative monitors)
   const programFaculty = useMemo(() => {
     if (!dept) return [];
     return (db?.users || []).filter(u => {
-      const isFaculty = u.role === 'faculty' || u.id === dept.chairpersonId;
-      if (!isFaculty) return false;
+      if (u.id === dept.chairpersonId) return false;
+      if (!isFacultyRole(u, u.role)) return false;
       const uDept = (u.program || u.department || '').toLowerCase();
       return (
         uDept === dept.name.toLowerCase() ||
-        uDept === dept.code.toLowerCase() ||
-        u.id === dept.chairpersonId
+        uDept === dept.code.toLowerCase()
       );
     });
   }, [db?.users, dept]);
@@ -262,56 +253,11 @@ export const ProgramDetailsPage: React.FC<ProgramDetailsPageProps> = ({ onNaviga
     );
   }, [programMembers, roleFilter, searchQuery, isAdminMember, memberRoleLabel]);
 
-  // Eligible faculty candidates for appointment to program chairperson
-  const eligibleCandidates = useMemo(() => {
-    if (!dept) return [];
-    return (db?.users || []).filter(u => {
-      if (u.id === dept.chairpersonId) return false;
-      const isFaculty = u.role === 'faculty';
-      const uDept = (u.program || u.department || '').toLowerCase();
-      const inProgram =
-        uDept === dept.name.toLowerCase() ||
-        uDept === dept.code.toLowerCase() ||
-        u.collegeId === dept.collegeId;
-      return isFaculty && inProgram;
-    });
-  }, [db?.users, dept]);
-
   const handleBackToGovernance = () => {
     if (onNavigateTab) {
       onNavigateTab('governance');
     } else {
       navigate('/governance');
-    }
-  };
-
-  const handleAppointChair = async () => {
-    if (!dept || !selectedCandidateId) return;
-    setIsSubmittingLeader(true);
-    try {
-      const res = await transferLeadership(
-        'chairperson',
-        dept.chairpersonId || 'none',
-        selectedCandidateId,
-        dept.id
-      );
-
-      if (res.success) {
-        showAlert({
-          title: 'Appointment Confirmed',
-          message: res.message,
-          type: 'success',
-        });
-        setIsAppointModalOpen(false);
-      } else {
-        showAlert({
-          title: 'Appointment Failed',
-          message: res.message,
-          type: 'error',
-        });
-      }
-    } finally {
-      setIsSubmittingLeader(false);
     }
   };
 
@@ -461,16 +407,6 @@ export const ProgramDetailsPage: React.FC<ProgramDetailsPageProps> = ({ onNaviga
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              setSelectedCandidateId('');
-              setIsAppointModalOpen(true);
-            }}
-            className="px-4 py-2 bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground font-bold text-xs rounded-xl shadow-primary-sm transition-all flex items-center justify-center space-x-1.5 cursor-pointer shrink-0"
-          >
-            <span>{incumbentChair ? 'Reassign Chairperson' : 'Appoint Chairperson'}</span>
-          </button>
         </div>
 
         {incumbentChair ? (
@@ -799,70 +735,7 @@ export const ProgramDetailsPage: React.FC<ProgramDetailsPageProps> = ({ onNaviga
           )}
         </div>
       </div>
-
-      {/* APPOINT / REASSIGN CHAIRPERSON MODAL */}
-      {isAppointModalOpen && (
-        <DialogFrame
-          title="Appoint Chairperson"
-          subtitle={`Designate unit administrative leader for ${dept.name}`}
-          onClose={() => setIsAppointModalOpen(false)}
-          footer={
-            <>
-              <button
-                type="button"
-                onClick={() => setIsAppointModalOpen(false)}
-                className="px-4 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted rounded-xl cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={!selectedCandidateId || isSubmittingLeader}
-                onClick={handleAppointChair}
-                className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-xs rounded-xl shadow-xs cursor-pointer disabled:opacity-50 flex items-center space-x-1.5"
-              >
-                <span>{isSubmittingLeader ? 'Appointing...' : 'Confirm Appointment'}</span>
-              </button>
-            </>
-          }
-        >
-          <div className="space-y-4 text-xs font-sans">
-            <div className="p-3 bg-muted/60 border border-border rounded-xl">
-              <div className="font-bold text-foreground">Program: {dept.name}</div>
-              <div className="text-muted-foreground text-[11px]">
-                College: {college ? college.name : 'Affiliated College'}
-              </div>
-            </div>
-
-            <div>
-              <label htmlFor="select-candidate" className="block font-bold text-foreground mb-1.5">
-                Select Candidate
-              </label>
-              <select
-                id="select-candidate"
-                value={selectedCandidateId}
-                onChange={e => setSelectedCandidateId(e.target.value)}
-                className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs font-sans text-foreground outline-none focus:ring-2 focus:ring-primary/30"
-              >
-                <option value="">Select faculty member...</option>
-                {eligibleCandidates.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} ({c.email}) - {c.program || c.department || 'Faculty'}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[11px] text-amber-700 dark:text-amber-300 flex items-start space-x-2">
-              <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
-              <span>
-                Appointing a new leader automatically steps down any previous incumbent to faculty,
-                strictly adhering to the single-seat leadership invariant.
-              </span>
-            </div>
-          </div>
-        </DialogFrame>
-      )}
     </div>
   );
 };
+

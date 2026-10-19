@@ -205,11 +205,12 @@ describe('ManageAccountsPage - Dean Access & Full Collegiate Scoping', () => {
       fireEvent.click(dropdownButton);
 
       // CCS departments must be present
-      expect(screen.getByRole('button', { name: /Department of Computer Science/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Department of Information Technology/i })).toBeInTheDocument();
+      const panel = screen.getByRole('listbox');
+      expect(within(panel).getByRole('option', { name: /Department of Computer Science/i })).toBeInTheDocument();
+      expect(within(panel).getByRole('option', { name: /Department of Information Technology/i })).toBeInTheDocument();
 
       // COED departments must NOT be in the dropdown
-      expect(screen.queryByRole('button', { name: /Department of Elementary Education/i })).not.toBeInTheDocument();
+      expect(within(panel).queryByRole('option', { name: /Department of Elementary Education/i })).not.toBeInTheDocument();
     });
 
     it('scopes departments via fallback even when activeUser.collegeId is empty but collegeName matches', () => {
@@ -227,9 +228,10 @@ describe('ManageAccountsPage - Dean Access & Full Collegiate Scoping', () => {
       fireEvent.click(dropdownButton);
 
       // CCS departments are scoped
-      expect(screen.getByRole('button', { name: /Department of Computer Science/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Department of Information Technology/i })).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: /Department of Elementary Education/i })).not.toBeInTheDocument();
+      const panel = screen.getByRole('listbox');
+      expect(within(panel).getByRole('option', { name: /Department of Computer Science/i })).toBeInTheDocument();
+      expect(within(panel).getByRole('option', { name: /Department of Information Technology/i })).toBeInTheDocument();
+      expect(within(panel).queryByRole('option', { name: /Department of Elementary Education/i })).not.toBeInTheDocument();
     });
 
     it('scopes departments even when activeUser.collegeId and collegeName are undefined but college.deanId matches', () => {
@@ -247,9 +249,10 @@ describe('ManageAccountsPage - Dean Access & Full Collegiate Scoping', () => {
       fireEvent.click(dropdownButton);
 
       // CCS departments are scoped
-      expect(screen.getByRole('button', { name: /Department of Computer Science/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Department of Information Technology/i })).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: /Department of Elementary Education/i })).not.toBeInTheDocument();
+      const panel = screen.getByRole('listbox');
+      expect(within(panel).getByRole('option', { name: /Department of Computer Science/i })).toBeInTheDocument();
+      expect(within(panel).getByRole('option', { name: /Department of Information Technology/i })).toBeInTheDocument();
+      expect(within(panel).queryByRole('option', { name: /Department of Elementary Education/i })).not.toBeInTheDocument();
     });
   });
 
@@ -325,9 +328,10 @@ describe('ManageAccountsPage - Dean Access & Full Collegiate Scoping', () => {
       const dropdownButton = screen.getByRole('button', { name: /all programs|all departments/i });
       fireEvent.click(dropdownButton);
 
-      expect(screen.getByRole('button', { name: /Department of Computer Science/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Department of Information Technology/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Department of Elementary Education/i })).toBeInTheDocument();
+      const panel = screen.getByRole('listbox');
+      expect(within(panel).getByRole('option', { name: /Department of Computer Science/i })).toBeInTheDocument();
+      expect(within(panel).getByRole('option', { name: /Department of Information Technology/i })).toBeInTheDocument();
+      expect(within(panel).getByRole('option', { name: /Department of Elementary Education/i })).toBeInTheDocument();
     });
   });
 });

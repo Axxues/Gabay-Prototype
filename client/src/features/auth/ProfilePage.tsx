@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import { useLMS, ACCENT_PRESETS } from '../../shared/context/LMSContext';
 import { uploadFileToPublic } from '../../shared/utils/fileUploader';
 import { hasCustomAvatar } from '../../shared/utils/avatar';
-import { getDisplayRoleLabel } from '../../shared/utils/roles';
+import { getDisplayRoleLabel, isAdministrativeMonitor } from '../../shared/utils/roles';
 import { UserAvatar } from '../../shared/components/common/UserAvatar';
 import {
   Building,
@@ -411,12 +411,14 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
             <div className="bg-card border border-border rounded-2xl p-6 shadow-none space-y-5">
               <div>
                 <h3 className="font-bold text-foreground text-sm">
-                  {activeRole === 'admin' || activeRole === 'superadmin'
-                    ? 'Academic, Faculty & Leadership Credentials'
+                  {isAdministrativeMonitor(currentUser, activeRole)
+                    ? 'Administrative & Leadership Profile'
                     : 'Faculty & Staff Credentials'}
                 </h3>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Update your professional teaching experience, contact information, and educational background.
+                  {isAdministrativeMonitor(currentUser, activeRole)
+                    ? 'Update your executive account name, personal contact information, and address details.'
+                    : 'Update your professional teaching experience, contact information, and educational background.'}
                 </p>
               </div>
               <FacultyProfileForm
@@ -424,6 +426,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                 user={currentUser}
                 updateUser={updateUser}
                 showAlert={showAlert}
+                isAdministrative={isAdministrativeMonitor(currentUser, activeRole)}
               />
             </div>
           )}

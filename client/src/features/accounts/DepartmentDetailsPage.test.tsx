@@ -218,7 +218,7 @@ describe('DepartmentDetailsPage', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/governance');
   });
 
-  it('renders incumbent chairperson card and triggers handover modal', async () => {
+  it('renders incumbent chairperson card without handover button', () => {
     render(<DepartmentDetailsPage />);
 
     // Shows incumbent
@@ -227,34 +227,10 @@ describe('DepartmentDetailsPage', () => {
     expect(within(chairCard).getByText('alan.turing@dmmmsu.edu.ph')).toBeInTheDocument();
     expect(within(chairCard).getByText(/(department|program) chairperson/i)).toBeInTheDocument();
 
-    const reassignButton = screen.getByRole('button', { name: /reassign chairperson/i });
-    expect(reassignButton).toBeInTheDocument();
-
-    fireEvent.click(reassignButton);
-
-    // Modal opens
-    expect(screen.getByText('Appoint Chairperson')).toBeInTheDocument();
-    expect(screen.getByText(/strictly adhering to the single-seat leadership invariant/i)).toBeInTheDocument();
-
-    // Select candidate
-    const select = screen.getByLabelText(/select candidate/i);
-    expect(select).toBeInTheDocument();
-    fireEvent.change(select, { target: { value: 'u-fac-cs' } });
-
-    const confirmButton = screen.getByRole('button', { name: /confirm appointment/i });
-    await act(async () => {
-      fireEvent.click(confirmButton);
-    });
-
-    expect(mockTransferLeadership).toHaveBeenCalledWith(
-      'chairperson',
-      'u-chair-cs',
-      'u-fac-cs',
-      'dept-cs'
-    );
+    expect(screen.queryByRole('button', { name: /reassign chairperson/i })).not.toBeInTheDocument();
   });
 
-  it('renders unappointed chairperson state with Appoint button', () => {
+  it('renders unappointed chairperson state without appoint button', () => {
     mockContext.departments = [
       {
         id: 'dept-cs',
@@ -270,14 +246,14 @@ describe('DepartmentDetailsPage', () => {
     expect(screen.getByTestId('unappointed-chairperson-card')).toBeInTheDocument();
     expect(screen.getByText('No Chairperson Appointed')).toBeInTheDocument();
     expect(screen.getByText('Seat Vacant')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /appoint chairperson/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /appoint chairperson/i })).not.toBeInTheDocument();
   });
 
   it('displays 4 key department metrics', () => {
     render(<DepartmentDetailsPage />);
 
     const facultyMetric = screen.getByTestId('metric-total-faculty');
-    expect(facultyMetric).toHaveTextContent('2'); // Alan Turing + Ada Lovelace
+    expect(facultyMetric).toHaveTextContent('1'); // Ada Lovelace only (Alan Turing is chairperson, not faculty)
 
     const studentsMetric = screen.getByTestId('metric-total-students');
     expect(studentsMetric).toHaveTextContent('1'); // Grace Hopper
@@ -396,46 +372,6 @@ describe('DepartmentDetailsPage', () => {
 
     expect(screen.getAllByText('Prof. Alan Turing').length).toBe(2);
     expect(screen.getByText('Prof. Ada Lovelace')).toBeInTheDocument();
-  });
-
-  it('opens Appoint Chairperson modal in a centered portal and allows selecting a candidate', async () => {
-    mockParams = { deptId: 'dept-cs' };
-    render(<DepartmentDetailsPage />);
-
-    // Click Reassign Chairperson button
-    const appointBtn = screen.getByRole('button', { name: /reassign chairperson/i });
-    fireEvent.click(appointBtn);
-
-    // Modal dialog is displayed
-    const dialog = screen.getByRole('dialog');
-    expect(dialog).toBeInTheDocument();
-    expect(screen.getByText('Appoint Chairperson')).toBeInTheDocument();
-    expect(screen.getByText(/designate unit administrative leader/i)).toBeInTheDocument();
-
-    // The dialog should be rendered into document.body via portal
-    expect(document.body).toContainElement(dialog);
-
-    // Dialog contains candidate dropdown
-    const select = screen.getByLabelText(/select candidate/i);
-    expect(select).toBeInTheDocument();
-
-    // Select candidate
-    fireEvent.change(select, { target: { value: 'u-fac-cs' } });
-    expect((select as HTMLSelectElement).value).toBe('u-fac-cs');
-
-    // Confirm Appointment button is enabled and clickable
-    const confirmBtn = screen.getByRole('button', { name: /confirm appointment/i });
-    expect(confirmBtn).not.toBeDisabled();
-    await act(async () => {
-      fireEvent.click(confirmBtn);
-    });
-
-    expect(mockTransferLeadership).toHaveBeenCalledWith(
-      'chairperson',
-      'u-chair-cs',
-      'u-fac-cs',
-      'dept-cs'
-    );
   });
 });
 

@@ -22,7 +22,7 @@ import { isImageFile } from '../../shared/utils/fileUploader';
 import { groupRepliesByRoot } from '../../shared/utils/threadReplies';
 import { PageHeader } from '../../shared/components/common/PageHeader';
 import { UserAvatar } from '../../shared/components/common/UserAvatar';
-import { getDisplayRoleLabel } from '../../shared/utils/roles';
+import { getDisplayRoleLabel, canManageCourseContent } from '../../shared/utils/roles';
 import { EmptyState } from '../../shared/components/common/EmptyState';
 import { CreateAnnouncementPage } from './CreateAnnouncementPage';
 
@@ -128,7 +128,7 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
     }
   };
 
-  const canCreate = activeRole === 'faculty' || activeRole === 'admin';
+  const canCreate = canManageCourseContent(course, activeUser);
 
   if (isCreating) {
     return (

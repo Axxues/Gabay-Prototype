@@ -14,23 +14,27 @@ import {
 } from 'lucide-react';
 import { useLMS } from '../../../shared/context/LMSContext';
 import { AnimatedModal } from '../../../shared/components/common/ModalPortal';
+import { CustomDropdown } from '../../../shared/components/common/CustomDropdown';
 import {
   parseChairSheet,
   validateChairSheetRows,
   matchFaculty,
   isEligibleFaculty,
-  downloadChairSheetTemplate,
+  downloadAssignedCoursesTemplate,
+  formatCourseTerm,
   type ValidatedChairSheetRow,
   type RawChairSheetRow
 } from '../utils/chairSheetParser';
 import { ChairSheetPreviewTable } from './ChairSheetPreviewTable';
 
-interface ChairSheetUploadViewProps {
+export interface AssignedCoursesUploadViewProps {
   onNavigateCourse?: (courseId: string, subTab?: string) => void;
   onNavigateTab: (tab: string) => void;
 }
 
-export const ChairSheetUploadView: React.FC<ChairSheetUploadViewProps> = ({
+export type ChairSheetUploadViewProps = AssignedCoursesUploadViewProps;
+
+export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps> = ({
   onNavigateCourse,
   onNavigateTab,
 }) => {
@@ -84,6 +88,20 @@ export const ChairSheetUploadView: React.FC<ChairSheetUploadViewProps> = ({
     }
     return 'col-ccs';
   }, [activeUser, departments, colleges]);
+
+  const userDepartment = useMemo(() => {
+    if (departments) {
+      const match = departments.find(
+        d =>
+          d.chairpersonId === activeUser?.id ||
+          d.id === activeUser?.department ||
+          d.name?.toLowerCase() === activeUser?.department?.toLowerCase() ||
+          d.code?.toLowerCase() === activeUser?.department?.toLowerCase()
+      );
+      if (match) return match;
+    }
+    return undefined;
+  }, [activeUser, departments]);
 
   const defaultSchoolYear = useMemo(() => {
     if (getActiveSchoolYearForCollege) {
@@ -147,7 +165,7 @@ export const ChairSheetUploadView: React.FC<ChairSheetUploadViewProps> = ({
     } catch (err: any) {
       showAlert({
         title: 'Upload Error',
-        message: err?.message || 'Failed to process Excel chair-sheet.',
+        message: err?.message || 'Failed to process Excel assigned courses sheet.',
         type: 'error',
       });
     }
@@ -182,6 +200,7 @@ export const ChairSheetUploadView: React.FC<ChairSheetUploadViewProps> = ({
           courseCode: updates.courseCode !== undefined ? updates.courseCode : row.courseCode,
           descriptiveTitle: updates.descriptiveTitle !== undefined ? updates.descriptiveTitle : row.descriptiveTitle,
           yearAndSection: updates.yearAndSection !== undefined ? updates.yearAndSection : row.yearAndSection,
+          semester: updates.semester !== undefined ? updates.semester : row.semester,
         };
         const match = matchFaculty(updatedRaw, db.users || []);
         return {
@@ -207,7 +226,8 @@ export const ChairSheetUploadView: React.FC<ChairSheetUploadViewProps> = ({
       target.lastName?.trim() ||
       target.courseCode?.trim() ||
       target.descriptiveTitle?.trim() ||
-      target.yearAndSection?.trim()
+      target.yearAndSection?.trim() ||
+      target.semester?.trim()
     );
 
     if (hasContent) {
@@ -225,6 +245,7 @@ export const ChairSheetUploadView: React.FC<ChairSheetUploadViewProps> = ({
       courseCode: '',
       descriptiveTitle: '',
       yearAndSection: '',
+      semester: 'First',
     };
     const validated = validateChairSheetRows([newRaw], db.users || [])[0];
     setRows(prev => [...prev, validated]);
@@ -256,7 +277,11 @@ export const ChairSheetUploadView: React.FC<ChairSheetUploadViewProps> = ({
           instructorId: row.matchedUser?.id,
           instructorName: row.matchedUser?.name || `${row.firstName} ${row.lastName}`.trim(),
           schoolYear: selectedSchoolYear,
-          term: `1st Sem AY ${selectedSchoolYear}`,
+          term: formatCourseTerm(row.semester, selectedSchoolYear),
+          semester: row.semester?.trim() || undefined,
+          collegeId: userCollegeId,
+          department: userDepartment?.name || row.matchedUser?.department,
+          departmentId: userDepartment?.id,
           published: true,
         });
 
@@ -304,7 +329,7 @@ export const ChairSheetUploadView: React.FC<ChairSheetUploadViewProps> = ({
           <div className="min-w-0">
             <div className="flex items-center space-x-2">
               <h1 className="text-[22px] font-extrabold tracking-tight text-foreground">
-                Upload Department Chair-Sheet
+                Upload Department Assigned Courses
               </h1>
               <span className="px-2.5 py-0.5 text-[11px] font-semibold bg-primary/10 text-primary border border-primary/20 rounded-md">
                 Chairperson Authority
@@ -320,24 +345,23 @@ export const ChairSheetUploadView: React.FC<ChairSheetUploadViewProps> = ({
             sm:ml-auto holds it at the right edge, even if the whole cluster wraps under the title. */}
         <div className="flex shrink-0 flex-wrap items-center gap-2 sm:ml-auto sm:flex-nowrap">
           {/* Target Academic Year Selector */}
-          <div className="flex items-center space-x-2 bg-muted/40 border border-border px-3 py-1.5 rounded-xl">
-            <label htmlFor="chair-sheet-ay-select" className="text-xs font-semibold text-muted-foreground whitespace-nowrap">
+          <div className="flex items-center space-x-2">
+            <label htmlFor="assigned-courses-ay-select" className="text-xs font-semibold text-muted-foreground whitespace-nowrap">
               Academic Year:
             </label>
-            <select
-              id="chair-sheet-ay-select"
+            <CustomDropdown
+              id="assigned-courses-ay-select"
+              ariaLabel="Select Target Academic Year for Assigned Courses"
               value={selectedSchoolYear}
-              onChange={e => setSelectedSchoolYear(e.target.value)}
+              onChange={setSelectedSchoolYear}
               disabled={isSubmitting}
-              className="bg-transparent border-0 text-xs font-bold text-foreground outline-none cursor-pointer disabled:opacity-50"
-              aria-label="Select Target Academic Year for Chair-Sheet"
-            >
-              {schoolYearOptions.map(sy => (
-                <option key={sy} value={sy} className="bg-background text-foreground">
-                  AY {sy}{sy === defaultSchoolYear ? ' (Active)' : ''}
-                </option>
-              ))}
-            </select>
+              variant="compact"
+              className="min-w-[140px]"
+              options={schoolYearOptions.map(sy => ({
+                value: sy,
+                label: `AY ${sy}${sy === defaultSchoolYear ? ' (Active)' : ''}`,
+              }))}
+            />
           </div>
 
           {rows.length > 0 && (
@@ -410,17 +434,17 @@ export const ChairSheetUploadView: React.FC<ChairSheetUploadViewProps> = ({
           </div>
 
           <h3 className="text-base font-bold text-foreground text-center">
-            Upload Department Chair-Sheet (.xlsx)
+            Upload Department Assigned Courses (.xlsx)
           </h3>
           <p className="text-xs text-muted-foreground max-w-md text-center mt-1 mb-5">
-            Drag and drop your department chair-sheet spreadsheet containing faculty names, course codes, titles, and sections.
+            Drag and drop your department assigned courses spreadsheet containing faculty names, course codes, titles, and sections.
           </p>
 
           <input
             ref={fileInputRef}
             type="file"
             accept=".xlsx, .xls"
-            data-testid="chair-sheet-file-input"
+            data-testid="assigned-courses-file-input"
             onChange={handleFileChange}
             className="hidden"
           />
@@ -432,12 +456,12 @@ export const ChairSheetUploadView: React.FC<ChairSheetUploadViewProps> = ({
               className="px-5 py-2.5 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl shadow-primary-sm transition-all flex items-center space-x-2 cursor-pointer"
             >
               <UploadCloud className="w-4 h-4" />
-              <span>Select Chair-Sheet File</span>
+              <span>Select Assigned Courses File</span>
             </button>
 
             <button
               type="button"
-              onClick={() => downloadChairSheetTemplate()}
+              onClick={() => downloadAssignedCoursesTemplate()}
               className="px-4 py-2.5 text-xs font-semibold bg-muted hover:bg-muted/80 text-foreground border border-border rounded-xl transition-all flex items-center space-x-2 cursor-pointer"
             >
               <Download className="w-4 h-4 text-primary" />
@@ -447,7 +471,7 @@ export const ChairSheetUploadView: React.FC<ChairSheetUploadViewProps> = ({
 
           <div className="mt-6 flex items-center gap-2 text-[11px] text-muted-foreground bg-muted/60 px-3 py-1.5 rounded-lg border border-border/60">
             <HelpCircle className="w-3.5 h-3.5" />
-            <span>Expected format: First Name, Middle Name, Last Name, Course Code, Descriptive Title, Year and Section</span>
+            <span>Expected format: First Name, Middle Name, Last Name, Course Code, Descriptive Title, Year and Section, Semester</span>
           </div>
         </div>
       ) : (
@@ -510,7 +534,7 @@ export const ChairSheetUploadView: React.FC<ChairSheetUploadViewProps> = ({
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
               <span className="text-xs font-bold text-foreground">
-                Sheet Preview & Validation ({fileName || 'chair-sheet.xlsx'})
+                Sheet Preview & Validation ({fileName || 'assigned-courses.xlsx'})
               </span>
             </div>
 
@@ -657,3 +681,5 @@ export const ChairSheetUploadView: React.FC<ChairSheetUploadViewProps> = ({
     </div>
   );
 };
+
+export const ChairSheetUploadView = AssignedCoursesUploadView;
