@@ -11,6 +11,7 @@ export const TAB_PATHS: Record<string, string> = {
   governance: '/governance',
   accounts: '/accounts',
   'create-account': '/accounts/new',
+  'account-profile': '/accounts',
   register: '/register',
   activate: '/activate',
   page1: '/page1',
@@ -61,6 +62,7 @@ export function pathToTab(pathname: string): { tab: string; courseId?: string; s
   if (first === 'accounts') {
     if (second === 'new') return { tab: 'create-account' };
     if (second && third === 'edit') return { tab: 'edit-account', editUserId: decodeURIComponent(second) };
+    if (second && (third === 'view' || !third)) return { tab: 'account-profile', editUserId: decodeURIComponent(second) };
     return { tab: 'accounts' };
   }
   return { tab: 'dashboard' };

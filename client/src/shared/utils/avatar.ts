@@ -45,9 +45,9 @@ export function resolveDirectusAssetUrl(
   options?: AssetTransformOptions
 ): string {
   if (!asset) return '';
-  const assetId = typeof asset === 'string' ? asset : asset.id || asset.url || '';
+  const assetId = typeof asset === 'string' ? asset.trim() : asset.id || asset.url || '';
   if (!assetId) return '';
-  if (assetId.startsWith('http://') || assetId.startsWith('https://') || assetId.startsWith('/')) {
+  if (assetId.startsWith('http://') || assetId.startsWith('https://') || assetId.startsWith('/') || assetId.startsWith('data:')) {
     return assetId;
   }
 

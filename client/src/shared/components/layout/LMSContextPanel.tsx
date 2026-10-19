@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   LayoutDashboard,
   BookOpen,
@@ -21,6 +21,8 @@ import {
   Presentation,
   ChevronDown,
   ChevronRight,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 import { useLMS } from '../../context/LMSContext';
 import type { UserRole } from '../../types/lms';
@@ -75,6 +77,8 @@ interface CourseNavigationPanelProps {
   activeUser: any;
   db: any;
   getUnreadNotificationCount: (userId: string, type: any) => number;
+  minimizeButton?: React.ReactNode;
+  isMinimized?: boolean;
 }
 
 const CourseNavigationPanel: React.FC<CourseNavigationPanelProps> = ({
@@ -87,6 +91,8 @@ const CourseNavigationPanel: React.FC<CourseNavigationPanelProps> = ({
   activeUser,
   db,
   getUnreadNotificationCount,
+  minimizeButton,
+  isMinimized,
 }) => {
   const [copied, setCopied] = React.useState(false);
   const [prevCourseSubTab, setPrevCourseSubTab] = React.useState(courseSubTab);
@@ -163,9 +169,62 @@ const CourseNavigationPanel: React.FC<CourseNavigationPanelProps> = ({
 
   const courseBadgeFor = (tabId: string): number => courseBadges[tabId] ?? 0;
 
+  if (isMinimized) {
+    return (
+      <aside
+        data-testid="lms-context-panel"
+        aria-label="Course navigation"
+        className="relative flex w-[60px] flex-shrink-0 flex-col items-center border-r border-border/60 bg-card/50 py-3 px-2 transition-[width] duration-200"
+      >
+        {minimizeButton}
+        <div className="custom-scrollbar mt-8 flex flex-1 flex-col items-center gap-1.5 overflow-y-auto no-scrollbar">
+          {lmsNav}
+          {course && (
+            <>
+              <div className="my-2 w-6 border-t border-border" />
+              <div
+                title={`${course.code} - ${course.title}`}
+                className="h-7 w-7 rounded-lg flex items-center justify-center text-[10px] font-extrabold text-white shadow-xs shrink-0 cursor-default"
+                style={{ backgroundColor: course.color ?? '#64748b' }}
+              >
+                {course.code?.slice(0, 2) ?? 'C'}
+              </div>
+              <nav className="flex flex-col items-center gap-1.5 mt-1">
+                {COURSE_CHILDREN.filter(i => isVisible(i, activeRole)).map(item => {
+                  const isActive = courseSubTab === item.id || (item.id === 'assessments' && isAssessmentTab(courseSubTab));
+                  const badge = courseBadgeFor(item.id);
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      title={item.label}
+                      aria-label={item.label}
+                      onClick={() => onSelectCourseTab(item.id)}
+                      className={`relative flex h-10 w-10 items-center justify-center rounded-xl transition-all cursor-pointer ${
+                        isActive
+                          ? 'bg-primary text-primary-foreground shadow-primary-sm'
+                          : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                      }`}
+                    >
+                      {COURSE_ICONS[item.id]}
+                      {badge > 0 && (
+                        <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-primary ring-2 ring-card" />
+                      )}
+                    </button>
+                  );
+                })}
+              </nav>
+            </>
+          )}
+        </div>
+      </aside>
+    );
+  }
+
   if (!course) {
     return (
-      <aside className="flex w-[240px] flex-shrink-0 flex-col border-r border-border/60 bg-card/50 p-3">
+      <aside className="relative flex w-[240px] flex-shrink-0 flex-col border-r border-border/60 bg-card/50 p-3 transition-[width] duration-200">
+        {minimizeButton}
         <div className="custom-scrollbar flex-1 space-y-1 overflow-y-auto">
           {lmsNav}
         </div>
@@ -175,11 +234,12 @@ const CourseNavigationPanel: React.FC<CourseNavigationPanelProps> = ({
   }
 
   return (
-    <aside className="flex w-[240px] flex-shrink-0 flex-col border-r border-border/60 bg-card/50 p-3">
+    <aside className="relative flex w-[240px] flex-shrink-0 flex-col border-r border-border/60 bg-card/50 p-3 transition-[width] duration-200">
+      {minimizeButton}
       <div className="custom-scrollbar flex-1 space-y-1 overflow-y-auto">
         {lmsNav}
         <div className="mx-1 my-2 border-t border-border" />
-        <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Course Navigation</div>
+        <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground whitespace-nowrap">Course Navigation</div>
         <div className="mb-2 flex items-center gap-2.5 rounded-xl border border-border bg-card p-3">
           <span className="h-8 w-1.5 rounded-full" style={{ backgroundColor: course?.color ?? '#64748b' }} />
           <div className="min-w-0"><div className="truncate text-xs font-extrabold">{course?.code}</div><div className="truncate text-[11px] text-muted-foreground">{course?.title}</div>
@@ -301,6 +361,23 @@ const CourseNavigationPanel: React.FC<CourseNavigationPanelProps> = ({
 export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: string; onNavigateTab: (t: string) => void; onSelectCourseTab: (t: string) => void; onNavigateCourse: (id: string, sub?: string) => void }> = React.memo((p) => {
   const { db, activeCourseId, activeRole, activeUser, colleges, departments, getUnreadNotificationCount } = useLMS();
 
+  const [isMinimized, setIsMinimized] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('gabay_lms_nav_minimized') === 'true';
+    }
+    return false;
+  });
+
+  const toggleMinimized = () => {
+    setIsMinimized(prev => {
+      const next = !prev;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('gabay_lms_nav_minimized', String(next));
+      }
+      return next;
+    });
+  };
+
   // Enrollment truth is approved request rows, falling back to enrolledCourseIds when stale.
   const approvedCourseIds = useMemo(() => new Set(
     (db.enrollmentRequests || [])
@@ -327,20 +404,78 @@ export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: strin
   // top-level pages outside it (Page 1/2/3, Manage College Accounts).
   if (!isLmsSectionTab(p.currentTab)) return null;
 
+  const minimizeButton = (
+    <button
+      type="button"
+      onClick={toggleMinimized}
+      title={isMinimized ? 'Expand Learning Management navigation' : 'Minimize Learning Management navigation'}
+      aria-label={isMinimized ? 'Expand Learning Management navigation' : 'Minimize Learning Management navigation'}
+      className="absolute -right-3.5 top-3 z-30 flex h-7 w-7 items-center justify-center rounded-full border border-border/80 bg-background text-muted-foreground shadow-xs hover:bg-muted hover:text-foreground transition-all cursor-pointer"
+    >
+      {isMinimized ? (
+        <PanelLeftOpen className="h-3.5 w-3.5" />
+      ) : (
+        <PanelLeftClose className="h-3.5 w-3.5" />
+      )}
+    </button>
+  );
+
   const unread = (db.messages || []).filter(m => m.recipientId === activeUser?.id && !m.read).length;
   const hasNoCourses = visibleCourses.length === 0;
 
   const lmsNav = (
     <>
-      <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Learning Management</div>
-      <nav className="space-y-1">
-        {LMS_CHILDREN.filter(i => isVisible(i, activeRole)).map(item => (
-          <button key={item.id} type="button" onClick={() => p.onNavigateTab(item.id)}
-            className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-xs font-bold cursor-pointer transition-all duration-150 ${p.currentTab === item.id ? 'bg-primary text-primary-foreground shadow-primary-sm' : 'text-muted-foreground hover:bg-accent hover:text-foreground font-medium'}`}>
-            <span className="flex items-center gap-2.5">{LMS_ICONS[item.id]}<span>{item.label}</span></span>
-            {item.id === 'inbox' && unread > 0 && <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground">{unread}</span>}
-          </button>
-        ))}
+      {!isMinimized && (
+        <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground whitespace-nowrap">Learning Management</div>
+      )}
+      <nav className={isMinimized ? "flex flex-col items-center gap-1.5" : "space-y-1"}>
+        {LMS_CHILDREN.filter(i => isVisible(i, activeRole)).map(item => {
+          const isActive = p.currentTab === item.id;
+          if (isMinimized) {
+            return (
+              <button
+                key={item.id}
+                type="button"
+                title={item.label}
+                aria-label={item.label}
+                onClick={() => p.onNavigateTab(item.id)}
+                className={`relative flex h-10 w-10 items-center justify-center rounded-xl transition-all cursor-pointer ${
+                  isActive
+                    ? 'bg-primary text-primary-foreground shadow-primary-sm'
+                    : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                }`}
+              >
+                {LMS_ICONS[item.id]}
+                {item.id === 'inbox' && unread > 0 && (
+                  <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-primary ring-2 ring-card" />
+                )}
+              </button>
+            );
+          }
+
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => p.onNavigateTab(item.id)}
+              className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-xs font-bold cursor-pointer transition-all duration-150 ${
+                isActive
+                  ? 'bg-primary text-primary-foreground shadow-primary-sm'
+                  : 'text-muted-foreground hover:bg-accent hover:text-foreground font-medium'
+              }`}
+            >
+              <span className="flex items-center gap-2.5">
+                {LMS_ICONS[item.id]}
+                <span>{item.label}</span>
+              </span>
+              {item.id === 'inbox' && unread > 0 && (
+                <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground">
+                  {unread}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </nav>
     </>
   );
@@ -349,8 +484,24 @@ export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: strin
     // When there are no courses yet (e.g. unenrolled students, faculty without created courses),
     // show LMS nav only — no Course Navigation header, join code, or course sub-tabs.
     if (hasNoCourses) {
+      if (isMinimized) {
+        return (
+          <aside
+            data-testid="lms-context-panel"
+            aria-label="Learning Management navigation"
+            className="relative flex w-[60px] flex-shrink-0 flex-col items-center border-r border-border/60 bg-card/50 py-3 px-2 transition-[width] duration-200"
+          >
+            {minimizeButton}
+            <div className="mt-8 flex flex-col items-center">
+              {lmsNav}
+            </div>
+          </aside>
+        );
+      }
+
       return (
-        <aside className="flex w-[240px] flex-shrink-0 flex-col border-r border-border/60 bg-card/50 p-3">
+        <aside className="relative flex w-[240px] flex-shrink-0 flex-col border-r border-border/60 bg-card/50 p-3 transition-[width] duration-200">
+          {minimizeButton}
           <div className="custom-scrollbar flex-1 space-y-1 overflow-y-auto">
             {lmsNav}
           </div>
@@ -370,11 +521,30 @@ export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: strin
         activeUser={activeUser}
         db={db}
         getUnreadNotificationCount={getUnreadNotificationCount}
+        minimizeButton={minimizeButton}
+        isMinimized={isMinimized}
       />
     );
   }
+
+  if (isMinimized) {
+    return (
+      <aside
+        data-testid="lms-context-panel"
+        aria-label="Learning Management navigation"
+        className="relative flex w-[60px] flex-shrink-0 flex-col items-center border-r border-border/60 bg-card/50 py-3 px-2 transition-[width] duration-200"
+      >
+        {minimizeButton}
+        <div className="mt-8 flex flex-col items-center">
+          {lmsNav}
+        </div>
+      </aside>
+    );
+  }
+
   return (
-    <aside className="flex w-[240px] flex-shrink-0 flex-col border-r border-border/60 bg-card/50 p-3">
+    <aside className="relative flex w-[240px] flex-shrink-0 flex-col border-r border-border/60 bg-card/50 p-3 transition-[width] duration-200">
+      {minimizeButton}
       {lmsNav}
       <div className="mt-auto px-2 pt-3 text-[10px] text-muted-foreground">Trail: LMS &gt; {p.currentTab}</div>
     </aside>

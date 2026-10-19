@@ -12,6 +12,9 @@ import {
   AlertCircle
 } from 'lucide-react';
 
+type LoginField = 'identifier' | 'password';
+type LoginFieldErrors = Partial<Record<LoginField, string>>;
+
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const { login, theme, toggleTheme, showAlert, currentUser } = useLMS();
@@ -20,19 +23,57 @@ export const LoginPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<LoginFieldErrors>({});
   const [isLoading, setIsLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
+
+  /** Input-caused problems only. Anything else stays in the top banner. */
+  const validateField = (field: LoginField, value: string): string | undefined => {
+    if (field === 'identifier') {
+      return value.trim() ? undefined : 'Please enter your email or ID.';
+    }
+    return value ? undefined : 'Please enter your password.';
+  };
+
+  const applyFieldError = (field: LoginField, error: string | undefined) => {
+    setFieldErrors(prev => {
+      if (!error) {
+        if (!prev[field]) return prev;
+        const next = { ...prev };
+        delete next[field];
+        return next;
+      }
+      if (prev[field] === error) return prev;
+      return { ...prev, [field]: error };
+    });
+  };
+
+  /** Fired when the user moves onto another field. */
+  const handleBlur = (field: LoginField, value: string) => {
+    applyFieldError(field, validateField(field, value));
+  };
+
+  /** Once a field is flagged, keep it in sync while the user fixes it. */
+  const handleChange = (field: LoginField, value: string, setter: (v: string) => void) => {
+    setter(value);
+    if (errorMessage) setErrorMessage('');
+    if (fieldErrors[field]) {
+      applyFieldError(field, validateField(field, value));
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
 
-    if (!identifier.trim()) {
-      setErrorMessage('Please enter your email or ID.');
-      return;
-    }
-    if (!password) {
-      setErrorMessage('Please enter your password.');
+    const nextErrors: LoginFieldErrors = {};
+    (['identifier', 'password'] as LoginField[]).forEach(field => {
+      const message = validateField(field, field === 'identifier' ? identifier : password);
+      if (message) nextErrors[field] = message;
+    });
+
+    if (Object.keys(nextErrors).length > 0) {
+      setFieldErrors(nextErrors);
       return;
     }
 
@@ -57,6 +98,7 @@ export const LoginPage: React.FC = () => {
     setIdentifier(email);
     setPassword(pw);
     setErrorMessage('');
+    setFieldErrors({});
     setIsLoading(true);
     setTimeout(async () => {
       const res = await login(email, pw);
@@ -128,15 +170,27 @@ export const LoginPage: React.FC = () => {
               <input
                 type="text"
                 value={identifier}
-                onChange={e => {
-                  setIdentifier(e.target.value);
-                  if (errorMessage) setErrorMessage('');
-                }}
+                onChange={e => handleChange('identifier', e.target.value, setIdentifier)}
+                onBlur={() => handleBlur('identifier', identifier)}
+                aria-invalid={fieldErrors.identifier ? true : undefined}
+                aria-describedby={fieldErrors.identifier ? 'login-identifier-error' : undefined}
                 placeholder="name@dmmmsu.edu.ph"
-                className="w-full pl-9 pr-3 py-2.5 bg-background border border-border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all font-sans"
+                className={`w-full pl-9 pr-3 py-2.5 bg-background border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 transition-all font-sans ${
+                  fieldErrors.identifier
+                    ? 'border-destructive focus:ring-destructive/30 focus:border-destructive'
+                    : 'border-border focus:ring-primary/30 focus:border-primary'
+                }`}
                 disabled={isLoading}
               />
             </div>
+            {fieldErrors.identifier && (
+              <p
+                id="login-identifier-error"
+                className="text-[11px] font-medium text-destructive animate-fade-in"
+              >
+                {fieldErrors.identifier}
+              </p>
+            )}
           </div>
 
           <div className="space-y-1">
@@ -169,12 +223,16 @@ export const LoginPage: React.FC = () => {
               <input
                 type={showPassword ? 'text' : 'password'}
                 value={password}
-                onChange={e => {
-                  setPassword(e.target.value);
-                  if (errorMessage) setErrorMessage('');
-                }}
+                onChange={e => handleChange('password', e.target.value, setPassword)}
+                onBlur={() => handleBlur('password', password)}
+                aria-invalid={fieldErrors.password ? true : undefined}
+                aria-describedby={fieldErrors.password ? 'login-password-error' : undefined}
                 placeholder="••••••••"
-                className="w-full pl-9 pr-10 py-2.5 bg-background border border-border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all font-sans"
+                className={`w-full pl-9 pr-10 py-2.5 bg-background border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 transition-all font-sans ${
+                  fieldErrors.password
+                    ? 'border-destructive focus:ring-destructive/30 focus:border-destructive'
+                    : 'border-border focus:ring-primary/30 focus:border-primary'
+                }`}
                 disabled={isLoading}
               />
               <button
@@ -185,6 +243,14 @@ export const LoginPage: React.FC = () => {
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
+            {fieldErrors.password && (
+              <p
+                id="login-password-error"
+                className="text-[11px] font-medium text-destructive animate-fade-in"
+              >
+                {fieldErrors.password}
+              </p>
+            )}
           </div>
 
           <div className="flex items-center text-xs">

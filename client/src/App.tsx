@@ -28,6 +28,7 @@ const ManageAccountsPage = React.lazy(() => import('./features/accounts/ManageAc
 const AcademicGovernancePage = React.lazy(() => import('./features/accounts/AcademicGovernancePage').then(m => ({ default: m.AcademicGovernancePage })));
 const ProgramDetailsPage = React.lazy(() => import('./features/accounts/ProgramDetailsPage').then(m => ({ default: m.ProgramDetailsPage })));
 const EditAccountPage = React.lazy(() => import('./features/accounts/EditAccountPage').then(m => ({ default: m.EditAccountPage })));
+const AccountProfilePage = React.lazy(() => import('./features/accounts/AccountProfilePage').then(m => ({ default: m.AccountProfilePage })));
 const GabayRAGPage = React.lazy(() => import('./features/rag/GabayRAGPage').then(m => ({ default: m.GabayRAGPage })));
 const SpeedGraderModal = React.lazy(() => import('./features/assessments/components/grading/SpeedGraderModal').then(m => ({ default: m.SpeedGraderModal })));
 
@@ -65,7 +66,13 @@ function useAppNavigation() {
     logHistory(path, 'LMS > Edit Account');
   }, [navigate, logHistory]);
 
-  return { handleNavigateTab, handleNavigateCourse, handleSelectCourseTab, handleEditAccount };
+  const handleViewAccount = React.useCallback((user: { id: string }) => {
+    const path = `/accounts/${encodeURIComponent(user.id)}/view`;
+    navigate(path);
+    logHistory(path, 'LMS > View Account Profile');
+  }, [navigate, logHistory]);
+
+  return { handleNavigateTab, handleNavigateCourse, handleSelectCourseTab, handleEditAccount, handleViewAccount };
 }
 
 const AuthLoadingScreen: React.FC = () => {
@@ -155,9 +162,20 @@ const EditAccountRoute: React.FC<{ nav: ReturnType<typeof useAppNavigation> }> =
   const decodedId = userId ? decodeURIComponent(userId) : undefined;
   const user = decodedId ? db.users.find(u => u.id === decodedId) : undefined;
   if (!user) {
-    return <ManageAccountsPage onNavigateTab={nav.handleNavigateTab} onEditAccount={nav.handleEditAccount} />;
+    return <ManageAccountsPage onNavigateTab={nav.handleNavigateTab} onEditAccount={nav.handleEditAccount} onViewAccount={nav.handleViewAccount} />;
   }
   return <EditAccountPage key={user.id} user={user} onNavigateTab={nav.handleNavigateTab} />;
+};
+
+const AccountProfileRoute: React.FC<{ nav: ReturnType<typeof useAppNavigation> }> = ({ nav }) => {
+  const { userId } = useParams<{ userId: string }>();
+  const { db } = useLMS();
+  const decodedId = userId ? decodeURIComponent(userId) : undefined;
+  const user = decodedId ? db.users.find(u => u.id === decodedId) : undefined;
+  if (!user) {
+    return <ManageAccountsPage onNavigateTab={nav.handleNavigateTab} onEditAccount={nav.handleEditAccount} onViewAccount={nav.handleViewAccount} />;
+  }
+  return <AccountProfilePage key={user.id} user={user} onNavigateTab={nav.handleNavigateTab} onEditAccount={nav.handleEditAccount} />;
 };
 
 export const AppShell: React.FC = () => {
@@ -189,7 +207,7 @@ export const AppShell: React.FC = () => {
         navigate('/inbox', { replace: true });
       }
     } else if (activeRole !== 'admin' && activeRole !== 'superadmin') {
-      if (currentTab === 'accounts' || currentTab === 'create-account' || currentTab === 'edit-account' || currentTab === 'governance') {
+      if (currentTab === 'accounts' || currentTab === 'create-account' || currentTab === 'edit-account' || currentTab === 'account-profile' || currentTab === 'governance') {
         navigate('/dashboard', { replace: true });
       }
     }
@@ -238,7 +256,7 @@ export const AppShell: React.FC = () => {
               ? "flex h-full min-h-0 w-full min-w-0 flex-1 flex-col"
               : currentTab === 'chair-sheet'
               ? "flex min-h-full w-full min-w-0 flex-1 flex-col p-5 sm:p-8 lg:p-10"
-              : currentTab === 'profile'
+              : currentTab === 'profile' || currentTab === 'account-profile'
               ? "flex min-h-full w-full min-w-0 flex-1 flex-col p-5 sm:p-8 lg:p-10"
               : "mx-auto flex min-h-full w-full max-w-[1600px] flex-col p-5 sm:p-8 lg:p-10"
           }>
@@ -294,8 +312,10 @@ export const AppContent: React.FC = () => {
         <Route path="/governance" element={<RequireAdmin><RouteWithNav element={(nav) => <AcademicGovernancePage onNavigateTab={nav.handleNavigateTab} />} /></RequireAdmin>} />
         <Route path="/governance/programs/:deptId" element={<RequireAdmin><RouteWithNav element={(nav) => <ProgramDetailsPage onNavigateTab={nav.handleNavigateTab} />} /></RequireAdmin>} />
         <Route path="/governance/departments/:deptId" element={<RequireAdmin><RouteWithNav element={(nav) => <ProgramDetailsPage onNavigateTab={nav.handleNavigateTab} />} /></RequireAdmin>} />
-        <Route path="/accounts" element={<RequireAdmin><RouteWithNav element={(nav) => <ManageAccountsPage onNavigateTab={nav.handleNavigateTab} onEditAccount={nav.handleEditAccount} />} /></RequireAdmin>} />
+        <Route path="/accounts" element={<RequireAdmin><RouteWithNav element={(nav) => <ManageAccountsPage onNavigateTab={nav.handleNavigateTab} onEditAccount={nav.handleEditAccount} onViewAccount={nav.handleViewAccount} />} /></RequireAdmin>} />
         <Route path="/accounts/new" element={<Navigate to="/accounts" replace />} />
+        <Route path="/accounts/:userId/view" element={<RequireAdmin><RouteWithNav element={(nav) => <AccountProfileRoute nav={nav} />} /></RequireAdmin>} />
+        <Route path="/accounts/:userId" element={<RequireAdmin><RouteWithNav element={(nav) => <AccountProfileRoute nav={nav} />} /></RequireAdmin>} />
         <Route path="/accounts/:userId/edit" element={<RequireAdmin><RouteWithNav element={(nav) => <EditAccountRoute nav={nav} />} /></RequireAdmin>} />
         <Route path="/page1" element={<RouteWithNav element={(nav) => <EmptyPage title="Page 1" onNavigateTab={nav.handleNavigateTab} />} />} />
         <Route path="/page2" element={<RouteWithNav element={(nav) => <EmptyPage title="Page 2" onNavigateTab={nav.handleNavigateTab} />} />} />

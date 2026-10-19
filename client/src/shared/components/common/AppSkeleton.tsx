@@ -286,7 +286,7 @@ export const InboxSkeleton: React.FC = () => (
   </div>
 );
 
-// Mirrors ProfilePage layout: hero banner card + identity grid
+// Mirrors ProfilePage layout: centered hero card + identity grid
 export const ProfilePageSkeleton: React.FC = () => (
   <div className="flex min-h-full w-full flex-col gap-6 animate-pulse" data-testid="profile-skeleton">
     <div className="flex items-start gap-3">
@@ -297,21 +297,13 @@ export const ProfilePageSkeleton: React.FC = () => (
       </div>
     </div>
     <div className="rounded-3xl border border-border bg-card overflow-hidden">
-      <div className="h-40 bg-muted/60" />
-      <div className="px-6 pb-5">
-        <div className="flex gap-4 -mt-12">
-          <div className="h-24 w-24 rounded-2xl bg-muted border-4 border-card shrink-0" />
-          <div className="flex-1 space-y-2 self-end pb-1">
-            <div className="h-5 w-48 rounded-md bg-muted" />
-            <div className="h-3 w-64 max-w-full rounded-md bg-muted/70" />
-          </div>
-        </div>
-        <div className="grid grid-cols-3 gap-2 mt-4 p-2">
-          {[0, 1, 2].map(i => (
-            <div key={i} className="h-14 rounded-2xl bg-muted/60" />
-          ))}
-        </div>
-        <div className="mt-4 h-11 rounded-2xl bg-muted/60" />
+      <div className="h-40 sm:h-48 bg-muted/70" />
+      <div className="px-6 pb-6 sm:pb-8 flex flex-col items-center">
+        <div className="h-28 w-28 rounded-2xl bg-muted border-4 border-card -mt-14 sm:-mt-16 mb-4 shadow-card" />
+        <div className="h-7 w-48 rounded-lg bg-muted mb-2" />
+        <div className="h-4 w-64 rounded-md bg-muted/70 mb-1" />
+        <div className="h-3 w-40 rounded-md bg-muted/60 mb-6" />
+        <div className="h-11 w-full max-w-md rounded-2xl bg-muted/60" />
       </div>
     </div>
     <div className="rounded-2xl border border-border bg-card p-6 space-y-4">

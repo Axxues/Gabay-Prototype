@@ -21,6 +21,39 @@ import {
 } from 'lucide-react';
 import { sendActivationEmail } from '../../shared/api/emailApi';
 
+type AccountRole = 'student' | 'faculty' | 'staff';
+
+type RegisterField =
+  | 'firstName'
+  | 'lastName'
+  | 'email'
+  | 'idNumber'
+  | 'collegeId'
+  | 'department'
+  | 'password'
+  | 'confirmPassword';
+
+type RegisterFieldErrors = Partial<Record<RegisterField, string>>;
+
+type RegisterFormValues = {
+  role: AccountRole;
+  firstName: string;
+  lastName: string;
+  email: string;
+  idNumber: string;
+  collegeId: string;
+  department: string;
+  password: string;
+  confirmPassword: string;
+};
+
+/** Inline error shown directly under the offending input. */
+const FieldError: React.FC<{ id: string; message: string }> = ({ id, message }) => (
+  <p id={id} className="text-[11px] font-medium text-destructive animate-fade-in">
+    {message}
+  </p>
+);
+
 export const RegisterPage: React.FC = () => {
   const {
     registerAccount,
@@ -66,6 +99,105 @@ export const RegisterPage: React.FC = () => {
   const [registeredRecord, setRegisteredRecord] = useState<PendingRegistration | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
+  // Inline (input-caused) errors, keyed by field
+  const [fieldErrors, setFieldErrors] = useState<RegisterFieldErrors>({});
+
+  const formValues: RegisterFormValues = {
+    role,
+    firstName,
+    lastName,
+    email,
+    idNumber,
+    collegeId,
+    department,
+    password,
+    confirmPassword,
+  };
+
+  /** Input-caused problems only. Anything else stays in the top banner. */
+  const validateField = (
+    field: RegisterField,
+    values: RegisterFormValues = formValues
+  ): string | undefined => {
+    switch (field) {
+      case 'firstName':
+        return values.firstName.trim() ? undefined : 'Please enter your first name.';
+      case 'lastName':
+        return values.lastName.trim() ? undefined : 'Please enter your last name.';
+      case 'email': {
+        const cleanEmail = values.email.trim();
+        if (!cleanEmail) return 'Please enter your institutional email.';
+        if (!isValidInstitutionalEmail(cleanEmail, values.role)) {
+          return values.role === 'student'
+            ? 'Student institutional email must end with @student.dmmmsu.edu.ph.'
+            : 'Institutional email must end with @dmmmsu.edu.ph.';
+        }
+        return undefined;
+      }
+      case 'idNumber': {
+        const cleanIdNumber = values.idNumber.trim();
+        if (!cleanIdNumber) return 'Please enter your ID Number.';
+        if (!isValidIdNumber(cleanIdNumber, values.role)) {
+          return values.role === 'student'
+            ? `ID Number must follow the format XXX-XXXX-X (e.g. ${ID_NUMBER_EXAMPLE}).`
+            : `ID Number must follow the format XXXX (e.g. ${EMPLOYEE_ID_EXAMPLE}).`;
+        }
+        return undefined;
+      }
+      case 'collegeId':
+        return values.collegeId ? undefined : 'Please select your college.';
+      case 'department':
+        return values.department ? undefined : 'Please select your program.';
+      case 'password':
+        if (!values.password) return 'Please enter a password.';
+        if (values.password.length < 8) return 'Password must be at least 8 characters long.';
+        return undefined;
+      case 'confirmPassword':
+        return values.password === values.confirmPassword ? undefined : 'Passwords do not match.';
+      default:
+        return undefined;
+    }
+  };
+
+  const applyFieldError = (field: RegisterField, error: string | undefined) => {
+    setFieldErrors(prev => {
+      if (!error) {
+        if (!prev[field]) return prev;
+        const next = { ...prev };
+        delete next[field];
+        return next;
+      }
+      if (prev[field] === error) return prev;
+      return { ...prev, [field]: error };
+    });
+  };
+
+  /** Fired when the user moves onto another field. */
+  const handleBlur = (field: RegisterField) => {
+    applyFieldError(field, validateField(field));
+  };
+
+  /** Once a field is flagged, keep it in sync while the user fixes it. */
+  const handleFieldChange = (
+    field: RegisterField,
+    value: string,
+    setter: (v: string) => void
+  ) => {
+    setter(value);
+    if (errorMessage) setErrorMessage('');
+
+    if (fieldErrors[field] || (field === 'password' && fieldErrors.confirmPassword)) {
+      const nextValues: RegisterFormValues = { ...formValues, [field]: value };
+      if (fieldErrors[field]) {
+        applyFieldError(field, validateField(field, nextValues));
+      }
+      // Password and confirmation are linked, so a flagged confirmation must follow along.
+      if (field === 'password' && fieldErrors.confirmPassword) {
+        applyFieldError('confirmPassword', validateField('confirmPassword', nextValues));
+      }
+    }
+  };
+
 
   // Filter departments based on selected college
   const filteredDepartments = useMemo(() => {
@@ -110,80 +242,59 @@ export const RegisterPage: React.FC = () => {
   };
 
 
-  const handleRoleChange = (newRole: 'student' | 'faculty' | 'staff') => {
+  const handleRoleChange = (newRole: AccountRole) => {
     setRole(newRole);
+    const nextIdNumber = idNumber ? formatIdNumber(idNumber, newRole) : idNumber;
     if (idNumber) {
-      setIdNumber(formatIdNumber(idNumber, newRole));
+      setIdNumber(nextIdNumber);
     }
     if (errorMessage) setErrorMessage('');
+
+    // Email and ID rules depend on the role, so re-check any field already flagged.
+    if (fieldErrors.email || fieldErrors.idNumber) {
+      const nextValues: RegisterFormValues = {
+        ...formValues,
+        role: newRole,
+        idNumber: nextIdNumber,
+      };
+      if (fieldErrors.email) {
+        applyFieldError('email', validateField('email', nextValues));
+      }
+      if (fieldErrors.idNumber) {
+        applyFieldError('idNumber', validateField('idNumber', nextValues));
+      }
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
 
-    if (!firstName.trim()) {
-      setErrorMessage('Please enter your first name.');
-      return;
-    }
-    if (!lastName.trim()) {
-      setErrorMessage('Please enter your last name.');
-      return;
-    }
+    const fieldsToValidate: RegisterField[] = [
+      'firstName',
+      'lastName',
+      'email',
+      'idNumber',
+      'collegeId',
+      'department',
+      'password',
+      'confirmPassword',
+    ];
+    const nextErrors: RegisterFieldErrors = {};
+    fieldsToValidate.forEach(field => {
+      const message = validateField(field);
+      if (message) nextErrors[field] = message;
+    });
 
-    const cleanEmail = email.trim();
-    if (!cleanEmail) {
-      setErrorMessage('Please enter your institutional email.');
-      return;
-    }
-    if (!isValidInstitutionalEmail(cleanEmail, role)) {
-      setErrorMessage(
-        role === 'student'
-          ? 'Student institutional email must end with @student.dmmmsu.edu.ph.'
-          : 'Institutional email must end with @dmmmsu.edu.ph.'
-      );
-      return;
-    }
-
-    const cleanIdNumber = idNumber.trim();
-    if (!cleanIdNumber) {
-      setErrorMessage('Please enter your ID Number.');
-      return;
-    }
-    if (!isValidIdNumber(cleanIdNumber, role)) {
-      setErrorMessage(
-        role === 'student'
-          ? `ID Number must follow the format XXX-XXXX-X (e.g. ${ID_NUMBER_EXAMPLE}).`
-          : `ID Number must follow the format XXXX (e.g. ${EMPLOYEE_ID_EXAMPLE}).`
-      );
-      return;
-    }
-
-    if (!collegeId) {
-      setErrorMessage('Please select your college.');
-      return;
-    }
-
-    if (!department) {
-      setErrorMessage('Please select your program.');
-      return;
-    }
-
-    if (!password) {
-      setErrorMessage('Please enter a password.');
-      return;
-    }
-    if (password.length < 8) {
-      setErrorMessage('Password must be at least 8 characters long.');
-      return;
-    }
-    if (password !== confirmPassword) {
-      setErrorMessage('Passwords do not match.');
+    if (Object.keys(nextErrors).length > 0) {
+      setFieldErrors(nextErrors);
       return;
     }
 
     setIsSubmitting(true);
     try {
+      const cleanEmail = email.trim().toLowerCase();
+      const cleanIdNumber = idNumber.trim();
       const matchedCollege = colleges.find(c => c.id === collegeId);
       const collegeName = matchedCollege?.name || collegeId;
 
@@ -191,7 +302,7 @@ export const RegisterPage: React.FC = () => {
         firstName: firstName.trim(),
         middleName: middleName.trim() || undefined,
         lastName: lastName.trim(),
-        email: cleanEmail.toLowerCase(),
+        email: cleanEmail,
         role,
         collegeId,
         collegeName,
@@ -208,7 +319,7 @@ export const RegisterPage: React.FC = () => {
       const recipientName = [firstName.trim(), middleName.trim(), lastName.trim()].filter(Boolean).join(' ');
 
       const emailResult = await sendActivationEmail({
-        email: cleanEmail.toLowerCase(),
+        email: cleanEmail,
         recipientName,
         activationUrl,
       });
@@ -458,14 +569,21 @@ export const RegisterPage: React.FC = () => {
                 id="reg-firstName"
                 type="text"
                 value={firstName}
-                onChange={e => {
-                  setFirstName(e.target.value);
-                  if (errorMessage) setErrorMessage('');
-                }}
+                onChange={e => handleFieldChange('firstName', e.target.value, setFirstName)}
+                onBlur={() => handleBlur('firstName')}
+                aria-invalid={fieldErrors.firstName ? true : undefined}
+                aria-describedby={fieldErrors.firstName ? 'reg-firstName-error' : undefined}
                 placeholder="Juan"
-                className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all font-sans"
+                className={`w-full px-3 py-2.5 bg-background border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 transition-all font-sans ${
+                  fieldErrors.firstName
+                    ? 'border-destructive focus:ring-destructive/30 focus:border-destructive'
+                    : 'border-border focus:ring-primary/30 focus:border-primary'
+                }`}
                 disabled={isSubmitting}
               />
+              {fieldErrors.firstName && (
+                <FieldError id="reg-firstName-error" message={fieldErrors.firstName} />
+              )}
             </div>
             <div className="space-y-1">
               <label htmlFor="reg-middleName" className="text-[12px] font-semibold text-muted-foreground">
@@ -492,14 +610,21 @@ export const RegisterPage: React.FC = () => {
                 id="reg-lastName"
                 type="text"
                 value={lastName}
-                onChange={e => {
-                  setLastName(e.target.value);
-                  if (errorMessage) setErrorMessage('');
-                }}
+                onChange={e => handleFieldChange('lastName', e.target.value, setLastName)}
+                onBlur={() => handleBlur('lastName')}
+                aria-invalid={fieldErrors.lastName ? true : undefined}
+                aria-describedby={fieldErrors.lastName ? 'reg-lastName-error' : undefined}
                 placeholder="Dela Cruz"
-                className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all font-sans"
+                className={`w-full px-3 py-2.5 bg-background border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 transition-all font-sans ${
+                  fieldErrors.lastName
+                    ? 'border-destructive focus:ring-destructive/30 focus:border-destructive'
+                    : 'border-border focus:ring-primary/30 focus:border-primary'
+                }`}
                 disabled={isSubmitting}
               />
+              {fieldErrors.lastName && (
+                <FieldError id="reg-lastName-error" message={fieldErrors.lastName} />
+              )}
             </div>
           </div>
 
@@ -515,15 +640,22 @@ export const RegisterPage: React.FC = () => {
                   id="reg-email"
                   type="email"
                   value={email}
-                  onChange={e => {
-                    setEmail(e.target.value);
-                    if (errorMessage) setErrorMessage('');
-                  }}
+                  onChange={e => handleFieldChange('email', e.target.value, setEmail)}
+                  onBlur={() => handleBlur('email')}
+                  aria-invalid={fieldErrors.email ? true : undefined}
+                  aria-describedby={fieldErrors.email ? 'reg-email-error' : undefined}
                   placeholder={role === 'student' ? 'name@student.dmmmsu.edu.ph' : 'name@dmmmsu.edu.ph'}
-                  className="w-full pl-9 pr-3 py-2.5 bg-background border border-border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all font-sans"
+                  className={`w-full pl-9 pr-3 py-2.5 bg-background border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 transition-all font-sans ${
+                    fieldErrors.email
+                      ? 'border-destructive focus:ring-destructive/30 focus:border-destructive'
+                      : 'border-border focus:ring-primary/30 focus:border-primary'
+                  }`}
                   disabled={isSubmitting}
                 />
               </div>
+              {fieldErrors.email && (
+                <FieldError id="reg-email-error" message={fieldErrors.email} />
+              )}
             </div>
 
             <div className="space-y-1">
@@ -534,16 +666,22 @@ export const RegisterPage: React.FC = () => {
                 id="reg-idNumber"
                 type="text"
                 value={idNumber}
-                onChange={e => {
-                  const formatted = formatIdNumber(e.target.value, role);
-                  setIdNumber(formatted);
-                  if (errorMessage) setErrorMessage('');
-                }}
+                onChange={e => handleFieldChange('idNumber', formatIdNumber(e.target.value, role), setIdNumber)}
+                onBlur={() => handleBlur('idNumber')}
+                aria-invalid={fieldErrors.idNumber ? true : undefined}
+                aria-describedby={fieldErrors.idNumber ? 'reg-idNumber-error' : undefined}
                 placeholder={role === 'student' ? '231-1082-3' : '1082'}
                 maxLength={role === 'student' ? 10 : 4}
-                className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all font-sans"
+                className={`w-full px-3 py-2.5 bg-background border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 transition-all font-sans ${
+                  fieldErrors.idNumber
+                    ? 'border-destructive focus:ring-destructive/30 focus:border-destructive'
+                    : 'border-border focus:ring-primary/30 focus:border-primary'
+                }`}
                 disabled={isSubmitting}
               />
+              {fieldErrors.idNumber && (
+                <FieldError id="reg-idNumber-error" message={fieldErrors.idNumber} />
+              )}
             </div>
           </div>
 
@@ -559,7 +697,6 @@ export const RegisterPage: React.FC = () => {
                 value={collegeId}
                 onChange={e => {
                   const nextCol = e.target.value;
-                  setCollegeId(nextCol);
                   setDepartment('');
                   if (nextCol) {
                     const activeSy = getActiveSchoolYearForCollege?.(nextCol);
@@ -573,9 +710,16 @@ export const RegisterPage: React.FC = () => {
                   } else {
                     setSchoolYear('');
                   }
-                  if (errorMessage) setErrorMessage('');
+                  handleFieldChange('collegeId', nextCol, setCollegeId);
                 }}
-                className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-xs text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all font-sans cursor-pointer"
+                onBlur={() => handleBlur('collegeId')}
+                aria-invalid={fieldErrors.collegeId ? true : undefined}
+                aria-describedby={fieldErrors.collegeId ? 'reg-college-error' : undefined}
+                className={`w-full px-3 py-2.5 bg-background border rounded-xl text-xs text-foreground focus:outline-hidden focus:ring-2 transition-all font-sans cursor-pointer ${
+                  fieldErrors.collegeId
+                    ? 'border-destructive focus:ring-destructive/30 focus:border-destructive'
+                    : 'border-border focus:ring-primary/30 focus:border-primary'
+                }`}
                 disabled={isSubmitting}
               >
                 <option value="">Select College</option>
@@ -585,6 +729,9 @@ export const RegisterPage: React.FC = () => {
                   </option>
                 ))}
               </select>
+              {fieldErrors.collegeId && (
+                <FieldError id="reg-college-error" message={fieldErrors.collegeId} />
+              )}
             </div>
 
             <div className="space-y-1">
@@ -596,11 +743,15 @@ export const RegisterPage: React.FC = () => {
                 required
                 value={department}
                 disabled={!collegeId || isSubmitting}
-                onChange={e => {
-                  setDepartment(e.target.value);
-                  if (errorMessage) setErrorMessage('');
-                }}
-                className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-xs text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all font-sans cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                onChange={e => handleFieldChange('department', e.target.value, setDepartment)}
+                onBlur={() => handleBlur('department')}
+                aria-invalid={fieldErrors.department ? true : undefined}
+                aria-describedby={fieldErrors.department ? 'reg-department-error' : undefined}
+                className={`w-full px-3 py-2.5 bg-background border rounded-xl text-xs text-foreground focus:outline-hidden focus:ring-2 transition-all font-sans cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+                  fieldErrors.department
+                    ? 'border-destructive focus:ring-destructive/30 focus:border-destructive'
+                    : 'border-border focus:ring-primary/30 focus:border-primary'
+                }`}
               >
                 <option value="">{collegeId ? 'Select Program' : 'Select a College first'}</option>
                 {filteredDepartments.map(d => (
@@ -609,6 +760,9 @@ export const RegisterPage: React.FC = () => {
                   </option>
                 ))}
               </select>
+              {fieldErrors.department && (
+                <FieldError id="reg-department-error" message={fieldErrors.department} />
+              )}
             </div>
           </div>
 
@@ -624,12 +778,16 @@ export const RegisterPage: React.FC = () => {
                   id="reg-password"
                   type={showPassword ? 'text' : 'password'}
                   value={password}
-                  onChange={e => {
-                    setPassword(e.target.value);
-                    if (errorMessage) setErrorMessage('');
-                  }}
+                  onChange={e => handleFieldChange('password', e.target.value, setPassword)}
+                  onBlur={() => handleBlur('password')}
+                  aria-invalid={fieldErrors.password ? true : undefined}
+                  aria-describedby={fieldErrors.password ? 'reg-password-error' : undefined}
                   placeholder="••••••••"
-                  className="w-full pl-9 pr-10 py-2.5 bg-background border border-border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all font-sans"
+                  className={`w-full pl-9 pr-10 py-2.5 bg-background border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 transition-all font-sans ${
+                    fieldErrors.password
+                      ? 'border-destructive focus:ring-destructive/30 focus:border-destructive'
+                      : 'border-border focus:ring-primary/30 focus:border-primary'
+                  }`}
                   disabled={isSubmitting}
                 />
                 <button
@@ -641,6 +799,9 @@ export const RegisterPage: React.FC = () => {
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+              {fieldErrors.password && (
+                <FieldError id="reg-password-error" message={fieldErrors.password} />
+              )}
             </div>
 
             <div className="space-y-1">
@@ -653,12 +814,16 @@ export const RegisterPage: React.FC = () => {
                   id="reg-confirmPassword"
                   type={showConfirmPassword ? 'text' : 'password'}
                   value={confirmPassword}
-                  onChange={e => {
-                    setConfirmPassword(e.target.value);
-                    if (errorMessage) setErrorMessage('');
-                  }}
+                  onChange={e => handleFieldChange('confirmPassword', e.target.value, setConfirmPassword)}
+                  onBlur={() => handleBlur('confirmPassword')}
+                  aria-invalid={fieldErrors.confirmPassword ? true : undefined}
+                  aria-describedby={fieldErrors.confirmPassword ? 'reg-confirmPassword-error' : undefined}
                   placeholder="••••••••"
-                  className="w-full pl-9 pr-10 py-2.5 bg-background border border-border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all font-sans"
+                  className={`w-full pl-9 pr-10 py-2.5 bg-background border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 transition-all font-sans ${
+                    fieldErrors.confirmPassword
+                      ? 'border-destructive focus:ring-destructive/30 focus:border-destructive'
+                      : 'border-border focus:ring-primary/30 focus:border-primary'
+                  }`}
                   disabled={isSubmitting}
                 />
                 <button
@@ -670,6 +835,9 @@ export const RegisterPage: React.FC = () => {
                   {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+              {fieldErrors.confirmPassword && (
+                <FieldError id="reg-confirmPassword-error" message={fieldErrors.confirmPassword} />
+              )}
             </div>
           </div>
 

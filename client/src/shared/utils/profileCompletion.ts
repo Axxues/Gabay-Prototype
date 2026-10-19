@@ -1,5 +1,13 @@
 import type { User, NormalizedPersonName, EducationalDegree, NormalizedAddress } from '../types/lms';
 
+export const DEGREE_LABELS: Record<string, string> = {
+  bachelors: "Bachelor's Degree",
+  masters: "Master's Degree",
+  post_masters: "Post-Master's",
+  doctorate: "Doctorate / Ph.D.",
+  post_doctorate: "Post-Doctorate",
+};
+
 /**
  * Validates whether a person's name object has the required first and last names.
  */

@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useLMS } from '../../shared/context/LMSContext';
 import type { User, UserRole, PendingRegistration } from '../../shared/types/lms';
 import { PageHeader } from '../../shared/components/common/PageHeader';
@@ -6,7 +7,6 @@ import { UserAvatar } from '../../shared/components/common/UserAvatar';
 import { DialogFrame } from '../../shared/components/common/DialogFrame';
 import { getDisplayRoleLabel, compareUsersByAuthority } from '../../shared/utils/roles';
 import { normalizeProgramName } from '../../shared/data/collegesData';
-import { formatAddress, parseAddress } from '../../shared/utils/profileCompletion';
 import {
   Users,
   Search,
@@ -27,18 +27,8 @@ import {
   Calendar,
   Inbox,
   MoreVertical,
-  Eye,
-  Phone,
-  MapPin
+  Eye
 } from 'lucide-react';
-
-const DEGREE_LABELS: Record<string, string> = {
-  bachelors: "Bachelor's Degree",
-  masters: "Master's Degree",
-  post_masters: "Post-Master's",
-  doctorate: "Doctorate / Ph.D.",
-  post_doctorate: "Post-Doctorate",
-};
 
 
 interface DropdownOption {
@@ -178,9 +168,16 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({
 interface ManageAccountsPageProps {
   onNavigateTab?: (tab: string) => void;
   onEditAccount?: (user: User) => void;
+  onViewAccount?: (user: User) => void;
 }
 
-export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNavigateTab, onEditAccount }) => {
+export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNavigateTab, onEditAccount, onViewAccount }) => {
+  let navigate: ReturnType<typeof useNavigate>;
+  try {
+    navigate = useNavigate();
+  } catch {
+    navigate = (() => {}) as any;
+  }
   const {
     db,
     activeUser,
@@ -210,7 +207,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [openMenuUserId, setOpenMenuUserId] = useState<string | null>(null);
-  const [viewingProfileUser, setViewingProfileUser] = useState<User | null>(null);
+  const [menuPlacement, setMenuPlacement] = useState<'down' | 'up'>('down');
 
   // Close actions menu on outside click or escape key
   useEffect(() => {
@@ -485,6 +482,15 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
       onEditAccount(user);
     } else if (onNavigateTab) {
       onNavigateTab('edit-account');
+    }
+  };
+
+  // Go to dedicated View Profile page
+  const handleOpenViewPage = (user: User) => {
+    if (onViewAccount) {
+      onViewAccount(user);
+    } else {
+      navigate(`/accounts/${encodeURIComponent(user.id)}/view`);
     }
   };
 
@@ -924,17 +930,17 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
           </div>
 
           {/* Accounts List Table / Cards */}
-          <div className="bg-card border border-border rounded-2xl shadow-none overflow-hidden">
-            <div className="overflow-x-auto">
+          <div className="bg-card border border-border rounded-2xl shadow-none">
+            <div className="overflow-x-auto min-h-[220px]">
               <table className="w-full text-left text-xs font-sans border-collapse">
                 <thead>
                   <tr className="bg-muted/50 border-b border-border/70 text-muted-foreground font-semibold text-[12px]">
-                    <th className="py-3.5 px-4">User Account</th>
+                    <th className="py-3.5 px-4 rounded-tl-2xl">User Account</th>
                     <th className="py-3.5 px-4">Role</th>
                     <th className="py-3.5 px-4">Program & Position</th>
                     <th className="py-3.5 px-4">Academic ID</th>
                     <th className="py-3.5 px-4">Courses / Attachments</th>
-                    <th className="py-3.5 px-4 text-right">Actions</th>
+                    <th className="py-3.5 px-4 text-right rounded-tr-2xl">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/60">
@@ -956,7 +962,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
                       </td>
                     </tr>
                   ) : (
-                    filteredUsers.map(user => {
+                    filteredUsers.map((user, index) => {
                       const roleMeta = getRoleBadge(user.role, user);
                       const isCurrent = activeUser ? user.id === activeUser.id : false;
 
@@ -1057,8 +1063,8 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
                           </td>
 
                           {/* Actions */}
-                          <td className={`py-3.5 px-4 text-right whitespace-nowrap relative ${openMenuUserId === user.id ? 'z-20' : ''}`}>
-                            <div className="inline-block text-left" data-actions-menu>
+                          <td className={`py-3.5 px-4 text-right whitespace-nowrap relative ${openMenuUserId === user.id ? 'z-30' : ''}`}>
+                            <div className="inline-block text-left relative" data-actions-menu>
                               <button
                                 type="button"
                                 aria-label={`Actions for ${userName}`}
@@ -1066,7 +1072,19 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
                                 aria-expanded={openMenuUserId === user.id}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setOpenMenuUserId(openMenuUserId === user.id ? null : user.id);
+                                  if (openMenuUserId === user.id) {
+                                    setOpenMenuUserId(null);
+                                  } else {
+                                    const triggerRect = e.currentTarget.getBoundingClientRect();
+                                    const windowHeight = window.innerHeight;
+                                    const spaceBelow = windowHeight - triggerRect.bottom;
+                                    const isTopRow = index === 0;
+                                    const isShortList = filteredUsers.length <= 2;
+                                    const isNearBottom = filteredUsers.length > 2 && index >= filteredUsers.length - 2;
+                                    const shouldOpenUp = !isTopRow && !isShortList && (spaceBelow < 185 || isNearBottom);
+                                    setMenuPlacement(shouldOpenUp ? 'up' : 'down');
+                                    setOpenMenuUserId(user.id);
+                                  }
                                 }}
                                 className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
                                   openMenuUserId === user.id
@@ -1082,31 +1100,44 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
                                 <div
                                   role="menu"
                                   aria-orientation="vertical"
-                                  className="absolute right-4 mt-1 w-36 bg-card text-foreground border border-border rounded-xl shadow-elevated z-30 py-1 font-sans text-xs animate-scale-in"
+                                  className={`absolute right-0 ${
+                                    menuPlacement === 'up'
+                                      ? 'bottom-full mb-1.5 origin-bottom-right'
+                                      : 'top-full mt-1.5 origin-top-right'
+                                  } w-36 bg-card text-foreground border border-border rounded-xl shadow-elevated z-40 py-1 font-sans text-xs animate-scale-in`}
                                 >
-                                  <button
-                                    type="button"
-                                    role="menuitem"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setViewingProfileUser(user);
-                                      setOpenMenuUserId(null);
-                                    }}
-                                    className="w-full flex items-center space-x-2 px-3 py-2 text-left hover:bg-accent hover:text-foreground transition-colors cursor-pointer"
-                                  >
-                                    <Eye className="w-3.5 h-3.5 text-primary shrink-0" />
-                                    <span className="font-medium">View</span>
-                                  </button>
+                                  {!isCurrent && (
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setOpenMenuUserId(null);
+                                        handleOpenViewPage(user);
+                                      }}
+                                      className="w-full flex items-center space-x-2 px-3 py-2 text-left hover:bg-accent hover:text-foreground transition-colors cursor-pointer"
+                                    >
+                                      <Eye className="w-3.5 h-3.5 text-primary shrink-0" />
+                                      <span className="font-medium">View</span>
+                                    </button>
+                                  )}
 
                                   <button
                                     type="button"
                                     role="menuitem"
+                                    disabled={isCurrent}
                                     onClick={(e) => {
                                       e.stopPropagation();
+                                      if (isCurrent) return;
                                       setOpenMenuUserId(null);
                                       handleOpenEditPage(user);
                                     }}
-                                    className="w-full flex items-center space-x-2 px-3 py-2 text-left hover:bg-accent hover:text-foreground transition-colors cursor-pointer"
+                                    className={`w-full flex items-center space-x-2 px-3 py-2 text-left transition-colors ${
+                                      isCurrent
+                                        ? 'opacity-40 cursor-not-allowed text-muted-foreground'
+                                        : 'hover:bg-accent hover:text-foreground cursor-pointer'
+                                    }`}
+                                    title={isCurrent ? 'Cannot edit own account from directory' : 'Edit Account'}
                                   >
                                     <Edit3 className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                                     <span className="font-medium">Edit</span>
@@ -1321,280 +1352,9 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
         </div>
       )}
 
-      {/* VIEW USER PROFILE MODAL */}
-      {viewingProfileUser && (
-        <DialogFrame
-          title="User Profile Details"
-          subtitle="Institutional identity, academic credentials, and contact details."
-          onClose={() => setViewingProfileUser(null)}
-          wide={true}
-          footer={
-            <div className="flex items-center justify-between w-full">
-              <span className="text-[11px] text-muted-foreground font-mono">
-                User ID: {viewingProfileUser.id}
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setViewingProfileUser(null)}
-                  className="px-4 py-2 text-xs font-semibold rounded-xl border border-border hover:bg-muted text-foreground transition-all cursor-pointer"
-                >
-                  Close
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const target = viewingProfileUser;
-                    setViewingProfileUser(null);
-                    handleOpenEditPage(target);
-                  }}
-                  className="px-4 py-2 text-xs font-bold rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground shadow-soft transition-all flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Edit3 className="w-3.5 h-3.5" />
-                  <span>Edit Account</span>
-                </button>
-              </div>
-            </div>
-          }
-        >
-          {(() => {
-            const u = viewingProfileUser;
-            const roleLabel = getDisplayRoleLabel(u, u.role);
-            const permAddr = u.permanentAddressDetails || parseAddress(u.permanentAddress || u.address);
-            const isSameAs = Boolean(
-              u.sameAsPermanentAddress ||
-              (u.permanentAddress && u.presentAddress && u.permanentAddress === u.presentAddress)
-            );
-            const presAddr = isSameAs
-              ? permAddr
-              : (u.presentAddressDetails || parseAddress(u.presentAddress || u.address));
-            const collegeMatch = colleges.find(c => c.id === u.collegeId)?.name || u.collegeName || 'College of Computer Science';
-            const programMatch = normalizeProgramName(u.program || u.department || '—');
 
-            return (
-              <div className="space-y-5 text-xs font-sans">
-                {/* Header Profile Summary */}
-                <div className="p-4 bg-muted/40 border border-border rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="flex items-center space-x-3.5 min-w-0">
-                    <UserAvatar
-                      name={u.name}
-                      src={u.avatar}
-                      className="w-14 h-14 rounded-2xl border-2 border-primary/20 shadow-xs shrink-0 object-cover"
-                    />
-                    <div className="min-w-0 space-y-0.5">
-                      <div className="flex items-center space-x-2">
-                        <h3 className="text-sm font-extrabold text-foreground truncate">{u.name}</h3>
-                        <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-primary/10 text-primary border border-primary/20 shrink-0">
-                          {roleLabel}
-                        </span>
-                      </div>
-                      <p className="text-xs text-muted-foreground truncate">{u.email}</p>
-                      <p className="text-[11px] font-medium text-foreground/80 truncate">
-                        {u.title || (u.role === 'student' ? 'Student' : 'Faculty Member')}
-                      </p>
-                    </div>
-                  </div>
 
-                  <div className="flex items-center sm:flex-col sm:items-end justify-between border-t sm:border-t-0 border-border/50 pt-2 sm:pt-0 shrink-0 text-[11px]">
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 font-bold">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>Active Account</span>
-                    </span>
-                    <span className="text-muted-foreground mt-1 text-[10px] font-mono">
-                      Joined {u.registeredAt ? new Date(u.registeredAt).toLocaleDateString() : 'Active'}
-                    </span>
-                  </div>
-                </div>
 
-                {/* Institutional Placement */}
-                <div className="space-y-2">
-                  <div className="flex items-center space-x-2 text-[11px] font-bold text-foreground uppercase tracking-wider">
-                    <Building className="w-3.5 h-3.5 text-primary" />
-                    <span>Academic & Institutional Placement</span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                    <div className="p-3 bg-card border border-border rounded-xl space-y-0.5">
-                      <span className="text-[10px] text-muted-foreground block font-semibold">Academic / ID Number</span>
-                      <span className="font-mono font-bold text-foreground text-xs">{u.studentId || '—'}</span>
-                    </div>
-
-                    <div className="p-3 bg-card border border-border rounded-xl space-y-0.5">
-                      <span className="text-[10px] text-muted-foreground block font-semibold">Collegiate Affiliation</span>
-                      <span className="font-semibold text-foreground text-xs truncate block">{collegeMatch}</span>
-                    </div>
-
-                    <div className="p-3 bg-card border border-border rounded-xl space-y-0.5">
-                      <span className="text-[10px] text-muted-foreground block font-semibold">Program / Department</span>
-                      <span className="font-semibold text-foreground text-xs truncate block">{programMatch}</span>
-                    </div>
-
-                    <div className="p-3 bg-card border border-border rounded-xl space-y-0.5">
-                      <span className="text-[10px] text-muted-foreground block font-semibold">School Year</span>
-                      <span className="font-semibold text-foreground text-xs">{u.schoolYear || '2025-2026'}</span>
-                    </div>
-
-                    {u.role === 'student' && (
-                      <div className="p-3 bg-card border border-border rounded-xl space-y-0.5">
-                        <span className="text-[10px] text-muted-foreground block font-semibold">Year Level</span>
-                        <span className="font-bold text-primary text-xs">Year {u.yearLevel ?? 1}</span>
-                      </div>
-                    )}
-
-                    {u.role !== 'student' && (
-                      <div className="p-3 bg-card border border-border rounded-xl space-y-0.5">
-                        <span className="text-[10px] text-muted-foreground block font-semibold">Teaching Experience</span>
-                        <span className="font-bold text-foreground text-xs">
-                          {u.yearsOfTeaching ?? 0} {Number(u.yearsOfTeaching) === 1 ? 'Year' : 'Years'}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Personal & Contact Information */}
-                <div className="space-y-2">
-                  <div className="flex items-center space-x-2 text-[11px] font-bold text-foreground uppercase tracking-wider">
-                    <Phone className="w-3.5 h-3.5 text-primary" />
-                    <span>Personal & Contact Information</span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="p-3 bg-card border border-border rounded-xl space-y-0.5">
-                      <span className="text-[10px] text-muted-foreground block font-semibold">Birthday</span>
-                      <span className="font-medium text-foreground text-xs">{u.birthday || '—'}</span>
-                    </div>
-
-                    <div className="p-3 bg-card border border-border rounded-xl space-y-0.5">
-                      <span className="text-[10px] text-muted-foreground block font-semibold">Contact Number</span>
-                      <span className="font-medium text-foreground text-xs">{u.contactNumber || '—'}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Addresses */}
-                <div className="space-y-2">
-                  <div className="flex items-center space-x-2 text-[11px] font-bold text-foreground uppercase tracking-wider">
-                    <MapPin className="w-3.5 h-3.5 text-primary" />
-                    <span>Residential Addresses</span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {/* Permanent Address */}
-                    <div className="p-3 bg-card border border-border rounded-xl space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] text-muted-foreground block font-bold uppercase tracking-wider">Permanent Address</span>
-                      </div>
-                      <div className="text-xs text-foreground font-medium">
-                        {formatAddress(permAddr) || u.permanentAddress || u.address || '—'}
-                      </div>
-                      <div className="grid grid-cols-2 gap-1 text-[10px] text-muted-foreground pt-1 border-t border-border/50">
-                        <div><span className="font-semibold">Barangay:</span> {permAddr.barangay || '—'}</div>
-                        <div><span className="font-semibold">City/Mun:</span> {permAddr.municipalityCity || '—'}</div>
-                        <div><span className="font-semibold">Province:</span> {permAddr.province || '—'}</div>
-                        <div><span className="font-semibold">Street/Bldg:</span> {permAddr.houseStreet || '—'}</div>
-                      </div>
-                    </div>
-
-                    {/* Present Address */}
-                    <div className="p-3 bg-card border border-border rounded-xl space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] text-muted-foreground block font-bold uppercase tracking-wider">Present Address</span>
-                        {isSameAs && (
-                          <span className="px-1.5 py-0.2 text-[9px] font-semibold rounded bg-primary/10 text-primary border border-primary/20">
-                            Same as Permanent
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-xs text-foreground font-medium">
-                        {formatAddress(presAddr) || u.presentAddress || '—'}
-                      </div>
-                      <div className="grid grid-cols-2 gap-1 text-[10px] text-muted-foreground pt-1 border-t border-border/50">
-                        <div><span className="font-semibold">Barangay:</span> {presAddr.barangay || '—'}</div>
-                        <div><span className="font-semibold">City/Mun:</span> {presAddr.municipalityCity || '—'}</div>
-                        <div><span className="font-semibold">Province:</span> {presAddr.province || '—'}</div>
-                        <div><span className="font-semibold">Street/Bldg:</span> {presAddr.houseStreet || '—'}</div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Role Specific Section */}
-                {u.role === 'student' && (
-                  <div className="space-y-2">
-                    <div className="flex items-center space-x-2 text-[11px] font-bold text-foreground uppercase tracking-wider">
-                      <Users className="w-3.5 h-3.5 text-primary" />
-                      <span>Family & Guardian Information</span>
-                    </div>
-
-                    <div className="p-3.5 bg-card border border-border rounded-xl space-y-3">
-                      {u.hasGuardianOnly ? (
-                        <div className="space-y-1">
-                          <span className="text-[10px] text-muted-foreground block font-semibold">Guardian Information</span>
-                          <p className="text-xs font-bold text-foreground">
-                            {[u.guardianName?.firstName, u.guardianName?.middleName, u.guardianName?.lastName].filter(Boolean).join(' ') || '—'}
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div className="space-y-1">
-                            <span className="text-[10px] text-muted-foreground block font-semibold">Mother's Name</span>
-                            <p className="text-xs font-bold text-foreground">
-                              {[u.motherName?.firstName, u.motherName?.middleName, u.motherName?.lastName].filter(Boolean).join(' ') || '—'}
-                            </p>
-                          </div>
-                          <div className="space-y-1">
-                            <span className="text-[10px] text-muted-foreground block font-semibold">Father's Name</span>
-                            <p className="text-xs font-bold text-foreground">
-                              {[u.fatherName?.firstName, u.fatherName?.middleName, u.fatherName?.lastName].filter(Boolean).join(' ') || '—'}
-                            </p>
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="pt-2 border-t border-border/50 flex items-center justify-between text-xs">
-                        <span className="text-muted-foreground">Emergency / Parent Contact:</span>
-                        <span className="font-mono font-semibold text-foreground">{u.parentContactNumber || '—'}</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {u.role !== 'student' && (
-                  <div className="space-y-2">
-                    <div className="flex items-center space-x-2 text-[11px] font-bold text-foreground uppercase tracking-wider">
-                      <GraduationCap className="w-3.5 h-3.5 text-primary" />
-                      <span>Educational Background</span>
-                    </div>
-
-                    {(!u.educationalBackground || u.educationalBackground.length === 0) ? (
-                      <div className="p-4 bg-muted/20 border border-dashed border-border rounded-xl text-center text-xs text-muted-foreground">
-                        No educational degrees recorded yet.
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {u.educationalBackground.map((deg, idx) => (
-                          <div key={deg.id || idx} className="p-3 bg-card border border-border rounded-xl space-y-1">
-                            <div className="flex items-center justify-between">
-                              <span className="font-bold text-foreground text-xs">
-                                {DEGREE_LABELS[deg.degreeLevel] || deg.degreeLevel || 'Degree'}
-                              </span>
-                              {deg.yearGraduated && (
-                                <span className="text-[11px] font-mono text-muted-foreground">
-                                  Class of {deg.yearGraduated}
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-xs font-semibold text-primary">{deg.specialization || 'General Field'}</div>
-                            <div className="text-[11px] text-muted-foreground">{deg.school}</div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-        </DialogFrame>
-      )}
 
       {/* DELETE CONFIRMATION MODAL */}
       {deletingUser && (

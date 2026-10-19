@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { getDisplayRoleLabel, isDeanRole, isChairRole, compareUsersByAuthority } from './roles';
+import {
+  getDisplayRoleLabel,
+  isDeanRole,
+  isChairRole,
+  compareUsersByAuthority,
+  canCreateCourse,
+  isAdministrativeMonitor,
+} from './roles';
 
 describe('roles utility', () => {
   it('returns Admin for superadmin role or chancellor subrole', () => {
@@ -60,5 +67,43 @@ describe('roles utility', () => {
       'Staff Dan',
       'Student Zach',
     ]);
+  });
+
+  it('handles dedicated dean and chairperson roles directly', () => {
+    expect(getDisplayRoleLabel({ role: 'dean' })).toBe('Dean');
+    expect(isDeanRole({ role: 'dean' })).toBe(true);
+
+    expect(getDisplayRoleLabel({ role: 'chairperson' })).toBe('Chair');
+    expect(isChairRole({ role: 'chairperson' })).toBe(true);
+    expect(isChairRole({ role: 'chair' })).toBe(true);
+  });
+
+  it('evaluates canCreateCourse strictly: true only for Chairperson (via Chair-Sheet)', () => {
+    expect(canCreateCourse({ role: 'chairperson' })).toBe(true);
+    expect(canCreateCourse({ role: 'admin', adminSubrole: 'chairperson' })).toBe(true);
+
+    // Faculty cannot manually create courses
+    expect(canCreateCourse({ role: 'faculty' })).toBe(false);
+    // Dean cannot create courses
+    expect(canCreateCourse({ role: 'dean' })).toBe(false);
+    expect(canCreateCourse({ role: 'admin', adminSubrole: 'dean' })).toBe(false);
+    // Admin cannot create courses
+    expect(canCreateCourse({ role: 'admin' })).toBe(false);
+    expect(canCreateCourse({ role: 'superadmin' })).toBe(false);
+    // Students/staff cannot create courses
+    expect(canCreateCourse({ role: 'student' })).toBe(false);
+    expect(canCreateCourse({ role: 'staff' })).toBe(false);
+  });
+
+  it('evaluates isAdministrativeMonitor: true for Admin, Dean, Chairperson', () => {
+    expect(isAdministrativeMonitor({ role: 'admin' })).toBe(true);
+    expect(isAdministrativeMonitor({ role: 'superadmin' })).toBe(true);
+    expect(isAdministrativeMonitor({ role: 'dean' })).toBe(true);
+    expect(isAdministrativeMonitor({ role: 'chairperson' })).toBe(true);
+    expect(isAdministrativeMonitor({ role: 'admin', adminSubrole: 'chairperson' })).toBe(true);
+
+    expect(isAdministrativeMonitor({ role: 'faculty' })).toBe(false);
+    expect(isAdministrativeMonitor({ role: 'student' })).toBe(false);
+    expect(isAdministrativeMonitor({ role: 'staff' })).toBe(false);
   });
 });

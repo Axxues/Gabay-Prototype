@@ -1,8 +1,8 @@
 /**
  * File Uploader Utility
- * Saves uploaded files directly to /public/uploads/ via Vite dev server upload middleware
- * so that all uploaded files and images in announcements, modules, and courses
- * persist permanently on disk and survive reloads and builds.
+ * Saves uploaded files directly to Likha ERP backend (/files)
+ * so that all uploaded files and images in announcements, modules, courses,
+ * user avatars, and banners persist permanently on Likha ERP and survive reloads.
  */
 
 import { likhaLmsApi } from '../api/likhaLmsApi';
@@ -11,6 +11,7 @@ export interface UploadResult {
   name: string;
   size: string;
   url: string;
+  fileId?: string;
   type?: string;
   isImage?: boolean;
 }
@@ -75,7 +76,7 @@ export const uploadFileToPublic = async (file: File): Promise<UploadResult> => {
   const formattedSize = formatFileSize(file.size);
   const isImg = isImageFile(file.name, file.type);
 
-  // 1. Direct-to-Likha ERP native asset upload
+  // 1. Upload exclusively to Likha ERP native file storage
   try {
     const likhaRes = await likhaLmsApi.files.uploadFile(file);
     if (likhaRes?.url) {
@@ -83,15 +84,16 @@ export const uploadFileToPublic = async (file: File): Promise<UploadResult> => {
         name: likhaRes.filename_download || file.name,
         size: formattedSize,
         url: likhaRes.url,
+        fileId: likhaRes.id,
         type: toShortFileType(file.name),
         isImage: isImg
       };
     }
-  } catch (_likhaErr) {
-    // Gracefully fall through to local Vite dev upload or data URL
+  } catch (likhaErr) {
+    console.warn('[uploadFileToPublic] Likha ERP upload failed:', likhaErr);
   }
 
-  // Convert to base64 DataURL for payload and immediate preview
+  // 2. Fallback: Data URL if network or upload is completely unavailable
   const dataUrl = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);
@@ -99,37 +101,6 @@ export const uploadFileToPublic = async (file: File): Promise<UploadResult> => {
     reader.readAsDataURL(file);
   });
 
-  try {
-    // Attempt local Vite middleware upload to write directly to /public/uploads/
-    const sanitizedName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-    const response = await fetch('/api/upload', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        filename: sanitizedName,
-        dataUrl
-      })
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      if (data?.url) {
-        return {
-          name: file.name,
-          size: formattedSize,
-          url: data.url, // e.g. "/uploads/1725900000_filename.pdf"
-          type: toShortFileType(file.name),
-          isImage: isImg
-        };
-      }
-    }
-  } catch (err) {
-    console.warn('Vite dev upload endpoint unreachable, falling back to data URL storage:', err);
-  }
-
-  // Graceful fallback to persistent Data URL if endpoint not available
   return {
     name: file.name,
     size: formattedSize,

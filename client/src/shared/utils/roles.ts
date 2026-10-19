@@ -23,13 +23,15 @@ export function getDisplayRoleLabel(user?: RoleResolvableUser | null, fallbackRo
   const subrole = (user?.adminSubrole || '').toLowerCase();
   const title = (user?.title || '').toLowerCase();
 
+  if (role === 'dean' || subrole === 'dean' || title.includes('dean')) {
+    return 'Dean';
+  }
+
+  if (role === 'chairperson' || role === 'chair' || subrole === 'chairperson' || subrole === 'chair' || title.includes('chair')) {
+    return 'Chair';
+  }
+
   if (role === 'admin' || role === 'superadmin' || subrole === 'chancellor' || title.includes('chancellor')) {
-    if (subrole === 'dean' || title.includes('dean')) {
-      return 'Dean';
-    }
-    if (subrole === 'chairperson' || subrole === 'chair' || title.includes('chair')) {
-      return 'Chair';
-    }
     return 'Admin';
   }
 
@@ -57,14 +59,42 @@ export function isDeanRole(user?: RoleResolvableUser | null, activeRole?: string
   const role = (user?.role || activeRole || '').toLowerCase();
   const subrole = (user?.adminSubrole || '').toLowerCase();
   const title = (user?.title || '').toLowerCase();
-  return (role === 'admin' && (subrole === 'dean' || title.includes('dean')));
+  return (
+    role === 'dean' ||
+    ((role === 'admin' || role === 'superadmin') && (subrole === 'dean' || title.includes('dean')))
+  );
 }
 
 export function isChairRole(user?: RoleResolvableUser | null, activeRole?: string): boolean {
   const role = (user?.role || activeRole || '').toLowerCase();
   const subrole = (user?.adminSubrole || '').toLowerCase();
   const title = (user?.title || '').toLowerCase();
-  return (role === 'admin' && (subrole === 'chairperson' || subrole === 'chair' || title.includes('chair')));
+  return (
+    role === 'chairperson' ||
+    role === 'chair' ||
+    ((role === 'admin' || role === 'superadmin') && (subrole === 'chairperson' || subrole === 'chair' || title.includes('chair')))
+  );
+}
+
+/**
+ * Checks if the user is in an administrative monitoring persona (Chancellor/Admin, Dean, or Chairperson).
+ */
+export function isAdministrativeMonitor(user?: RoleResolvableUser | null, activeRole?: string): boolean {
+  const role = (user?.role || activeRole || '').toLowerCase();
+  return (
+    role === 'admin' ||
+    role === 'superadmin' ||
+    isDeanRole(user, activeRole) ||
+    isChairRole(user, activeRole)
+  );
+}
+
+/**
+ * Course creation is strictly limited to Program Chairpersons via the Chair-Sheet upload workflow.
+ * Faculty cannot manually create course shells; Dean and Admin act in a monitoring/audit capacity.
+ */
+export function canCreateCourse(user?: RoleResolvableUser | null, activeRole?: string): boolean {
+  return isChairRole(user, activeRole);
 }
 
 export const AUTHORITY_RANK: Record<string, number> = {

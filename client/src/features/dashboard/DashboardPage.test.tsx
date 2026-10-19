@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, test, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 
 const mocks = vi.hoisted(() => ({
@@ -142,30 +142,41 @@ describe('DashboardPage admin access', () => {
     } as any;
   });
 
-  test('admin sees to-grade queue and system overview widget', () => {
+  test('admin only sees scoped courses and does not see removed to-grade or system overview cards', () => {
     renderPage();
 
     // Admin only sees courses they created
     expect(screen.getByText('Data Structures')).toBeInTheDocument();
     expect(screen.queryByText('Algorithms & Complexity')).not.toBeInTheDocument();
 
-    // Admin sees faculty "To grade" widget for their course submissions only
-    expect(screen.getByText('To grade')).toBeInTheDocument();
-    expect(screen.getByText('Alice')).toBeInTheDocument();
-    expect(screen.queryByText('Bob')).not.toBeInTheDocument();
-
-    // Admin also sees College system overview widget
-    expect(screen.getByText('College system overview')).toBeInTheDocument();
-    expect(screen.getByText('Administration')).toBeInTheDocument();
+    // Removed cards should not be rendered
+    expect(screen.queryByText('To grade')).not.toBeInTheDocument();
+    expect(screen.queryByText('College system overview')).not.toBeInTheDocument();
   });
 
-  test('counts administrative accounts alongside faculty in the Total faculty metric', () => {
+  test('hides into small card on left side and shows Academic Scope wheel when clicked', async () => {
     renderPage();
 
-    // Dean Admin (admin) + Prof (faculty) — the student is excluded
-    expect(screen.getByText('Total faculty').closest('div')).toHaveTextContent('2');
+    // Initially expanded
+    expect(screen.getByTestId('academic-scope-wheel')).toBeInTheDocument();
+    const hideBtn = screen.getByRole('button', { name: /Hide Academic Scope/i });
+    expect(hideBtn).toBeInTheDocument();
 
-    // Staff stays its own separate count
-    expect(screen.getByText('Staff accounts').closest('div')).toHaveTextContent('0');
+    // Click to hide into small card at the left edge
+    fireEvent.click(hideBtn);
+    await waitFor(() => {
+      expect(screen.queryByTestId('academic-scope-wheel')).not.toBeInTheDocument();
+    });
+    expect(screen.getByText('Academic Scope')).toBeInTheDocument();
+    expect(localStorage.getItem('gabay_academic_scope_collapsed')).toBe('true');
+
+    // Click small card to show Academic Scope
+    const showBtn = screen.getByRole('button', { name: /Show Academic Scope/i });
+    expect(showBtn).toBeInTheDocument();
+    fireEvent.click(showBtn);
+    await waitFor(() => {
+      expect(screen.getByTestId('academic-scope-wheel')).toBeInTheDocument();
+    });
+    expect(localStorage.getItem('gabay_academic_scope_collapsed')).toBe('false');
   });
 });

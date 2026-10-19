@@ -10,8 +10,6 @@ import { EmptyState } from '../../shared/components/common/EmptyState';
 import {
   BookOpen,
   Clock,
-  AlertCircle,
-  FileSpreadsheet,
   Award,
   ArrowRight,
   Megaphone,
@@ -19,9 +17,7 @@ import {
   KeyRound,
   Copy,
   Check,
-  ShieldCheck,
   Trash2,
-  Users,
   Loader2,
   UploadCloud,
   Calendar,
@@ -30,6 +26,7 @@ import {
 } from 'lucide-react';
 import { isChairRole } from '../../shared/utils/roles';
 import { useProcessing } from '../../shared/hooks/useProcessing';
+import { useModalAnimate } from '../../shared/hooks/useModalAnimate';
 
 interface DashboardPageProps {
   onNavigateCourse: (courseId: string, subTab?: string) => void;
@@ -47,7 +44,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     colleges,
     departments,
     isLoading,
-    openSpeedGrader,
     getPendingRequestsForStudent,
     studentApproveInvitation,
     studentDeclineInvitation,
@@ -85,7 +81,29 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     departments,
   }), [db.courses, db.users, activeUser, activeRole, approvedCourseIds, colleges, departments]);
 
-  const userCollegeId = activeUser?.collegeId || 'col-ccs';
+  const userCollegeId = useMemo(() => {
+    if (activeUser?.collegeId) return activeUser.collegeId;
+    if (activeUser?.department && departments) {
+      const match = departments.find(
+        d =>
+          d.id === activeUser.department ||
+          d.name?.toLowerCase() === activeUser.department.toLowerCase() ||
+          d.code?.toLowerCase() === activeUser.department.toLowerCase() ||
+          d.chairpersonId === activeUser.id
+      );
+      if (match?.collegeId) return match.collegeId;
+    }
+    if (colleges) {
+      const deanMatch = colleges.find(
+        c =>
+          c.deanId === activeUser?.id ||
+          (activeUser?.collegeName && c.name?.toLowerCase() === activeUser.collegeName.toLowerCase())
+      );
+      if (deanMatch?.id) return deanMatch.id;
+    }
+    return 'col-ccs';
+  }, [activeUser, departments, colleges]);
+
   const currentActiveSchoolYear = useMemo(() => {
     if (getActiveSchoolYearForCollege) {
       const activeSy = getActiveSchoolYearForCollege(userCollegeId);
@@ -97,9 +115,40 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   }, [getActiveSchoolYearForCollege, getSchoolYearsByCollege, userCollegeId]);
 
   const [selectedSchoolYear, setSelectedSchoolYear] = useState<string>(() => currentActiveSchoolYear);
+  const [isScopeCollapsed, setIsScopeCollapsed] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return (
+        localStorage.getItem('gabay_academic_scope_collapsed') === 'true' ||
+        localStorage.getItem('gabay_academic_scope_hidden') === 'true'
+      );
+    }
+    return false;
+  });
 
+  const handleCollapseScope = () => {
+    setIsScopeCollapsed(true);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('gabay_academic_scope_collapsed', 'true');
+      localStorage.setItem('gabay_academic_scope_hidden', 'true');
+    }
+  };
+
+  const { isClosing: isScopeClosing, startClose: startCollapseScope } = useModalAnimate(handleCollapseScope, 200);
+
+  const handleExpandScope = () => {
+    setIsScopeCollapsed(false);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('gabay_academic_scope_collapsed', 'false');
+      localStorage.setItem('gabay_academic_scope_hidden', 'false');
+    }
+  };
+
+  const prevActiveSYRef = useRef(currentActiveSchoolYear);
   useEffect(() => {
-    if (!selectedSchoolYear) {
+    if (prevActiveSYRef.current !== currentActiveSchoolYear) {
+      prevActiveSYRef.current = currentActiveSchoolYear;
+      setSelectedSchoolYear(currentActiveSchoolYear);
+    } else if (!selectedSchoolYear) {
       setSelectedSchoolYear(currentActiveSchoolYear);
     }
   }, [currentActiveSchoolYear, selectedSchoolYear]);
@@ -171,11 +220,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     setCoursePage(1);
   }, [selectedSchoolYear]);
 
-  const userCourseIds = useMemo(() => new Set(filteredCourses.map(c => c.id)), [filteredCourses]);
-  const unsubmittedList = useMemo(() => db.submissions.filter(
-    s => s.status === 'submitted' && (userCourseIds.has(s.courseId) || (!s.courseId && filteredCourses.length > 0))
-  ), [db.submissions, userCourseIds, filteredCourses.length]);
-
   // Pending rows can reference courses outside the cached (enrolled-only)
   // list — prefer the live cache, fall back to the server snapshot, and
   // never render a bare "—".
@@ -210,7 +254,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       }))
     ];
   }, [db.activities, db.submissions, activeUser.id]);
-  const hasRightSidebar = activeRole === 'student' || activeRole === 'faculty' || activeRole === 'admin' || activeRole === 'superadmin';
+  const hasRightSidebar = activeRole === 'student';
 
   // Dynamic Instructor Name Resolution
   const getCourseInstructorName = (course: (typeof db.courses)[0]) => {
@@ -297,7 +341,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       {/* Main Grid Section */}
       <div className={hasRightSidebar ? "grid grid-cols-1 lg:grid-cols-3 gap-6" : "space-y-6"}>
         {/* Left Pane: Enrolled Course Cards */}
-        <div className={hasRightSidebar ? "lg:col-span-2 space-y-4" : "space-y-4"}>
+        <div className={hasRightSidebar ? "lg:col-span-2 space-y-4 relative" : "space-y-4 relative"}>
           <PageHeader
             title="My courses"
             description="Your enrolled course shells"
@@ -330,105 +374,136 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             }
           />
 
-          {/* Academic Scope Horizontal Scrollable Wheel */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3.5 bg-card border border-border/80 rounded-2xl shadow-xs">
-            <div className="flex items-center gap-2.5 shrink-0">
-              <span className="w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                <Calendar className="w-4 h-4" />
-              </span>
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
-                  Academic Scope
-                </span>
-                <span className="text-xs font-extrabold text-foreground">
-                  AY {selectedSchoolYear || currentActiveSchoolYear}
-                </span>
-              </div>
-            </div>
-
-            {/* Horizontal Scrollable Wheel Track */}
-            <div className="relative flex items-center min-w-0 max-w-full">
+          {/* Academic Scope Card: Collapsed (tucked behind navigation, icon-only) vs Expanded */}
+          {isScopeCollapsed ? (
+            <div className="absolute -left-5 sm:-left-8 lg:-left-10 top-20 z-20 animate-slide-in-left">
               <button
                 type="button"
-                onClick={() => scrollWheel('left')}
-                aria-label="Scroll years left"
-                className="hidden sm:flex items-center justify-center w-7 h-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/70 transition-colors shrink-0 mr-1 cursor-pointer"
+                onClick={handleExpandScope}
+                title={`Show Academic Scope (AY ${selectedSchoolYear || currentActiveSchoolYear})`}
+                aria-label="Show Academic Scope"
+                className="group relative flex items-center gap-1.5 pl-2.5 sm:pl-3 pr-2 py-2 bg-card hover:bg-muted/80 text-foreground border-y border-r border-border/80 rounded-r-xl shadow-xs transition-all cursor-pointer hover:shadow-sm hover:translate-x-1"
               >
-                <ChevronLeft className="w-4 h-4" />
+                <span className="sr-only">Academic Scope</span>
+                <span className="w-6 h-6 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <Calendar className="w-3.5 h-3.5" />
+                </span>
+                <ChevronRight className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
               </button>
+            </div>
+          ) : (
+            <div
+              className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3.5 bg-card border border-border/80 rounded-2xl shadow-xs transition-all ${
+                isScopeClosing ? 'animate-slide-out-left' : 'animate-slide-in-left'
+              }`}
+            >
+              <div className="flex items-center gap-2.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => startCollapseScope()}
+                  title="Hide Academic Scope"
+                  aria-label="Hide Academic Scope"
+                  className="flex items-center justify-center w-8 h-8 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted border border-border/70 transition-colors cursor-pointer shrink-0"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <span className="w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                  <Calendar className="w-4 h-4" />
+                </span>
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
+                    Academic Scope
+                  </span>
+                  <span className="text-xs font-extrabold text-foreground">
+                    AY {selectedSchoolYear || currentActiveSchoolYear}
+                  </span>
+                </div>
+              </div>
 
-              <div
-                ref={wheelTrackRef}
-                data-testid="academic-scope-wheel"
-                onWheel={(e) => {
-                  if (wheelTrackRef.current) {
-                    wheelTrackRef.current.scrollLeft += e.deltaY;
-                  }
-                }}
-                className="flex items-center gap-1.5 overflow-x-auto py-1 px-0.5 no-scrollbar scroll-smooth"
-                style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-              >
-                {availableSchoolYears.map((yr) => {
-                  const isSelected = (selectedSchoolYear || currentActiveSchoolYear) === yr;
-                  const isCurrent = yr === currentActiveSchoolYear;
-                  const isFuture = parseStartYear(yr) > currentStartYear;
+              {/* Horizontal Scrollable Wheel Track */}
+              <div className="relative flex items-center min-w-0 max-w-full">
+                <button
+                  type="button"
+                  onClick={() => scrollWheel('left')}
+                  aria-label="Scroll years left"
+                  className="hidden sm:flex items-center justify-center w-7 h-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/70 transition-colors shrink-0 mr-1 cursor-pointer"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
 
-                  if (isFuture) {
+                <div
+                  ref={wheelTrackRef}
+                  data-testid="academic-scope-wheel"
+                  onWheel={(e) => {
+                    if (wheelTrackRef.current) {
+                      wheelTrackRef.current.scrollLeft += e.deltaY;
+                    }
+                  }}
+                  className="flex items-center gap-1.5 overflow-x-auto py-1 px-0.5 no-scrollbar scroll-smooth"
+                  style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                >
+                  {availableSchoolYears.map((yr) => {
+                    const isSelected = (selectedSchoolYear || currentActiveSchoolYear) === yr;
+                    const isCurrent = yr === currentActiveSchoolYear;
+                    const isFuture = parseStartYear(yr) > currentStartYear;
+
+                    if (isFuture) {
+                      return (
+                        <button
+                          key={yr}
+                          type="button"
+                          disabled
+                          aria-disabled="true"
+                          title="Future academic year cannot be navigated yet"
+                          className="px-3 py-1.5 text-xs rounded-xl font-bold border flex items-center gap-1.5 whitespace-nowrap shrink-0 opacity-40 bg-muted/30 text-muted-foreground/60 border-border/40 cursor-not-allowed select-none"
+                        >
+                          <span>AY {yr}</span>
+                          <span className="text-[9px] px-1 py-0.2 rounded font-semibold border bg-muted/50 text-muted-foreground/60 border-border/40">
+                            Upcoming
+                          </span>
+                        </button>
+                      );
+                    }
+
                     return (
                       <button
                         key={yr}
                         type="button"
-                        disabled
-                        aria-disabled="true"
-                        title="Future academic year cannot be navigated yet"
-                        className="px-3 py-1.5 text-xs rounded-xl font-bold border flex items-center gap-1.5 whitespace-nowrap shrink-0 opacity-40 bg-muted/30 text-muted-foreground/60 border-border/40 cursor-not-allowed select-none"
+                        onClick={() => setSelectedSchoolYear(yr)}
+                        className={`px-3 py-1.5 text-xs rounded-xl font-bold transition-all cursor-pointer border flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
+                          isSelected
+                            ? 'bg-foreground text-background border-foreground shadow-2xs'
+                            : 'bg-muted/50 text-muted-foreground hover:text-foreground border-border hover:bg-muted'
+                        }`}
                       >
                         <span>AY {yr}</span>
-                        <span className="text-[9px] px-1 py-0.2 rounded font-semibold border bg-muted/50 text-muted-foreground/60 border-border/40">
-                          Upcoming
-                        </span>
+                        {isCurrent && (
+                          <span
+                            className={`text-[9px] px-1 py-0.2 rounded font-semibold border ${
+                              isSelected
+                                ? 'bg-background/20 text-background border-transparent'
+                                : 'bg-muted text-muted-foreground border-border'
+                            }`}
+                          >
+                            Current
+                          </span>
+                        )}
                       </button>
                     );
-                  }
+                  })}
+                </div>
 
-                  return (
-                    <button
-                      key={yr}
-                      type="button"
-                      onClick={() => setSelectedSchoolYear(yr)}
-                      className={`px-3 py-1.5 text-xs rounded-xl font-bold transition-all cursor-pointer border flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
-                        isSelected
-                          ? 'bg-foreground text-background border-foreground shadow-2xs'
-                          : 'bg-muted/50 text-muted-foreground hover:text-foreground border-border hover:bg-muted'
-                      }`}
-                    >
-                      <span>AY {yr}</span>
-                      {isCurrent && (
-                        <span
-                          className={`text-[9px] px-1 py-0.2 rounded font-semibold border ${
-                            isSelected
-                              ? 'bg-background/20 text-background border-transparent'
-                              : 'bg-muted text-muted-foreground border-border'
-                          }`}
-                        >
-                          Current
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
+                <button
+                  type="button"
+                  onClick={() => scrollWheel('right')}
+                  aria-label="Scroll years right"
+                  className="hidden sm:flex items-center justify-center w-7 h-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/70 transition-colors shrink-0 ml-1 cursor-pointer"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
               </div>
-
-              <button
-                type="button"
-                onClick={() => scrollWheel('right')}
-                aria-label="Scroll years right"
-                className="hidden sm:flex items-center justify-center w-7 h-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/70 transition-colors shrink-0 ml-1 cursor-pointer"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
             </div>
-          </div>
+          )}
 
           {/* Empty State or Course Cards Grid */}
           {isLoading && filteredCourses.length === 0 ? (
@@ -825,105 +900,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 </div>
               </div>
             </>
-          )}
-
-          {/* FACULTY, ADMIN & CHANCELLOR GRADING WIDGETS */}
-          {(activeRole === 'faculty' || activeRole === 'admin' || activeRole === 'superadmin') && (
-            <div className="bg-card border border-border rounded-2xl p-5 space-y-4">
-              <div className="flex items-center justify-between border-b border-border/70 pb-3">
-                <h3 className="font-bold text-sm text-foreground flex items-center space-x-2">
-                  <AlertCircle className="w-4 h-4 text-muted-foreground" />
-                  <span>To grade</span>
-                </h3>
-                <span className="px-2.5 py-0.5 text-xs font-sans font-semibold bg-muted text-muted-foreground rounded-full border border-border tabular-nums">
-                  {unsubmittedList.length} items
-                </span>
-              </div>
-
-              <div className="space-y-3">
-                {unsubmittedList.map(sub => {
-                  const act = (db.activities || []).find(a => a.id === sub.activityKey || `asg-activity-${a.id}` === sub.activityKey);
-                  return (
-                    <div
-                      key={sub.id}
-                      className="p-3.5 bg-muted/40 rounded-xl border border-border space-y-2.5"
-                    >
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <h4 className="text-xs font-bold text-foreground">
-                            {sub.studentName}
-                          </h4>
-                          <p className="text-[11px] text-muted-foreground">
-                            {act?.title}
-                          </p>
-                        </div>
-                        <span className="text-[10px] font-sans text-muted-foreground">
-                          {new Date(sub.submittedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => openSpeedGrader(sub.id)}
-                        className="w-full py-2 px-3 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all flex items-center justify-center space-x-1.5 active:scale-[0.98] cursor-pointer"
-                      >
-                        <FileSpreadsheet className="w-3.5 h-3.5" />
-                        <span>Launch SpeedGrader</span>
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* ADMIN & CHANCELLOR WIDGETS */}
-          {(activeRole === 'admin' || activeRole === 'superadmin') && (
-            <div className="bg-card border border-border rounded-2xl p-5 space-y-4">
-              <div className="flex items-center justify-between border-b border-border/70 pb-3">
-                <h3 className="font-bold text-sm text-foreground flex items-center space-x-2">
-                  <ShieldCheck className="w-4 h-4 text-muted-foreground" />
-                  <span>College system overview</span>
-                </h3>
-                <span className="px-2.5 py-0.5 text-[11px] font-sans font-semibold bg-muted text-muted-foreground rounded-full border border-border">
-                  Administration
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2.5 text-xs">
-                <div className="p-3 bg-muted/40 border border-border rounded-xl space-y-1">
-                  <span className="text-[12px] font-semibold font-sans text-muted-foreground">Total courses</span>
-                  <div className="text-xl font-bold font-sans text-foreground tabular-nums">{db.courses.length}</div>
-                </div>
-                <div className="p-3 bg-muted/40 border border-border rounded-xl space-y-1">
-                  <span className="text-[12px] font-semibold font-sans text-muted-foreground">Total faculty</span>
-                  <div className="text-xl font-bold font-sans text-foreground tabular-nums">
-                    {db.users.filter(u => u.role === 'faculty' || u.role === 'admin').length}
-                  </div>
-                </div>
-                <div className="p-3 bg-muted/40 border border-border rounded-xl space-y-1">
-                  <span className="text-[12px] font-semibold font-sans text-muted-foreground">Enrolled students</span>
-                  <div className="text-xl font-bold font-sans text-foreground tabular-nums">
-                    {db.users.filter(u => u.role === 'student').length}
-                  </div>
-                </div>
-                <div className="p-3 bg-muted/40 border border-border rounded-xl space-y-1">
-                  <span className="text-[12px] font-semibold font-sans text-muted-foreground">Staff accounts</span>
-                  <div className="text-xl font-bold font-sans text-foreground tabular-nums">
-                    {db.users.filter(u => u.role === 'staff').length}
-                  </div>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => onNavigateTab('accounts')}
-                className="w-full py-2.5 px-3 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all flex items-center justify-center space-x-2 active:scale-[0.98] cursor-pointer"
-              >
-                <Users className="w-4 h-4" />
-                <span>Manage college accounts</span>
-              </button>
-            </div>
           )}
         </div>
       )}

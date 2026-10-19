@@ -74,12 +74,35 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
     db,
     createCourse,
     showAlert,
+    colleges,
+    departments,
     schoolYears,
     getActiveSchoolYearForCollege,
     getSchoolYearsByCollege
   } = useLMS();
 
-  const userCollegeId = activeUser?.collegeId || 'col-ccs';
+  const userCollegeId = useMemo(() => {
+    if (activeUser?.collegeId) return activeUser.collegeId;
+    if (activeUser?.department && departments) {
+      const match = departments.find(
+        d =>
+          d.id === activeUser.department ||
+          d.name?.toLowerCase() === activeUser.department.toLowerCase() ||
+          d.code?.toLowerCase() === activeUser.department.toLowerCase() ||
+          d.chairpersonId === activeUser.id
+      );
+      if (match?.collegeId) return match.collegeId;
+    }
+    if (colleges) {
+      const deanMatch = colleges.find(
+        c =>
+          c.deanId === activeUser?.id ||
+          (activeUser?.collegeName && c.name?.toLowerCase() === activeUser.collegeName.toLowerCase())
+      );
+      if (deanMatch?.id) return deanMatch.id;
+    }
+    return 'col-ccs';
+  }, [activeUser, departments, colleges]);
   const defaultSchoolYear = useMemo(() => {
     if (getActiveSchoolYearForCollege) {
       const activeSy = getActiveSchoolYearForCollege(userCollegeId);

@@ -220,5 +220,57 @@ describe('LMSContextPanel Collapsible Assessments', () => {
     expect(screen.queryByText('Course Navigation')).toBeNull();
     expect(screen.getByText('Trail: LMS > courses')).toBeDefined();
   });
+
+  test('minimizes and expands navigation when toggle button is clicked', () => {
+    localStorage.clear();
+    render(
+      <LMSContextPanel
+        currentTab="dashboard"
+        courseSubTab="modules"
+        onNavigateTab={() => {}}
+        onSelectCourseTab={() => {}}
+        onNavigateCourse={() => {}}
+      />
+    );
+
+    expect(screen.getByText('Learning Management')).toBeDefined();
+    const minimizeBtn = screen.getByRole('button', { name: /Minimize Learning Management navigation/i });
+    expect(minimizeBtn).toBeDefined();
+
+    // Click to minimize
+    fireEvent.click(minimizeBtn);
+    expect(screen.queryByText('Learning Management')).toBeNull();
+    expect(localStorage.getItem('gabay_lms_nav_minimized')).toBe('true');
+
+    // Learning Management icons are still present
+    expect(screen.getByRole('button', { name: 'Dashboard' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Calendar' })).toBeDefined();
+
+    // Expand button is present
+    const expandBtn = screen.getByRole('button', { name: /Expand Learning Management navigation/i });
+    expect(expandBtn).toBeDefined();
+
+    // Click to expand
+    fireEvent.click(expandBtn);
+    expect(screen.getByText('Learning Management')).toBeDefined();
+    expect(localStorage.getItem('gabay_lms_nav_minimized')).toBe('false');
+  });
+
+  test('renders no Learning Management navigation on the profile, history, and help pages', () => {
+    ['profile', 'history', 'help'].forEach(tab => {
+      const { container, unmount } = render(
+        <LMSContextPanel
+          currentTab={tab}
+          courseSubTab="modules"
+          onNavigateTab={() => {}}
+          onSelectCourseTab={() => {}}
+          onNavigateCourse={() => {}}
+        />
+      );
+
+      expect(container.firstChild).toBeNull();
+      unmount();
+    });
+  });
 });
 

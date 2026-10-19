@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { avatarBackground, getInitials, hasCustomAvatar } from '../../utils/avatar';
+import { avatarBackground, getInitials, hasCustomAvatar, resolveDirectusAssetUrl } from '../../utils/avatar';
 
 interface UserAvatarProps {
   name: string;
@@ -21,10 +21,12 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({ name, src, className = '
     setFailed(false);
   }, [src]);
 
-  if (hasCustomAvatar(src) && !failed) {
+  const resolvedSrc = src ? resolveDirectusAssetUrl(src) : '';
+
+  if (hasCustomAvatar(resolvedSrc) && !failed) {
     return (
       <img
-        src={src as string}
+        src={resolvedSrc}
         alt={name}
         className={className}
         onError={() => setFailed(true)}

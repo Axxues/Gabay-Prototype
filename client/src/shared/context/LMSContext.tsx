@@ -135,7 +135,7 @@ export interface LMSContextType {
   enrollPerson: (person: Partial<User>, courseId?: string) => Promise<boolean>;
   enrollStudentsInCourse: (studentIds: string[], courseId: string) => Promise<boolean>;
   createUser: (userData: Partial<User>) => Promise<User>;
-  updateUser: (userId: string, updates: Partial<User> & { banner?: string }) => Promise<boolean>;
+  updateUser: (userId: string, updates: Partial<User> & { banner?: string; avatarFileId?: string }) => Promise<boolean>;
   deleteUser: (userId: string) => Promise<{ success: boolean; message?: string }>;
   joinCourseByCode: (joinCode: string) => Promise<{ success: boolean; message: string; course?: Course }>;
   regenerateCourseJoinCode: (courseId: string) => Promise<string>;
@@ -325,6 +325,7 @@ const STORAGE_KEY_PENDING_REGISTRATIONS = 'gabay_pending_registrations';
 const STORAGE_KEY_SCHOOL_YEARS = 'gabay_school_years';
 const STORAGE_KEY_COLLEGE_ACTIVE_SY = 'gabay_college_active_school_years';
 export const STORAGE_KEY_DB = 'gabay_lms_db_v6';
+export const STORAGE_KEY_USER_PROFILES = 'gabay_user_profiles_v1';
 
 const safeSetLocalStorage = (key: string, value: string): boolean => {
   try {
@@ -334,6 +335,80 @@ const safeSetLocalStorage = (key: string, value: string): boolean => {
     console.warn(`LocalStorage setItem failed for "${key}".`, err);
     return false;
   }
+};
+
+export const loadStoredUserProfiles = (): Record<string, Partial<User>> => {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_USER_PROFILES);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed;
+      }
+    }
+  } catch (_) {}
+  return {};
+};
+
+export const saveStoredUserProfile = (userId: string, updates: Partial<User>, emailHint?: string): void => {
+  if (!userId) return;
+  try {
+    const store = loadStoredUserProfiles();
+    const cleanEmail = (updates.email || emailHint || '').trim().toLowerCase();
+    const existing = store[userId] || (cleanEmail ? store[cleanEmail] : undefined) || {};
+    const merged = { ...existing, ...updates };
+    store[userId] = merged;
+    if (cleanEmail) {
+      store[cleanEmail] = merged;
+    }
+    safeSetLocalStorage(STORAGE_KEY_USER_PROFILES, JSON.stringify(store));
+  } catch (_) {}
+};
+
+export const getCleanStoredAvatar = (id?: string): string => {
+  if (typeof window === 'undefined' || !id) return '';
+  const val = localStorage.getItem(`gabay_avatar_${id}`) || '';
+  if (val.startsWith('/uploads/')) {
+    localStorage.removeItem(`gabay_avatar_${id}`);
+    return '';
+  }
+  return val;
+};
+
+export const getCleanStoredBanner = (id?: string): string | undefined => {
+  if (typeof window === 'undefined' || !id) return undefined;
+  const val = localStorage.getItem(`gabay_banner_${id}`);
+  if (!val) return undefined;
+  if (val.startsWith('/uploads/')) {
+    localStorage.removeItem(`gabay_banner_${id}`);
+    return undefined;
+  }
+  return val;
+};
+
+export const applyStoredUserProfile = (user: User, profiles?: Record<string, Partial<User>>): User => {
+  const store = profiles || loadStoredUserProfiles();
+  const cleanEmail = (user.email || '').trim().toLowerCase();
+  const saved = store[user.id] || (cleanEmail ? store[cleanEmail] : undefined);
+  const base = saved
+    ? {
+        ...user,
+        ...saved,
+        id: user.id,
+        email: user.email || saved.email || '',
+        role: user.role || saved.role,
+      }
+    : { ...user };
+
+  if (!base.avatar && user.id) {
+    const localAvatar = getCleanStoredAvatar(user.id);
+    if (localAvatar) base.avatar = localAvatar;
+  }
+  if (!base.banner && user.id) {
+    const localBanner = getCleanStoredBanner(user.id);
+    if (localBanner) base.banner = localBanner;
+  }
+  return base;
 };
 
 export const LMSContext = createContext<LMSContextType | undefined>(undefined);
@@ -1015,6 +1090,10 @@ export const resolveDirectusUserName = (userOrId: any, fallbackName = ''): strin
 
 export const resolveDirectusUserAvatar = (userOrId: any, fallbackAvatar = ''): string => {
   if (!userOrId) return fallbackAvatar;
+  if (typeof userOrId === 'string') {
+    const assetUrl = resolveDirectusAssetUrl(userOrId);
+    return assetUrl || fallbackAvatar;
+  }
   if (typeof userOrId === 'object' && userOrId !== null) {
     if (userOrId.avatar) {
       const assetUrl = resolveDirectusAssetUrl(userOrId.avatar);
@@ -1023,6 +1102,14 @@ export const resolveDirectusUserAvatar = (userOrId: any, fallbackAvatar = ''): s
     if (userOrId.avatarUrl) return userOrId.avatarUrl;
   }
   return fallbackAvatar;
+};
+
+export const resolveDirectusUserBanner = (userOrRow: any, fallbackBanner = ''): string => {
+  if (!userOrRow) return fallbackBanner;
+  const raw = typeof userOrRow === 'string' ? userOrRow : userOrRow.banner;
+  if (!raw) return fallbackBanner;
+  const assetUrl = resolveDirectusAssetUrl(raw);
+  return assetUrl || fallbackBanner;
 };
 
 // Canonical Directus user-row → User mapping (same predicate as the user
@@ -1038,12 +1125,16 @@ export const mapLikhaUserRowToUser = (row: any): User => {
         : roleName.includes('staff')
           ? 'staff'
           : 'student';
-  return {
+  const storedAvatar = getCleanStoredAvatar(row?.id);
+  const storedBanner = getCleanStoredBanner(row?.id);
+  const resolvedBanner = resolveDirectusUserBanner(row, storedBanner || '');
+  return applyStoredUserProfile({
     id: String(row?.id ?? ''),
     name: resolveDirectusUserName(row, row?.email ?? ''),
     email: row?.email ?? '',
     role,
-    avatar: resolveDirectusUserAvatar(row, ''),
+    avatar: resolveDirectusUserAvatar(row, '') || storedAvatar,
+    banner: resolvedBanner,
     department: row?.department || 'College of Computer Science',
     title: row?.title || (role === 'student' ? 'Undergraduate Student' : 'Faculty Instructor'),
     firstName: row?.first_name || undefined,
@@ -1051,7 +1142,7 @@ export const mapLikhaUserRowToUser = (row: any): User => {
     lastName: row?.last_name || undefined,
     yearLevel: row?.year_level !== undefined ? Number(row.year_level) : (row?.yearLevel !== undefined ? Number(row.yearLevel) : undefined),
     yearsOfTeaching: row?.years_of_teaching !== undefined ? Number(row.years_of_teaching) : (row?.yearsOfTeaching !== undefined ? Number(row.yearsOfTeaching) : undefined),
-  };
+  });
 };
 
 const splitDisplayName = (name: string): { first_name: string; last_name: string } => {
@@ -1894,6 +1985,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               cover_image: c.cover_image,
               instructor: c.instructor,
               instructor_id: c.instructor_id,
+              schoolYear: c.schoolYear || c.school_year || c.term?.match(/\b\d{4}-\d{4}\b/)?.[0] || undefined,
             })),
           })),
         Promise.resolve()
@@ -1956,14 +2048,26 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       // User directory: Likha ERP users; empty/error → just the active user
       try {
+        const storedProfiles = loadStoredUserProfiles();
         const likhaUsers = await likhaLmsApi.users.getUsers();
         if (Array.isArray(likhaUsers) && likhaUsers.length > 0) {
           const pendingList = pendingRegistrationsRef.current || pendingRegistrations;
           const userEmail = (user.email || '').trim().toLowerCase();
           const activeUserReg = pendingList.find(r => r.email?.trim().toLowerCase() === userEmail);
-          let effectiveActiveUser = user;
+          const activeLikhaRow = likhaUsers.find((u: any) => u.id === user.id);
+          const activeAvatar = activeLikhaRow?.avatar
+            ? resolveDirectusUserAvatar(activeLikhaRow.avatar)
+            : (user.avatar || getCleanStoredAvatar(user.id));
+          const activeBanner = activeLikhaRow?.banner
+            ? resolveDirectusUserBanner(activeLikhaRow.banner)
+            : (user.banner || getCleanStoredBanner(user.id));
+          let effectiveActiveUser = applyStoredUserProfile({
+            ...user,
+            avatar: activeAvatar,
+            banner: activeBanner,
+          }, storedProfiles);
           if (activeUserReg?.role === 'student' && user.role !== 'student') {
-            effectiveActiveUser = { ...user, role: 'student', title: 'Undergraduate Student' };
+            effectiveActiveUser = { ...effectiveActiveUser, role: 'student', title: 'Undergraduate Student' };
           }
           const others = likhaUsers
             .filter((u: any) => u.id !== user.id)
@@ -1991,7 +2095,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 email: u.email,
                 role: mapped.role,
                 adminSubrole: mapped.adminSubrole,
-                avatar: u.avatar ? `https://gabay.zyberlab.com/assets/${u.avatar}` : '',
+                avatar: u.avatar
+                  ? resolveDirectusUserAvatar(u.avatar)
+                  : getCleanStoredAvatar(u.id),
+                banner: u.banner
+                  ? resolveDirectusUserBanner(u.banner)
+                  : getCleanStoredBanner(u.id),
                 department:
                   u.department ||
                   (mapped.role === 'superadmin' ? 'Office of the Chancellor' : 'Department of Computer Science'),
@@ -2002,7 +2111,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 yearLevel: u.year_level !== undefined ? Number(u.year_level) : (u.yearLevel !== undefined ? Number(u.yearLevel) : undefined),
                 yearsOfTeaching: u.years_of_teaching !== undefined ? Number(u.years_of_teaching) : (u.yearsOfTeaching !== undefined ? Number(u.yearsOfTeaching) : undefined),
               };
-              return normalizeChancellorUser(baseUser);
+              return normalizeChancellorUser(applyStoredUserProfile(baseUser, storedProfiles));
             });
           fresh.users = [normalizeChancellorUser(effectiveActiveUser), ...others].map(u => {
             if (u.schoolYear) return u;
@@ -2013,7 +2122,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             };
           });
         } else {
-          const norm = normalizeChancellorUser(user);
+          const norm = normalizeChancellorUser(applyStoredUserProfile(user, storedProfiles));
           const activeSY = norm.collegeId ? getActiveSchoolYearForCollege(norm.collegeId) : getActiveSchoolYearForCollege('col-ccs');
           fresh.users = [{
             ...norm,
@@ -2021,7 +2130,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }];
         }
       } catch {
-        const norm = normalizeChancellorUser(user);
+        const storedProfiles = loadStoredUserProfiles();
+        const norm = normalizeChancellorUser(applyStoredUserProfile(user, storedProfiles));
         const activeSY = norm.collegeId ? getActiveSchoolYearForCollege(norm.collegeId) : getActiveSchoolYearForCollege('col-ccs');
         fresh.users = [{
           ...norm,
@@ -2031,7 +2141,15 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       fresh.courses = coursesRes.courses.map(normalizeCourseSyllabus).map(c => {
         if (c.schoolYear) return c;
-        const colId = (c as any).collegeId || (c as any).college_id || 'col-ccs';
+        const termYearMatch = c.term?.match(/\b\d{4}-\d{4}\b/)?.[0];
+        if (termYearMatch) {
+          return {
+            ...c,
+            schoolYear: termYearMatch,
+          };
+        }
+        const inst = fresh.users?.find(u => u.id === (c.instructorId || (c as any).instructor_id));
+        const colId = (c as any).collegeId || (c as any).college_id || inst?.collegeId || 'col-ccs';
         const activeSY = getActiveSchoolYearForCollege(colId) || getActiveSchoolYearForCollege('col-ccs');
         return {
           ...c,
@@ -2641,7 +2759,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 email: me.email,
                 role: mapped.role,
                 adminSubrole: mapped.adminSubrole,
-                avatar: me.avatar ? `https://gabay.zyberlab.com/assets/${me.avatar}` : '',
+                avatar: me.avatar
+                  ? resolveDirectusUserAvatar(me.avatar)
+                  : getCleanStoredAvatar(me.id),
+                banner: me.banner
+                  ? resolveDirectusUserBanner(me.banner)
+                  : getCleanStoredBanner(me.id),
                 department:
                   me.department ||
                   (mapped.role === 'superadmin' ? 'Office of the Chancellor' : 'Department of Computer Science'),
@@ -2651,7 +2774,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 yearLevel: me.year_level !== undefined ? Number(me.year_level) : (me.yearLevel !== undefined ? Number(me.yearLevel) : undefined),
                 yearsOfTeaching: me.years_of_teaching !== undefined ? Number(me.years_of_teaching) : (me.yearsOfTeaching !== undefined ? Number(me.yearsOfTeaching) : undefined),
               };
-              user = normalizeChancellorUser(rawMeUser);
+              user = normalizeChancellorUser(applyStoredUserProfile(rawMeUser));
             }
           } catch (likhaErr: any) {
             // If Likha explicitly returns 401 Unauthorized, the stored token is expired/invalid.
@@ -2769,6 +2892,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           } else if (pending?.role === 'faculty' && mapped.role !== 'faculty' && mapped.role !== 'admin' && mapped.role !== 'superadmin') {
             mapped = { role: 'faculty', title: 'Instructor' };
           }
+          const userAvatar = resolveDirectusUserAvatar(likhaAuth.user, '') ||
+            getCleanStoredAvatar(likhaAuth.user.id);
+          const userBanner = resolveDirectusUserBanner(likhaAuth.user.banner, '') ||
+            getCleanStoredBanner(likhaAuth.user.id);
           const rawMappedUser: User = {
             id: likhaAuth.user.id,
             name: resolveDirectusUserName(likhaAuth.user, likhaAuth.user.email),
@@ -2778,7 +2905,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             email: likhaAuth.user.email,
             role: mapped.role,
             adminSubrole: mapped.adminSubrole,
-            avatar: likhaAuth.user.avatar ? `${likhaLmsApi ? 'https://gabay.zyberlab.com/assets/' + likhaAuth.user.avatar : ''}` : '',
+            avatar: userAvatar,
+            banner: userBanner,
             department:
               likhaAuth.user.department ||
               (mapped.role === 'superadmin' ? 'Office of the Chancellor' : 'Department of Computer Science'),
@@ -2788,12 +2916,13 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             yearLevel: likhaAuth.user.year_level !== undefined ? Number(likhaAuth.user.year_level) : (likhaAuth.user.yearLevel !== undefined ? Number(likhaAuth.user.yearLevel) : undefined),
             yearsOfTeaching: likhaAuth.user.years_of_teaching !== undefined ? Number(likhaAuth.user.years_of_teaching) : (likhaAuth.user.yearsOfTeaching !== undefined ? Number(likhaAuth.user.yearsOfTeaching) : undefined),
           };
-          const mappedUser = normalizeChancellorUser(rawMappedUser);
+          const mappedUser = normalizeChancellorUser(applyStoredUserProfile(rawMappedUser));
           setToken(likhaAuth.token);
           const essentialLikha = await refreshEssential(mappedUser);
           void refreshDeferred(essentialLikha.fresh, essentialLikha.courses, essentialLikha.run);
-          setCurrentUser(mappedUser);
-          return { success: true, user: mappedUser };
+          const effectiveUser = essentialLikha.fresh.users.find(u => u.id === mappedUser.id) || mappedUser;
+          setCurrentUser(effectiveUser);
+          return { success: true, user: effectiveUser };
         }
       } catch (likhaErr: any) {
         const msg = String(likhaErr?.message || '');
@@ -2807,7 +2936,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       u => (u.email.toLowerCase() === cleanEmail || u.studentId?.toLowerCase() === cleanEmail)
     );
     if (localUser) {
-      const effectiveUser = normalizeChancellorUser(localUser);
+      const effectiveUser = normalizeChancellorUser(applyStoredUserProfile(localUser));
       if (!effectiveUser.password || effectiveUser.password !== password) {
         return { success: false, message: 'Invalid email or password.' };
       }
@@ -2819,6 +2948,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const logout = () => {
+    try {
+      likhaLmsApi.auth.logout();
+    } catch (_) {}
     clearToken();
     bootstrapRef.current++;
     sprHydratedRef.current.clear();
@@ -3132,7 +3264,15 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         credits: (row as any)?.credits || courseData.credits || 3,
         chedComplianceCode: (row as any)?.ched_compliance_code || courseData.chedComplianceCode || 'CMO-25-2015',
         joinCode: (row as any)?.join_code || uniqueJoinCode,
-        schoolYear: courseData.schoolYear || (activeUser?.collegeId ? getActiveSchoolYearForCollege(activeUser.collegeId)?.year : undefined) || getActiveSchoolYearForCollege('col-ccs')?.year || '2025-2026',
+        schoolYear:
+          courseData.schoolYear ||
+          courseData.term?.match(/\b\d{4}-\d{4}\b/)?.[0] ||
+          (activeUser?.collegeId ? getActiveSchoolYearForCollege(activeUser.collegeId)?.year : undefined) ||
+          (departments.find(d => d.id === activeUser?.department || d.name?.toLowerCase() === activeUser?.department?.toLowerCase() || d.chairpersonId === activeUser?.id)?.collegeId
+            ? getActiveSchoolYearForCollege(departments.find(d => d.id === activeUser?.department || d.name?.toLowerCase() === activeUser?.department?.toLowerCase() || d.chairpersonId === activeUser?.id)!.collegeId)?.year
+            : undefined) ||
+          getActiveSchoolYearForCollege('col-ccs')?.year ||
+          '2025-2026',
       };
 
       setDb(prev => ({
@@ -3910,11 +4050,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const updateUser = async (id: string, updates: Partial<User> & { banner?: string }): Promise<boolean> => {
-    // Directus PATCH accepts core identity fields plus the role UUID FK
-    // (avatar URLs/titles stay local-only: no known writable field / upload
-    // UX yet). Unknown role names resolve to null and stay local-only.
-    const patchBody: Record<string, string> = {};
+  const updateUser = async (id: string, updates: Partial<User> & { banner?: string; avatarFileId?: string }): Promise<boolean> => {
+    // Directus PATCH accepts core identity fields plus the role UUID FK, avatar file UUID, and banner string.
+    const patchBody: Record<string, any> = {};
     if (updates.name !== undefined) {
       const { first_name, last_name } = splitDisplayName(updates.name);
       patchBody.first_name = first_name;
@@ -3936,9 +4074,39 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       if (roleId) patchBody.role = roleId;
     }
+
+    // Avatar patch: extract directus_files UUID if present
+    if (updates.avatar !== undefined) {
+      if (!updates.avatar) {
+        patchBody.avatar = null;
+        if (typeof window !== 'undefined') localStorage.removeItem(`gabay_avatar_${id}`);
+      } else {
+        const uuidMatch = updates.avatar.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+        const fileUuid = updates.avatarFileId || (uuidMatch ? uuidMatch[1] : null);
+        if (fileUuid) {
+          patchBody.avatar = fileUuid;
+        }
+        if (typeof window !== 'undefined') localStorage.setItem(`gabay_avatar_${id}`, updates.avatar);
+      }
+    }
+
+    // Banner patch: varchar(255) in directus_users
+    if (updates.banner !== undefined) {
+      if (!updates.banner) {
+        patchBody.banner = null;
+        if (typeof window !== 'undefined') localStorage.removeItem(`gabay_banner_${id}`);
+      } else {
+        patchBody.banner = updates.banner;
+        if (typeof window !== 'undefined') localStorage.setItem(`gabay_banner_${id}`, updates.banner);
+      }
+    }
+
     const localUpdates = Object.fromEntries(
       Object.entries(updates).filter(([, v]) => v !== undefined)
     ) as Partial<User>;
+
+    const targetUser = db.users.find(u => u.id === id) || (currentUser && currentUser.id === id ? currentUser : undefined);
+    const emailHint = updates.email || targetUser?.email;
 
     try {
       if (Object.keys(patchBody).length > 0) {
@@ -3948,7 +4116,14 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         // keeps its local value unless explicitly updated. NOTE: `role` is
         // deliberately absent here, so a server-side role rejection is
         // invisible — the requested role still applies locally below.
-        const serverEcho = { name: mapped.name, email: mapped.email, department: mapped.department };
+        const serverEcho = {
+          name: mapped.name,
+          email: mapped.email,
+          department: mapped.department,
+          ...(mapped.avatar ? { avatar: mapped.avatar } : {}),
+          ...(mapped.banner ? { banner: mapped.banner } : {}),
+        };
+        saveStoredUserProfile(id, { ...serverEcho, ...localUpdates }, emailHint);
         setDb(prev => ({
           ...prev,
           users: prev.users.map(u => (u.id === id ? { ...u, ...serverEcho, ...localUpdates } : u))
@@ -3957,6 +4132,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         // avatar/banner/name changes render instantly without a reload.
         setCurrentUser(prev => (prev && prev.id === id ? { ...prev, ...serverEcho, ...localUpdates } : prev));
       } else {
+        saveStoredUserProfile(id, localUpdates, emailHint);
         setDb(prev => ({
           ...prev,
           users: prev.users.map(u => (u.id === id ? { ...u, ...localUpdates } : u))
@@ -3965,6 +4141,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return true;
     } catch (err) {
+      saveStoredUserProfile(id, localUpdates, emailHint);
+      setDb(prev => ({
+        ...prev,
+        users: prev.users.map(u => (u.id === id ? { ...u, ...localUpdates } : u))
+      }));
+      setCurrentUser(prev => (prev && prev.id === id ? { ...prev, ...localUpdates } : prev));
       const message = err instanceof Error ? err.message : 'Failed to update user.';
       setLastError(message);
       showAlert(message, 'Update User Failed');
@@ -4917,19 +5099,22 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   );
 
   const getActiveSchoolYearForCollege = useCallback(
-    (collegeId: string): SchoolYear | undefined => {
+    (collegeId?: string): SchoolYear | undefined => {
       const list = schoolYearsRef.current || schoolYears;
-      const activeYearName = collegeActiveSYRef.current?.[collegeId] || collegeActiveSchoolYears?.[collegeId];
-      if (activeYearName) {
-        const found = list.find(sy => sy.year.trim().toLowerCase() === activeYearName.trim().toLowerCase());
-        if (found) return { ...found, isActive: true };
+      const targetColId = collegeId || activeUser?.collegeId;
+      if (targetColId) {
+        const activeYearName = collegeActiveSYRef.current?.[targetColId] || collegeActiveSchoolYears?.[targetColId];
+        if (activeYearName) {
+          const found = list.find(sy => sy.year.trim().toLowerCase() === activeYearName.trim().toLowerCase());
+          if (found) return { ...found, isActive: true };
+        }
       }
       // If college has no explicit active year recorded, default to 2025-2026 so admin baseline changes
       // do not inadvertently roll over colleges without Dean action
       const initialDefault = list.find(sy => sy.year === '2025-2026') || list.find(sy => sy.isActive) || list[0];
       return initialDefault ? { ...initialDefault, isActive: true } : undefined;
     },
-    [schoolYears, collegeActiveSchoolYears]
+    [schoolYears, collegeActiveSchoolYears, activeUser]
   );
 
   const getBaselineSchoolYear = useCallback((): SchoolYear | undefined => {
@@ -5041,6 +5226,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Rollover: Set the target school year as the active school year for this college
     setCollegeActiveSchoolYears(prev => {
       const next = { ...prev, [collegeId]: target.year };
+      collegeActiveSYRef.current = next;
       safeSetLocalStorage(STORAGE_KEY_COLLEGE_ACTIVE_SY, JSON.stringify(next));
       return next;
     });

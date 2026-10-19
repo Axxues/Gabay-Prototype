@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import {
   UploadCloud,
   FileSpreadsheet,
@@ -39,7 +39,12 @@ export const ChairSheetUploadView: React.FC<ChairSheetUploadViewProps> = ({
     db,
     createCourse,
     showAlert,
-    getActiveSchoolYearForCollege
+    colleges,
+    departments,
+    schoolYears,
+    getSchoolYearsByCollege,
+    getActiveSchoolYearForCollege,
+    getBaselineSchoolYear,
   } = useLMS();
 
   const [rows, setRows] = useState<ValidatedChairSheetRow[]>([]);
@@ -56,12 +61,60 @@ export const ChairSheetUploadView: React.FC<ChairSheetUploadViewProps> = ({
     return (db.users || []).filter(isEligibleFaculty);
   }, [db.users]);
 
-  const activeSchoolYear = useMemo(() => {
-    const collegiateSY = activeUser?.collegeId
-      ? getActiveSchoolYearForCollege?.(activeUser.collegeId)
-      : undefined;
-    return collegiateSY?.year || '2025-2026';
-  }, [activeUser, getActiveSchoolYearForCollege]);
+  // Robust collegiate scoping: resolve via activeUser.collegeId, department affiliation, or dean assignment
+  const userCollegeId = useMemo(() => {
+    if (activeUser?.collegeId) return activeUser.collegeId;
+    if (activeUser?.department && departments) {
+      const match = departments.find(
+        d =>
+          d.id === activeUser.department ||
+          d.name?.toLowerCase() === activeUser.department.toLowerCase() ||
+          d.code?.toLowerCase() === activeUser.department.toLowerCase() ||
+          d.chairpersonId === activeUser.id
+      );
+      if (match?.collegeId) return match.collegeId;
+    }
+    if (colleges) {
+      const deanMatch = colleges.find(
+        c =>
+          c.deanId === activeUser?.id ||
+          (activeUser?.collegeName && c.name?.toLowerCase() === activeUser.collegeName.toLowerCase())
+      );
+      if (deanMatch?.id) return deanMatch.id;
+    }
+    return 'col-ccs';
+  }, [activeUser, departments, colleges]);
+
+  const defaultSchoolYear = useMemo(() => {
+    if (getActiveSchoolYearForCollege) {
+      const activeSy = getActiveSchoolYearForCollege(userCollegeId);
+      if (activeSy?.year) return activeSy.year;
+    }
+    const list = getSchoolYearsByCollege ? getSchoolYearsByCollege(userCollegeId) : [];
+    const active = list.find(sy => sy.isActive);
+    if (active?.year) return active.year;
+    const baseline = getBaselineSchoolYear?.();
+    return baseline?.year || '2025-2026';
+  }, [getActiveSchoolYearForCollege, getSchoolYearsByCollege, getBaselineSchoolYear, userCollegeId]);
+
+  const [selectedSchoolYear, setSelectedSchoolYear] = useState<string>(() => defaultSchoolYear);
+
+  useEffect(() => {
+    if (defaultSchoolYear) {
+      setSelectedSchoolYear(defaultSchoolYear);
+    }
+  }, [defaultSchoolYear]);
+
+  const schoolYearOptions = useMemo(() => {
+    const years = new Set<string>();
+    const list = getSchoolYearsByCollege ? getSchoolYearsByCollege(userCollegeId) : (schoolYears || []);
+    list.forEach(sy => {
+      if (sy.year) years.add(sy.year.trim());
+    });
+    if (defaultSchoolYear) years.add(defaultSchoolYear);
+    years.add('2025-2026');
+    return Array.from(years).sort((a, b) => b.localeCompare(a));
+  }, [getSchoolYearsByCollege, userCollegeId, schoolYears, defaultSchoolYear]);
 
   const handleProcessFile = async (file: File) => {
     if (!file) return;
@@ -202,8 +255,8 @@ export const ChairSheetUploadView: React.FC<ChairSheetUploadViewProps> = ({
           section: row.yearAndSection.trim(),
           instructorId: row.matchedUser?.id,
           instructorName: row.matchedUser?.name || `${row.firstName} ${row.lastName}`.trim(),
-          schoolYear: activeSchoolYear,
-          term: `1st Sem AY ${activeSchoolYear}`,
+          schoolYear: selectedSchoolYear,
+          term: `1st Sem AY ${selectedSchoolYear}`,
           published: true,
         });
 
@@ -214,7 +267,7 @@ export const ChairSheetUploadView: React.FC<ChairSheetUploadViewProps> = ({
 
       showAlert({
         title: 'Courses Generated Successfully',
-        message: `Successfully initialized ${totalCount} course shells for AY ${activeSchoolYear} and assigned them to their respective faculty.`,
+        message: `Successfully initialized ${totalCount} course shells for AY ${selectedSchoolYear} and assigned them to their respective faculty.`,
         type: 'success',
       });
 
@@ -238,8 +291,8 @@ export const ChairSheetUploadView: React.FC<ChairSheetUploadViewProps> = ({
   return (
     <div className="flex min-h-full w-full flex-1 flex-col space-y-6">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-border/70">
-        <div className="flex items-center space-x-3">
+      <div className="flex flex-col flex-wrap sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-border/70">
+        <div className="flex min-w-0 items-center space-x-3">
           <button
             type="button"
             onClick={() => onNavigateTab('dashboard')}
@@ -248,7 +301,7 @@ export const ChairSheetUploadView: React.FC<ChairSheetUploadViewProps> = ({
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
-          <div>
+          <div className="min-w-0">
             <div className="flex items-center space-x-2">
               <h1 className="text-[22px] font-extrabold tracking-tight text-foreground">
                 Upload Department Chair-Sheet
@@ -263,7 +316,30 @@ export const ChairSheetUploadView: React.FC<ChairSheetUploadViewProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center space-x-2">
+        {/* Actions: shrink-0 keeps the cluster at full width so Approve never drops below Reupload.
+            sm:ml-auto holds it at the right edge, even if the whole cluster wraps under the title. */}
+        <div className="flex shrink-0 flex-wrap items-center gap-2 sm:ml-auto sm:flex-nowrap">
+          {/* Target Academic Year Selector */}
+          <div className="flex items-center space-x-2 bg-muted/40 border border-border px-3 py-1.5 rounded-xl">
+            <label htmlFor="chair-sheet-ay-select" className="text-xs font-semibold text-muted-foreground whitespace-nowrap">
+              Academic Year:
+            </label>
+            <select
+              id="chair-sheet-ay-select"
+              value={selectedSchoolYear}
+              onChange={e => setSelectedSchoolYear(e.target.value)}
+              disabled={isSubmitting}
+              className="bg-transparent border-0 text-xs font-bold text-foreground outline-none cursor-pointer disabled:opacity-50"
+              aria-label="Select Target Academic Year for Chair-Sheet"
+            >
+              {schoolYearOptions.map(sy => (
+                <option key={sy} value={sy} className="bg-background text-foreground">
+                  AY {sy}{sy === defaultSchoolYear ? ' (Active)' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
           {rows.length > 0 && (
             <>
               <button
@@ -273,7 +349,7 @@ export const ChairSheetUploadView: React.FC<ChairSheetUploadViewProps> = ({
                   setFileName(null);
                 }}
                 disabled={isSubmitting}
-                className="px-3.5 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-colors cursor-pointer disabled:opacity-50"
+                className="px-3.5 py-2 text-xs font-semibold whitespace-nowrap text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-colors cursor-pointer disabled:opacity-50"
               >
                 <RefreshCw className="w-3.5 h-3.5 inline mr-1.5" />
                 Reupload
@@ -287,7 +363,7 @@ export const ChairSheetUploadView: React.FC<ChairSheetUploadViewProps> = ({
                   }
                 }}
                 disabled={!canApprove || isSubmitting}
-                className={`px-5 py-2 text-xs font-bold rounded-xl shadow-xs transition-all flex items-center space-x-1.5 cursor-pointer ${
+                className={`px-5 py-2 text-xs font-bold whitespace-nowrap rounded-xl shadow-xs transition-all flex items-center space-x-1.5 cursor-pointer ${
                   canApprove
                     ? 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-primary-sm active:scale-[0.98]'
                     : 'bg-muted text-muted-foreground cursor-not-allowed opacity-70'
@@ -410,7 +486,7 @@ export const ChairSheetUploadView: React.FC<ChairSheetUploadViewProps> = ({
                 Academic Scope
               </span>
               <span className="text-xs font-extrabold text-foreground mt-1 block">
-                AY {activeSchoolYear}
+                AY {selectedSchoolYear}
               </span>
             </div>
           </div>
@@ -553,7 +629,7 @@ export const ChairSheetUploadView: React.FC<ChairSheetUploadViewProps> = ({
             </div>
 
             <div className="text-xs sm:text-sm text-muted-foreground leading-relaxed pl-1 font-sans">
-              Are you sure you want to approve and initialize <span className="font-semibold text-foreground">{totalCount} course shell{totalCount === 1 ? '' : 's'}</span> for Academic Year <span className="font-semibold text-foreground">{activeSchoolYear}</span>? Each course will be officially generated and assigned to its verified faculty.
+              Are you sure you want to approve and initialize <span className="font-semibold text-foreground">{totalCount} course shell{totalCount === 1 ? '' : 's'}</span> for Academic Year <span className="font-semibold text-foreground">{selectedSchoolYear}</span>? Each course will be officially generated and assigned to its verified faculty.
             </div>
 
             <div className="flex items-center justify-end space-x-2 pt-2">

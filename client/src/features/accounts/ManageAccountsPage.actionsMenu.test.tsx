@@ -155,6 +155,19 @@ describe('ManageAccountsPage Actions Column (3-Dot Menu & View Profile)', () => 
     expect(within(menu).getByRole('menuitem', { name: /^delete$/i })).toBeInTheDocument();
   });
 
+  it('renders menu above the trigger button with bottom-full class when row is near the bottom', () => {
+    render(<ManageAccountsPage />);
+
+    // In our test, sampleStudent is near the bottom
+    const actionButton = screen.getByRole('button', { name: `Actions for ${sampleStudent.name}` });
+    fireEvent.click(actionButton);
+
+    const menu = screen.getByRole('menu');
+    expect(menu).toBeInTheDocument();
+    // Verify it contains bottom-full and mb-1.5 to position above
+    expect(menu.className).toContain('bottom-full');
+  });
+
   it('closes dropdown menu when Escape key is pressed or click outside occurs', () => {
     render(<ManageAccountsPage />);
 
@@ -173,7 +186,20 @@ describe('ManageAccountsPage Actions Column (3-Dot Menu & View Profile)', () => 
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   });
 
-  it('opens User Profile Details dialog when View is clicked for a student and shows student profile fields', () => {
+  it('calls onViewAccount when View is clicked if onViewAccount prop is provided', () => {
+    const mockOnView = vi.fn();
+    render(<ManageAccountsPage onViewAccount={mockOnView} />);
+
+    const actionButton = screen.getByRole('button', { name: `Actions for ${sampleStudent.name}` });
+    fireEvent.click(actionButton);
+
+    const viewOption = screen.getByRole('menuitem', { name: /^view$/i });
+    fireEvent.click(viewOption);
+
+    expect(mockOnView).toHaveBeenCalledWith(sampleStudent);
+  });
+
+  it('navigates to /accounts/:userId/view when View is clicked and no onViewAccount prop is passed', () => {
     render(<ManageAccountsPage />);
 
     const actionButton = screen.getByRole('button', { name: `Actions for ${sampleStudent.name}` });
@@ -182,41 +208,7 @@ describe('ManageAccountsPage Actions Column (3-Dot Menu & View Profile)', () => 
     const viewOption = screen.getByRole('menuitem', { name: /^view$/i });
     fireEvent.click(viewOption);
 
-    // Profile Modal should appear
-    expect(screen.getByText('User Profile Details')).toBeInTheDocument();
-    expect(screen.getByText('Institutional identity, academic credentials, and contact details.')).toBeInTheDocument();
-
-    // Check student details in modal
-    expect(screen.getAllByText('Maria Santos').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('maria@dmmmsu.edu.ph').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('2026-1001').length).toBeGreaterThan(0);
-    expect(screen.getByText('Year 2')).toBeInTheDocument();
-    expect(screen.getByText('+63 999 111 2233')).toBeInTheDocument();
-    expect(screen.getByText('Elena Cruz Santos')).toBeInTheDocument();
-    expect(screen.getByText('Roberto Gomez Santos')).toBeInTheDocument();
-    expect(screen.getByText('+63 917 888 9900')).toBeInTheDocument();
-
-    // Close button dismisses modal
-    const closeBtn = screen.getByRole('button', { name: /^close$/i });
-    fireEvent.click(closeBtn);
-    expect(screen.queryByText('User Profile Details')).not.toBeInTheDocument();
-  });
-
-  it('opens User Profile Details dialog when View is clicked for a faculty and shows educational background', () => {
-    render(<ManageAccountsPage />);
-
-    const actionButton = screen.getByRole('button', { name: `Actions for ${sampleFaculty.name}` });
-    fireEvent.click(actionButton);
-
-    const viewOption = screen.getByRole('menuitem', { name: /^view$/i });
-    fireEvent.click(viewOption);
-
-    expect(screen.getByText('User Profile Details')).toBeInTheDocument();
-    expect(screen.getAllByText('Prof. Alice Rivera').length).toBeGreaterThan(0);
-    expect(screen.getByText('8 Years')).toBeInTheDocument();
-    expect(screen.getByText("Master's Degree")).toBeInTheDocument();
-    expect(screen.getByText('University of the Philippines')).toBeInTheDocument();
-    expect(screen.getByText('Computer Science')).toBeInTheDocument();
+    expect(mockNavigate).toHaveBeenCalledWith(`/accounts/${encodeURIComponent(sampleStudent.id)}/view`);
   });
 
   it('calls onEditAccount or navigates when Edit is selected', () => {
@@ -232,14 +224,53 @@ describe('ManageAccountsPage Actions Column (3-Dot Menu & View Profile)', () => 
     expect(mockOnEdit).toHaveBeenCalledWith(sampleStudent);
   });
 
-  it('disables Delete option for the currently active session user', () => {
+  it('disables Edit and Delete options for the currently active session user', () => {
     render(<ManageAccountsPage />);
 
     const actionButton = screen.getByRole('button', { name: `Actions for ${activeAdmin.name}` });
     fireEvent.click(actionButton);
 
+    const editOption = screen.getByRole('menuitem', { name: /^edit$/i });
+    expect(editOption).toBeDisabled();
+
     const deleteOption = screen.getByRole('menuitem', { name: /^delete$/i });
     expect(deleteOption).toBeDisabled();
+  });
+
+  it('does not trigger onEditAccount when clicking disabled Edit on active session user', () => {
+    const mockOnEdit = vi.fn();
+    render(<ManageAccountsPage onEditAccount={mockOnEdit} />);
+
+    const actionButton = screen.getByRole('button', { name: `Actions for ${activeAdmin.name}` });
+    fireEvent.click(actionButton);
+
+    const editOption = screen.getByRole('menuitem', { name: /^edit$/i });
+    fireEvent.click(editOption);
+
+    expect(mockOnEdit).not.toHaveBeenCalled();
+  });
+
+  it('renders menu downward with top-full for top row user to prevent hitting top table border', () => {
+    render(<ManageAccountsPage />);
+
+    const actionButton = screen.getByRole('button', { name: `Actions for ${activeAdmin.name}` });
+    fireEvent.click(actionButton);
+
+    const menu = screen.getByRole('menu');
+    expect(menu).toBeInTheDocument();
+    expect(menu.className).toContain('top-full');
+  });
+
+  it('does not render the View option for the currently active session user', () => {
+    render(<ManageAccountsPage />);
+
+    const actionButton = screen.getByRole('button', { name: `Actions for ${activeAdmin.name}` });
+    fireEvent.click(actionButton);
+
+    const menu = screen.getByRole('menu');
+    expect(within(menu).queryByRole('menuitem', { name: /^view$/i })).not.toBeInTheDocument();
+    expect(within(menu).getByRole('menuitem', { name: /^edit$/i })).toBeInTheDocument();
+    expect(within(menu).getByRole('menuitem', { name: /^delete$/i })).toBeInTheDocument();
   });
 
   it('allows opening delete confirmation modal for another user and executing delete', async () => {

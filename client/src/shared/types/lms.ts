@@ -1,4 +1,4 @@
-export type UserRole = 'superadmin' | 'admin' | 'faculty' | 'staff' | 'student';
+export type UserRole = 'superadmin' | 'admin' | 'dean' | 'chairperson' | 'faculty' | 'staff' | 'student';
 export type AdminSubrole = 'chancellor' | 'dean' | 'chairperson';
 export type VerificationStatus = 'pending' | 'verified' | 'rejected' | 'expired';
 

@@ -207,6 +207,36 @@ describe('ChairSheetUploadView', () => {
     expect(reuploadBtn).toBeInTheDocument();
   });
 
+  it('keeps the Approve button on the same non-wrapping row as Reupload, after it', async () => {
+    render(
+      <ChairSheetUploadView
+        onNavigateCourse={mockOnNavigateCourse}
+        onNavigateTab={mockOnNavigateTab}
+      />
+    );
+
+    const file = createTestWorkbookBuffer([
+      ['First Name', 'Middle Name', 'Last Name', 'Course Code', 'Descriptive Title', 'Year and Section'],
+      ['Charlie', 'Seli', 'Marzan', 'CSCC 103', 'Object Oriented Programming', '4-E'],
+    ]);
+
+    fireEvent.change(screen.getByTestId('chair-sheet-file-input'), { target: { files: [file] } });
+
+    const reuploadBtn = await screen.findByRole('button', { name: /Reupload/i });
+    const approveBtn = screen.getByRole('button', { name: /Approve & Create 1 Course/i });
+
+    // Approve sits after Reupload in the same action row
+    expect(reuploadBtn.parentElement).toBe(approveBtn.parentElement);
+    expect(
+      reuploadBtn.compareDocumentPosition(approveBtn) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+
+    // ...and that row is never squeezed into wrapping at desktop widths
+    const actionRow = approveBtn.parentElement as HTMLElement;
+    expect(actionRow.className).toContain('shrink-0');
+    expect(actionRow.className).toContain('flex-nowrap');
+  });
+
   it('renders download template button in dropzone', async () => {
     render(
       <ChairSheetUploadView
