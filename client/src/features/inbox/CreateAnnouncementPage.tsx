@@ -1,6 +1,8 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { useLMS } from '../../shared/context/LMSContext';
 import { uploadFileToPublic, isImageFile } from '../../shared/utils/fileUploader';
+import { findMatchingSiblingCourses } from '../../shared/utils/crossSectionSync';
+import { CrossSectionPromptModal } from '../../shared/components/common/CrossSectionPromptModal';
 import {
   ArrowLeft,
   Megaphone,
@@ -30,7 +32,7 @@ export const CreateAnnouncementPage: React.FC<CreateAnnouncementPageProps> = ({
   onBack,
   onAnnouncementCreated
 }) => {
-  const { db, createAnnouncement, showAlert } = useLMS();
+  const { db, createAnnouncement, showAlert, activeUser } = useLMS();
   const course = db.courses.find(c => c.id === courseId);
 
   const [title, setTitle] = useState('');
@@ -46,6 +48,11 @@ export const CreateAnnouncementPage: React.FC<CreateAnnouncementPageProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isFilePickerOpen, setIsFilePickerOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCrossSectionModalOpen, setIsCrossSectionModalOpen] = useState(false);
+
+  const siblingCourses = useMemo(() => {
+    return course ? findMatchingSiblingCourses(course, db.courses, activeUser?.id) : [];
+  }, [course, db.courses, activeUser?.id]);
 
   const isImageFileName = (name: string, url?: string): boolean => {
     return isImageFile(name, undefined, url);
@@ -102,6 +109,48 @@ export const CreateAnnouncementPage: React.FC<CreateAnnouncementPageProps> = ({
     });
   };
 
+  const executePublish = async (targetCourseIds: string[]) => {
+    const attachments = attachedFile
+      ? [{ name: attachedFile.name, size: attachedFile.size, url: attachedFile.url }]
+      : [];
+
+    setIsSubmitting(true);
+    try {
+      for (const targetId of targetCourseIds) {
+        await createAnnouncement({
+          courseId: targetId,
+          title: title.trim(),
+          content: content.trim(),
+          sectionId: 'all',
+          sectionRestriction: 'All Sections',
+          delayedUntil: delayPosting && delayedDate ? delayedDate : undefined,
+          allowComments,
+          usersMustPostBeforeReplies: false,
+          allowLiking,
+          pinned,
+          attachments
+        });
+      }
+
+      const count = targetCourseIds.length;
+      showAlert({
+        title: 'Announcement Published',
+        message: count > 1
+          ? `Announcement "${title.trim()}" published across ${count} sections successfully.`
+          : `Announcement "${title.trim()}" has been posted successfully.`,
+        type: 'success'
+      });
+
+      onAnnouncementCreated();
+    } catch {
+      // Context already surfaced the failure alert.
+      return;
+    } finally {
+      setIsSubmitting(false);
+      setIsCrossSectionModalOpen(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (upload.isUploading || isSubmitting) return;
@@ -114,41 +163,12 @@ export const CreateAnnouncementPage: React.FC<CreateAnnouncementPageProps> = ({
       return;
     }
 
-    const attachments = attachedFile
-      ? [{ name: attachedFile.name, size: attachedFile.size, url: attachedFile.url }]
-      : [];
-
-    setIsSubmitting(true);
-    try {
-      // Server files attachments automatically (area:announcements).
-      // One section per course: announcements always post to the whole course.
-      await createAnnouncement({
-        courseId,
-        title: title.trim(),
-        content: content.trim(),
-        sectionId: 'all',
-        sectionRestriction: 'All Sections',
-        delayedUntil: delayPosting && delayedDate ? delayedDate : undefined,
-        allowComments,
-        usersMustPostBeforeReplies: false,
-        allowLiking,
-        pinned,
-        attachments
-      });
-    } catch {
-      // Context already surfaced the failure alert.
+    if (siblingCourses.length > 0) {
+      setIsCrossSectionModalOpen(true);
       return;
-    } finally {
-      setIsSubmitting(false);
     }
 
-    showAlert({
-      title: 'Announcement Published',
-      message: `Announcement "${title.trim()}" has been posted successfully.`,
-      type: 'success'
-    });
-
-    onAnnouncementCreated();
+    await executePublish([courseId]);
   };
 
   return (
@@ -410,6 +430,21 @@ export const CreateAnnouncementPage: React.FC<CreateAnnouncementPageProps> = ({
           onSelect={handleSelectExistingFile}
         />
       )}
+
+      <CrossSectionPromptModal
+        isOpen={isCrossSectionModalOpen}
+        onClose={() => setIsCrossSectionModalOpen(false)}
+        itemType="announcement"
+        itemTitle={title.trim()}
+        siblingCourses={siblingCourses}
+        onConfirm={async (selectedIds) => {
+          await executePublish([courseId, ...selectedIds]);
+        }}
+        onSkipToCurrentOnly={async () => {
+          await executePublish([courseId]);
+        }}
+        isSubmitting={isSubmitting}
+      />
     </div>
   );
 };

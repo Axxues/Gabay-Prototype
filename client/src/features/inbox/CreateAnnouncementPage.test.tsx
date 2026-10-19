@@ -6,11 +6,32 @@ import React from 'react';
 const mocks = vi.hoisted(() => ({
   createAnnouncement: vi.fn(),
   showAlert: vi.fn(),
+  mockCourses: [
+    {
+      id: 'c1',
+      code: 'CS 101',
+      title: 'Data Structures',
+      section: 'BSCS 3-1',
+      schoolYear: '2026-2027',
+      term: '1st Semester',
+      instructorId: 'inst-1',
+    },
+    {
+      id: 'c2',
+      code: 'CS 101',
+      title: 'Data Structures',
+      section: 'BSCS 3-2',
+      schoolYear: '2026-2027',
+      term: '1st Semester',
+      instructorId: 'inst-1',
+    },
+  ],
 }));
 
 vi.mock('../../shared/context/LMSContext', () => ({
   useLMS: () => ({
-    db: { courses: [{ id: 'c1', code: 'CS 101' }] },
+    db: { courses: mocks.mockCourses },
+    activeUser: { id: 'inst-1', name: 'Dr. Santos', role: 'faculty' },
     createAnnouncement: mocks.createAnnouncement,
     showAlert: mocks.showAlert,
   }),
@@ -18,9 +39,9 @@ vi.mock('../../shared/context/LMSContext', () => ({
 
 import { CreateAnnouncementPage } from './CreateAnnouncementPage';
 
-function renderPage() {
+function renderPage(courseId = 'c1') {
   return render(
-    <CreateAnnouncementPage courseId="c1" onBack={() => {}} onAnnouncementCreated={() => {}} />
+    <CreateAnnouncementPage courseId={courseId} onBack={() => {}} onAnnouncementCreated={() => {}} />
   );
 }
 
@@ -33,48 +54,52 @@ function fillRequiredFields() {
   });
 }
 
-describe('CreateAnnouncementPage publish loading', () => {
+describe('CreateAnnouncementPage cross-section sync', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  test('publish button shows loading while the request is in flight', async () => {
-    let resolveSave!: (v: unknown) => void;
-    mocks.createAnnouncement.mockReturnValueOnce(
-      new Promise((resolve) => {
-        resolveSave = resolve;
-      })
-    );
+  test('prompts with CrossSectionPromptModal when sibling section exists and replicates to selected', async () => {
+    mocks.createAnnouncement.mockResolvedValue({ id: 'an1' });
     renderPage();
     fillRequiredFields();
 
     fireEvent.click(screen.getByRole('button', { name: 'Publish announcement' }));
 
-    expect(await screen.findByText(/publishing/i)).toBeInTheDocument();
+    // Interstitial modal should appear
+    expect(await screen.findByText(/Replicate Announcement Across Sections/i)).toBeInTheDocument();
+    expect(screen.getByText(/BSCS 3-2/)).toBeInTheDocument();
 
-    resolveSave({ id: 'an1' });
+    // Confirm replication
+    fireEvent.click(screen.getByRole('button', { name: /Publish to Selected Sections/i }));
+
     await waitFor(() => {
-      expect(mocks.createAnnouncement).toHaveBeenCalledTimes(1);
+      expect(mocks.createAnnouncement).toHaveBeenCalledTimes(2);
+      expect(mocks.createAnnouncement).toHaveBeenCalledWith(
+        expect.objectContaining({ courseId: 'c1', title: 'Midterm schedule' })
+      );
+      expect(mocks.createAnnouncement).toHaveBeenCalledWith(
+        expect.objectContaining({ courseId: 'c2', title: 'Midterm schedule' })
+      );
     });
   });
 
-  test('double submit publishes only once', async () => {
-    let resolveSave!: (v: unknown) => void;
-    mocks.createAnnouncement.mockReturnValueOnce(
-      new Promise((resolve) => {
-        resolveSave = resolve;
-      })
-    );
+  test('allows publishing only to current section from interstitial modal', async () => {
+    mocks.createAnnouncement.mockResolvedValue({ id: 'an1' });
     renderPage();
     fillRequiredFields();
 
-    const publish = screen.getByRole('button', { name: 'Publish announcement' });
-    fireEvent.click(publish);
-    fireEvent.click(publish);
+    fireEvent.click(screen.getByRole('button', { name: 'Publish announcement' }));
 
-    resolveSave({ id: 'an1' });
+    expect(await screen.findByText(/Replicate Announcement Across Sections/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Publish to Current Section Only/i }));
+
     await waitFor(() => {
       expect(mocks.createAnnouncement).toHaveBeenCalledTimes(1);
+      expect(mocks.createAnnouncement).toHaveBeenCalledWith(
+        expect.objectContaining({ courseId: 'c1', title: 'Midterm schedule' })
+      );
     });
   });
 });
