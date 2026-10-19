@@ -170,7 +170,7 @@ export const ChairSheetPreviewTable: React.FC<ChairSheetPreviewTableProps> = ({
                         { value: '', label: isValid ? 'Change assigned faculty...' : 'Choose registered faculty...' },
                         ...eligibleFaculty.map(f => ({
                           value: f.id,
-                          label: `${f.name} (${f.title || f.role})`,
+                          label: f.name,
                         })),
                       ]}
                     />

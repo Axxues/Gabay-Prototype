@@ -272,5 +272,19 @@ describe('LMSContextPanel Collapsible Assessments', () => {
       unmount();
     });
   });
+
+  test('renders no Learning Management navigation on the Create Leadership Account page', () => {
+    const { container } = render(
+      <LMSContextPanel
+        currentTab="create-leadership"
+        courseSubTab="modules"
+        onNavigateTab={() => {}}
+        onSelectCourseTab={() => {}}
+        onNavigateCourse={() => {}}
+      />
+    );
+
+    expect(container.firstChild).toBeNull();
+  });
 });
 

@@ -44,7 +44,7 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
     effectiveTermsForCourse
   } = useLMS() as ReturnType<typeof useLMS> & { effectiveTermsForCourse?: (courseId: string) => TermId[] };
 
-  const course = db.courses.find(c => c.id === courseId);
+  const course = (db.courses || []).find(c => c.id === courseId);
   const isAssignedInstructor = canManageCourseContent(course, activeUser);
   const courseExams = (db.exams || []).filter(q => q.courseId === courseId);
   const [activeExam, setActiveExam] = useState<Exam | null>(null);

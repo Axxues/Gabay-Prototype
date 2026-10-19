@@ -56,7 +56,7 @@ export const AssessmentsOverviewView: React.FC<AssessmentsOverviewViewProps> = (
   onNavigateCategory,
 }) => {
   const { db, activeRole, activeUser, effectiveTermsForCourse } = useLMS();
-  const course = db.courses.find(c => c.id === courseId);
+  const course = (db.courses || []).find(c => c.id === courseId);
   const isAssignedInstructor = canManageCourseContent(course, activeUser);
 
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');

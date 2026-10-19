@@ -72,7 +72,9 @@ export function isChairRole(user?: RoleResolvableUser | null, activeRole?: strin
   return (
     role === 'chairperson' ||
     role === 'chair' ||
-    ((role === 'admin' || role === 'superadmin') && (subrole === 'chairperson' || subrole === 'chair' || title.includes('chair')))
+    subrole === 'chairperson' ||
+    subrole === 'chair' ||
+    title.includes('chair')
   );
 }
 
@@ -131,11 +133,16 @@ export function canManageCourseContent(
   return isCourseAssignedInstructor(course, user);
 }
 
-/**
- * Course creation is strictly limited to Program Chairpersons via the Chair-Sheet upload workflow.
- * Faculty cannot manually create course shells; Dean and Admin act in a monitoring/audit capacity.
- */
 export function canCreateCourse(user?: RoleResolvableUser | null, activeRole?: string): boolean {
+  return isChairRole(user, activeRole);
+}
+
+/**
+ * Course deletion is strictly restricted to Program Chairpersons (who manage course offerings).
+ * Administrators, Faculty, Deans, and students cannot delete course shells.
+ */
+export function canDeleteCourse(user?: RoleResolvableUser | null, activeRole?: string): boolean {
+  if (!user && !activeRole) return false;
   return isChairRole(user, activeRole);
 }
 

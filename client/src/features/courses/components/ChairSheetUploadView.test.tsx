@@ -143,7 +143,7 @@ describe('ChairSheetUploadView', () => {
       />
     );
 
-    expect(screen.getByRole('heading', { level: 1, name: /Upload Department Assigned Courses/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: /Upload Program Assigned Courses/i })).toBeInTheDocument();
     expect(screen.getByText(/Drag and drop your/i)).toBeInTheDocument();
   });
 

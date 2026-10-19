@@ -11,6 +11,15 @@ const mocks = vi.hoisted(() => ({
   baselineSchoolYear: { year: '2025-2026', isActive: true } as any,
   activeCollegeSchoolYear: undefined as any,
   collegeSchoolYears: undefined as any,
+  colleges: [
+    { id: 'col-ccs', name: 'College of Computer Science', code: 'CCS' },
+    { id: 'col-ce', name: 'College of Engineering', code: 'CE' },
+  ] as any[],
+  departments: [
+    { id: 'dept-cs', name: 'Computer Science', code: 'CS', collegeId: 'col-ccs' },
+    { id: 'dept-it', name: 'Information Technology', code: 'IT', collegeId: 'col-ccs' },
+    { id: 'dept-ce', name: 'Civil Engineering', code: 'CE', collegeId: 'col-ce' },
+  ] as any[],
   db: {
     courses: [],
     enrollmentRequests: [],
@@ -27,6 +36,8 @@ vi.mock('../../shared/context/LMSContext', () => ({
     activeRole: mocks.activeRole,
     activeUser: mocks.activeUser,
     db: mocks.db,
+    colleges: mocks.colleges,
+    departments: mocks.departments,
     isLoading: mocks.isLoading,
     openSpeedGrader: vi.fn(),
     getPendingRequestsForStudent: () => mocks.pendingRequests,
@@ -182,6 +193,66 @@ describe('DashboardPage admin access', () => {
     expect(ayButtons.length).toBeGreaterThan(0);
   });
 
+  test('admin sees courses when baseline is 2025-2026 but courses belong to AY 2026-2027', () => {
+    mocks.activeRole = 'admin';
+    mocks.activeUser = { id: 'u-admin-1', name: 'University Admin', role: 'admin' } as any;
+    mocks.baselineSchoolYear = { year: '2025-2026', isActive: true };
+    mocks.activeCollegeSchoolYear = { year: '2026-2027', isActive: true };
+    mocks.db = {
+      courses: [
+        {
+          id: 'c-ccsc-303',
+          code: 'CCSC 303',
+          title: 'Computer Programming 1',
+          schoolYear: '2026-2027',
+          term: '1st Sem AY 2026-2027',
+          collegeId: 'col-ccs',
+        },
+        {
+          id: 'c-cscc-103',
+          code: 'CSCC 103',
+          title: 'Object Oriented Programming',
+          schoolYear: '2026-2027',
+          term: '1st Sem AY 2026-2027',
+          collegeId: 'col-ccs',
+        },
+      ],
+      enrollmentRequests: [],
+      users: [{ id: 'u-admin-1', name: 'University Admin', role: 'admin' }],
+      submissions: [],
+      activities: [],
+      quizzes: [],
+      modules: [],
+    } as any;
+
+    renderPage();
+
+    // Admin immediately sees courses in 2026-2027
+    expect(screen.getByText('Computer Programming 1')).toBeInTheDocument();
+    expect(screen.getByText('Object Oriented Programming')).toBeInTheDocument();
+
+    // AY 2026-2027 is not disabled
+    const ay2026Btn = screen.getByRole('button', { name: /AY 2026-2027/i });
+    expect(ay2026Btn).not.toBeDisabled();
+    expect(ay2026Btn).not.toHaveAttribute('aria-disabled', 'true');
+
+    // Baseline AY 2025-2026 is present with Baseline badge
+    const baselineBadge = screen.getByTestId('academic-scope-baseline-badge');
+    expect(baselineBadge).toBeInTheDocument();
+    expect(baselineBadge.textContent).toBe('Baseline');
+
+    // Admin can switch to Baseline 2025-2026
+    const baselineBtn = baselineBadge.closest('button');
+    fireEvent.click(baselineBtn!);
+
+    // Empty state for 2025-2026 is shown
+    expect(screen.getByText(/No courses in this academic year/i)).toBeInTheDocument();
+
+    // Admin can switch back to 2026-2027
+    fireEvent.click(ay2026Btn);
+    expect(screen.getByText('Computer Programming 1')).toBeInTheDocument();
+  });
+
   test('renders baseline indicator badge when college active academic year differs from baseline', () => {
     mocks.activeRole = 'dean';
     mocks.activeUser = {
@@ -231,7 +302,7 @@ describe('DashboardPage admin access', () => {
     expect(screen.queryByTestId('academic-scope-baseline-badge')).not.toBeInTheDocument();
   });
 
-  test('dean monitors collegiate courses with horizontal program tabs', () => {
+  test('dean monitors collegiate courses with horizontal program tabs and college selector', () => {
     mocks.activeRole = 'dean';
     mocks.activeUser = {
       id: 'u-dean-1',
@@ -240,14 +311,27 @@ describe('DashboardPage admin access', () => {
       collegeId: 'col-ccs',
       collegeName: 'College of Computer Science',
     } as any;
+    mocks.db.courses = [
+      { id: 'c1', code: 'CMSC 131', title: 'Data Structures', instructorId: 'u-fac-1', collegeId: 'col-ccs' },
+      { id: 'c2', code: 'ENGR 101', title: 'Engineering Mechanics', instructorId: 'u-fac-2', collegeId: 'col-ce' },
+    ];
 
     renderPage();
 
     expect(screen.getByText('Collegiate Course Monitoring')).toBeInTheDocument();
     expect(screen.getByTestId('program-tabs-container')).toBeInTheDocument();
     expect(screen.getByTestId('program-tab-all')).toBeInTheDocument();
-    // College selector is NOT shown for Dean (Dean is scoped strictly to their college)
-    expect(screen.queryByTestId('college-scope-selector')).not.toBeInTheDocument();
+    // College selector IS shown for Dean so they can view courses across other colleges or university-wide
+    expect(screen.getByTestId('college-scope-selector')).toBeInTheDocument();
+
+    // Initially scoped to Dean's college (CCS)
+    expect(screen.getByText('Data Structures')).toBeInTheDocument();
+    expect(screen.queryByText('Engineering Mechanics')).not.toBeInTheDocument();
+
+    // Selecting All Colleges allows viewing courses from other colleges
+    fireEvent.change(screen.getByTestId('college-scope-selector'), { target: { value: 'all' } });
+    expect(screen.getByText('Data Structures')).toBeInTheDocument();
+    expect(screen.getByText('Engineering Mechanics')).toBeInTheDocument();
   });
 
   test('chairperson monitors program courses with jurisdiction badge and upload chair-sheet action', () => {
@@ -339,7 +423,7 @@ describe('DashboardPage admin access', () => {
     expect(onNavigateCourse).toHaveBeenCalledWith('c1', 'edit');
   });
 
-  test('admin has authority to both edit and delete courses', () => {
+  test('admin has authority to edit courses but not delete courses', () => {
     mocks.activeRole = 'admin';
     mocks.activeUser = { id: 'u-admin-1', name: 'Dean Admin', role: 'admin' } as any;
     mocks.baselineSchoolYear = { year: '2025-2026', isActive: true };
@@ -358,7 +442,7 @@ describe('DashboardPage admin access', () => {
     renderPage();
 
     expect(screen.getByTitle('Edit Course')).toBeInTheDocument();
-    expect(screen.getByTitle('Delete Course')).toBeInTheDocument();
+    expect(screen.queryByTitle('Delete Course')).not.toBeInTheDocument();
   });
 });
 
@@ -494,6 +578,78 @@ describe('DashboardPage semester filter', () => {
     expect(screen.getByText('CSPC-JOIN')).toBeInTheDocument();
     expect(screen.getByText('CCSC-G983')).toBeInTheDocument();
     expect(screen.getByText('N/A')).toBeInTheDocument();
+  });
+
+  test('chairperson sees Delete Course button on course card', () => {
+    mocks.activeRole = 'chairperson';
+    mocks.activeUser = {
+      id: 'u-chair-cs',
+      name: 'Chair CS',
+      role: 'chairperson',
+      department: 'Computer Science',
+      adminSubrole: 'chairperson'
+    };
+    mocks.db.courses = [
+      {
+        id: 'c-cs-1',
+        code: 'CSCC 103',
+        title: 'Data Structures',
+        section: 'BSCS 2-1',
+        department: 'Computer Science',
+        instructorId: 'u-fac-other',
+        published: true,
+      }
+    ];
+
+    renderPage();
+
+    expect(screen.getByTitle('Delete Course')).toBeInTheDocument();
+  });
+
+  test('pure faculty does not see Delete Course button on course card', () => {
+    mocks.activeRole = 'faculty';
+    mocks.activeUser = {
+      id: 'u-fac-1',
+      name: 'Faculty Member',
+      role: 'faculty',
+    };
+    mocks.db.courses = [
+      {
+        id: 'c-cs-1',
+        code: 'CSCC 103',
+        title: 'Data Structures',
+        section: 'BSCS 2-1',
+        instructorId: 'u-fac-1',
+        published: true,
+      }
+    ];
+
+    renderPage();
+
+    expect(screen.queryByTitle('Delete Course')).not.toBeInTheDocument();
+  });
+
+  test('admin does not see Delete Course button on course card', () => {
+    mocks.activeRole = 'admin';
+    mocks.activeUser = {
+      id: 'u-admin-1',
+      name: 'Admin User',
+      role: 'admin',
+    };
+    mocks.db.courses = [
+      {
+        id: 'c-cs-1',
+        code: 'CSCC 103',
+        title: 'Data Structures',
+        section: 'BSCS 2-1',
+        instructorId: 'u-fac-1',
+        published: true,
+      }
+    ];
+
+    renderPage();
+
+    expect(screen.queryByTitle('Delete Course')).not.toBeInTheDocument();
   });
 });
 

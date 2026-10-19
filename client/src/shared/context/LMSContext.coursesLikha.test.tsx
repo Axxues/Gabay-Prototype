@@ -536,7 +536,14 @@ describe('courses, sections, requests via Likha (Task 4)', () => {
   test('faculty cannot delete course via deleteCourse (unauthorized)', async () => {
     await renderLoggedInAs('Faculty', 'u-fac-1', 'faculty1@dmmmsu.edu.ph');
     await act(async () => {
-      await expect(ctx.deleteCourse('c1')).rejects.toThrow('Faculty members do not have permission to delete courses.');
+      await expect(ctx.deleteCourse('c1')).rejects.toThrow('Only Department Chairpersons have permission to delete courses.');
+    });
+  });
+
+  test('admin cannot delete course via deleteCourse (unauthorized)', async () => {
+    await renderLoggedInAs('Admin', 'u-admin-1', 'admin@dmmmsu.edu.ph');
+    await act(async () => {
+      await expect(ctx.deleteCourse('c1')).rejects.toThrow('Only Department Chairpersons have permission to delete courses.');
     });
   });
 
@@ -548,6 +555,20 @@ describe('courses, sections, requests via Likha (Task 4)', () => {
     });
     expect(updateCourseMock).toHaveBeenCalledWith('c1', expect.objectContaining({ title: 'New Course Title' }));
     expect((seenDb.courses || []).find((c: any) => c.id === 'c1')?.title).toBe('New Course Title');
+  });
+
+  test('courses preserve color and image on login/refresh', async () => {
+    getCoursesWithRelationsMock.mockResolvedValueOnce([
+      {
+        ...courseRow,
+        color: '#be185d',
+        image: 'https://gabay.zyberlab.com/assets/sample-cover.png',
+      },
+    ]);
+    await renderLoggedInAs('Faculty', 'u-fac-1', 'faculty1@dmmmsu.edu.ph');
+    const loadedCourse = (seenDb.courses || []).find((c: any) => c.id === 'c1');
+    expect(loadedCourse?.color).toBe('#be185d');
+    expect(loadedCourse?.image).toBe('https://gabay.zyberlab.com/assets/sample-cover.png');
   });
 });
 

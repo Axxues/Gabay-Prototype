@@ -25,7 +25,7 @@ export const AcademicStructureTab: React.FC = () => {
   const toggleCollegeCollapse = (collegeId: string) => {
     setExpandedColleges(prev => ({
       ...prev,
-      [collegeId]: !(prev[collegeId] ?? true),
+      [collegeId]: !prev[collegeId],
     }));
   };
 
@@ -582,7 +582,7 @@ export const AcademicStructureTab: React.FC = () => {
         {displayedColleges.map(college => {
           const dean = getUserById(college.deanId);
           const collegeDepts = (departments || []).filter(d => d.collegeId === college.id);
-          const isExpanded = expandedColleges[college.id] ?? true;
+          const isExpanded = Boolean(expandedColleges[college.id]);
 
           return (
             <div
@@ -698,14 +698,15 @@ export const AcademicStructureTab: React.FC = () => {
               </div>
 
               {/* Collapsible Content */}
-              {isExpanded && (
-                <div
-                  id={`college-content-${college.id}`}
-                  data-testid={`college-content-${college.id}`}
-                  aria-hidden={!isExpanded}
-                  className="transition-all duration-300 ease-in-out overflow-hidden"
-                >
-                  <div className="overflow-hidden min-h-0">
+              <div
+                id={`college-content-${college.id}`}
+                data-testid={`college-content-${college.id}`}
+                aria-hidden={!isExpanded}
+                className={`grid transition-all duration-300 ease-in-out overflow-hidden ${
+                  isExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
+                }`}
+              >
+                <div className="overflow-hidden min-h-0">
                   {/* Program Listing Table */}
                   <div className="divide-y divide-border/60">
                     {collegeDepts.length === 0 ? (
@@ -947,7 +948,6 @@ export const AcademicStructureTab: React.FC = () => {
                   </div>
                 </div>
               </div>
-            )}
             </div>
           );
         })}

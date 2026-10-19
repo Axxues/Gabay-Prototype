@@ -61,7 +61,7 @@ import type { SyllabusRevisionHeader, SyllabusRevisionResponse, SyllabusSectionK
 import { settledValue } from '../utils/promise';
 import { formatFileSize, toShortFileType } from '../utils/fileUploader';
 import { isValidUuid, generateSecureActivationToken, generateUuid } from '../utils/cryptoToken';
-import { isChairRole, isDeanRole, isFacultyRole } from '../utils/roles';
+import { isChairRole, isDeanRole, isFacultyRole, canDeleteCourse } from '../utils/roles';
 
 export interface LMSContextType {
   theme: 'dark' | 'light';
@@ -1729,7 +1729,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const saved = localStorage.getItem(STORAGE_KEY_COLLEGES);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const clean = parsed.filter((c: any) => c && c.name && typeof c.name === 'string' && c.name.trim() && c.name !== 'null');
+          if (clean.length > 0) return clean;
+        }
       }
     } catch (_) {}
     return DEFAULT_COLLEGES;
@@ -1741,10 +1744,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.map((d: any) => ({
-            ...d,
-            name: normalizeProgramName(d.name || ''),
-          }));
+          return parsed
+            .map((d: any) => ({
+              ...d,
+              name: normalizeProgramName(d.name || ''),
+            }))
+            .filter((d: Department) => Boolean(d.name && d.name.trim().length > 0));
         }
       }
     } catch (_) {}
@@ -1855,12 +1860,14 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ]);
 
           if (!cancelled && colSettled.status === 'fulfilled' && Array.isArray(colSettled.value) && colSettled.value.length > 0) {
-            const mappedCols: College[] = colSettled.value.map((c: any) => ({
-              id: String(c.id),
-              name: c.name,
-              code: c.code,
-              deanId: typeof c.dean_id === 'object' && c.dean_id ? String(c.dean_id.id) : (typeof c.dean_id === 'string' && c.dean_id ? c.dean_id : undefined),
-            }));
+            const mappedCols: College[] = colSettled.value
+              .filter((c: any) => c && c.name && typeof c.name === 'string' && c.name.trim() && c.name !== 'null')
+              .map((c: any) => ({
+                id: String(c.id),
+                name: c.name,
+                code: c.code,
+                deanId: typeof c.dean_id === 'object' && c.dean_id ? String(c.dean_id.id) : (typeof c.dean_id === 'string' && c.dean_id ? c.dean_id : undefined),
+              }));
             setColleges(prev => {
               const merged = [...mappedCols];
               for (const localCol of prev) {
@@ -1876,20 +1883,23 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
 
           if (!cancelled && deptSettled.status === 'fulfilled' && Array.isArray(deptSettled.value) && deptSettled.value.length > 0) {
-            const mappedDepts: Department[] = deptSettled.value.map((d: any) => {
-              const rawName = String(d.name || '');
-              const cleanName = normalizeProgramName(rawName);
-              if (rawName !== cleanName && d.id) {
-                likhaLmsApi.academicStructure.updateDepartment(String(d.id), { name: cleanName }).catch(() => {});
-              }
-              return {
-                id: String(d.id),
-                collegeId: typeof d.college_id === 'object' && d.college_id ? String(d.college_id.id) : String(d.college_id || ''),
-                name: cleanName,
-                code: d.code,
-                chairpersonId: typeof d.chairperson_id === 'object' && d.chairperson_id ? String(d.chairperson_id.id) : (typeof d.chairperson_id === 'string' && d.chairperson_id ? d.chairperson_id : undefined),
-              };
-            });
+            const mappedDepts: Department[] = deptSettled.value
+              .map((d: any) => {
+                const rawName = String(d.name || '');
+                const cleanName = normalizeProgramName(rawName);
+                if (rawName !== cleanName && d.id) {
+                  likhaLmsApi.academicStructure.updateDepartment(String(d.id), { name: cleanName }).catch(() => {});
+                }
+                return {
+                  id: String(d.id),
+                  collegeId: typeof d.college_id === 'object' && d.college_id ? String(d.college_id.id) : String(d.college_id || ''),
+                  name: cleanName,
+                  code: d.code,
+                  chairpersonId: typeof d.chairperson_id === 'object' && d.chairperson_id ? String(d.chairperson_id.id) : (typeof d.chairperson_id === 'string' && d.chairperson_id ? d.chairperson_id : undefined),
+                };
+              })
+              .filter((d: Department) => Boolean(d.name && d.name.trim().length > 0));
+
             setDepartments(prev => {
               const merged = [...mappedDepts];
               for (const localDept of prev) {
@@ -1897,6 +1907,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   ...localDept,
                   name: normalizeProgramName(localDept.name || ''),
                 };
+                if (!cleanLocal.name || !cleanLocal.name.trim()) continue;
                 const exists = merged.some(
                   r => r.id === cleanLocal.id || (r.collegeId === cleanLocal.collegeId && r.code && cleanLocal.code && r.code.toUpperCase() === cleanLocal.code.toUpperCase())
                 );
@@ -2018,6 +2029,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               published: Boolean(c.published),
               syllabus: c.syllabus || null,
               section: c.section || '',
+              color: c.color !== undefined && c.color !== null ? String(c.color) : undefined,
+              image: c.image || undefined,
+              credits: c.credits !== undefined && c.credits !== null ? Number(c.credits) : undefined,
               cover_image: c.cover_image,
               instructor: c.instructor,
               instructor_id: c.instructor_id,
@@ -2283,12 +2297,14 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             likhaLmsApi.academicStructure.getDepartments(),
           ]);
           if (colSettled.status === 'fulfilled' && Array.isArray(colSettled.value) && colSettled.value.length > 0) {
-            const mappedCols: College[] = colSettled.value.map((c: any) => ({
-              id: String(c.id),
-              name: c.name,
-              code: c.code,
-              deanId: typeof c.dean_id === 'object' && c.dean_id ? String(c.dean_id.id) : (typeof c.dean_id === 'string' && c.dean_id ? c.dean_id : undefined),
-            }));
+            const mappedCols: College[] = colSettled.value
+              .filter((c: any) => c && c.name && typeof c.name === 'string' && c.name.trim() && c.name !== 'null')
+              .map((c: any) => ({
+                id: String(c.id),
+                name: c.name,
+                code: c.code,
+                deanId: typeof c.dean_id === 'object' && c.dean_id ? String(c.dean_id.id) : (typeof c.dean_id === 'string' && c.dean_id ? c.dean_id : undefined),
+              }));
             setColleges(prev => {
               const merged = [...mappedCols];
               for (const localCol of prev) {
@@ -2303,20 +2319,23 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             });
           }
           if (deptSettled.status === 'fulfilled' && Array.isArray(deptSettled.value) && deptSettled.value.length > 0) {
-            const mappedDepts: Department[] = deptSettled.value.map((d: any) => {
-              const rawName = String(d.name || '');
-              const cleanName = normalizeProgramName(rawName);
-              if (rawName !== cleanName && d.id) {
-                likhaLmsApi.academicStructure.updateDepartment(String(d.id), { name: cleanName }).catch(() => {});
-              }
-              return {
-                id: String(d.id),
-                collegeId: typeof d.college_id === 'object' && d.college_id ? String(d.college_id.id) : String(d.college_id || ''),
-                name: cleanName,
-                code: d.code,
-                chairpersonId: typeof d.chairperson_id === 'object' && d.chairperson_id ? String(d.chairperson_id.id) : (typeof d.chairperson_id === 'string' && d.chairperson_id ? d.chairperson_id : undefined),
-              };
-            });
+            const mappedDepts: Department[] = deptSettled.value
+              .map((d: any) => {
+                const rawName = String(d.name || '');
+                const cleanName = normalizeProgramName(rawName);
+                if (rawName !== cleanName && d.id) {
+                  likhaLmsApi.academicStructure.updateDepartment(String(d.id), { name: cleanName }).catch(() => {});
+                }
+                return {
+                  id: String(d.id),
+                  collegeId: typeof d.college_id === 'object' && d.college_id ? String(d.college_id.id) : String(d.college_id || ''),
+                  name: cleanName,
+                  code: d.code,
+                  chairpersonId: typeof d.chairperson_id === 'object' && d.chairperson_id ? String(d.chairperson_id.id) : (typeof d.chairperson_id === 'string' && d.chairperson_id ? d.chairperson_id : undefined),
+                };
+              })
+              .filter((d: Department) => Boolean(d.name && d.name.trim().length > 0));
+
             setDepartments(prev => {
               const merged = [...mappedDepts];
               for (const localDept of prev) {
@@ -2324,6 +2343,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   ...localDept,
                   name: normalizeProgramName(localDept.name || ''),
                 };
+                if (!cleanLocal.name || !cleanLocal.name.trim()) continue;
                 const exists = merged.some(
                   r => r.id === cleanLocal.id || (r.collegeId === cleanLocal.collegeId && r.code && localDept.code && r.code.toUpperCase() === cleanLocal.code.toUpperCase())
                 );
@@ -3399,8 +3419,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteCourse = async (courseId: string): Promise<void> => {
-    if (activeRole === 'faculty') {
-      const message = 'Faculty members do not have permission to delete courses.';
+    if (!canDeleteCourse(currentUser, activeRole)) {
+      const message = 'Only Department Chairpersons have permission to delete courses.';
       showAlert({
         title: 'Unauthorized Action',
         message,
@@ -3425,6 +3445,22 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           (rows || []).filter(r => r.courseId !== courseId);
         const { [courseId]: _droppedCfg, ...sprConfigs } = prev.sprConfigs || {};
         const { [courseId]: _droppedScores, ...sprScores } = prev.sprScores || {};
+
+        const droppedModuleIds = new Set((prev.modules || []).filter(m => m.courseId === courseId).map(m => m.id));
+        const droppedAnnouncementIds = new Set((prev.announcements || []).filter(a => a.courseId === courseId).map(a => a.id));
+        const droppedDiscussionIds = new Set((prev.discussions || []).filter(d => d.courseId === courseId).map(d => d.id));
+        const droppedActivityIds = new Set([
+          ...(prev.activities || []).filter(a => a.courseId === courseId).map(a => a.id),
+          ...(prev.quizzes || []).filter(q => q.courseId === courseId).map(q => q.id),
+          ...(prev.exams || []).filter(e => e.courseId === courseId).map(e => e.id),
+        ]);
+        const droppedRelatedIds = new Set([
+          ...droppedModuleIds,
+          ...droppedAnnouncementIds,
+          ...droppedDiscussionIds,
+          ...droppedActivityIds,
+        ]);
+
         return {
           ...prev,
           courses: (prev.courses || []).filter(c => c.id !== courseId),
@@ -3441,6 +3477,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           courseSections: keep(prev.courseSections),
           enrollmentRequests: keep(prev.enrollmentRequests),
           calendarEvents: (prev.calendarEvents || []).filter(e => e.courseId !== courseId),
+          messages: (prev.messages || []).filter(m => m.courseId !== courseId),
+          chatGroups: (prev.chatGroups || []).filter(g => g.courseId !== courseId),
+          notifications: (prev.notifications || []).filter(
+            n => (n as any).courseId !== courseId && (!n.relatedId || !droppedRelatedIds.has(n.relatedId))
+          ),
           users: (prev.users || []).map(u =>
             (u.enrolledCourseIds || []).includes(courseId)
               ? { ...u, enrolledCourseIds: (u.enrolledCourseIds || []).filter(c => c !== courseId) }
@@ -3449,6 +3490,19 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           sprConfigs,
           sprScores,
         };
+      });
+      setNotifications(prev => {
+        const droppedRelatedIds = new Set([
+          ...(db.modules || []).filter(m => m.courseId === courseId).map(m => m.id),
+          ...(db.announcements || []).filter(a => a.courseId === courseId).map(a => a.id),
+          ...(db.discussions || []).filter(d => d.courseId === courseId).map(d => d.id),
+          ...(db.activities || []).filter(a => a.courseId === courseId).map(a => a.id),
+          ...(db.quizzes || []).filter(q => q.courseId === courseId).map(q => q.id),
+          ...(db.exams || []).filter(e => e.courseId === courseId).map(e => e.id),
+        ]);
+        return (prev || []).filter(
+          n => (n as any).courseId !== courseId && (!n.relatedId || !droppedRelatedIds.has(n.relatedId))
+        );
       });
       setSyllabusRevisions(prev => {
         const { [courseId]: _dropped, ...rest } = prev;

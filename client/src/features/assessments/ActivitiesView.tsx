@@ -62,7 +62,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
     isSyncing?: boolean;
   };
 
-  const course = db.courses.find(c => c.id === courseId);
+  const course = (db.courses || []).find(c => c.id === courseId);
   const isAssignedInstructor = canManageCourseContent(course, activeUser);
 
   const courseActivities = (db.activities || []).filter(

@@ -195,17 +195,23 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
   const allDepartments = useMemo(() => {
     const deptSet = new Set<string>();
     (departments || []).forEach(d => {
-      if (d.name) deptSet.add(normalizeProgramName(d.name.trim()));
+      const clean = normalizeProgramName(d?.name || '');
+      if (clean && clean.trim().length > 0) {
+        deptSet.add(clean.trim());
+      }
+    });
+    (db?.users || []).forEach(u => {
+      const uProg = u?.program || u?.department;
+      if (uProg && typeof uProg === 'string') {
+        const clean = normalizeProgramName(uProg);
+        if (clean && clean.trim().length > 0) {
+          deptSet.add(clean.trim());
+        }
+      }
     });
     if (deptSet.size === 0) {
       deptSet.add('Computer Science');
     }
-    (db?.users || []).forEach(u => {
-      const uProg = u?.program || u?.department;
-      if (uProg && typeof uProg === 'string') {
-        deptSet.add(normalizeProgramName(uProg.trim()));
-      }
-    });
     return Array.from(deptSet).sort();
   }, [departments, db?.users]);
 
@@ -305,44 +311,35 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
 
   // Custom Dropdown option definitions scoped by available departments/programs
   const departmentFilterOptions: DropdownOption[] = useMemo(() => {
-    if (isDean) {
-      return [
-        { value: 'all', label: 'All Programs', icon: <Building className="w-3.5 h-3.5 text-muted-foreground" /> },
-        ...availableDepartments.map(d => {
-          const name = normalizeProgramName(d.name);
-          return {
-            value: name,
-            label: name,
-            icon: <Building className="w-3.5 h-3.5 text-muted-foreground" />
-          };
-        })
-      ];
-    }
+    const formatOption = (rawName?: string): DropdownOption | null => {
+      const name = normalizeProgramName(rawName || '');
+      if (!name || !name.trim()) return null;
+      return {
+        value: name,
+        label: name,
+        icon: <Building className="w-3.5 h-3.5 text-muted-foreground" />,
+      };
+    };
 
-    if (availableDepartments && availableDepartments.length > 0) {
-      return [
-        { value: 'all', label: 'All Programs', icon: <Building className="w-3.5 h-3.5 text-muted-foreground" /> },
-        ...availableDepartments.map(d => {
-          const name = normalizeProgramName(d.name);
-          return {
-            value: name,
-            label: name,
-            icon: <Building className="w-3.5 h-3.5 text-muted-foreground" />
-          };
-        })
-      ];
+    const targetList = isDean
+      ? availableDepartments.map(d => formatOption(d.name)).filter((opt): opt is DropdownOption => opt !== null)
+      : availableDepartments && availableDepartments.length > 0
+      ? availableDepartments.map(d => formatOption(d.name)).filter((opt): opt is DropdownOption => opt !== null)
+      : allDepartments.map(d => formatOption(d)).filter((opt): opt is DropdownOption => opt !== null);
+
+    // Deduplicate options by value
+    const seen = new Set<string>();
+    const uniqueOptions: DropdownOption[] = [];
+    for (const opt of targetList) {
+      if (!seen.has(opt.value.toLowerCase())) {
+        seen.add(opt.value.toLowerCase());
+        uniqueOptions.push(opt);
+      }
     }
 
     return [
       { value: 'all', label: 'All Programs', icon: <Building className="w-3.5 h-3.5 text-muted-foreground" /> },
-      ...allDepartments.map(d => {
-        const name = normalizeProgramName(d);
-        return {
-          value: name,
-          label: name,
-          icon: <Building className="w-3.5 h-3.5 text-muted-foreground" />
-        };
-      })
+      ...uniqueOptions,
     ];
   }, [isDean, availableDepartments, allDepartments]);
 

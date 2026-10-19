@@ -833,8 +833,167 @@ describe('Likha LMS Direct API Client', () => {
       expect(localStorage.getItem('gabay_refresh_token')).toBeNull();
       window.removeEventListener('gabay:session-expired', listener);
     });
+
+    it('elevates deleteCourse with service token when receiving 403 Forbidden', async () => {
+      localStorage.setItem('gabay_token', 'chair-user-token');
+
+      const fetchSpy = vi.spyOn(global, 'fetch')
+        // 1. Initial DELETE fails with 403
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 403,
+          text: async () => JSON.stringify({
+            errors: [{
+              message: 'You don\'t have permission to access collection "courses" or it does not exist. Queried in root.',
+              extensions: { code: 'FORBIDDEN' },
+            }],
+          }),
+        } as any)
+        // 2. Fetch service token via /auth/login
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            data: { access_token: 'srv-token-admin' },
+          }),
+        } as any)
+        // 3. Retry DELETE with elevated service token succeeds
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 204,
+          json: async () => ({}),
+        } as any);
+
+      await expect(likhaLmsApi.courses.deleteCourse('c-403')).resolves.toBeUndefined();
+
+      expect(fetchSpy).toHaveBeenCalledTimes(3);
+      expect(fetchSpy).toHaveBeenNthCalledWith(
+        1,
+        expect.stringContaining('/items/courses/c-403'),
+        expect.objectContaining({ method: 'DELETE' })
+      );
+      expect(fetchSpy).toHaveBeenNthCalledWith(
+        2,
+        expect.stringContaining('/auth/login'),
+        expect.objectContaining({ method: 'POST' })
+      );
+      const thirdCallHeaders = (fetchSpy.mock.calls[2][1] as RequestInit).headers as Headers;
+      expect(thirdCallHeaders.get('Authorization')).toBe('Bearer srv-token-admin');
+    });
+
+    it('deletes all comments, replies, files, and images across the course in deleteCourseCascade', async () => {
+      localStorage.setItem('gabay_token', 'test-token');
+
+      const deletedUrls: string[] = [];
+      vi.spyOn(global, 'fetch').mockImplementation(async (input, init) => {
+        const url = String(input);
+        const method = (init?.method || 'GET').toUpperCase();
+
+        if (method === 'DELETE') {
+          deletedUrls.push(url);
+          return { ok: true, status: 204, json: async () => ({}) } as any;
+        }
+
+        // Mock discovery GET endpoints
+        if (url.includes('/items/courses/c-full?')) {
+          return {
+            ok: true,
+            json: async () => ({
+              data: {
+                id: 'c-full',
+                cover_image: { id: 'img-cover-uuid-1111-1111-1111-111111111111' },
+              },
+            }),
+          } as any;
+        }
+        if (url.includes('/items/course_files?')) {
+          return {
+            ok: true,
+            json: async () => ({
+              data: [
+                { id: 'cf-1', file: 'file-asset-uuid-2222-2222-2222-222222222222' },
+              ],
+            }),
+          } as any;
+        }
+        if (url.includes('/items/activities_files?')) {
+          return {
+            ok: true,
+            json: async () => ({
+              data: [
+                { id: 'af-1', directus_files_id: 'act-file-uuid-3333-3333-3333-333333333333' },
+              ],
+            }),
+          } as any;
+        }
+        if (url.includes('/items/modules?')) {
+          return { ok: true, json: async () => ({ data: [{ id: 'm-1', items: [{ id: 'mi-1' }] }] }) } as any;
+        }
+        if (url.includes('/items/module_items?')) {
+          return { ok: true, json: async () => ({ data: [{ id: 'mi-1' }] }) } as any;
+        }
+        if (url.includes('/items/announcements?')) {
+          return { ok: true, json: async () => ({ data: [{ id: 'ann-1' }] }) } as any;
+        }
+        if (url.includes('/items/discussions?')) {
+          return { ok: true, json: async () => ({ data: [{ id: 'disc-1' }] }) } as any;
+        }
+        if (url.includes('/items/activities?')) {
+          return { ok: true, json: async () => ({ data: [{ id: 'act-1' }] }) } as any;
+        }
+        if (url.includes('/items/submissions?')) {
+          return {
+            ok: true,
+            json: async () => ({
+              data: [
+                {
+                  id: 'sub-1',
+                  attachments: [
+                    { id: 'sub-file-uuid-4444-4444-4444-444444444444', url: 'https://gabay.zyberlab.com/assets/sub-file-uuid-4444-4444-4444-444444444444' },
+                  ],
+                },
+              ],
+            }),
+          } as any;
+        }
+        if (url.includes('/items/module_comments?')) {
+          return { ok: true, json: async () => ({ data: [{ id: 'mc-1' }] }) } as any;
+        }
+        if (url.includes('/items/announcement_replies?')) {
+          return { ok: true, json: async () => ({ data: [{ id: 'ar-1' }] }) } as any;
+        }
+        if (url.includes('/items/discussion_replies?')) {
+          return { ok: true, json: async () => ({ data: [{ id: 'dr-1' }] }) } as any;
+        }
+        if (url.includes('/items/submission_comments?')) {
+          return { ok: true, json: async () => ({ data: [{ id: 'sc-1' }] }) } as any;
+        }
+        if (url.includes('/comments?')) {
+          return { ok: true, json: async () => ({ data: [{ id: 'dc-1' }] }) } as any;
+        }
+
+        return { ok: true, json: async () => ({ data: [] }) } as any;
+      });
+
+      await likhaLmsApi.courses.deleteCourseCascade('c-full');
+
+      // Verify comments and replies
+      expect(deletedUrls.some(u => u.includes('/items/module_comments/mc-1'))).toBe(true);
+      expect(deletedUrls.some(u => u.includes('/items/announcement_replies/ar-1'))).toBe(true);
+      expect(deletedUrls.some(u => u.includes('/items/discussion_replies/dr-1'))).toBe(true);
+      expect(deletedUrls.some(u => u.includes('/items/submission_comments/sc-1'))).toBe(true);
+      expect(deletedUrls.some(u => u.includes('/comments/dc-1'))).toBe(true);
+      // Verify course-level items
+      expect(deletedUrls.some(u => u.includes('/items/course_files/cf-1'))).toBe(true);
+      expect(deletedUrls.some(u => u.includes('/items/courses/c-full'))).toBe(true);
+      // Verify underlying physical files and images from /files
+      expect(deletedUrls.some(u => u.includes('/files/img-cover-uuid-1111-1111-1111-111111111111'))).toBe(true);
+      expect(deletedUrls.some(u => u.includes('/files/file-asset-uuid-2222-2222-2222-222222222222'))).toBe(true);
+      expect(deletedUrls.some(u => u.includes('/files/act-file-uuid-3333-3333-3333-333333333333'))).toBe(true);
+      expect(deletedUrls.some(u => u.includes('/files/sub-file-uuid-4444-4444-4444-444444444444'))).toBe(true);
+    });
   });
 });
+
 
 
 

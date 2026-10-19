@@ -29,7 +29,7 @@ import {
   Layers,
   GraduationCap
 } from 'lucide-react';
-import { isChairRole, isDeanRole, isFacultyRole, canManageCourseContent } from '../../shared/utils/roles';
+import { isChairRole, isDeanRole, isFacultyRole, canManageCourseContent, canDeleteCourse } from '../../shared/utils/roles';
 import { courseMatchesProgram } from '../../shared/utils/courseScoping';
 import { useProcessing } from '../../shared/hooks/useProcessing';
 import { useModalAnimate } from '../../shared/hooks/useModalAnimate';
@@ -41,6 +41,12 @@ const SEMESTER_FILTERS = [
   { value: 'Second', label: 'Second Semester' },
   { value: 'Mid-Year', label: 'Mid-Year' },
 ] as const;
+
+// Parse starting calendar year from string (e.g. "2025-2026" -> 2025)
+const parseStartYear = (sy: string): number => {
+  const match = sy.match(/^(\d{4})/);
+  return match ? parseInt(match[1], 10) : 0;
+};
 
 interface DashboardPageProps {
   onNavigateCourse: (courseId: string, subTab?: string) => void;
@@ -95,9 +101,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     !isDean &&
     !isChair;
 
-  const [selectedCollegeId, setSelectedCollegeId] = useState<string>('all');
-  const [selectedProgramId, setSelectedProgramId] = useState<string>('all');
-
   const effectiveDeanCollegeId = useMemo(() => {
     if (!isDean) return undefined;
     return (
@@ -110,6 +113,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       )?.id
     );
   }, [isDean, activeUser, colleges]);
+
+  const [selectedCollegeId, setSelectedCollegeId] = useState<string>(() => {
+    if (isDean && effectiveDeanCollegeId) return effectiveDeanCollegeId;
+    return 'all';
+  });
+  const [selectedProgramId, setSelectedProgramId] = useState<string>('all');
 
   const deanCollege = useMemo(() => {
     if (!effectiveDeanCollegeId) return undefined;
@@ -133,20 +142,17 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   }, [isChair, activeUser, departments]);
 
   const availablePrograms = useMemo(() => {
-    if (isDean) {
-      if (!effectiveDeanCollegeId) return departments || [];
-      return (departments || []).filter(d => d.collegeId === effectiveDeanCollegeId);
-    }
-    if (isAdmin) {
+    if (isDean || isAdmin) {
       if (selectedCollegeId === 'all') {
-        return departments || [];
+        return (departments || []).filter(d => d && d.name && d.name !== 'null');
       }
-      return (departments || []).filter(d => d.collegeId === selectedCollegeId);
+      return (departments || []).filter(d => d && d.collegeId === selectedCollegeId && d.name && d.name !== 'null');
     }
     return [];
-  }, [isDean, isAdmin, effectiveDeanCollegeId, selectedCollegeId, departments]);
+  }, [isDean, isAdmin, selectedCollegeId, departments]);
 
   const userCollegeId = useMemo(() => {
+    if (selectedCollegeId && selectedCollegeId !== 'all') return selectedCollegeId;
     if (isDean && effectiveDeanCollegeId) return effectiveDeanCollegeId;
     if (isChair && chairDept?.collegeId) return chairDept.collegeId;
     if (activeUser?.collegeId) return activeUser.collegeId;
@@ -169,7 +175,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       if (deanMatch?.id) return deanMatch.id;
     }
     return 'col-ccs';
-  }, [isDean, isChair, effectiveDeanCollegeId, chairDept, activeUser, departments, colleges]);
+  }, [selectedCollegeId, isDean, isChair, effectiveDeanCollegeId, chairDept, activeUser, departments, colleges]);
 
   const baseMonitoredCourses = useMemo(() => getScopedCourses({
     courses: db.courses,
@@ -179,23 +185,68 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     approvedCourseIds,
     colleges,
     departments,
-    selectedCollegeId: isDean ? effectiveDeanCollegeId : (isAdmin ? selectedCollegeId : undefined),
+    selectedCollegeId: (isDean || isAdmin) ? selectedCollegeId : undefined,
     selectedProgramId: 'all',
-  }), [db.courses, db.users, activeUser, activeRole, approvedCourseIds, colleges, departments, isDean, effectiveDeanCollegeId, isAdmin, selectedCollegeId]);
+  }), [db.courses, db.users, activeUser, activeRole, approvedCourseIds, colleges, departments, isDean, isAdmin, selectedCollegeId]);
 
   const currentActiveSchoolYear = useMemo(() => {
-    if (isAdmin) {
-      const baseline = getBaselineSchoolYear ? getBaselineSchoolYear() : undefined;
-      if (baseline?.year) return baseline.year;
+    // 1. If a specific college is selected (by Admin or Dean), use that college's active school year
+    if (selectedCollegeId && selectedCollegeId !== 'all') {
+      const activeSy = getActiveSchoolYearForCollege?.(selectedCollegeId);
+      if (activeSy?.year) return activeSy.year;
     }
+
+    // 2. If user is Dean or Chair or Faculty with an assigned college, check their college
+    if (!isAdmin && userCollegeId) {
+      const activeSy = getActiveSchoolYearForCollege?.(userCollegeId);
+      if (activeSy?.year) return activeSy.year;
+      const list = getSchoolYearsByCollege ? getSchoolYearsByCollege(userCollegeId) : [];
+      const active = list.find(sy => sy.isActive);
+      if (active?.year) return active.year;
+    }
+
+    // 3. For Admin (University-Wide) or when looking across all colleges:
+    // If courses exist, default to the latest year where courses are present
+    const courseYears = baseMonitoredCourses
+      .map(c => c.schoolYear || c.term?.match(/\b\d{4}-\d{4}\b/)?.[0])
+      .filter(Boolean) as string[];
+    if (courseYears.length > 0) {
+      courseYears.sort((a, b) => parseStartYear(b) - parseStartYear(a));
+      return courseYears[0];
+    }
+
+    // 4. Check if any college has an active school year that is newer
+    if (colleges && colleges.length > 0 && getActiveSchoolYearForCollege) {
+      const collegeActiveYears = colleges
+        .map(col => getActiveSchoolYearForCollege(col.id)?.year)
+        .filter(Boolean) as string[];
+      if (collegeActiveYears.length > 0) {
+        collegeActiveYears.sort((a, b) => parseStartYear(b) - parseStartYear(a));
+        return collegeActiveYears[0];
+      }
+    }
+
+    // 5. University baseline school year
+    const baseline = getBaselineSchoolYear ? getBaselineSchoolYear() : undefined;
+    if (baseline?.year) return baseline.year;
+
+    // 6. User college fallback
     if (getActiveSchoolYearForCollege) {
       const activeSy = getActiveSchoolYearForCollege(userCollegeId);
       if (activeSy?.year) return activeSy.year;
     }
-    const list = getSchoolYearsByCollege ? getSchoolYearsByCollege(userCollegeId) : [];
-    const active = list.find(sy => sy.isActive);
-    return active?.year || '2025-2026';
-  }, [isAdmin, getBaselineSchoolYear, getActiveSchoolYearForCollege, getSchoolYearsByCollege, userCollegeId]);
+
+    return '2025-2026';
+  }, [
+    selectedCollegeId,
+    getActiveSchoolYearForCollege,
+    isAdmin,
+    userCollegeId,
+    getSchoolYearsByCollege,
+    baseMonitoredCourses,
+    colleges,
+    getBaselineSchoolYear,
+  ]);
 
   const [selectedSchoolYear, setSelectedSchoolYear] = useState<string>(() => currentActiveSchoolYear);
   const [isScopeCollapsed, setIsScopeCollapsed] = useState<boolean>(() => {
@@ -236,12 +287,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     }
   }, [currentActiveSchoolYear, selectedSchoolYear]);
 
-  // Parse starting calendar year from string (e.g. "2025-2026" -> 2025)
-  const parseStartYear = (sy: string): number => {
-    const match = sy.match(/^(\d{4})/);
-    return match ? parseInt(match[1], 10) : 0;
-  };
-
   const currentStartYear = useMemo(() => parseStartYear(currentActiveSchoolYear), [currentActiveSchoolYear]);
 
   const baselineSchoolYear = useMemo(() => {
@@ -268,11 +313,16 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       if (sy.year) years.add(sy.year.trim());
     });
     baseMonitoredCourses.forEach(c => {
-      if (c.schoolYear) {
-        years.add(c.schoolYear.trim());
+      const y = c.schoolYear || c.term?.match(/\b\d{4}-\d{4}\b/)?.[0];
+      if (y) {
+        years.add(y.trim());
       } else {
         years.add('2025-2026');
       }
+    });
+    (colleges || []).forEach(col => {
+      const activeSy = getActiveSchoolYearForCollege?.(col.id);
+      if (activeSy?.year) years.add(activeSy.year.trim());
     });
     years.add('2025-2026');
     if (baselineYear) {
@@ -287,7 +337,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       return parseStartYear(a) - parseStartYear(b);
     });
     return [currentActiveSchoolYear, ...nonCurrent];
-  }, [isAdmin, getSchoolYearsByCollege, userCollegeId, schoolYears, baseMonitoredCourses, currentActiveSchoolYear, baselineYear]);
+  }, [isAdmin, getSchoolYearsByCollege, userCollegeId, schoolYears, baseMonitoredCourses, colleges, getActiveSchoolYearForCollege, currentActiveSchoolYear, baselineYear]);
 
   const wheelTrackRef = useRef<HTMLDivElement>(null);
 
@@ -304,7 +354,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const baseMonitoredCoursesInYear = useMemo(() => {
     const activeYearToFilter = selectedSchoolYear || currentActiveSchoolYear;
     return baseMonitoredCourses.filter(c => {
-      const courseYear = c.schoolYear || '2025-2026';
+      const courseYear = c.schoolYear || c.term?.match(/\b\d{4}-\d{4}\b/)?.[0] || '2025-2026';
       return courseYear === activeYearToFilter;
     });
   }, [baseMonitoredCourses, selectedSchoolYear, currentActiveSchoolYear]);
@@ -445,7 +495,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   // not the drift-prone local enrolledCount counter.
   const handleDeleteCourse = async (courseId: string) => {
     const course = db.courses.find(c => c.id === courseId);
-    if (!course || !canManageCourseContent(course, activeUser)) return;
+    if (!course || (!canDeleteCourse(activeUser, activeRole) && !canManageCourseContent(course, activeUser))) return;
     let studentCount: number | null = null;
     try {
       studentCount = (await getApprovedRequestsForCourse(courseId)).length;
@@ -503,11 +553,16 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       };
     }
     if (isDean) {
+      const isViewingAll = selectedCollegeId === 'all';
+      const isViewingOther = !isViewingAll && selectedCollegeId !== effectiveDeanCollegeId;
+      const currentSelectedCol = isViewingOther ? (colleges || []).find(c => c.id === selectedCollegeId) : deanCollege;
       return {
-        title: 'Collegiate Course Monitoring',
-        description: deanCollege
-          ? `Monitoring academic course offerings for ${deanCollege.name}`
-          : 'Monitoring collegiate courses under your jurisdiction',
+        title: isViewingAll
+          ? 'University Course Monitoring'
+          : (isViewingOther ? `${currentSelectedCol?.name || 'Collegiate'} Course Monitoring` : 'Collegiate Course Monitoring'),
+        description: isViewingAll
+          ? 'Monitor academic course offerings across all university colleges and degree programs'
+          : `Monitoring academic course offerings for ${currentSelectedCol?.name || deanCollege?.name || 'your collegiate jurisdiction'}`,
       };
     }
     if (isAdmin) {
@@ -526,7 +581,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       title: 'My courses',
       description: 'Your enrolled course shells',
     };
-  }, [isChair, isDean, isAdmin, activeRole, chairDept, deanCollege]);
+  }, [isChair, isDean, isAdmin, activeRole, chairDept, deanCollege, selectedCollegeId, effectiveDeanCollegeId, colleges]);
 
   return (
     <div className="flex min-h-full w-full flex-1 flex-col space-y-8">
@@ -570,20 +625,22 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
             {/* Minimized Academic Scope: Centered vertically on the header's bottom divider line */}
             {isScopeCollapsed && (
-              <div className="absolute -left-5 sm:-left-8 lg:-left-10 bottom-0 translate-y-1/2 z-20 animate-slide-in-left">
-                <button
-                  type="button"
-                  onClick={handleExpandScope}
-                  title={`Show Academic Scope (AY ${selectedSchoolYear || currentActiveSchoolYear})`}
-                  aria-label="Show Academic Scope"
-                  className="group relative flex items-center gap-1.5 pl-2.5 sm:pl-3 pr-2 py-2 bg-card hover:bg-muted/80 text-foreground border-y border-r border-border/80 rounded-r-xl shadow-xs transition-all cursor-pointer hover:shadow-sm hover:translate-x-1"
-                >
-                  <span className="sr-only">Academic Scope</span>
-                  <span className="w-6 h-6 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                    <Calendar className="w-3.5 h-3.5" />
-                  </span>
-                  <ChevronRight className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
-                </button>
+              <div className="absolute -left-5 sm:-left-8 lg:-left-10 top-full -translate-y-1/2 z-20">
+                <div className="animate-slide-in-left">
+                  <button
+                    type="button"
+                    onClick={handleExpandScope}
+                    title={`Show Academic Scope (AY ${selectedSchoolYear || currentActiveSchoolYear})`}
+                    aria-label="Show Academic Scope"
+                    className="group relative flex items-center gap-1.5 pl-2.5 sm:pl-3 pr-2 py-2 bg-card hover:bg-muted/80 text-foreground border-y border-r border-border/80 rounded-r-xl shadow-xs transition-all cursor-pointer hover:shadow-sm hover:translate-x-1"
+                  >
+                    <span className="sr-only">Academic Scope</span>
+                    <span className="w-6 h-6 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                      <Calendar className="w-3.5 h-3.5" />
+                    </span>
+                    <ChevronRight className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -591,41 +648,38 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           {/* Option 1: Jurisdiction & Program Filters */}
           {(isDean || isAdmin) && (
             <div data-testid="course-monitoring-controls" className="p-4 bg-card border border-border/80 rounded-2xl shadow-xs space-y-3">
-              {/* Admin College Selector */}
-              {isAdmin && (
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border/60">
-                  <div className="flex items-center gap-2">
-                    <Building className="w-4 h-4 text-primary" />
-                    <span className="text-xs font-bold text-foreground">University College:</span>
-                  </div>
-                  <CustomDropdown
-                    value={selectedCollegeId}
-                    onChange={setSelectedCollegeId}
-                    testId="college-scope-selector"
-                    searchable
-                    placeholder="All Colleges (University-Wide)"
-                    className="min-w-[220px] sm:max-w-xs"
-                    options={[
-                      { value: 'all', label: 'All Colleges (University-Wide)' },
-                      ...(colleges || []).map((col) => ({
+              {/* College Selector (Admin & Dean) */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border/60">
+                <div className="flex items-center gap-2">
+                  <Building className="w-4 h-4 text-primary" />
+                  <span className="text-xs font-bold text-foreground">University College:</span>
+                  {isDean && deanCollege && (
+                    <span className="text-xs font-medium text-muted-foreground hidden sm:inline">
+                      (Home: {deanCollege.name})
+                    </span>
+                  )}
+                </div>
+                <CustomDropdown
+                  value={selectedCollegeId}
+                  onChange={(val) => {
+                    setSelectedCollegeId(val);
+                    setSelectedProgramId('all');
+                  }}
+                  testId="college-scope-selector"
+                  searchable
+                  placeholder="All Colleges (University-Wide)"
+                  className="min-w-[220px] sm:max-w-xs"
+                  options={[
+                    { value: 'all', label: 'All Colleges (University-Wide)' },
+                    ...(colleges || [])
+                      .filter(col => col && col.name && typeof col.name === 'string' && col.name.trim() && col.name !== 'null' && col.name.toLowerCase() !== 'null')
+                      .map((col) => ({
                         value: col.id,
                         label: `${col.name} (${col.code || 'COL'})`,
                       })),
-                    ]}
-                  />
-                </div>
-              )}
-
-              {/* Dean College Header Indicator */}
-              {isDean && deanCollege && (
-                <div className="flex items-center justify-between pb-3 border-b border-border/60">
-                  <div className="flex items-center gap-2">
-                    <Building className="w-4 h-4 text-primary" />
-                    <span className="text-xs font-bold text-foreground">Collegiate Jurisdiction:</span>
-                    <span className="text-xs font-semibold text-muted-foreground">{deanCollege.name} ({deanCollege.code})</span>
-                  </div>
-                </div>
-              )}
+                  ]}
+                />
+              </div>
 
               {/* Horizontal Program Tabs with Live Counts */}
               <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5" data-testid="program-tabs-container">
@@ -768,7 +822,19 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                         yr.trim().toLowerCase() === baselineYear.toLowerCase()
                       );
                       const baselineStartYear = parseStartYear(baselineYear || '');
-                      const isFuture = !isBaseline && parseStartYear(yr) > Math.max(currentStartYear, baselineStartYear);
+                      const hasCoursesInYr = baseMonitoredCourses.some(
+                        c => (c.schoolYear || c.term?.match(/\b\d{4}-\d{4}\b/)?.[0] || '2025-2026') === yr
+                      );
+                      const isCollegeActiveYr = (colleges || []).some(
+                        col => getActiveSchoolYearForCollege?.(col.id)?.year === yr
+                      );
+                      const maxActiveStartYear = Math.max(
+                        currentStartYear,
+                        baselineStartYear,
+                        ...baseMonitoredCourses.map(c => parseStartYear(c.schoolYear || c.term?.match(/\b\d{4}-\d{4}\b/)?.[0] || '')),
+                        ...(colleges || []).map(col => parseStartYear(getActiveSchoolYearForCollege?.(col.id)?.year || ''))
+                      );
+                      const isFuture = !isBaseline && !hasCoursesInYr && !isCollegeActiveYr && parseStartYear(yr) > maxActiveStartYear;
 
                       if (isFuture) {
                         return (
@@ -1088,29 +1154,29 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                       <Folder className="w-3.5 h-3.5" />
                     </button>
                     {canManageCourseContent(course, activeUser) && (
-                      <>
-                        <button
-                          type="button"
-                          title="Edit Course"
-                          onClick={() => onNavigateCourse(course.id, 'edit')}
-                          className="p-1.5 text-muted-foreground hover:text-primary hover:bg-card rounded-lg transition-colors cursor-pointer"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          title={deleting ? 'Deleting course…' : 'Delete Course'}
-                          onClick={() => handleDeleteCourse(course.id)}
-                          disabled={deleting}
-                          className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-wait"
-                        >
-                          {deleting ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          ) : (
-                            <Trash2 className="w-3.5 h-3.5" />
-                          )}
-                        </button>
-                      </>
+                      <button
+                        type="button"
+                        title="Edit Course"
+                        onClick={() => onNavigateCourse(course.id, 'edit')}
+                        className="p-1.5 text-muted-foreground hover:text-primary hover:bg-card rounded-lg transition-colors cursor-pointer"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    {canDeleteCourse(activeUser, activeRole) && (
+                      <button
+                        type="button"
+                        title={deleting ? 'Deleting course…' : 'Delete Course'}
+                        onClick={() => handleDeleteCourse(course.id)}
+                        disabled={deleting}
+                        className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-wait"
+                      >
+                        {deleting ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-3.5 h-3.5" />
+                        )}
+                      </button>
                     )}
                   </div>
                 </div>

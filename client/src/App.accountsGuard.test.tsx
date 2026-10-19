@@ -91,4 +91,27 @@ describe('App accounts route guard and decommissioned backdoor', () => {
       expect(screen.getByTestId('dashboard-page')).toBeInTheDocument();
     });
   });
+
+  it('renders Create Leadership Account full width without the Learning Management panel', async () => {
+    mocks.activeRole = 'superadmin';
+    render(
+      <MemoryRouter initialEntries={['/accounts/create-leadership']}>
+        <AppContent />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /create leadership account/i })).toBeInTheDocument();
+    });
+
+    expect(screen.queryByTestId('lms-context-panel')).toBeNull();
+    expect(screen.queryByLabelText('Learning Management navigation')).toBeNull();
+
+    // The far-left icon rail is global navigation and must stay.
+    expect(document.querySelector('aside')).not.toBeNull();
+
+    // The page must fill the screen rather than sit inside the 1600px content cap.
+    const contentWrapper = document.querySelector('main > div');
+    expect(contentWrapper?.className).not.toContain('max-w-[1600px]');
+  });
 });

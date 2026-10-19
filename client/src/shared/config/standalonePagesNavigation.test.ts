@@ -25,4 +25,8 @@ describe('standalone page navigation', () => {
     expect(isLmsSectionTab('create-account')).toBe(false);
     expect(isLmsSectionTab('edit-account')).toBe(false);
   });
+
+  it('hides the Learning Management navigation on the Create Leadership Account page', () => {
+    expect(isLmsSectionTab('create-leadership')).toBe(false);
+  });
 });

@@ -159,4 +159,54 @@ describe('CustomDropdown', () => {
     fireEvent.blur(trigger, { relatedTarget: screen.getByRole('button', { name: /after/i }) });
     expect(onBlur).toHaveBeenCalledTimes(1);
   });
+
+  test('does not report blur when opening a searchable panel, even though its search box auto-focuses', () => {
+    const onBlur = vi.fn();
+    render(<CustomDropdown value="" onChange={() => {}} options={OPTIONS} onBlur={onBlur} searchable placeholder="Select College" />);
+
+    const trigger = screen.getByRole('button', { name: /select college/i });
+    trigger.focus();
+    fireEvent.click(trigger);
+
+    // The panel's search input steals focus on mount; that is an internal move, not a blur.
+    expect(document.activeElement).toBe(screen.getByPlaceholderText('Filter...'));
+    expect(onBlur).not.toHaveBeenCalled();
+  });
+
+  test('reports blur when tabbing away from a closed dropdown', () => {
+    const onBlur = vi.fn();
+    render(
+      <div>
+        <CustomDropdown value="cs" onChange={() => {}} options={OPTIONS} onBlur={onBlur} />
+        <button type="button">after</button>
+      </div>
+    );
+
+    const trigger = screen.getByRole('button', { name: /computer science/i });
+    trigger.focus();
+    // Never opened: the panel is unmounted, so its ref is null here too.
+    fireEvent.blur(trigger, { relatedTarget: screen.getByRole('button', { name: /after/i }) });
+
+    expect(onBlur).toHaveBeenCalledTimes(1);
+  });
+
+  test('reports blur once focus genuinely leaves a searchable panel', () => {
+    const onBlur = vi.fn();
+    render(
+      <div>
+        <CustomDropdown value="" onChange={() => {}} options={OPTIONS} onBlur={onBlur} searchable placeholder="Select College" />
+        <button type="button">after</button>
+      </div>
+    );
+
+    const trigger = screen.getByRole('button', { name: /select college/i });
+    trigger.focus();
+    fireEvent.click(trigger);
+    expect(onBlur).not.toHaveBeenCalled();
+
+    fireEvent.blur(screen.getByPlaceholderText('Filter...'), {
+      relatedTarget: screen.getByRole('button', { name: /after/i }),
+    });
+    expect(onBlur).toHaveBeenCalledTimes(1);
+  });
 });

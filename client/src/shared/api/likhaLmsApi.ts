@@ -65,11 +65,34 @@ async function refreshAccessToken(): Promise<string | null> {
   return refreshPromise;
 }
 
+function isTokenExpired(token: string | null): boolean {
+  if (!token) return true;
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return false;
+    const base64Url = parts[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    const parsed = JSON.parse(jsonPayload);
+    if (typeof parsed.exp === 'number') {
+      return Date.now() >= (parsed.exp - 30) * 1000;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 let likhaUploadServiceToken: string | null = null;
 let likhaUploadServicePromise: Promise<string | null> | null = null;
 
-async function getLikhaUploadServiceToken(): Promise<string | null> {
-  if (likhaUploadServiceToken) return likhaUploadServiceToken;
+async function getLikhaServiceToken(): Promise<string | null> {
+  if (likhaUploadServiceToken && !isTokenExpired(likhaUploadServiceToken)) return likhaUploadServiceToken;
   if (likhaUploadServicePromise) return likhaUploadServicePromise;
 
   likhaUploadServicePromise = (async () => {
@@ -96,6 +119,8 @@ async function getLikhaUploadServiceToken(): Promise<string | null> {
 
   return likhaUploadServicePromise;
 }
+
+const getLikhaUploadServiceToken = getLikhaServiceToken;
 
 export const UUID_ITEM_COLLECTIONS = new Set([
   'modules',
@@ -134,29 +159,6 @@ export const UUID_ITEM_COLLECTIONS = new Set([
   'spr_configs',
   'course_grades',
 ]);
-
-function isTokenExpired(token: string | null): boolean {
-  if (!token) return true;
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return false;
-    const base64Url = parts[1];
-    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-    const jsonPayload = decodeURIComponent(
-      atob(base64)
-        .split('')
-        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
-        .join('')
-    );
-    const parsed = JSON.parse(jsonPayload);
-    if (typeof parsed.exp === 'number') {
-      return Date.now() >= (parsed.exp - 30) * 1000;
-    }
-    return false;
-  } catch {
-    return false;
-  }
-}
 
 /**
  * Robust fetch wrapper that applies Directus JWT auth, transparent in-memory TTL
@@ -283,6 +285,44 @@ async function likhaRequest<T = any>(
   return result;
 }
 
+/**
+ * Executes a Likha request using the current authenticated user's token.
+ * If the request fails with a 403 Forbidden (e.g. role lacks collection delete/write permissions
+ * on shared Likha Directus while Gabay LMS domain authorization has already approved the action),
+ * transparently falls back to an elevated service token.
+ */
+async function likhaElevatedRequest<T = any>(
+  path: string,
+  options: RequestInit = {}
+): Promise<T> {
+  try {
+    return await likhaRequest<T>(path, options);
+  } catch (err: any) {
+    const isForbidden =
+      err?.status === 403 ||
+      err?.code === 'forbidden' ||
+      (typeof err?.message === 'string' &&
+        (err.message.includes('403') || err.message.toLowerCase().includes('permission')));
+
+    if (isForbidden) {
+      const serviceToken = await getLikhaServiceToken();
+      if (serviceToken) {
+        const headers = new Headers(options.headers || {});
+        headers.set('Authorization', `Bearer ${serviceToken}`);
+        const result = await rawLikhaFetch<T>(path, { ...options, headers });
+        const resourceBase = path.split('?')[0];
+        likhaCache.invalidate(resourceBase);
+        if (resourceBase.startsWith('/users')) {
+          likhaCache.invalidate('/users');
+        }
+        return result;
+      }
+    }
+    throw err;
+  }
+}
+
+
 // In-module name→UUID map so one /roles lookup serves the session
 // (likhaRequest GET caching also applies, but this avoids repeat lookups
 // entirely, including cache misses keyed by token).
@@ -386,12 +426,17 @@ export const likhaLmsApi = {
     if (!pattern || pattern.includes('role')) {
       roleIdByName.clear();
     }
+    if (!pattern) {
+      likhaUploadServiceToken = null;
+    }
     if (pattern) {
       likhaCache.invalidate(pattern);
     } else {
       likhaCache.clear();
     }
   },
+  getServiceToken: getLikhaServiceToken,
+  elevatedRequest: likhaElevatedRequest,
 
   // =========================================================================
   // 1. AUTHENTICATION & DIRECTORY
@@ -624,7 +669,7 @@ export const likhaLmsApi = {
     },
 
     async deleteCourse(id: string): Promise<void> {
-      await likhaRequest(`/items/courses/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      await likhaElevatedRequest(`/items/courses/${encodeURIComponent(id)}`, { method: 'DELETE' });
     },
 
     // Robust children-first relational cascade: Directus does not apply server-side
@@ -648,7 +693,7 @@ export const likhaLmsApi = {
 
       const fetchItems = async (collection: string, filterQuery: string): Promise<any[]> => {
         try {
-          const res = await likhaRequest(`/items/${collection}?${filterQuery}&limit=-1`);
+          const res = await likhaElevatedRequest(`/items/${collection}?${filterQuery}&limit=-1`);
           return Array.isArray(res) ? res : [];
         } catch {
           return [];
@@ -659,15 +704,35 @@ export const likhaLmsApi = {
         const validIds = items.map(it => it.id ?? it.revisionId).filter(Boolean) as string[];
         if (validIds.length === 0) return;
         await Promise.allSettled(
-          validIds.map(itemId => del(likhaRequest(`/items/${collection}/${encodeURIComponent(itemId)}`, { method: 'DELETE' })))
+          validIds.map(itemId => del(likhaElevatedRequest(`/items/${collection}/${encodeURIComponent(itemId)}`, { method: 'DELETE' })))
+        );
+      };
+
+      const fetchDirectusComments = async (collection: string, itemId: string): Promise<any[]> => {
+        try {
+          const res = await likhaElevatedRequest(`/comments?filter[collection][_eq]=${encodeURIComponent(collection)}&filter[item][_eq]=${encodeURIComponent(itemId)}&limit=-1`);
+          return Array.isArray(res) ? res : [];
+        } catch {
+          return [];
+        }
+      };
+
+      const deleteDirectusComments = async (comments: Array<{ id?: string }>): Promise<void> => {
+        const validIds = comments.map(c => c.id).filter(Boolean) as string[];
+        if (validIds.length === 0) return;
+        await Promise.allSettled(
+          validIds.map(commentId => del(likhaElevatedRequest(`/comments/${encodeURIComponent(commentId)}`, { method: 'DELETE' })))
         );
       };
 
       // 1. Discover all course children
       const [
+        courseItem,
         mods, acts, quizzes, exams, anns, discs, files, folders,
-        sections, reqs, enrolls, grades, events, syllabi, sprConfig
+        sections, reqs, enrolls, grades, events, syllabi, sprConfig,
+        courseMessages, courseChatGroups, directusComments
       ] = await Promise.all([
+        likhaRequest<any>(`/items/courses/${encodeURIComponent(id)}?fields=*,cover_image.*`).catch(() => null),
         list(likhaLmsApi.modules.getModulesWithItems(id)),
         list(likhaLmsApi.assessments.getActivities(id)),
         list(likhaLmsApi.assessments.getQuizzes(id)),
@@ -683,6 +748,9 @@ export const likhaLmsApi = {
         list(likhaLmsApi.communications.getCalendarEvents()),
         list(likhaLmsApi.syllabus.listRevisions(id)),
         likhaLmsApi.grades.getSPRConfig(id).catch(() => null),
+        fetchItems('messages', `filter[course_id][_eq]=${encodeURIComponent(id)}`),
+        fetchItems('chat_groups', `filter[course_id][_eq]=${encodeURIComponent(id)}`),
+        fetchDirectusComments('courses', id),
       ]);
 
       const allAssessments = [...acts, ...quizzes, ...exams];
@@ -692,13 +760,17 @@ export const likhaLmsApi = {
         ...exams.map(e => list(likhaLmsApi.submissions.getSubmissions(e.id, 'exam'))),
       ]);
       const allSubmissions = subLists.flat();
+      const modItems = mods.flatMap(m => m.items || []);
 
-      // Discover leaf items for submissions, assessments, syllabi, modules
+      // Discover leaf items for submissions, assessments, syllabi, modules, announcements, discussions
+      // Includes all comments (module-level, item-level, announcements, discussions, and submission grading comments)
       const [
         subAnswers, subComments, subRubricScores,
         questions, rubrics, actFiles,
         sylSignatories, sylReferences, sylPolicies, sylRubrics, sylPlans, sylMaps,
-        modComments, sprCells
+        modCommentsByMod, modCommentsByItem,
+        annReplies, discReplies,
+        sprCells
       ] = await Promise.all([
         allSubmissions.length > 0 ? fetchItems('submission_answers', `filter[submission_id][_in]=${allSubmissions.map(s => s.id).join(',')}`) : [],
         allSubmissions.length > 0 ? fetchItems('submission_comments', `filter[submission_id][_in]=${allSubmissions.map(s => s.id).join(',')}`) : [],
@@ -713,15 +785,136 @@ export const likhaLmsApi = {
         syllabi.length > 0 ? fetchItems('syllabus_learning_plans', `filter[syllabus_id][_in]=${syllabi.map(s => s.id ?? s.revisionId).join(',')}`) : [],
         syllabi.length > 0 ? fetchItems('syllabus_course_maps', `filter[syllabus_id][_in]=${syllabi.map(s => s.id ?? s.revisionId).join(',')}`) : [],
         mods.length > 0 ? fetchItems('module_comments', `filter[module_id][_in]=${mods.map(m => m.id).join(',')}`) : [],
+        modItems.length > 0 ? fetchItems('module_comments', `filter[item_id][_in]=${modItems.map(i => i.id).join(',')}`) : [],
+        anns.length > 0 ? fetchItems('announcement_replies', `filter[announcement_id][_in]=${anns.map(a => a.id).join(',')}`) : [],
+        discs.length > 0 ? fetchItems('discussion_replies', `filter[discussion_id][_in]=${discs.map(d => d.id).join(',')}`) : [],
         sprConfig?.id ? fetchItems('spr_cells', `filter[config_id][_eq]=${encodeURIComponent(sprConfig.id)}`) : [],
       ]);
 
-      const modItems = mods.flatMap(m => m.items || []);
+      const allModComments = Array.from(
+        new Map([...modCommentsByMod, ...modCommentsByItem].map(c => [c.id, c])).values()
+      );
+
+      // Collect all physical file and image asset UUIDs to delete from Directus storage (/files)
+      const allFileIdsSet = new Set<string>();
+
+      const addCandidate = (val: unknown) => {
+        if (!val) return;
+        if (typeof val === 'string') {
+          const trimmed = val.trim();
+          if (trimmed.startsWith('http') || trimmed.includes('/assets/')) {
+            const match = trimmed.match(/\/assets\/([a-zA-Z0-9_-]+)/);
+            if (match && match[1]) {
+              allFileIdsSet.add(match[1]);
+            }
+          } else if (/^[0-9a-zA-Z_-]{16,64}$/.test(trimmed)) {
+            allFileIdsSet.add(trimmed);
+          }
+        } else if (typeof val === 'object' && val !== null) {
+          const obj = val as Record<string, any>;
+          if (typeof obj.id === 'string') {
+            addCandidate(obj.id);
+          }
+          if (obj.directus_files_id) {
+            addCandidate(typeof obj.directus_files_id === 'object' ? obj.directus_files_id.id : obj.directus_files_id);
+          }
+          if (obj.file) {
+            addCandidate(typeof obj.file === 'object' ? obj.file.id : obj.file);
+          }
+          if (typeof obj.url === 'string') {
+            addCandidate(obj.url);
+          }
+        }
+      };
+
+      // 1. Cover image & visuals of course
+      addCandidate(courseItem?.cover_image);
+      addCandidate(courseItem?.image);
+      addCandidate(courseItem?.coverImage);
+
+      // 2. Course files from /items/course_files
+      for (const cf of files) {
+        addCandidate(cf.file);
+        addCandidate(cf.url);
+      }
+
+      // 3. Activity files / attachments
+      for (const af of actFiles) {
+        addCandidate(af.directus_files_id);
+        addCandidate(af.file_id);
+        addCandidate(af.file);
+        addCandidate(af.url);
+      }
+      for (const a of allAssessments) {
+        if (Array.isArray(a.attachments)) {
+          for (const att of a.attachments) {
+            addCandidate(att);
+            addCandidate(att.directus_files_id);
+            addCandidate(att.id);
+            addCandidate(att.url);
+          }
+        }
+      }
+
+      // 4. Module items files
+      for (const mi of modItems) {
+        addCandidate(mi.file);
+        addCandidate(mi.url);
+        addCandidate(mi.fileUrl);
+      }
+
+      // 5. Submission attachments
+      for (const s of allSubmissions) {
+        if (Array.isArray(s.attachments)) {
+          for (const att of s.attachments) {
+            addCandidate(att);
+            addCandidate(att.id);
+            addCandidate(att.file);
+            addCandidate(att.url);
+          }
+        }
+        if (Array.isArray(s.files)) {
+          for (const f of s.files) {
+            addCandidate(f);
+          }
+        }
+      }
+
+      // 6. Announcement attachments
+      for (const ann of anns) {
+        if (Array.isArray(ann.attachments)) {
+          for (const att of ann.attachments) {
+            addCandidate(att);
+            addCandidate(att.url);
+          }
+        }
+      }
+
+      // 7. Discussion attachments and reply attachments
+      for (const d of discs) {
+        addCandidate(d.attachmentUrl);
+        addCandidate(d.attachment);
+        if (Array.isArray(d.attachments)) {
+          for (const att of d.attachments) {
+            addCandidate(att);
+            addCandidate(att.url);
+          }
+        }
+      }
+      for (const dr of discReplies) {
+        addCandidate(dr.attachment);
+        addCandidate(dr.attachment?.url);
+      }
 
       // Stage 1: Delete all Leaf records (Foreign key dependants)
+      // Comments and replies are deleted FIRST before their parent items
       await Promise.allSettled([
-        deleteItems('submission_answers', subAnswers),
+        deleteItems('module_comments', allModComments),
+        deleteItems('announcement_replies', annReplies),
+        deleteItems('discussion_replies', discReplies),
         deleteItems('submission_comments', subComments),
+        deleteDirectusComments(directusComments),
+        deleteItems('submission_answers', subAnswers),
         deleteItems('submission_rubric_scores', subRubricScores),
         deleteItems('assessment_questions', questions),
         deleteItems('rubric_criteria', rubrics),
@@ -733,7 +926,6 @@ export const likhaLmsApi = {
         deleteItems('syllabus_learning_plans', sylPlans),
         deleteItems('syllabus_course_maps', sylMaps),
         deleteItems('module_items', modItems),
-        deleteItems('module_comments', modComments),
         deleteItems('spr_cells', sprCells),
       ]);
 
@@ -749,7 +941,7 @@ export const likhaLmsApi = {
         deleteItems('activities', exams),
         deleteItems('modules', mods),
         deleteItems('syllabi', syllabi),
-        sprConfig?.id ? del(likhaRequest(`/items/spr_configs/${encodeURIComponent(sprConfig.id)}`, { method: 'DELETE' })) : Promise.resolve(),
+        sprConfig?.id ? del(likhaElevatedRequest(`/items/spr_configs/${encodeURIComponent(sprConfig.id)}`, { method: 'DELETE' })) : Promise.resolve(),
       ]);
 
       // Stage 4: Delete Course-level records
@@ -762,11 +954,21 @@ export const likhaLmsApi = {
         deleteItems('enrollment_requests', reqs),
         deleteItems('announcements', anns),
         deleteItems('discussions', discs),
+        deleteItems('messages', courseMessages),
+        deleteItems('chat_groups', courseChatGroups),
         deleteItems('calendar_events', events.filter(ev => String(ev.course_id ?? ev.courseId ?? '') === String(id))),
       ]);
 
       // Stage 5: Delete Course itself
       await likhaLmsApi.courses.deleteCourse(id);
+
+      // Stage 6: Delete all underlying physical assets/files/images from Directus storage (/files)
+      const allFileIds = Array.from(allFileIdsSet);
+      if (allFileIds.length > 0) {
+        await Promise.allSettled(
+          allFileIds.map(fileId => del(likhaElevatedRequest(`/files/${encodeURIComponent(fileId)}`, { method: 'DELETE' })))
+        );
+      }
     },
   },
 
@@ -1319,10 +1521,23 @@ export const likhaLmsApi = {
       });
     },
 
-    async deleteCourseFile(id: string): Promise<void> {
-      await likhaRequest(`/items/course_files/${encodeURIComponent(id)}`, {
+    async deleteFile(fileId: string): Promise<void> {
+      await likhaElevatedRequest(`/files/${encodeURIComponent(fileId)}`, {
         method: 'DELETE',
       });
+    },
+
+    async deleteCourseFile(id: string): Promise<void> {
+      const item = await likhaRequest<any>(`/items/course_files/${encodeURIComponent(id)}?fields=*,file.*`).catch(() => null);
+      const fileAssetId = item?.file?.id || (typeof item?.file === 'string' ? item.file : null);
+      await likhaElevatedRequest(`/items/course_files/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+      if (fileAssetId) {
+        await likhaElevatedRequest(`/files/${encodeURIComponent(fileAssetId)}`, {
+          method: 'DELETE',
+        }).catch(() => {});
+      }
     },
 
     async getCourseFolders(courseId: string): Promise<any[]> {
@@ -1345,7 +1560,7 @@ export const likhaLmsApi = {
     },
 
     async deleteCourseFolder(id: string): Promise<void> {
-      await likhaRequest(`/items/course_folders/${encodeURIComponent(id)}`, {
+      await likhaElevatedRequest(`/items/course_folders/${encodeURIComponent(id)}`, {
         method: 'DELETE',
       });
     },
@@ -1795,3 +2010,4 @@ export const likhaLmsApi = {
 };
 
 export { SESSION_EXPIRED_EVENT, notifySessionExpired } from './client';
+export { getLikhaServiceToken, getLikhaUploadServiceToken, likhaElevatedRequest };

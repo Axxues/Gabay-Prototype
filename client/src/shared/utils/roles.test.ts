@@ -5,6 +5,7 @@ import {
   isChairRole,
   compareUsersByAuthority,
   canCreateCourse,
+  canDeleteCourse,
   isAdministrativeMonitor,
   isFacultyRole,
 } from './roles';
@@ -142,5 +143,32 @@ describe('roles utility', () => {
     expect(isFacultyRole({ role: 'staff' })).toBe(false);
     expect(isFacultyRole(null)).toBe(false);
     expect(isFacultyRole(undefined)).toBe(false);
+  });
+
+  it('canDeleteCourse permits only Chairpersons, denies Admins, Faculty, and Students', () => {
+    // Chairperson allowed
+    expect(canDeleteCourse({ role: 'chairperson' })).toBe(true);
+    expect(canDeleteCourse({ role: 'admin', adminSubrole: 'chairperson' })).toBe(true);
+    expect(canDeleteCourse({ role: 'faculty', adminSubrole: 'chairperson' })).toBe(true);
+    expect(canDeleteCourse(null, 'chairperson')).toBe(true);
+
+    // Admin / Superadmin / Chancellor denied
+    expect(canDeleteCourse({ role: 'admin' })).toBe(false);
+    expect(canDeleteCourse({ role: 'superadmin' })).toBe(false);
+    expect(canDeleteCourse({ role: 'admin', adminSubrole: 'chancellor' })).toBe(false);
+    expect(canDeleteCourse(null, 'admin')).toBe(false);
+    expect(canDeleteCourse(null, 'superadmin')).toBe(false);
+
+    // Dean denied
+    expect(canDeleteCourse({ role: 'dean' })).toBe(false);
+    expect(canDeleteCourse({ role: 'admin', adminSubrole: 'dean' })).toBe(false);
+
+    // Faculty denied
+    expect(canDeleteCourse({ role: 'faculty' })).toBe(false);
+    expect(canDeleteCourse(null, 'faculty')).toBe(false);
+
+    // Student denied
+    expect(canDeleteCourse({ role: 'student' })).toBe(false);
+    expect(canDeleteCourse(null, 'student')).toBe(false);
   });
 });

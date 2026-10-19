@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useLMS } from '../../shared/context/LMSContext';
-import { formatIdNumber, isValidIdNumber, ID_NUMBER_EXAMPLE, EMPLOYEE_ID_EXAMPLE } from '../../shared/utils/idNumber';
+import { formatIdNumber, isValidIdNumber, EMPLOYEE_ID_EXAMPLE } from '../../shared/utils/idNumber';
 import { isValidInstitutionalEmail } from '../../shared/utils/institutionalEmail';
 import { CustomDropdown, type DropdownOption } from '../../shared/components/common/CustomDropdown';
 import { sendLeadershipCodeEmail } from '../../shared/api/emailApi';
@@ -236,8 +236,8 @@ export const CreateLeadershipAccountPage: React.FC<CreateLeadershipAccountPagePr
       case 'idNumber': {
         const clean = idNumber.trim();
         if (!clean) return 'ID Number is required.';
-        if (!isValidIdNumber(clean, 'faculty') && !isValidIdNumber(clean, 'student')) {
-          return `ID Number must follow standard format (e.g. ${EMPLOYEE_ID_EXAMPLE} or ${ID_NUMBER_EXAMPLE}).`;
+        if (!isValidIdNumber(clean, 'faculty')) {
+          return `ID Number must be exactly 4 digits (e.g. ${EMPLOYEE_ID_EXAMPLE}).`;
         }
         return undefined;
       }
@@ -524,7 +524,7 @@ export const CreateLeadershipAccountPage: React.FC<CreateLeadershipAccountPagePr
   const targetProgramName = departments.find(d => d.id === selectedDepartmentId)?.name || 'Selected Program';
 
   return (
-    <div className="flex min-h-full w-full flex-1 flex-col space-y-6 animate-fade-in max-w-3xl mx-auto pt-2 pb-24 px-3 sm:px-6 font-sans">
+    <div className="flex min-h-full w-full flex-1 flex-col space-y-6 animate-fade-in pt-2 pb-24 px-3 sm:px-6 font-sans">
       {/* Top Breadcrumb & Header */}
       <div className="pb-4 border-b border-border/80">
         <div className="space-y-3">
@@ -562,21 +562,6 @@ export const CreateLeadershipAccountPage: React.FC<CreateLeadershipAccountPagePr
       {/* STEP 1: FORM DETAILS */}
       {step === 'form' && (
         <div className="rounded-2xl border border-border bg-card p-6 sm:p-8 space-y-6 shadow-xs animate-scale-in">
-          {/* Brand header snippet */}
-          <div className="text-center space-y-1.5 pb-2 border-b border-border/60">
-            <img
-              src="/gabay-logo.png"
-              alt="GABAY logo"
-              className="w-12 h-12 mx-auto rounded-xl object-contain bg-transparent"
-            />
-            <h2 className="text-base font-bold text-foreground">
-              Leadership Appointment Portal
-            </h2>
-            <p className="text-xs text-muted-foreground">
-              Enter incoming academic leader details and assign to an unappointed college or program.
-            </p>
-          </div>
-
           {/* Form Banner Error */}
           {formError && (
             <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-xl flex items-start space-x-2 text-xs text-destructive animate-fade-in">
@@ -596,13 +581,11 @@ export const CreateLeadershipAccountPage: React.FC<CreateLeadershipAccountPagePr
                   {
                     id: 'dean' as const,
                     label: 'College Dean',
-                    desc: 'Oversees college programs & depts',
                     icon: Building,
                   },
                   {
                     id: 'chairperson' as const,
                     label: 'Department Chairperson',
-                    desc: 'Manages program chair sheet & curriculum',
                     icon: FolderTree,
                   },
                 ].map(item => {
@@ -633,13 +616,6 @@ export const CreateLeadershipAccountPage: React.FC<CreateLeadershipAccountPagePr
                         }`}
                       />
                       <span className="font-bold">{item.label}</span>
-                      <span
-                        className={`text-[11px] mt-0.5 text-center ${
-                          isSelected ? 'text-primary-foreground/80' : 'text-muted-foreground'
-                        }`}
-                      >
-                        {item.desc}
-                      </span>
                     </label>
                   );
                 })}
@@ -870,9 +846,6 @@ export const CreateLeadershipAccountPage: React.FC<CreateLeadershipAccountPagePr
                 {fieldErrors.email && (
                   <FieldError id="lead-email-error" message={fieldErrors.email} />
                 )}
-                <p className="text-[11px] text-muted-foreground">
-                  The 6-digit verification code will be sent to this email.
-                </p>
               </div>
 
               <div className="space-y-1">
@@ -897,7 +870,8 @@ export const CreateLeadershipAccountPage: React.FC<CreateLeadershipAccountPagePr
                     }
                     onBlur={() => handleBlur('idNumber')}
                     aria-invalid={fieldErrors.idNumber ? true : undefined}
-                    placeholder={`e.g. ${EMPLOYEE_ID_EXAMPLE} or ${ID_NUMBER_EXAMPLE}`}
+                    maxLength={4}
+                    placeholder={`e.g. ${EMPLOYEE_ID_EXAMPLE}`}
                     className={`w-full pl-9 pr-3 py-2.5 bg-background border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 transition-all font-sans ${
                       fieldErrors.idNumber
                         ? 'border-destructive focus:ring-destructive/30'

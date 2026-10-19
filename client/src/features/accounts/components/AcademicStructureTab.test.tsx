@@ -279,6 +279,9 @@ describe('AcademicStructureTab Scoping and Leader Appointments', () => {
 
     render(<AcademicStructureTab />);
 
+    // Expand college first since colleges are minimized by default
+    fireEvent.click(screen.getByRole('button', { name: /toggle (departments|programs) for college of engineering and technology/i }));
+
     // Civil Engineering has no sitting chairperson, so it exposes the Appoint action
     const appointChairBtn = screen.getByRole('button', { name: /^appoint$/i });
     fireEvent.click(appointChairBtn);
@@ -416,20 +419,19 @@ describe('AcademicStructureTab Scoping and Leader Appointments', () => {
     const cetHeader = screen.getByRole('button', {
       name: /toggle (departments|programs) for college of engineering and technology/i,
     });
-    expect(cetHeader).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByText('Information Technology')).toBeInTheDocument();
-
-    // Click the card's title (not the chevron) to collapse
-    fireEvent.click(screen.getByText('College of Engineering and Technology'));
-
-    expect(screen.queryByText('Information Technology')).not.toBeInTheDocument();
+    // Minimized by default
     expect(cetHeader).toHaveAttribute('aria-expanded', 'false');
 
-    // Click the card again to expand
+    // Click the card's title (not the chevron) to expand
     fireEvent.click(screen.getByText('College of Engineering and Technology'));
 
     expect(screen.getByText('Information Technology')).toBeInTheDocument();
     expect(cetHeader).toHaveAttribute('aria-expanded', 'true');
+
+    // Click the card again to collapse
+    fireEvent.click(screen.getByText('College of Engineering and Technology'));
+
+    expect(cetHeader).toHaveAttribute('aria-expanded', 'false');
   });
 
   test('7. clicking an action inside an unappointed program navigates to create-leadership and does not collapse the college', () => {
@@ -438,6 +440,8 @@ describe('AcademicStructureTab Scoping and Leader Appointments', () => {
     const cetHeader = screen.getByRole('button', {
       name: /toggle (departments|programs) for college of engineering and technology/i,
     });
+    // Expand first since minimized by default
+    fireEvent.click(cetHeader);
 
     // Appoint button on Civil Engineering (unassigned chair)
     const appointBtn = screen.getByRole('button', { name: /^appoint$/i });
@@ -493,6 +497,8 @@ describe('AcademicStructureTab Scoping and Leader Appointments', () => {
     const { unmount } = render(<AcademicStructureTab />);
 
     expect(screen.getByRole('button', { name: /delete college of engineering and technology/i })).toBeInTheDocument();
+    // Expand CET to access department delete button
+    fireEvent.click(screen.getByRole('button', { name: /toggle (departments|programs) for college of engineering and technology/i }));
     expect(screen.getByRole('button', { name: /delete information technology/i })).toBeInTheDocument();
     unmount();
 
@@ -509,6 +515,8 @@ describe('AcademicStructureTab Scoping and Leader Appointments', () => {
 
     // Dean MUST NOT see college delete button
     expect(screen.queryByRole('button', { name: /delete college of engineering and technology/i })).not.toBeInTheDocument();
+    // Expand CET to access department delete button
+    fireEvent.click(screen.getByRole('button', { name: /toggle (departments|programs) for college of engineering and technology/i }));
     // Dean MUST see department delete button for CET department
     expect(screen.getByRole('button', { name: /delete information technology/i })).toBeInTheDocument();
   });

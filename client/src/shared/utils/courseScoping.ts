@@ -248,8 +248,21 @@ export function getScopedCourses({
     });
   }
 
-  // Dean: sees courses across their college, optionally filtered by program
+  // Dean: sees courses across their college by default, or across other colleges/university if selected
   if (isDeanRole(activeUser, activeRole)) {
+    if (selectedCollegeId === 'all') {
+      let result = [...courses];
+      if (selectedProgramId && selectedProgramId !== 'all') {
+        const targetDept = departments.find(
+          d => d.id === selectedProgramId || d.code?.toLowerCase() === selectedProgramId.toLowerCase()
+        );
+        if (targetDept) {
+          result = result.filter(course => courseMatchesProgram(course, targetDept, users));
+        }
+      }
+      return result;
+    }
+
     const deanCollegeId =
       (selectedCollegeId && selectedCollegeId !== 'all' ? selectedCollegeId : undefined) ||
       activeUser.collegeId ||
@@ -257,7 +270,7 @@ export function getScopedCourses({
     const deanCollege = colleges.find(
       c =>
         c.id === deanCollegeId ||
-        (activeUser.collegeName && c.name.toLowerCase() === activeUser.collegeName.toLowerCase())
+        (activeUser.collegeName && c.name?.toLowerCase() === activeUser.collegeName.toLowerCase())
     );
     const effectiveCollegeId = deanCollegeId || deanCollege?.id || '';
     const effectiveCollegeName = (deanCollege?.name || activeUser.collegeName || '').toLowerCase();
@@ -268,7 +281,7 @@ export function getScopedCourses({
 
     if (selectedProgramId && selectedProgramId !== 'all') {
       const targetDept = departments.find(
-        d => d.id === selectedProgramId || d.code.toLowerCase() === selectedProgramId.toLowerCase()
+        d => d.id === selectedProgramId || d.code?.toLowerCase() === selectedProgramId.toLowerCase()
       );
       if (targetDept) {
         collegeCourses = collegeCourses.filter(course =>

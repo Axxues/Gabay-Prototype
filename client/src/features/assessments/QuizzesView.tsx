@@ -52,9 +52,9 @@ export const QuizzesView: React.FC<QuizzesViewProps> = ({
     effectiveTermsForCourse
   } = useLMS() as ReturnType<typeof useLMS> & { effectiveTermsForCourse?: (courseId: string) => TermId[] };
 
-  const course = db.courses.find(c => c.id === courseId);
+  const course = (db.courses || []).find(c => c.id === courseId);
   const isAssignedInstructor = canManageCourseContent(course, activeUser);
-  const courseQuizzes = db.quizzes.filter(q => q.courseId === courseId);
+  const courseQuizzes = (db.quizzes || []).filter(q => q.courseId === courseId);
   const [activeQuiz, setActiveQuiz] = useState<Quiz | null>(null);
   const [userAnswers, setUserAnswers] = useState<Record<string, string>>({});
   const [quizSubmitted, setQuizSubmitted] = useState(false);

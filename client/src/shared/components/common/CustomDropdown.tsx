@@ -89,11 +89,20 @@ export const CustomDropdown: React.FC<CustomDropdownProps> = ({
   const wrapRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   // A stale query from a previous open would hide the options again.
   useEffect(() => {
     if (!isOpen) setSearch('');
   }, [isOpen]);
+
+  // `autoFocus` moves focus during React's commit, before `panelRef` is attached, so the
+  // trigger's blur handler cannot yet see that focus stayed inside the control and would
+  // report a blur the user never made. Focusing after mount keeps refs in place first.
+  useEffect(() => {
+    if (!isOpen || !searchable) return;
+    searchRef.current?.focus();
+  }, [isOpen, searchable]);
 
   useLayoutEffect(() => {
     if (!isOpen) return;
@@ -144,9 +153,12 @@ export const CustomDropdown: React.FC<CustomDropdownProps> = ({
     };
   }, [isOpen]);
 
-  const selectedOption = options.find(o => o.value === value);
+  const validOptions = options.filter(
+    o => o && typeof o.label === 'string' && o.label.trim().length > 0 && typeof o.value === 'string'
+  );
+  const selectedOption = validOptions.find(o => o.value === value);
   const query = search.trim().toLowerCase();
-  const visibleOptions = searchable && query ? options.filter(o => o.label.toLowerCase().includes(query)) : options;
+  const visibleOptions = searchable && query ? validOptions.filter(o => o.label.toLowerCase().includes(query)) : validOptions;
 
   const triggerTone = invalid
     ? 'border-destructive focus:ring-2 focus:ring-destructive/30'
@@ -167,11 +179,11 @@ export const CustomDropdown: React.FC<CustomDropdownProps> = ({
           <div className="relative">
             <Search className="w-3.5 h-3.5 text-muted-foreground absolute left-2.5 top-2.5" />
             <input
+              ref={searchRef}
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Filter..."
-              autoFocus
               className="w-full pl-8 pr-3 py-1.5 bg-background border border-border rounded-lg text-xs font-sans text-foreground outline-none focus:ring-1 focus:ring-primary/40"
             />
           </div>
@@ -240,7 +252,7 @@ export const CustomDropdown: React.FC<CustomDropdownProps> = ({
         className="sr-only"
         data-testid={testId}
       >
-        {options.map(opt => (
+        {validOptions.map(opt => (
           <option key={opt.value} value={opt.value} disabled={opt.disabled}>
             {opt.label}
           </option>

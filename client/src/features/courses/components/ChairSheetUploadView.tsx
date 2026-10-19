@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo, useEffect } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import {
   UploadCloud,
   FileSpreadsheet,
@@ -14,7 +14,6 @@ import {
 } from 'lucide-react';
 import { useLMS } from '../../../shared/context/LMSContext';
 import { AnimatedModal } from '../../../shared/components/common/ModalPortal';
-import { CustomDropdown } from '../../../shared/components/common/CustomDropdown';
 import {
   parseChairSheet,
   validateChairSheetRows,
@@ -45,7 +44,6 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
     showAlert,
     colleges,
     departments,
-    schoolYears,
     getSchoolYearsByCollege,
     getActiveSchoolYearForCollege,
     getBaselineSchoolYear,
@@ -65,16 +63,33 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
     return (db.users || []).filter(isEligibleFaculty);
   }, [db.users]);
 
+  const userDepartment = useMemo(() => {
+    if (departments) {
+      const match = departments.find(
+        d =>
+          d.chairpersonId === activeUser?.id ||
+          d.id === activeUser?.department ||
+          d.name?.toLowerCase() === activeUser?.department?.toLowerCase() ||
+          d.code?.toLowerCase() === activeUser?.department?.toLowerCase() ||
+          (activeUser?.department && (d.name?.toLowerCase().includes(activeUser.department.toLowerCase()) || activeUser.department.toLowerCase().includes(d.name?.toLowerCase())))
+      );
+      if (match) return match;
+    }
+    return undefined;
+  }, [activeUser, departments]);
+
   // Robust collegiate scoping: resolve via activeUser.collegeId, department affiliation, or dean assignment
   const userCollegeId = useMemo(() => {
     if (activeUser?.collegeId) return activeUser.collegeId;
+    if (userDepartment?.collegeId) return userDepartment.collegeId;
     if (activeUser?.department && departments) {
       const match = departments.find(
         d =>
           d.id === activeUser.department ||
           d.name?.toLowerCase() === activeUser.department.toLowerCase() ||
           d.code?.toLowerCase() === activeUser.department.toLowerCase() ||
-          d.chairpersonId === activeUser.id
+          d.chairpersonId === activeUser.id ||
+          (d.name && activeUser.department && (d.name.toLowerCase().includes(activeUser.department.toLowerCase()) || activeUser.department.toLowerCase().includes(d.name.toLowerCase())))
       );
       if (match?.collegeId) return match.collegeId;
     }
@@ -87,23 +102,13 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
       if (deanMatch?.id) return deanMatch.id;
     }
     return 'col-ccs';
-  }, [activeUser, departments, colleges]);
+  }, [activeUser, userDepartment, departments, colleges]);
 
-  const userDepartment = useMemo(() => {
-    if (departments) {
-      const match = departments.find(
-        d =>
-          d.chairpersonId === activeUser?.id ||
-          d.id === activeUser?.department ||
-          d.name?.toLowerCase() === activeUser?.department?.toLowerCase() ||
-          d.code?.toLowerCase() === activeUser?.department?.toLowerCase()
-      );
-      if (match) return match;
-    }
-    return undefined;
-  }, [activeUser, departments]);
+  const userCollege = useMemo(() => {
+    return colleges?.find(c => c.id === userCollegeId);
+  }, [colleges, userCollegeId]);
 
-  const defaultSchoolYear = useMemo(() => {
+  const activeCollegeSchoolYear = useMemo(() => {
     if (getActiveSchoolYearForCollege) {
       const activeSy = getActiveSchoolYearForCollege(userCollegeId);
       if (activeSy?.year) return activeSy.year;
@@ -111,31 +116,49 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
     const list = getSchoolYearsByCollege ? getSchoolYearsByCollege(userCollegeId) : [];
     const active = list.find(sy => sy.isActive);
     if (active?.year) return active.year;
+    return undefined;
+  }, [getActiveSchoolYearForCollege, getSchoolYearsByCollege, userCollegeId]);
+
+  const defaultSchoolYear = useMemo(() => {
+    if (activeCollegeSchoolYear) return activeCollegeSchoolYear;
     const baseline = getBaselineSchoolYear?.();
     return baseline?.year || '2025-2026';
-  }, [getActiveSchoolYearForCollege, getSchoolYearsByCollege, getBaselineSchoolYear, userCollegeId]);
+  }, [activeCollegeSchoolYear, getBaselineSchoolYear]);
 
-  const [selectedSchoolYear, setSelectedSchoolYear] = useState<string>(() => defaultSchoolYear);
+  const selectedSchoolYear = defaultSchoolYear;
 
-  useEffect(() => {
-    if (defaultSchoolYear) {
-      setSelectedSchoolYear(defaultSchoolYear);
-    }
-  }, [defaultSchoolYear]);
+  const baselineSchoolYear = useMemo(() => {
+    const baseline = getBaselineSchoolYear?.();
+    return baseline?.year;
+  }, [getBaselineSchoolYear]);
 
-  const schoolYearOptions = useMemo(() => {
-    const years = new Set<string>();
-    const list = getSchoolYearsByCollege ? getSchoolYearsByCollege(userCollegeId) : (schoolYears || []);
-    list.forEach(sy => {
-      if (sy.year) years.add(sy.year.trim());
-    });
-    if (defaultSchoolYear) years.add(defaultSchoolYear);
-    years.add('2025-2026');
-    return Array.from(years).sort((a, b) => b.localeCompare(a));
-  }, [getSchoolYearsByCollege, userCollegeId, schoolYears, defaultSchoolYear]);
+  // Baseline Mismatch Check:
+  // If the college's active school year does not match the university baseline school year,
+  // the chairperson cannot upload assigned courses or generate course shells.
+  const isBaselineMismatch = useMemo(() => {
+    if (!baselineSchoolYear) return false;
+    const currentCollegeYear = activeCollegeSchoolYear || defaultSchoolYear;
+    if (!currentCollegeYear) return false;
+    return baselineSchoolYear.trim().toLowerCase() !== currentCollegeYear.trim().toLowerCase();
+  }, [baselineSchoolYear, activeCollegeSchoolYear, defaultSchoolYear]);
+
+  const mismatchErrorMessage = useMemo(() => {
+    const currentCollegeYear = activeCollegeSchoolYear || defaultSchoolYear;
+    return `Cannot upload assigned courses. The university baseline academic year (AY ${baselineSchoolYear}) does not match your college's active academic year (AY ${currentCollegeYear}). Your college must be rolled over to the university baseline before uploading curriculum assignments.`;
+  }, [baselineSchoolYear, activeCollegeSchoolYear, defaultSchoolYear]);
 
   const handleProcessFile = async (file: File) => {
     if (!file) return;
+
+    if (isBaselineMismatch) {
+      showAlert({
+        title: 'Upload Restricted: Academic Year Mismatch',
+        message: mismatchErrorMessage,
+        type: 'error',
+      });
+      return;
+    }
+
     try {
       setFileName(file.name);
       let buffer: ArrayBuffer;
@@ -174,6 +197,16 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
+
+    if (isBaselineMismatch) {
+      showAlert({
+        title: 'Upload Restricted: Academic Year Mismatch',
+        message: mismatchErrorMessage,
+        type: 'error',
+      });
+      return;
+    }
+
     const file = e.dataTransfer.files?.[0];
     if (file) {
       void handleProcessFile(file);
@@ -181,6 +214,16 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (isBaselineMismatch) {
+      showAlert({
+        title: 'Upload Restricted: Academic Year Mismatch',
+        message: mismatchErrorMessage,
+        type: 'error',
+      });
+      e.target.value = '';
+      return;
+    }
+
     const file = e.target.files?.[0];
     if (file) {
       void handleProcessFile(file);
@@ -255,10 +298,19 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
   const totalCount = rows.length;
   const validCount = rows.filter(r => r.facultyStatus === 'valid').length;
   const invalidCount = totalCount - validCount;
-  const canApprove = totalCount > 0 && invalidCount === 0 && !isSubmitting;
+  const canApprove = totalCount > 0 && invalidCount === 0 && !isSubmitting && !isBaselineMismatch;
 
   const handleApproveAndSave = async () => {
-    if (!canApprove) return;
+    if (!canApprove || isBaselineMismatch) {
+      if (isBaselineMismatch) {
+        showAlert({
+          title: 'Cannot Create Courses: Academic Year Mismatch',
+          message: mismatchErrorMessage,
+          type: 'error',
+        });
+      }
+      return;
+    }
 
     setIsSubmitting(true);
     setSubmitProgress({ current: 0, total: totalCount });
@@ -329,7 +381,7 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
           <div className="min-w-0">
             <div className="flex items-center space-x-2">
               <h1 className="text-[22px] font-extrabold tracking-tight text-foreground">
-                Upload Department Assigned Courses
+                Upload Program Assigned Courses
               </h1>
               <span className="px-2.5 py-0.5 text-[11px] font-semibold bg-primary/10 text-primary border border-primary/20 rounded-md">
                 Chairperson Authority
@@ -344,25 +396,27 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
         {/* Actions: shrink-0 keeps the cluster at full width so Approve never drops below Reupload.
             sm:ml-auto holds it at the right edge, even if the whole cluster wraps under the title. */}
         <div className="flex shrink-0 flex-wrap items-center gap-2 sm:ml-auto sm:flex-nowrap">
-          {/* Target Academic Year Selector */}
-          <div className="flex items-center space-x-2">
-            <label htmlFor="assigned-courses-ay-select" className="text-xs font-semibold text-muted-foreground whitespace-nowrap">
+          {/* Target Academic Year Display (College Active Academic Year) */}
+          <div className="flex items-center space-x-2" data-testid="assigned-courses-academic-year-display">
+            <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">
               Academic Year:
-            </label>
-            <CustomDropdown
-              id="assigned-courses-ay-select"
-              ariaLabel="Select Target Academic Year for Assigned Courses"
-              value={selectedSchoolYear}
-              onChange={setSelectedSchoolYear}
-              disabled={isSubmitting}
-              variant="compact"
-              className="min-w-[140px]"
-              options={schoolYearOptions.map(sy => ({
-                value: sy,
-                label: `AY ${sy}${sy === defaultSchoolYear ? ' (Active)' : ''}`,
-              }))}
-            />
+            </span>
+            <span className="px-2.5 py-1 text-xs font-bold bg-muted text-foreground border border-border/80 rounded-xl whitespace-nowrap">
+              AY {defaultSchoolYear}
+            </span>
           </div>
+
+          {isBaselineMismatch && (
+            <div
+              data-testid="assigned-courses-baseline-mismatch-badge"
+              title={`University baseline academic year is AY ${baselineSchoolYear}, differing from this college's active AY ${activeCollegeSchoolYear || defaultSchoolYear}`}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/25 rounded-xl whitespace-nowrap shadow-xs"
+            >
+              <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0" />
+              <span className="text-muted-foreground font-normal">Current Baseline:</span>
+              <span className="font-extrabold">AY {baselineSchoolYear}</span>
+            </div>
+          )}
 
           {rows.length > 0 && (
             <>
@@ -414,36 +468,85 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
         </div>
       </div>
 
+      {/* Baseline Mismatch Alert Banner */}
+      {isBaselineMismatch && (
+        <div
+          data-testid="assigned-courses-baseline-mismatch-banner"
+          className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-start space-x-3.5 text-amber-900 dark:text-amber-200"
+        >
+          <div className="p-2 bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded-xl shrink-0 mt-0.5">
+            <AlertTriangle className="w-5 h-5" />
+          </div>
+          <div className="space-y-1.5 text-xs flex-1">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h4 className="font-extrabold text-sm text-amber-950 dark:text-amber-100">
+                Assigned Courses Upload Restricted: Academic Year Mismatch
+              </h4>
+              <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-500/30 rounded-md uppercase tracking-wider">
+                Upload Blocked
+              </span>
+            </div>
+            <p className="leading-relaxed text-amber-900/90 dark:text-amber-200/90">
+              Your college {userCollege?.name ? `(${userCollege.name})` : ''} is currently active for{' '}
+              <span className="font-bold text-foreground">AY {activeCollegeSchoolYear || defaultSchoolYear}</span>,
+              which does not match the university-wide baseline academic year{' '}
+              <span className="font-bold text-foreground">AY {baselineSchoolYear}</span>.
+            </p>
+            <p className="text-[11px] text-muted-foreground leading-normal">
+              Department chairpersons cannot upload curriculum assignments or generate course shells until the college's academic year matches the university baseline. Please ask your College Dean or University Administrator to complete the academic year rollover in Academic Governance.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Upload Dropzone */}
       {rows.length === 0 ? (
         <div
+          data-testid="assigned-courses-dropzone"
           onDragOver={e => {
             e.preventDefault();
-            setIsDragging(true);
+            if (!isBaselineMismatch) {
+              setIsDragging(true);
+            }
           }}
           onDragLeave={() => setIsDragging(false)}
           onDrop={handleDrop}
           className={`flex flex-col items-center justify-center p-12 border-2 border-dashed rounded-3xl transition-all ${
-            isDragging
+            isBaselineMismatch
+              ? 'border-amber-500/30 bg-amber-500/5 cursor-not-allowed opacity-90'
+              : isDragging
               ? 'border-primary bg-primary/5 scale-[0.99]'
               : 'border-border/80 bg-card hover:border-primary/50 hover:bg-muted/20'
           }`}
         >
-          <div className="w-16 h-16 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mb-4">
-            <FileSpreadsheet className="w-8 h-8" />
+          <div
+            className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-4 ${
+              isBaselineMismatch
+                ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                : 'bg-primary/10 text-primary'
+            }`}
+          >
+            {isBaselineMismatch ? (
+              <AlertTriangle className="w-8 h-8" />
+            ) : (
+              <FileSpreadsheet className="w-8 h-8" />
+            )}
           </div>
 
           <h3 className="text-base font-bold text-foreground text-center">
-            Upload Department Assigned Courses (.xlsx)
+            Upload Program Assigned Courses (.xlsx)
           </h3>
           <p className="text-xs text-muted-foreground max-w-md text-center mt-1 mb-5">
-            Drag and drop your department assigned courses spreadsheet containing faculty names, course codes, titles, and sections.
+            {isBaselineMismatch
+              ? `Uploading is locked. Your college active academic year (AY ${activeCollegeSchoolYear || defaultSchoolYear}) must be rolled over to the university baseline (AY ${baselineSchoolYear}) before courses can be uploaded.`
+              : 'Drag and drop your department assigned courses spreadsheet containing faculty names, course codes, titles, and sections.'}
           </p>
 
           <input
             ref={fileInputRef}
             type="file"
             accept=".xlsx, .xls"
+            disabled={isBaselineMismatch}
             data-testid="assigned-courses-file-input"
             onChange={handleFileChange}
             className="hidden"
@@ -452,8 +555,28 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
           <div className="flex flex-wrap items-center justify-center gap-3">
             <button
               type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="px-5 py-2.5 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl shadow-primary-sm transition-all flex items-center space-x-2 cursor-pointer"
+              disabled={isBaselineMismatch}
+              onClick={() => {
+                if (isBaselineMismatch) {
+                  showAlert({
+                    title: 'Upload Restricted: Academic Year Mismatch',
+                    message: mismatchErrorMessage,
+                    type: 'error',
+                  });
+                  return;
+                }
+                fileInputRef.current?.click();
+              }}
+              title={
+                isBaselineMismatch
+                  ? `Upload disabled: College AY (${activeCollegeSchoolYear || defaultSchoolYear}) differs from University Baseline AY (${baselineSchoolYear})`
+                  : undefined
+              }
+              className={`px-5 py-2.5 text-xs font-bold rounded-xl shadow-primary-sm transition-all flex items-center space-x-2 ${
+                isBaselineMismatch
+                  ? 'bg-muted text-muted-foreground cursor-not-allowed opacity-60 border border-border shadow-none'
+                  : 'bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground cursor-pointer'
+              }`}
             >
               <UploadCloud className="w-4 h-4" />
               <span>Select Assigned Courses File</span>

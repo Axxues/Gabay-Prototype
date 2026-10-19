@@ -261,6 +261,15 @@ export const ProgramDetailsPage: React.FC<ProgramDetailsPageProps> = ({ onNaviga
     }
   };
 
+  const handleNavigateToUserProfile = (userId: string) => {
+    navigate(`/accounts/${encodeURIComponent(userId)}/view`, {
+      state: {
+        from: activeProgramId ? `/governance/programs/${encodeURIComponent(activeProgramId)}` : '/governance',
+        fromLabel: 'Program',
+      },
+    });
+  };
+
   // Guard: Unauthorized Dean attempting to view a program outside their college
   if (isUnauthorizedDean) {
     return (
@@ -410,17 +419,30 @@ export const ProgramDetailsPage: React.FC<ProgramDetailsPageProps> = ({ onNaviga
         </div>
 
         {incumbentChair ? (
-          <div data-testid="incumbent-chairperson-card" className="flex flex-col md:flex-row md:items-center justify-between gap-6 p-6 sm:p-7 bg-muted/20 border border-border rounded-2xl">
+          <div
+            role="button"
+            tabIndex={0}
+            data-testid="incumbent-chairperson-card"
+            onClick={() => handleNavigateToUserProfile(incumbentChair.id)}
+            onKeyDown={(e) => {
+              if (e.target !== e.currentTarget) return;
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleNavigateToUserProfile(incumbentChair.id);
+              }
+            }}
+            className="flex flex-col md:flex-row md:items-center justify-between gap-6 p-6 sm:p-7 bg-muted/20 hover:bg-muted/40 border border-border rounded-2xl cursor-pointer transition-colors group"
+          >
             <div className="flex items-center space-x-5 min-w-0">
               <div className="shrink-0">
                 <UserAvatar
                   name={incumbentChair.name}
                   src={incumbentChair.avatar}
-                  className="w-14 h-14 rounded-full border-2 border-border shadow-xs"
+                  className="w-14 h-14 rounded-full border-2 border-border shadow-xs group-hover:border-primary/40 transition-colors"
                 />
               </div>
               <div className="min-w-0 space-y-1">
-                <div className="font-extrabold text-foreground text-base sm:text-lg tracking-tight">
+                <div className="font-extrabold text-foreground text-base sm:text-lg tracking-tight group-hover:text-primary transition-colors">
                   {incumbentChair.name}
                 </div>
                 <div className="text-xs font-semibold text-primary">
@@ -666,7 +688,18 @@ export const ProgramDetailsPage: React.FC<ProgramDetailsPageProps> = ({ onNaviga
               return (
                 <div
                   key={member.id}
-                  className="p-4 sm:px-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-muted/30 transition-colors"
+                  role="button"
+                  tabIndex={0}
+                  data-testid={`roster-member-row-${member.id}`}
+                  onClick={() => handleNavigateToUserProfile(member.id)}
+                  onKeyDown={(e) => {
+                    if (e.target !== e.currentTarget) return;
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleNavigateToUserProfile(member.id);
+                    }
+                  }}
+                  className="p-4 sm:px-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-muted/40 transition-colors cursor-pointer group"
                 >
                   <div className="flex items-center space-x-3.5 min-w-0">
                     <UserAvatar
@@ -676,7 +709,7 @@ export const ProgramDetailsPage: React.FC<ProgramDetailsPageProps> = ({ onNaviga
                     />
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-bold text-foreground text-xs truncate">{member.name}</span>
+                        <span className="font-bold text-foreground text-xs truncate group-hover:text-primary transition-colors">{member.name}</span>
                         <span
                           className={`px-2 py-0.5 text-[9px] font-bold rounded-md border shrink-0 ${
                             isCurrentChair

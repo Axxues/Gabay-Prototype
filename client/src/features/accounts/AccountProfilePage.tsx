@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useLMS } from '../../shared/context/LMSContext';
 import type { User, College, Department } from '../../shared/types/lms';
 import { UserAvatar } from '../../shared/components/common/UserAvatar';
@@ -8,7 +8,6 @@ import { getDisplayRoleLabel, isFacultyRole, isAdministrativeMonitor, isDeanRole
 import { formatAddress, parseAddress, DEGREE_LABELS } from '../../shared/utils/profileCompletion';
 import {
   ArrowLeft,
-  Edit3,
   Mail,
   Phone,
   MapPin,
@@ -17,7 +16,6 @@ import {
   Users,
   Award,
   BookOpen,
-  CheckCircle2,
   UserCheck,
   IdCard,
 } from 'lucide-react';
@@ -25,7 +23,6 @@ import {
 interface AccountProfilePageProps {
   user: User;
   onNavigateTab?: (tab: string) => void;
-  onEditAccount?: (user: User) => void;
 }
 
 type AccountProfileTab = 'overview' | 'records' | 'courses';
@@ -33,14 +30,23 @@ type AccountProfileTab = 'overview' | 'records' | 'courses';
 export const AccountProfilePage: React.FC<AccountProfilePageProps> = ({
   user,
   onNavigateTab,
-  onEditAccount,
 }) => {
   const navigate = useNavigate();
   const { colleges, departments, db, activeUser } = useLMS();
   const [activeTab, setActiveTab] = useState<AccountProfileTab>('overview');
 
   const roleLabel = getDisplayRoleLabel(user, user.role);
+  const isDean = isDeanRole(user, user.role);
+  const isChair = isChairRole(user, user.role);
+  const isAdmin = (user.role === 'admin' || user.role === 'superadmin') && !isDean && !isChair;
+  const isFaculty = isFacultyRole(user, user.role);
   const isAdministrative = isAdministrativeMonitor(user, user.role);
+
+  // Field visibility by role:
+  const showCollege = !isAdmin;
+  const showProgram = !isAdmin && !isDean;
+  const showDesignation = isFaculty;
+  const showCoursesTab = !isAdministrative;
 
   // Address normalization
   const permAddr = user.permanentAddressDetails || parseAddress(user.permanentAddress || user.address);
@@ -78,21 +84,53 @@ export const AccountProfilePage: React.FC<AccountProfilePageProps> = ({
     return false;
   });
 
+  const location = useLocation();
+  const locationState = location?.state as { from?: string; fromLabel?: string } | null;
+
+  const backLabel = (() => {
+    if (locationState?.fromLabel) {
+      return `Back to ${locationState.fromLabel}`;
+    }
+    if (locationState?.from) {
+      if (locationState.from.includes('/governance/programs')) return 'Back to Program';
+      if (locationState.from.includes('/governance')) return 'Back to Governance';
+      if (locationState.from.includes('/accounts')) return 'Back to Accounts';
+      return 'Back';
+    }
+    if (typeof window !== 'undefined' && window.history.state && typeof window.history.state.idx === 'number' && window.history.state.idx > 0) {
+      return 'Back';
+    }
+    return 'Back to Accounts';
+  })();
+
   const handleBack = () => {
+    // 1. If history exists in current session, go back in history to the originating page
+    if (typeof window !== 'undefined' && window.history.state && typeof window.history.state.idx === 'number' && window.history.state.idx > 0) {
+      navigate(-1);
+      return;
+    }
+
+    // 2. If an origin path was explicitly passed in router state, navigate there
+    if (locationState?.from) {
+      navigate(locationState.from);
+      return;
+    }
+
+    // 3. Fallback to tab navigation if available
     if (onNavigateTab) {
       onNavigateTab('accounts');
-    } else {
-      navigate('/accounts');
+      return;
     }
+
+    // 4. Default fallback
+    navigate('/accounts');
   };
 
-  const handleEdit = () => {
-    if (onEditAccount) {
-      onEditAccount(user);
-    } else {
-      navigate(`/accounts/${encodeURIComponent(user.id)}/edit`);
-    }
-  };
+  const subtitleItems = [
+    showDesignation && user.title ? user.title : null,
+    showProgram && programMatch !== '—' ? programMatch : null,
+    showCollege ? collegeMatch : null,
+  ].filter(Boolean);
 
   const tabs: { id: AccountProfileTab; label: string; icon: React.ReactNode; count?: number }[] = [
     { id: 'overview', label: 'Overview & Placement', icon: <UserCheck className="w-4 h-4" /> },
@@ -102,7 +140,12 @@ export const AccountProfilePage: React.FC<AccountProfilePageProps> = ({
       icon: user.role === 'student' ? <Users className="w-4 h-4" /> : <Award className="w-4 h-4" />,
       count: user.role !== 'student' ? (user.educationalBackground?.length || 0) : undefined,
     }] : []),
-    { id: 'courses', label: 'Courses & Shells', icon: <BookOpen className="w-4 h-4" />, count: userCourses.length },
+    ...(showCoursesTab ? [{
+      id: 'courses' as AccountProfileTab,
+      label: 'Courses & Shells',
+      icon: <BookOpen className="w-4 h-4" />,
+      count: userCourses.length,
+    }] : []),
   ];
 
   return (
@@ -115,176 +158,81 @@ export const AccountProfilePage: React.FC<AccountProfilePageProps> = ({
           className="inline-flex items-center space-x-2 text-xs font-bold text-muted-foreground hover:text-foreground bg-card hover:bg-muted border border-border px-3.5 py-2 rounded-xl transition-all shadow-none cursor-pointer active:scale-[0.98] shrink-0 mt-0.5"
         >
           <ArrowLeft className="w-4 h-4" />
-          <span>Back to Accounts</span>
+          <span>{backLabel}</span>
         </button>
 
         <div className="flex-1">
           <PageHeader
             title={`${user.name}'s Profile`}
             description="Institutional records, academic credentials, and directory details."
-            actions={
-              <button
-                type="button"
-                onClick={handleEdit}
-                className="inline-flex items-center space-x-1.5 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground px-3.5 py-2 rounded-xl transition-all shadow-none cursor-pointer"
-              >
-                <Edit3 className="w-3.5 h-3.5" />
-                <span>Edit Account</span>
-              </button>
-            }
           />
         </div>
       </div>
 
       {/* Identity Hero Card (matching ProfilePage) */}
       <div className="bg-card border border-border rounded-3xl shadow-card overflow-hidden">
-        {/* Banner Cover */}
-        <div className="relative h-44 bg-gradient-to-br from-primary/25 via-primary/10 to-transparent overflow-hidden">
-          {user.banner ? (
-            <>
-              <img
-                src={user.banner}
-                alt=""
-                aria-hidden="true"
-                className="absolute inset-0 h-full w-full object-cover"
-              />
-              <div aria-hidden="true" className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/15 to-transparent" />
-            </>
-          ) : (
-            <>
-              <div aria-hidden="true" className="absolute -right-16 -top-24 w-72 h-72 rounded-full bg-primary/15 blur-2xl" />
-              <div aria-hidden="true" className="absolute right-40 -bottom-32 w-80 h-80 rounded-full bg-primary/10 blur-3xl" />
-            </>
-          )}
+        {/* Banner card behind the user profile - clean accent color without shadows */}
+        <div className="relative h-40 sm:h-48 bg-gradient-to-r from-primary via-primary/85 to-primary/70 overflow-hidden">
+          {/* Subtle ambient light highlights */}
+          <div aria-hidden="true" className="absolute -right-10 -top-10 w-72 h-72 rounded-full bg-white/15 blur-2xl pointer-events-none" />
+          <div aria-hidden="true" className="absolute -left-10 -bottom-10 w-72 h-72 rounded-full bg-white/10 blur-xl pointer-events-none" />
 
-          <div className="relative flex items-center justify-between p-5">
-            <span className="px-3 py-1 text-[11px] font-semibold bg-card/80 backdrop-blur text-foreground rounded-full border border-border">
+          <div className="relative flex items-center justify-start p-5">
+            <span className="px-3 py-1 text-[11px] font-semibold bg-white/20 backdrop-blur-md text-white rounded-full border border-white/25">
               AY {user.schoolYear || '2025-2026'}
             </span>
-            <span className="flex items-center space-x-2 px-3 py-1 bg-card/80 backdrop-blur rounded-full border border-border">
-              <span className="relative flex w-2.5 h-2.5">
-                <span className="absolute inline-flex w-full h-full rounded-full bg-emerald-500 opacity-60 animate-ping" />
-                <span className="relative inline-flex w-2.5 h-2.5 rounded-full bg-emerald-500" />
+          </div>
+        </div>
+
+        {/* Identity content centered in front of & overlapping the banner */}
+        <div className="relative z-10 flex flex-col items-center text-center px-6 pb-6 sm:pb-8">
+          {/* Centered Avatar overlapping the banner bottom */}
+          <div className="relative shrink-0 -mt-14 sm:-mt-16 mb-4">
+            <UserAvatar
+              name={user.name}
+              src={user.avatar}
+              className="w-28 h-28 rounded-2xl object-cover border-4 border-card bg-card shadow-card"
+            />
+          </div>
+
+          {/* Centered User Details */}
+          <div className="flex flex-col items-center max-w-xl">
+            <div className="flex flex-wrap items-center justify-center gap-2.5">
+              <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
+                {user.name}
+              </h2>
+              <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-primary/10 text-primary border border-primary/20 shrink-0">
+                {roleLabel}
               </span>
-              <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">Active Account</span>
-            </span>
-          </div>
-        </div>
+              {activeUser?.id === user.id && (
+                <span className="px-2 py-0.5 text-[11px] font-semibold bg-muted text-muted-foreground rounded-full border border-border">
+                  You
+                </span>
+              )}
+            </div>
 
-        {/* Identity Row */}
-        <div className="px-6 pb-6">
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-5 -mt-12 sm:-mt-14">
-            <div className="flex flex-col sm:flex-row sm:items-end gap-4 min-w-0">
-              <UserAvatar
-                name={user.name}
-                src={user.avatar}
-                className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl sm:rounded-3xl border-4 border-card shadow-elevated shrink-0 object-cover"
-              />
-              <div className="space-y-1 min-w-0 pb-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-xl sm:text-2xl font-black text-foreground tracking-tight truncate">
-                    {user.name}
-                  </h2>
-                  <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-primary/10 text-primary border border-primary/20 shrink-0">
-                    {roleLabel}
-                  </span>
-                  {activeUser?.id === user.id && (
-                    <span className="px-2 py-0.5 text-[11px] font-semibold bg-muted text-muted-foreground rounded-full border border-border">
-                      You
-                    </span>
-                  )}
-                </div>
-                <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                  <div className="flex items-center space-x-1.5 truncate">
-                    <Mail className="w-3.5 h-3.5 shrink-0" />
-                    <span className="truncate">{user.email}</span>
-                  </div>
-                  {user.studentId && (
-                    <div className="flex items-center space-x-1 font-mono text-[11px] bg-muted px-2 py-0.5 rounded border border-border">
-                      <IdCard className="w-3.5 h-3.5 text-muted-foreground" />
-                      <span className="font-bold text-foreground">{user.studentId}</span>
-                    </div>
-                  )}
-                </div>
+            {subtitleItems.length > 0 && (
+              <p className="text-sm font-medium text-muted-foreground mt-1.5">
+                {subtitleItems.join(' • ')}
+              </p>
+            )}
+
+            <div className="flex flex-wrap items-center justify-center gap-3 text-xs text-muted-foreground mt-2">
+              <div className="flex items-center space-x-1.5 truncate">
+                <Mail className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">{user.email}</span>
               </div>
-            </div>
-
-            <div className="flex items-center gap-2 shrink-0 pb-1">
-              <button
-                type="button"
-                onClick={handleEdit}
-                className="inline-flex items-center space-x-1.5 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-2 rounded-xl transition-all shadow-xs cursor-pointer active:scale-[0.98]"
-              >
-                <Edit3 className="w-3.5 h-3.5" />
-                <span>Edit Account Information</span>
-              </button>
+              {user.studentId && (
+                <div className="flex items-center space-x-1 font-mono text-[11px] bg-muted px-2 py-0.5 rounded border border-border">
+                  <IdCard className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span className="font-bold text-foreground">{user.studentId}</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Quick Stats Ribbon */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5 sm:gap-4">
-        <div className="p-4 bg-card border border-border rounded-2xl space-y-1">
-          <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block">
-            Role & Designation
-          </span>
-          <div className="text-sm font-extrabold text-foreground truncate">
-            {user.title || (user.role === 'student' ? 'Undergraduate Student' : roleLabel)}
-          </div>
-          <span className="text-[10px] text-muted-foreground block">
-            {user.adminSubrole ? `Subrole: ${user.adminSubrole}` : `Role: ${user.role}`}
-          </span>
-        </div>
-
-        <div className="p-4 bg-card border border-border rounded-2xl space-y-1">
-          <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block">
-            Department / Program
-          </span>
-          <div className="text-sm font-extrabold text-foreground truncate">
-            {programMatch}
-          </div>
-          <span className="text-[10px] text-muted-foreground block truncate">
-            {collegeMatch}
-          </span>
-        </div>
-
-        <div className="p-4 bg-card border border-border rounded-2xl space-y-1">
-          <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block">
-            {user.role === 'student'
-              ? 'Current Year Level'
-              : isAdministrative
-              ? 'Jurisdiction'
-              : 'Teaching Experience'}
-          </span>
-          <div className="text-sm font-extrabold text-primary truncate">
-            {user.role === 'student'
-              ? `Year ${user.yearLevel ?? 1}`
-              : isAdministrative
-              ? (isChairRole(user, user.role)
-                  ? 'Program-Wide'
-                  : isDeanRole(user, user.role)
-                  ? 'College-Wide'
-                  : 'University-Wide')
-              : `${user.yearsOfTeaching ?? 0} ${Number(user.yearsOfTeaching) === 1 ? 'Year' : 'Years'}`}
-          </div>
-          <span className="text-[10px] text-muted-foreground block">
-            {isAdministrative ? 'Administrative Scope' : `AY ${user.schoolYear || '2025-2026'}`}
-          </span>
-        </div>
-
-        <div className="p-4 bg-card border border-border rounded-2xl space-y-1">
-          <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block">
-            Course Shells
-          </span>
-          <div className="text-sm font-extrabold text-foreground">
-            {userCourses.length} {userCourses.length === 1 ? 'Course' : 'Courses'}
-          </div>
-          <span className="text-[10px] text-muted-foreground block">
-            {isFacultyRole(user, user.role) ? 'Assigned to teach' : user.role === 'student' ? 'Active enrollments' : 'Monitored courses'}
-          </span>
-        </div>
-      </div>
 
       {/* Tabs Navigation */}
       <div className="flex items-center space-x-2 border-b border-border/70 pb-3" role="tablist">
@@ -335,25 +283,31 @@ export const AccountProfilePage: React.FC<AccountProfilePageProps> = ({
                 <span className="font-mono font-bold text-foreground text-xs">{user.studentId || '—'}</span>
               </div>
 
-              <div className="p-3 bg-muted/40 border border-border rounded-xl space-y-1">
-                <span className="text-[10px] text-muted-foreground block font-bold uppercase tracking-wider">
-                  Collegiate Affiliation
-                </span>
-                <span className="font-semibold text-foreground text-xs truncate block">{collegeMatch}</span>
-              </div>
+              {showCollege && (
+                <div className="p-3 bg-muted/40 border border-border rounded-xl space-y-1">
+                  <span className="text-[10px] text-muted-foreground block font-bold uppercase tracking-wider">
+                    Collegiate Affiliation
+                  </span>
+                  <span className="font-semibold text-foreground text-xs truncate block">{collegeMatch}</span>
+                </div>
+              )}
+
+              {showProgram && (
+                <div className="p-3 bg-muted/40 border border-border rounded-xl space-y-1">
+                  <span className="text-[10px] text-muted-foreground block font-bold uppercase tracking-wider">
+                    Program / Department
+                  </span>
+                  <span className="font-semibold text-foreground text-xs truncate block">{programMatch}</span>
+                </div>
+              )}
 
               <div className="p-3 bg-muted/40 border border-border rounded-xl space-y-1">
                 <span className="text-[10px] text-muted-foreground block font-bold uppercase tracking-wider">
-                  Program / Department
+                  School Year Registered
                 </span>
-                <span className="font-semibold text-foreground text-xs truncate block">{programMatch}</span>
-              </div>
-
-              <div className="p-3 bg-muted/40 border border-border rounded-xl space-y-1">
-                <span className="text-[10px] text-muted-foreground block font-bold uppercase tracking-wider">
-                  Active School Year
+                <span className="font-semibold text-foreground text-xs">
+                  {user.schoolYear ? (user.schoolYear.startsWith('AY') ? user.schoolYear : `AY ${user.schoolYear}`) : 'AY 2025-2026'}
                 </span>
-                <span className="font-semibold text-foreground text-xs">{user.schoolYear || '2025-2026'}</span>
               </div>
 
               {user.role === 'student' && (
@@ -376,27 +330,14 @@ export const AccountProfilePage: React.FC<AccountProfilePageProps> = ({
                 </div>
               )}
 
-              {isAdministrative && (
+              {showDesignation && (
                 <div className="p-3 bg-muted/40 border border-border rounded-xl space-y-1">
                   <span className="text-[10px] text-muted-foreground block font-bold uppercase tracking-wider">
-                    Administrative Scope
+                    Designation / Title
                   </span>
-                  <span className="font-bold text-primary text-xs">
-                    {isChairRole(user, user.role)
-                      ? 'Program Monitor'
-                      : isDeanRole(user, user.role)
-                      ? 'College Monitor'
-                      : 'University Monitor'}
-                  </span>
+                  <span className="font-medium text-foreground text-xs">{user.title || 'Standard Member'}</span>
                 </div>
               )}
-
-              <div className="p-3 bg-muted/40 border border-border rounded-xl space-y-1">
-                <span className="text-[10px] text-muted-foreground block font-bold uppercase tracking-wider">
-                  Designation / Title
-                </span>
-                <span className="font-medium text-foreground text-xs">{user.title || 'Standard Member'}</span>
-              </div>
             </div>
           </div>
 
@@ -435,25 +376,6 @@ export const AccountProfilePage: React.FC<AccountProfilePageProps> = ({
                 <span className="font-medium text-foreground text-xs">
                   {user.birthday ? new Date(user.birthday).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '—'}
                 </span>
-              </div>
-
-              <div className="p-3 bg-muted/40 border border-border rounded-xl space-y-1">
-                <span className="text-[10px] text-muted-foreground block font-bold uppercase tracking-wider">
-                  Registration Date
-                </span>
-                <span className="font-medium text-foreground text-xs">
-                  {user.registeredAt ? new Date(user.registeredAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'Verified Active'}
-                </span>
-              </div>
-
-              <div className="p-3 bg-muted/40 border border-border rounded-xl space-y-1">
-                <span className="text-[10px] text-muted-foreground block font-bold uppercase tracking-wider">
-                  Account Status
-                </span>
-                <div className="flex items-center space-x-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>Provisioned & Active</span>
-                </div>
               </div>
             </div>
           </div>
@@ -647,23 +569,14 @@ export const AccountProfilePage: React.FC<AccountProfilePageProps> = ({
       )}
 
       {/* Bottom Action Footer */}
-      <div className="flex items-center justify-between pt-4 border-t border-border/70">
+      <div className="flex items-center justify-start pt-4 border-t border-border/70">
         <button
           type="button"
           onClick={handleBack}
           className="inline-flex items-center space-x-1.5 px-4 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted border border-border rounded-xl transition-all cursor-pointer"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
-          <span>Back to Manage Accounts</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={handleEdit}
-          className="inline-flex items-center space-x-1.5 px-4 py-2 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl shadow-xs transition-all cursor-pointer"
-        >
-          <Edit3 className="w-3.5 h-3.5" />
-          <span>Edit User Account</span>
+          <span>{backLabel}</span>
         </button>
       </div>
     </div>

@@ -100,10 +100,12 @@ describe('Chair-Sheet Upload with Rolled-Over School Year', () => {
       />
     );
 
-    // 1. Verify target school year select is present and defaults to rolled-over year 2026-2027
-    const yearSelect = screen.getByLabelText(/select target academic year/i) as HTMLSelectElement;
-    expect(yearSelect).toBeInTheDocument();
-    expect(yearSelect.value).toBe('2026-2027');
+    // 1. Verify target school year is displayed as read-only badge defaulted to college active year 2026-2027
+    const yearDisplay = screen.getByTestId('assigned-courses-academic-year-display');
+    expect(yearDisplay).toBeInTheDocument();
+    expect(yearDisplay.textContent).toContain('2026-2027');
+    // Ensure select dropdown option is removed
+    expect(screen.queryByLabelText(/select target academic year/i)).not.toBeInTheDocument();
 
     // 2. Upload chair-sheet
     const file = createChairSheetFile([
@@ -145,7 +147,7 @@ describe('Chair-Sheet Upload with Rolled-Over School Year', () => {
     expect(coursePayload.code).toBe('CSCC 103');
   });
 
-  it('allows the chairperson to manually select a different academic year from the dropdown', async () => {
+  it('strictly locks course generation to the active academic year of the college without select option', async () => {
     render(
       <ChairSheetUploadView
         onNavigateCourse={mockOnNavigateCourse}
@@ -153,12 +155,9 @@ describe('Chair-Sheet Upload with Rolled-Over School Year', () => {
       />
     );
 
-    const yearSelect = screen.getByLabelText(/select target academic year/i) as HTMLSelectElement;
-    expect(yearSelect.value).toBe('2026-2027');
-
-    // Manually switch to 2025-2026
-    fireEvent.change(yearSelect, { target: { value: '2025-2026' } });
-    expect(yearSelect.value).toBe('2025-2026');
+    // Verify select option is absent
+    expect(screen.queryByLabelText(/select target academic year/i)).not.toBeInTheDocument();
+    expect(screen.getByTestId('assigned-courses-academic-year-display').textContent).toContain('2026-2027');
 
     const file = createChairSheetFile([
       ['First Name', 'Middle Name', 'Last Name', 'Course Code', 'Descriptive Title', 'Year and Section'],
@@ -187,7 +186,7 @@ describe('Chair-Sheet Upload with Rolled-Over School Year', () => {
     });
 
     const coursePayload = mockCreateCourse.mock.calls[0][0];
-    expect(coursePayload.schoolYear).toBe('2025-2026');
-    expect(coursePayload.term).toContain('2025-2026');
+    expect(coursePayload.schoolYear).toBe('2026-2027');
+    expect(coursePayload.term).toContain('2026-2027');
   });
 });

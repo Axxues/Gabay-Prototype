@@ -373,5 +373,39 @@ describe('DepartmentDetailsPage', () => {
     expect(screen.getAllByText('Prof. Alan Turing').length).toBe(2);
     expect(screen.getByText('Prof. Ada Lovelace')).toBeInTheDocument();
   });
+
+  it('navigates to user profile when a roster member row is clicked', () => {
+    render(<DepartmentDetailsPage />);
+
+    const adaRow = screen.getByTestId('roster-member-row-u-fac-cs');
+    fireEvent.click(adaRow);
+
+    expect(mockNavigate).toHaveBeenCalledWith(
+      '/accounts/u-fac-cs/view',
+      expect.objectContaining({
+        state: expect.objectContaining({
+          from: '/governance/programs/dept-cs',
+          fromLabel: 'Program',
+        }),
+      })
+    );
+  });
+
+  it('navigates to user profile when the incumbent chairperson card is clicked', () => {
+    render(<DepartmentDetailsPage />);
+
+    const chairCard = screen.getByTestId('incumbent-chairperson-card');
+    fireEvent.click(chairCard);
+
+    expect(mockNavigate).toHaveBeenCalledWith(
+      '/accounts/u-chair-cs/view',
+      expect.objectContaining({
+        state: expect.objectContaining({
+          from: '/governance/programs/dept-cs',
+          fromLabel: 'Program',
+        }),
+      })
+    );
+  });
 });
 

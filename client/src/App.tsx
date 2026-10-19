@@ -75,7 +75,16 @@ function useAppNavigation() {
 
   const handleViewAccount = React.useCallback((user: { id: string }) => {
     const path = `/accounts/${encodeURIComponent(user.id)}/view`;
-    navigate(path);
+    const currentPath = typeof window !== 'undefined' ? window.location.pathname : '/accounts';
+    const isProgram = currentPath.includes('/governance/programs');
+    const isGov = currentPath.includes('/governance');
+    const fromLabel = isProgram ? 'Program' : isGov ? 'Governance' : currentPath.includes('/accounts') ? 'Accounts' : undefined;
+    navigate(path, {
+      state: {
+        from: currentPath,
+        fromLabel,
+      },
+    });
     logHistory(path, 'LMS > View Account Profile');
   }, [navigate, logHistory]);
 
@@ -203,7 +212,7 @@ const AccountProfileRoute: React.FC<{ nav: ReturnType<typeof useAppNavigation> }
   if (!user) {
     return <ManageAccountsPage onNavigateTab={nav.handleNavigateTab} onEditAccount={nav.handleEditAccount} onViewAccount={nav.handleViewAccount} />;
   }
-  return <AccountProfilePage key={user.id} user={user} onNavigateTab={nav.handleNavigateTab} onEditAccount={nav.handleEditAccount} />;
+  return <AccountProfilePage key={user.id} user={user} onNavigateTab={nav.handleNavigateTab} />;
 };
 
 export const AppShell: React.FC = () => {
@@ -284,7 +293,7 @@ export const AppShell: React.FC = () => {
               ? "flex h-full min-h-0 w-full min-w-0 flex-1 flex-col"
               : currentTab === 'assigned-courses' || currentTab === 'chair-sheet'
               ? "flex min-h-full w-full min-w-0 flex-1 flex-col p-5 sm:p-8 lg:p-10"
-              : currentTab === 'profile' || currentTab === 'account-profile'
+              : currentTab === 'profile' || currentTab === 'account-profile' || currentTab === 'create-leadership'
               ? "flex min-h-full w-full min-w-0 flex-1 flex-col p-5 sm:p-8 lg:p-10"
               : "mx-auto flex min-h-full w-full max-w-[1600px] flex-col p-5 sm:p-8 lg:p-10"
           }>

@@ -114,6 +114,54 @@ describe('CreateLeadershipAccountPage', () => {
     expect(options.some(opt => opt?.includes('College of Computer Science'))).toBe(false);
   });
 
+  it('omits the card brand block and the role descriptions', () => {
+    render(<CreateLeadershipAccountPage />);
+
+    expect(screen.queryByAltText('GABAY logo')).toBeNull();
+    expect(screen.queryByText('Leadership Appointment Portal')).toBeNull();
+    expect(screen.queryByText(/Enter incoming academic leader details/i)).toBeNull();
+
+    // Role names stay; their explanatory subtitles are removed.
+    expect(screen.getByText('College Dean')).toBeDefined();
+    expect(screen.getByText('Department Chairperson')).toBeDefined();
+    expect(screen.queryByText('Oversees college programs & depts')).toBeNull();
+    expect(screen.queryByText('Manages program chair sheet & curriculum')).toBeNull();
+  });
+
+  it('fills the available content width instead of a centered narrow column', () => {
+    const { container } = render(<CreateLeadershipAccountPage />);
+    const root = container.firstElementChild as HTMLElement;
+
+    expect(root.className).not.toContain('max-w-3xl');
+    expect(root.className).not.toContain('mx-auto');
+  });
+
+  it('limits the employee ID to four digits', async () => {
+    render(<CreateLeadershipAccountPage />);
+
+    const idInput = screen.getByLabelText(/id number/i);
+    expect(idInput.getAttribute('placeholder')).toBe('e.g. 1082');
+    expect(idInput.getAttribute('maxlength')).toBe('4');
+
+    fireEvent.change(idInput, { target: { value: '12' } });
+    fireEvent.click(screen.getByRole('button', { name: /send verification code/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('ID Number must be exactly 4 digits (e.g. 1082).')).toBeDefined();
+    });
+
+    // The student ID format must not be advertised or accepted on this page.
+    expect(screen.queryByText(/231-1082-3/)).toBeNull();
+  });
+
+  it('does not show the verification code helper text under the email input', () => {
+    render(<CreateLeadershipAccountPage />);
+
+    expect(
+      screen.queryByText('The 6-digit verification code will be sent to this email.')
+    ).toBeNull();
+  });
+
   it('switches between Dean and Chairperson and updates unit selector', async () => {
     render(<CreateLeadershipAccountPage />);
 
@@ -169,6 +217,18 @@ describe('CreateLeadershipAccountPage', () => {
         screen.getByText('Institutional email must end with @dmmmsu.edu.ph.')
       ).toBeDefined();
       expect(screen.getByText('Passwords do not match.')).toBeDefined();
+    });
+
+    // Student subdomain addresses are not valid for leadership accounts.
+    fireEvent.change(screen.getByLabelText(/institutional email \*/i), {
+      target: { value: 'marie.curie@student.dmmmsu.edu.ph' },
+    });
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Institutional email must end with @dmmmsu.edu.ph.')
+      ).toBeDefined();
     });
   });
 
