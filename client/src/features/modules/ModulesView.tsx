@@ -1,6 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { useLMS } from '../../shared/context/LMSContext';
 import { getDisplayRoleLabel, canManageCourseContent } from '../../shared/utils/roles';
+import { findMatchingSiblingCourses } from '../../shared/utils/crossSectionSync';
+import { CrossSectionPromptModal } from '../../shared/components/common/CrossSectionPromptModal';
 import type { Module, ModuleItem } from '../../shared/types/lms';
 import {
   FileText,
@@ -115,7 +117,7 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
     setExpandedItems(prev => ({ ...prev, [itemId]: !prev[itemId] }));
   };
 
-  const course = db.courses.find(c => c.id === courseId);
+  const course = (db.courses || []).find(c => c.id === courseId);
   const isAssignedInstructor = canManageCourseContent(course, activeUser);
 
   // Permission helpers: strictly limited to the assigned faculty instructor
@@ -161,23 +163,53 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
     }
   };
 
+  const siblingCourses = useMemo(() => {
+    return course ? findMatchingSiblingCourses(course, db.courses || [], activeUser?.id) : [];
+  }, [course, db.courses, activeUser?.id]);
+  const [isCrossSectionModalOpen, setIsCrossSectionModalOpen] = useState(false);
+
   const [isCreatingModule, setIsCreatingModule] = useState(false);
   const [isSavingModule, setIsSavingModule] = useState(false);
 
-  const handleCreateModule = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newModuleTitle.trim() || isCreatingModule) return;
-
+  const executeCreateModule = async (targetCourseIds: string[]) => {
     setIsCreatingModule(true);
     try {
-      await createModule(courseId, newModuleTitle.trim());
+      const trimmed = newModuleTitle.trim();
+      for (const targetId of targetCourseIds) {
+        const exists = (db.modules || []).some(
+          m => m.courseId === targetId && m.title.trim().toLowerCase() === trimmed.toLowerCase()
+        );
+        if (!exists) {
+          await createModule(targetId, trimmed);
+        }
+      }
       setNewModuleTitle('');
       setIsAddModuleOpen(false);
+      setIsCrossSectionModalOpen(false);
+      if (targetCourseIds.length > 1) {
+        showAlert({
+          title: 'Module Created',
+          message: `Module "${trimmed}" created across ${targetCourseIds.length} sections.`,
+          type: 'success'
+        });
+      }
     } catch {
       // Context already surfaced the failure alert.
     } finally {
       setIsCreatingModule(false);
     }
+  };
+
+  const handleCreateModule = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newModuleTitle.trim() || isCreatingModule) return;
+
+    if (siblingCourses.length > 0) {
+      setIsCrossSectionModalOpen(true);
+      return;
+    }
+
+    await executeCreateModule([courseId]);
   };
 
   const handleStartEditModule = (mod: Module, e?: React.MouseEvent) => {
@@ -1348,6 +1380,21 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
           </div>
         </ModalPortal>
       )}
+
+      <CrossSectionPromptModal
+        isOpen={isCrossSectionModalOpen}
+        onClose={() => setIsCrossSectionModalOpen(false)}
+        itemType="module"
+        itemTitle={newModuleTitle.trim()}
+        siblingCourses={siblingCourses}
+        onConfirm={async (selectedIds) => {
+          await executeCreateModule([courseId, ...selectedIds]);
+        }}
+        onSkipToCurrentOnly={async () => {
+          await executeCreateModule([courseId]);
+        }}
+        isSubmitting={isCreatingModule}
+      />
     </div>
   );
 };

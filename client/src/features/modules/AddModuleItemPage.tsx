@@ -1,5 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useLMS } from '../../shared/context/LMSContext';
+import { findMatchingSiblingCourses } from '../../shared/utils/crossSectionSync';
+import { CrossSectionPromptModal } from '../../shared/components/common/CrossSectionPromptModal';
 import type { Activity, ModuleItem, Quiz, TermId } from '../../shared/types/lms';
 import {
   ArrowLeft,
@@ -228,8 +230,10 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
 }) => {
   const {
     db,
+    activeUser,
     addModuleItem,
     updateModuleItem,
+    createModule,
     createActivity,
     updateActivity,
     createQuiz,
@@ -249,6 +253,12 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
   const isEditing = Boolean(editingItem);
 
   const course = db.courses.find(c => c.id === courseId);
+  const siblingCourses = useMemo(() => {
+    return course ? findMatchingSiblingCourses(course, db.courses || [], activeUser?.id) : [];
+  }, [course, db.courses, activeUser?.id]);
+  const [isCrossSectionModalOpen, setIsCrossSectionModalOpen] = useState(false);
+  const [pendingSaveAnother, setPendingSaveAnother] = useState(false);
+
   // Syllabus-driven default grading term for fresh quiz/activity builders.
   const defaultAssessmentTerm: TermId =
     typeof effectiveTermsForCourse === 'function'
@@ -797,18 +807,204 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
     }
   };
 
+  const resolveTargetModuleId = async (targetCourseId: string, parentTitle: string): Promise<string> => {
+    if (targetCourseId === courseId) return targetModuleId;
+    const existing = (db.modules || []).find(
+      m => m.courseId === targetCourseId && m.title.trim().toLowerCase() === parentTitle.trim().toLowerCase()
+    );
+    if (existing) return existing.id;
+    const newMod = await createModule(targetCourseId, parentTitle);
+    return newMod.id;
+  };
+
+  const getPendingItemTitle = (): string => {
+    if (itemType === 'activity') {
+      return activityMode === 'question_set' ? questionSet.title.trim() : activityForm.title.trim();
+    }
+    if (itemType === 'quiz') {
+      return quizBuilder.title.trim();
+    }
+    return title.trim();
+  };
+
+  const executeSaveToSections = async (targetCourseIds: string[], addAnother: boolean) => {
+    setIsSaving(true);
+    const parentTitle = selectedModule?.title || 'Module';
+    const savedItemTitle = getPendingItemTitle();
+
+    try {
+      for (const targetId of targetCourseIds) {
+        const destModId = await resolveTargetModuleId(targetId, parentTitle);
+
+        if (itemType === 'activity') {
+          if (activityMode === 'question_set') {
+            const created = await createActivity(buildActivityPayload(targetId, questionSet));
+            await addModuleItem(destModId, {
+              title: savedItemTitle,
+              type: 'activity',
+              content: questionSet.instructions.trim() || 'Unit resource instructions aligned with syllabus requirements.',
+              published: true,
+              required: false,
+              completionCondition: 'submit',
+              activityId: questionSetLinkOf(created.id)
+            });
+          } else {
+            const created = await createActivity(buildClassicActivityPayload(targetId, activityForm, true));
+            const fileFields = {
+              fileName: activityForm.attachedFile?.name || undefined,
+              fileSize: activityForm.attachedFile?.size || undefined,
+              fileUrl: activityForm.attachedFile?.url || undefined
+            };
+            await addModuleItem(destModId, {
+              title: savedItemTitle,
+              type: 'activity',
+              content: activityForm.instructions.trim() || 'Unit resource instructions aligned with syllabus requirements.',
+              published: true,
+              required: false,
+              completionCondition: 'submit',
+              activityId: created.id,
+              ...fileFields
+            });
+          }
+        } else if (itemType === 'quiz') {
+          const created = await createQuiz(buildQuizPayload(targetId, quizBuilder, true));
+          await addModuleItem(destModId, {
+            title: savedItemTitle,
+            type: 'quiz',
+            content: quizBuilder.instructions.trim() || 'Unit resource instructions aligned with syllabus requirements.',
+            published: true,
+            required: false,
+            completionCondition: 'submit',
+            quizId: created.id
+          });
+        } else {
+          await addModuleItem(destModId, {
+            title: savedItemTitle,
+            type: itemType,
+            content: content.trim() || 'Unit resource instructions aligned with syllabus requirements.',
+            published: true,
+            required: false,
+            completionCondition: 'view',
+            fileName: attachedFileName || undefined,
+            fileSize: attachedFileSize || undefined,
+            fileType: attachedFileType || undefined,
+            fileUrl: attachedFileUrl || undefined
+          });
+        }
+      }
+
+      if (addAnother) {
+        showAlert({
+          title: 'Item Added to Module',
+          message: targetCourseIds.length > 1
+            ? `"${savedItemTitle}" added across ${targetCourseIds.length} sections. You can add another item now.`
+            : `"${savedItemTitle}" has been added. You can add another item now.`,
+          type: 'success'
+        });
+        if (itemType === 'activity') {
+          if (activityMode === 'question_set') {
+            setQuestionSet({ ...emptyQuestionSetValue(), term: defaultAssessmentTerm });
+          } else {
+            setActivityForm({ ...emptyActivityFormValue(), term: defaultAssessmentTerm });
+          }
+        } else if (itemType === 'quiz') {
+          setQuizBuilder({ ...emptyQuizBuilderValue(), term: defaultAssessmentTerm });
+        } else {
+          setTitle('');
+          setContent('');
+          handleRemoveAttachment();
+        }
+      } else {
+        showAlert({
+          title: 'Item Added to Module',
+          message: targetCourseIds.length > 1
+            ? `"${savedItemTitle}" added across ${targetCourseIds.length} sections.`
+            : `"${savedItemTitle}" has been added to ${selectedModule?.title || 'the module'}.`,
+          type: 'success'
+        });
+        onBack();
+      }
+    } catch {
+      // Handled in context
+    } finally {
+      setIsSaving(false);
+      setIsCrossSectionModalOpen(false);
+    }
+  };
+
   const handleSave = async (addAnother: boolean = false) => {
     if (upload.isUploading || isSaving) return;
-    setIsSaving(true);
-    try {
-      if (itemType === 'activity') {
-        await handleSaveActivity(addAnother);
+
+    if (isEditing) {
+      setIsSaving(true);
+      try {
+        if (itemType === 'activity') {
+          await handleSaveActivity(addAnother);
+          return;
+        }
+        if (itemType === 'quiz') {
+          await handleSaveQuizItem(addAnother);
+          return;
+        }
+        if (!title.trim()) {
+          showAlert({
+            title: 'Missing Resource Title',
+            message: 'Please provide a title for this module item.',
+            type: 'warning'
+          });
+          return;
+        }
+        const savedTitle = title.trim();
+        await updateModuleItem(
+          moduleId,
+          editingItem!.id,
+          {
+            title: savedTitle,
+            type: itemType,
+            content: content.trim() || 'Unit resource instructions aligned with syllabus requirements.',
+            fileName: attachedFileName || undefined,
+            fileSize: attachedFileSize || undefined,
+            fileType: attachedFileType || undefined,
+            fileUrl: attachedFileUrl || undefined
+          },
+          targetModuleId
+        );
+        showAlert({
+          title: 'Module Item Updated',
+          message: `"${savedTitle}" has been updated successfully.`,
+          type: 'success'
+        });
+        onBack();
+      } catch {
+        // Context already surfaced failure alert
+      } finally {
+        setIsSaving(false);
+      }
+      return;
+    }
+
+    // Validation for new items
+    if (itemType === 'activity') {
+      if (activityMode === 'question_set') {
+        const err = validateQuestionSet(questionSet);
+        if (err) {
+          showAlert({ title: err.title, message: err.message, type: 'warning' });
+          return;
+        }
+      } else {
+        const err = validateActivityForm(activityForm);
+        if (err) {
+          showAlert({ title: err.title, message: err.message, type: 'warning' });
+          return;
+        }
+      }
+    } else if (itemType === 'quiz') {
+      const err = validateQuizBuilder(quizBuilder);
+      if (err) {
+        showAlert({ title: err.title, message: err.message, type: 'warning' });
         return;
       }
-      if (itemType === 'quiz') {
-        await handleSaveQuizItem(addAnother);
-        return;
-      }
+    } else {
       if (!title.trim()) {
         showAlert({
           title: 'Missing Resource Title',
@@ -817,76 +1013,15 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
         });
         return;
       }
-
-      const savedTitle = title.trim();
-
-      if (isEditing && editingItem) {
-        try {
-          await updateModuleItem(
-            moduleId,
-            editingItem.id,
-            {
-              title: savedTitle,
-              type: itemType,
-              content: content.trim() || 'Unit resource instructions aligned with syllabus requirements.',
-              fileName: attachedFileName || undefined,
-              fileSize: attachedFileSize || undefined,
-              fileType: attachedFileType || undefined,
-              fileUrl: attachedFileUrl || undefined
-            },
-            targetModuleId
-          );
-
-          showAlert({
-            title: 'Module Item Updated',
-            message: `"${savedTitle}" has been updated successfully.`,
-            type: 'success'
-          });
-          onBack();
-        } catch {
-          // Context already surfaced the failure alert.
-        }
-        return;
-      }
-
-      try {
-        await addModuleItem(targetModuleId, {
-          title: savedTitle,
-          type: itemType,
-          content: content.trim() || 'Unit resource instructions aligned with syllabus requirements.',
-          published: true,
-          required: false,
-          completionCondition: 'view',
-          fileName: attachedFileName || undefined,
-          fileSize: attachedFileSize || undefined,
-          fileType: attachedFileType || undefined,
-          fileUrl: attachedFileUrl || undefined
-        });
-      } catch {
-        // Context already surfaced the failure alert.
-        return;
-      }
-
-      if (addAnother) {
-        showAlert({
-          title: 'Item Added to Module',
-          message: `"${savedTitle}" has been added. You can add another item now.`,
-          type: 'success'
-        });
-        setTitle('');
-        setContent('');
-        handleRemoveAttachment();
-      } else {
-        showAlert({
-          title: 'Item Added to Module',
-          message: `"${savedTitle}" has been added to ${selectedModule?.title || 'the module'}.`,
-          type: 'success'
-        });
-        onBack();
-      }
-    } finally {
-      setIsSaving(false);
     }
+
+    if (siblingCourses.length > 0) {
+      setPendingSaveAnother(addAnother);
+      setIsCrossSectionModalOpen(true);
+      return;
+    }
+
+    await executeSaveToSections([courseId], addAnother);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -1427,6 +1562,21 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
           onSelect={handleSelectExistingFile}
         />
       )}
+
+      <CrossSectionPromptModal
+        isOpen={isCrossSectionModalOpen}
+        onClose={() => setIsCrossSectionModalOpen(false)}
+        itemType="module_item"
+        itemTitle={getPendingItemTitle()}
+        siblingCourses={siblingCourses}
+        onConfirm={async (selectedIds) => {
+          await executeSaveToSections([courseId, ...selectedIds], pendingSaveAnother);
+        }}
+        onSkipToCurrentOnly={async () => {
+          await executeSaveToSections([courseId], pendingSaveAnother);
+        }}
+        isSubmitting={isSaving}
+      />
     </div>
   );
 };
