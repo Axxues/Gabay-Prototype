@@ -349,7 +349,7 @@ describe('ChairSheetUploadView', () => {
     expect(options.some(t => t?.includes('Jayvee Admin'))).toBe(false);
   });
 
-  it('creates every row without a semester field', async () => {
+  it('stamps every row with the college active semester and ignores spreadsheet semester column', async () => {
     render(
       <ChairSheetUploadView
         onNavigateTab={mockOnNavigateTab}
@@ -383,7 +383,7 @@ describe('ChairSheetUploadView', () => {
     });
 
     const payload = mockCreateCourse.mock.calls[0][0];
-    expect(payload).not.toHaveProperty('semester');
+    expect(payload).toHaveProperty('semester', 'First');
   });
 });
 

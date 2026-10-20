@@ -224,6 +224,7 @@ describe('Chair-Sheet End-to-End Real Sample Verification', () => {
         section: '4-E',
         instructorId: 'u-charlie',
         instructorName: 'Charlie Seli Marzan',
+        semester: 'First',
         term: '1st Sem AY 2025-2026',
       })
     );
@@ -236,6 +237,7 @@ describe('Chair-Sheet End-to-End Real Sample Verification', () => {
         section: '1-A',
         instructorId: 'u-charlie',
         instructorName: 'Charlie Seli Marzan',
+        semester: 'First',
         term: '1st Sem AY 2025-2026',
       })
     );
@@ -248,6 +250,7 @@ describe('Chair-Sheet End-to-End Real Sample Verification', () => {
         section: '4-E',
         instructorId: 'u-raymund',
         instructorName: 'Raymund Ezekiel Dilan',
+        semester: 'First',
         term: '1st Sem AY 2025-2026',
       })
     );
@@ -260,6 +263,7 @@ describe('Chair-Sheet End-to-End Real Sample Verification', () => {
         section: '3-A',
         instructorId: 'u-jayvee',
         instructorName: 'Jayvee Geneta Reyes',
+        semester: 'First',
         term: '1st Sem AY 2025-2026',
       })
     );

@@ -12,6 +12,8 @@ import {
   X
 } from 'lucide-react';
 import { useLMS } from '../../../shared/context/LMSContext';
+import type { AcademicSemester } from '../../../shared/types/lms';
+import { formatSemesterLabel } from '../../../shared/utils/academicSemester';
 import { AnimatedModal } from '../../../shared/components/common/ModalPortal';
 import {
   parseChairSheet,
@@ -45,6 +47,8 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
     getSchoolYearsByCollege,
     getActiveSchoolYearForCollege,
     getBaselineSchoolYear,
+    baselineSemester,
+    getActiveSemesterForCollege,
   } = useLMS();
 
   const [rows, setRows] = useState<ValidatedChairSheetRow[]>([]);
@@ -130,27 +134,48 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
     return baseline?.year;
   }, [getBaselineSchoolYear]);
 
+  const activeCollegeSemester: AcademicSemester = useMemo(() => {
+    if (getActiveSemesterForCollege) {
+      return getActiveSemesterForCollege(userCollegeId);
+    }
+    return 'First';
+  }, [getActiveSemesterForCollege, userCollegeId]);
+
+  const baselineSemesterValue: AcademicSemester = (baselineSemester as AcademicSemester) || 'First';
+
   // Baseline Mismatch Check:
-  // If the college's active school year does not match the university baseline school year,
+  // If the college's active school year or semester does not match the university baseline,
   // the chairperson cannot upload assigned courses or generate course shells.
-  const isBaselineMismatch = useMemo(() => {
+  const isYearMismatch = useMemo(() => {
     if (!baselineSchoolYear) return false;
     const currentCollegeYear = activeCollegeSchoolYear || defaultSchoolYear;
     if (!currentCollegeYear) return false;
     return baselineSchoolYear.trim().toLowerCase() !== currentCollegeYear.trim().toLowerCase();
   }, [baselineSchoolYear, activeCollegeSchoolYear, defaultSchoolYear]);
 
+  const isSemesterMismatch = useMemo(() => {
+    return activeCollegeSemester !== baselineSemesterValue;
+  }, [activeCollegeSemester, baselineSemesterValue]);
+
+  const isBaselineMismatch = isYearMismatch || isSemesterMismatch;
+
   const mismatchErrorMessage = useMemo(() => {
     const currentCollegeYear = activeCollegeSchoolYear || defaultSchoolYear;
-    return `Cannot upload assigned courses. The university baseline academic year (AY ${baselineSchoolYear}) does not match your college's active academic year (AY ${currentCollegeYear}). Your college must be rolled over to the university baseline before uploading curriculum assignments.`;
-  }, [baselineSchoolYear, activeCollegeSchoolYear, defaultSchoolYear]);
+    if (isYearMismatch && isSemesterMismatch) {
+      return `Cannot upload assigned courses. The university baseline is AY ${baselineSchoolYear} · ${formatSemesterLabel(baselineSemesterValue)}, but your college is active for AY ${currentCollegeYear} · ${formatSemesterLabel(activeCollegeSemester)}. Both the academic year and semester must match the baseline before uploading curriculum assignments.`;
+    }
+    if (isYearMismatch) {
+      return `Cannot upload assigned courses. The university baseline academic year (AY ${baselineSchoolYear}) does not match your college's active academic year (AY ${currentCollegeYear}). Your college must be rolled over to the university baseline before uploading curriculum assignments.`;
+    }
+    return `Cannot upload assigned courses. This college is active for ${formatSemesterLabel(activeCollegeSemester)}, which does not match the university-wide baseline semester (${formatSemesterLabel(baselineSemesterValue)}). Roll the semester over in Academic Governance to continue.`;
+  }, [isYearMismatch, isSemesterMismatch, baselineSchoolYear, activeCollegeSchoolYear, defaultSchoolYear, baselineSemesterValue, activeCollegeSemester]);
 
   const handleProcessFile = async (file: File) => {
     if (!file) return;
 
     if (isBaselineMismatch) {
       showAlert({
-        title: 'Upload Restricted: Academic Year Mismatch',
+        title: 'Upload Restricted: Academic Baseline Mismatch',
         message: mismatchErrorMessage,
         type: 'error',
       });
@@ -198,7 +223,7 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
 
     if (isBaselineMismatch) {
       showAlert({
-        title: 'Upload Restricted: Academic Year Mismatch',
+        title: 'Upload Restricted: Academic Baseline Mismatch',
         message: mismatchErrorMessage,
         type: 'error',
       });
@@ -214,7 +239,7 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (isBaselineMismatch) {
       showAlert({
-        title: 'Upload Restricted: Academic Year Mismatch',
+        title: 'Upload Restricted: Academic Baseline Mismatch',
         message: mismatchErrorMessage,
         type: 'error',
       });
@@ -299,7 +324,7 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
     if (!canApprove || isBaselineMismatch) {
       if (isBaselineMismatch) {
         showAlert({
-          title: 'Cannot Create Courses: Academic Year Mismatch',
+          title: 'Cannot Create Courses: Academic Baseline Mismatch',
           message: mismatchErrorMessage,
           type: 'error',
         });
@@ -324,7 +349,8 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
           instructorId: row.matchedUser?.id,
           instructorName: row.matchedUser?.name || `${row.firstName} ${row.lastName}`.trim(),
           schoolYear: selectedSchoolYear,
-          term: formatCourseTerm(undefined, selectedSchoolYear),
+          semester: activeCollegeSemester,
+          term: formatCourseTerm(activeCollegeSemester, selectedSchoolYear),
           collegeId: userCollegeId,
           department: userDepartment?.name || row.matchedUser?.department,
           departmentId: userDepartment?.id,
@@ -338,7 +364,7 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
 
       showAlert({
         title: 'Courses Generated Successfully',
-        message: `Successfully initialized ${totalCount} course shells for AY ${selectedSchoolYear} and assigned them to their respective faculty.`,
+        message: `Successfully initialized ${totalCount} course shells for AY ${selectedSchoolYear} (${formatSemesterLabel(activeCollegeSemester)}) and assigned them to their respective faculty.`,
         type: 'success',
       });
 
@@ -400,15 +426,31 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
             </span>
           </div>
 
+          {/* Target Semester Display (College Active Semester) */}
+          <div className="flex items-center space-x-2" data-testid="assigned-courses-semester-display">
+            <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">
+              Semester:
+            </span>
+            <span className="px-2.5 py-1 text-xs font-bold bg-muted text-foreground border border-border/80 rounded-xl whitespace-nowrap">
+              {formatSemesterLabel(activeCollegeSemester)}
+            </span>
+          </div>
+
           {isBaselineMismatch && (
             <div
               data-testid="assigned-courses-baseline-mismatch-badge"
-              title={`University baseline academic year is AY ${baselineSchoolYear}, differing from this college's active AY ${activeCollegeSchoolYear || defaultSchoolYear}`}
+              title={`University baseline is AY ${baselineSchoolYear} · ${formatSemesterLabel(baselineSemesterValue)}, differing from this college's active AY ${activeCollegeSchoolYear || defaultSchoolYear} · ${formatSemesterLabel(activeCollegeSemester)}`}
               className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/25 rounded-xl whitespace-nowrap shadow-xs"
             >
               <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0" />
               <span className="text-muted-foreground font-normal">Current Baseline:</span>
-              <span className="font-extrabold">AY {baselineSchoolYear}</span>
+              <span className="font-extrabold">
+                {isYearMismatch && isSemesterMismatch
+                  ? `AY ${baselineSchoolYear} · ${formatSemesterLabel(baselineSemesterValue)}`
+                  : isYearMismatch
+                  ? `AY ${baselineSchoolYear}`
+                  : formatSemesterLabel(baselineSemesterValue)}
+              </span>
             </div>
           )}
 
@@ -474,20 +516,17 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
           <div className="space-y-1.5 text-xs flex-1">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h4 className="font-extrabold text-sm text-amber-950 dark:text-amber-100">
-                Assigned Courses Upload Restricted: Academic Year Mismatch
+                Assigned Courses Upload Restricted: Academic Baseline Mismatch
               </h4>
               <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-500/30 rounded-md uppercase tracking-wider">
                 Upload Blocked
               </span>
             </div>
             <p className="leading-relaxed text-amber-900/90 dark:text-amber-200/90">
-              Your college {userCollege?.name ? `(${userCollege.name})` : ''} is currently active for{' '}
-              <span className="font-bold text-foreground">AY {activeCollegeSchoolYear || defaultSchoolYear}</span>,
-              which does not match the university-wide baseline academic year{' '}
-              <span className="font-bold text-foreground">AY {baselineSchoolYear}</span>.
+              {mismatchErrorMessage}
             </p>
             <p className="text-[11px] text-muted-foreground leading-normal">
-              Department chairpersons cannot upload curriculum assignments or generate course shells until the college's academic year matches the university baseline. Please ask your College Dean or University Administrator to complete the academic year rollover in Academic Governance.
+              Department chairpersons cannot upload curriculum assignments or generate course shells until the college matches the university baseline. Please ask your College Dean or University Administrator to complete the rollover in Academic Governance.
             </p>
           </div>
         </div>
@@ -532,7 +571,7 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
           </h3>
           <p className="text-xs text-muted-foreground max-w-md text-center mt-1 mb-5">
             {isBaselineMismatch
-              ? `Uploading is locked. Your college active academic year (AY ${activeCollegeSchoolYear || defaultSchoolYear}) must be rolled over to the university baseline (AY ${baselineSchoolYear}) before courses can be uploaded.`
+              ? mismatchErrorMessage
               : 'Drag and drop your department assigned courses spreadsheet containing faculty names, course codes, titles, and sections.'}
           </p>
 
@@ -553,7 +592,7 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
               onClick={() => {
                 if (isBaselineMismatch) {
                   showAlert({
-                    title: 'Upload Restricted: Academic Year Mismatch',
+                    title: 'Upload Restricted: Academic Baseline Mismatch',
                     message: mismatchErrorMessage,
                     type: 'error',
                   });
@@ -563,7 +602,7 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
               }}
               title={
                 isBaselineMismatch
-                  ? `Upload disabled: College AY (${activeCollegeSchoolYear || defaultSchoolYear}) differs from University Baseline AY (${baselineSchoolYear})`
+                  ? `Upload disabled: College (${activeCollegeSchoolYear || defaultSchoolYear} · ${formatSemesterLabel(activeCollegeSemester)}) differs from University Baseline (${baselineSchoolYear} · ${formatSemesterLabel(baselineSemesterValue)})`
                   : undefined
               }
               className={`px-5 py-2.5 text-xs font-bold rounded-xl shadow-primary-sm transition-all flex items-center space-x-2 ${
@@ -577,9 +616,14 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
             </button>
           </div>
 
-          <div className="mt-6 flex items-center gap-2 text-[11px] text-muted-foreground bg-muted/60 px-3 py-1.5 rounded-lg border border-border/60">
-            <HelpCircle className="w-3.5 h-3.5" />
-            <span>Expected format: First Name, Middle Name, Last Name, Course Code, Descriptive Title, Year and Section</span>
+          <div className="mt-6 flex flex-col items-center gap-1 text-[11px] text-muted-foreground bg-muted/60 px-3 py-2 rounded-lg border border-border/60 text-center">
+            <div className="flex items-center gap-2">
+              <HelpCircle className="w-3.5 h-3.5 shrink-0" />
+              <span>Expected format: First Name, Middle Name, Last Name, Course Code, Descriptive Title, Year and Section</span>
+            </div>
+            <span className="text-[10px] text-muted-foreground/80">
+              All rows are created under your college's active semester ({formatSemesterLabel(activeCollegeSemester)}).
+            </span>
           </div>
         </div>
       ) : (
@@ -618,7 +662,7 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
                 Academic Scope
               </span>
               <span className="text-xs font-extrabold text-foreground mt-1 block">
-                AY {selectedSchoolYear}
+                AY {selectedSchoolYear} · {formatSemesterLabel(activeCollegeSemester)}
               </span>
             </div>
           </div>
@@ -761,7 +805,7 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
             </div>
 
             <div className="text-xs sm:text-sm text-muted-foreground leading-relaxed pl-1 font-sans">
-              Are you sure you want to approve and initialize <span className="font-semibold text-foreground">{totalCount} course shell{totalCount === 1 ? '' : 's'}</span> for Academic Year <span className="font-semibold text-foreground">{selectedSchoolYear}</span>? Each course will be officially generated and assigned to its verified faculty.
+              Are you sure you want to approve and initialize <span className="font-semibold text-foreground">{totalCount} course shell{totalCount === 1 ? '' : 's'}</span> for Academic Year <span className="font-semibold text-foreground">{selectedSchoolYear}</span> ({formatSemesterLabel(activeCollegeSemester)})? Each course will be officially generated and assigned to its verified faculty.
             </div>
 
             <div className="flex items-center justify-end space-x-2 pt-2">
