@@ -177,6 +177,10 @@ vi.mock('../../../shared/context/LMSContext', () => ({
     showAlert: mockShowAlert,
     activeRole: mockActiveRole,
     activeUser: mockActiveUser,
+    baselineSemester: 'Second',
+    setBaselineSemester: vi.fn().mockResolvedValue({ success: true }),
+    getActiveSemesterForCollege: vi.fn().mockReturnValue('First'),
+    setActiveSemesterForCollege: vi.fn().mockResolvedValue({ success: true }),
   }),
 }));
 

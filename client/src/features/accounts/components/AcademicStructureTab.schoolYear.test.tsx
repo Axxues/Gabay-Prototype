@@ -132,6 +132,10 @@ vi.mock('../../../shared/context/LMSContext', () => ({
     getBaselineSchoolYear: mockGetBaselineSchoolYear,
     getSchoolYearsByCollege: (_colId: string) => sampleSchoolYears,
     getActiveSchoolYearForCollege: (_colId: string) => sampleSchoolYears.find(sy => sy.isActive) || sampleSchoolYears[0],
+    baselineSemester: 'Second',
+    setBaselineSemester: vi.fn().mockResolvedValue({ success: true }),
+    getActiveSemesterForCollege: vi.fn().mockReturnValue('First'),
+    setActiveSemesterForCollege: vi.fn().mockResolvedValue({ success: true }),
   }),
 }));
 
