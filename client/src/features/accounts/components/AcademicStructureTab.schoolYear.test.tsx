@@ -211,7 +211,7 @@ describe('AcademicStructureTab - Dean School Year Management', () => {
 
     // Add School Year button is NOT rendered
     expect(screen.queryByRole('button', { name: /add school year/i })).not.toBeInTheDocument();
-    const rolloverBtn = screen.getByRole('button', { name: /roll over/i });
+    const rolloverBtn = screen.getByRole('button', { name: /roll over to year/i });
     expect(rolloverBtn).toBeInTheDocument();
 
     // Select baseline year (2026-2027) and initiate roll over
@@ -270,7 +270,7 @@ describe('AcademicStructureTab - Dean School Year Management', () => {
     fireEvent.click(toggleBtn);
 
     const sySelect = screen.getByLabelText(/select school year to roll over for college of engineering and technology/i);
-    const rolloverBtn = screen.getByRole('button', { name: /roll over/i });
+    const rolloverBtn = screen.getByRole('button', { name: /roll over to year/i });
 
     // Select a future non-baseline year (2026-2027)
     fireEvent.change(sySelect, { target: { value: 'sy-cet-2026-2027' } });
@@ -314,7 +314,7 @@ describe('AcademicStructureTab - Dean School Year Management', () => {
     // Nothing left to roll over to, so the year picker must not accept changes.
     const sySelect = screen.getByLabelText(/select school year to roll over for college of engineering and technology/i);
     expect(sySelect).toBeDisabled();
-    expect(screen.getByRole('button', { name: /roll over/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /roll over to year/i })).toBeDisabled();
 
     // No mismatch badge when the college already sits on the baseline.
     expect(screen.queryByTestId('baseline-mismatch-badge-col-cet')).not.toBeInTheDocument();

@@ -51,6 +51,8 @@ export const AcademicStructureTab: React.FC = () => {
     getBaselineSchoolYear,
     baselineSemester: contextBaselineSemester,
     setBaselineSemester,
+    getActiveSemesterForCollege,
+    setActiveSemesterForCollege,
   } = useLMS();
 
   const baselineSemester: AcademicSemester = normalizeAcademicSemester(contextBaselineSemester);
@@ -183,13 +185,17 @@ export const AcademicStructureTab: React.FC = () => {
 
   // Rollover confirmation verification modal state
   const [rolloverConfirmData, setRolloverConfirmData] = useState<{
+    kind: 'schoolYear' | 'semester';
     collegeId: string;
     collegeName: string;
-    targetSchoolYearId: string;
-    targetSchoolYear: string;
+    targetSchoolYearId?: string;
+    targetSchoolYear?: string;
     currentActiveYear?: string;
+    targetSemester?: AcademicSemester;
+    currentActiveSemester?: AcademicSemester;
   } | null>(null);
   const [isRollingOver, setIsRollingOver] = useState(false);
+  const [selectedSemesterByCollege, setSelectedSemesterByCollege] = useState<Record<string, AcademicSemester>>({});
 
   // Admin / Chancellor authority to manage the University-Wide Default Baseline Academic Year
   const canManageBaselineSchoolYear =
@@ -239,6 +245,7 @@ export const AcademicStructureTab: React.FC = () => {
     }
 
     setRolloverConfirmData({
+      kind: 'schoolYear',
       collegeId: college.id,
       collegeName: college.name,
       targetSchoolYearId,
@@ -247,24 +254,71 @@ export const AcademicStructureTab: React.FC = () => {
     });
   };
 
+  const handleInitiateSemesterRollover = (college: College, targetSemester: AcademicSemester) => {
+    const activeSem = getActiveSemesterForCollege ? getActiveSemesterForCollege(college.id) : 'First';
+    if (!targetSemester || targetSemester !== baselineSemester) {
+      showAlert({
+        title: 'Semester Rollover Restricted',
+        message: `Colleges can only roll over to the current university baseline semester (${formatSemesterLabel(baselineSemester)}).`,
+        type: 'warning',
+      });
+      return;
+    }
+
+    setRolloverConfirmData({
+      kind: 'semester',
+      collegeId: college.id,
+      collegeName: college.name,
+      targetSemester,
+      currentActiveSemester: activeSem,
+    });
+  };
+
   const handleConfirmRollover = async () => {
     if (!rolloverConfirmData || isRollingOver) return;
     setIsRollingOver(true);
     try {
-      const res = await setActiveSchoolYear(rolloverConfirmData.collegeId, rolloverConfirmData.targetSchoolYearId);
-      if (res.success) {
-        showAlert({
-          title: 'College Rollover Successful',
-          message: res.message || `${rolloverConfirmData.collegeName} has successfully rolled over to SY ${rolloverConfirmData.targetSchoolYear}.`,
-          type: 'success',
-        });
-        setRolloverConfirmData(null);
+      if (rolloverConfirmData.kind === 'semester') {
+        if (!rolloverConfirmData.targetSemester) return;
+        const res = await setActiveSemesterForCollege(
+          rolloverConfirmData.collegeId,
+          rolloverConfirmData.targetSemester
+        );
+        if (res.success) {
+          showAlert({
+            title: 'College Semester Rollover Successful',
+            message:
+              res.message ||
+              `${rolloverConfirmData.collegeName} has successfully rolled over to ${formatSemesterLabel(
+                rolloverConfirmData.targetSemester
+              )}.`,
+            type: 'success',
+          });
+          setRolloverConfirmData(null);
+        } else {
+          showAlert({
+            title: 'Semester Rollover Failed',
+            message: res.message || 'Failed to roll over active semester.',
+            type: 'error',
+          });
+        }
       } else {
-        showAlert({
-          title: 'Rollover Failed',
-          message: res.message || 'Failed to roll over active school year.',
-          type: 'error',
-        });
+        if (!rolloverConfirmData.targetSchoolYearId) return;
+        const res = await setActiveSchoolYear(rolloverConfirmData.collegeId, rolloverConfirmData.targetSchoolYearId);
+        if (res.success) {
+          showAlert({
+            title: 'College Rollover Successful',
+            message: res.message || `${rolloverConfirmData.collegeName} has successfully rolled over to SY ${rolloverConfirmData.targetSchoolYear}.`,
+            type: 'success',
+          });
+          setRolloverConfirmData(null);
+        } else {
+          showAlert({
+            title: 'Rollover Failed',
+            message: res.message || 'Failed to roll over active school year.',
+            type: 'error',
+          });
+        }
       }
     } finally {
       setIsRollingOver(false);
@@ -1043,6 +1097,129 @@ export const AcademicStructureTab: React.FC = () => {
                         </div>
                       );
                     })()}
+
+                    {/* Collegiate Semester Row */}
+                    {(() => {
+                      const activeSem = getActiveSemesterForCollege ? getActiveSemesterForCollege(college.id) : 'First';
+                      const selectedSem = selectedSemesterByCollege[college.id] || baselineSemester;
+                      const canRollover = canRolloverCollegeSchoolYear(college);
+                      const isSemSelectedBaseline = selectedSem === baselineSemester;
+                      const isSemSelectedActive = selectedSem === activeSem;
+                      const isSemRolloverAllowed = Boolean(isSemSelectedBaseline && !isSemSelectedActive);
+                      const isBaselineSemActiveForCollege = activeSem === baselineSemester;
+
+                      return (
+                        <div className="flex flex-col gap-2 pt-2 border-t border-border/40 mt-2">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            {/* Active Semester Badge & Baseline Semester Mismatch Badge */}
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-xs text-muted-foreground font-medium">Active Semester:</span>
+                              <div
+                                data-testid={`college-active-semester-${college.id}`}
+                                className="inline-flex items-center px-3 py-1.5 rounded-xl text-xs font-bold bg-primary/10 text-primary border border-primary/20"
+                              >
+                                <span>{formatSemesterLabel(activeSem)}</span>
+                              </div>
+                              {baselineSemester && activeSem !== baselineSemester && (
+                                <div
+                                  data-testid={`baseline-semester-mismatch-badge-${college.id}`}
+                                  title={`The university baseline is ${formatSemesterLabel(baselineSemester)}, which differs from this college's active semester.`}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/25 shadow-xs"
+                                >
+                                  <span className="h-2 w-2 rounded-full bg-amber-400 shrink-0" />
+                                  <span className="text-muted-foreground font-normal">Current Baseline:</span>
+                                  <span className="font-extrabold">{formatSemesterLabel(baselineSemester)}</span>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Semester Selection and Rollover Action */}
+                            {canRollover ? (
+                              <div className="flex flex-wrap items-center gap-2">
+                                <label
+                                  htmlFor={`semester-select-${college.id}`}
+                                  className="text-xs text-muted-foreground font-medium shrink-0"
+                                >
+                                  Semester:
+                                </label>
+                                <span
+                                  className="inline-flex"
+                                  title={
+                                    isBaselineSemActiveForCollege
+                                      ? `This college is already on the university baseline (${formatSemesterLabel(activeSem)}).`
+                                      : undefined
+                                  }
+                                >
+                                  <CustomDropdown
+                                    id={`semester-select-${college.id}`}
+                                    ariaLabel={`Select semester to roll over for ${college.name}`}
+                                    className="w-48"
+                                    disabled={isBaselineSemActiveForCollege}
+                                    value={selectedSem}
+                                    onChange={(next) => {
+                                      setSelectedSemesterByCollege(prev => ({
+                                        ...prev,
+                                        [college.id]: next as AcademicSemester,
+                                      }));
+                                    }}
+                                    options={ACADEMIC_SEMESTERS.map((sem) => {
+                                      const isCurrentActive = activeSem === sem;
+                                      const isBaseline = baselineSemester === sem;
+                                      let labelSuffix = '';
+                                      if (isCurrentActive && isBaseline) {
+                                        labelSuffix = ' (Current Active & Baseline)';
+                                      } else if (isCurrentActive) {
+                                        labelSuffix = ' (Current Active)';
+                                      } else if (isBaseline) {
+                                        labelSuffix = ' (University Baseline)';
+                                      }
+                                      return { value: sem, label: `${formatSemesterLabel(sem)}${labelSuffix}` };
+                                    })}
+                                  />
+                                </span>
+                                <button
+                                  type="button"
+                                  disabled={!isSemRolloverAllowed}
+                                  title={
+                                    !isSemSelectedBaseline
+                                      ? `Colleges can only roll over to the current university baseline semester (${formatSemesterLabel(baselineSemester)}).`
+                                      : isSemSelectedActive
+                                      ? 'This semester is already active for this college.'
+                                      : `Roll over ${college.name} to ${formatSemesterLabel(selectedSem)}`
+                                  }
+                                  onClick={() => handleInitiateSemesterRollover(college, selectedSem)}
+                                  className="px-3.5 py-1.5 bg-card hover:bg-muted active:scale-[0.98] text-foreground font-bold text-xs rounded-xl border border-border hover:border-primary/40 transition-all flex items-center space-x-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  <span>Roll Over to Semester</span>
+                                </button>
+                              </div>
+                            ) : viewerIsDeanOfCollege(college) ? (
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-muted-foreground font-medium shrink-0">
+                                  Available Semesters:
+                                </span>
+                                <CustomDropdown
+                                  disabled
+                                  ariaLabel={`Available semesters for ${college.name}`}
+                                  className="w-44"
+                                  value={activeSem}
+                                  onChange={() => {}}
+                                  options={ACADEMIC_SEMESTERS.map((sem) => ({
+                                    value: sem,
+                                    label: `${formatSemesterLabel(sem)} ${activeSem === sem ? '(Current Active)' : ''}`,
+                                  }))}
+                                />
+                              </div>
+                            ) : null}
+                          </div>
+                          {canRollover && !isSemSelectedBaseline && (
+                            <p className="text-[11px] text-amber-600 dark:text-amber-400 text-left sm:text-right">
+                              Colleges can only roll over to the current university baseline semester ({formatSemesterLabel(baselineSemester)}).
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
@@ -1332,8 +1509,12 @@ export const AcademicStructureTab: React.FC = () => {
       {/* ROLLOVER VERIFICATION MODAL */}
       {rolloverConfirmData && (
         <DialogFrame
-          title="Confirm Academic Year Rollover"
-          subtitle={`Roll over ${rolloverConfirmData.collegeName} to a new academic cycle`}
+          title={rolloverConfirmData.kind === 'semester' ? 'Confirm Semester Rollover' : 'Confirm Academic Year Rollover'}
+          subtitle={
+            rolloverConfirmData.kind === 'semester'
+              ? `Roll over ${rolloverConfirmData.collegeName} to a new academic semester`
+              : `Roll over ${rolloverConfirmData.collegeName} to a new academic cycle`
+          }
           onClose={() => !isRollingOver && setRolloverConfirmData(null)}
           footer={
             <>
@@ -1360,19 +1541,34 @@ export const AcademicStructureTab: React.FC = () => {
             <div className="p-3.5 bg-primary/10 border border-primary/20 rounded-xl text-foreground space-y-1">
               <div className="font-bold text-sm text-primary flex items-center gap-1.5">
                 <Calendar className="w-4 h-4" />
-                <span>Transitioning to SY {rolloverConfirmData.targetSchoolYear}</span>
+                <span>
+                  {rolloverConfirmData.kind === 'semester'
+                    ? `Transitioning to ${formatSemesterLabel(rolloverConfirmData.targetSemester!)}`
+                    : `Transitioning to SY ${rolloverConfirmData.targetSchoolYear}`}
+                </span>
               </div>
               <p className="text-muted-foreground text-xs leading-relaxed">
                 You are about to roll over <strong className="text-foreground">{rolloverConfirmData.collegeName}</strong> from{' '}
-                <span className="font-semibold text-foreground">{rolloverConfirmData.currentActiveYear || 'the current cycle'}</span> to{' '}
-                <span className="font-bold text-primary">{rolloverConfirmData.targetSchoolYear}</span>.
+                <span className="font-semibold text-foreground">
+                  {rolloverConfirmData.kind === 'semester'
+                    ? formatSemesterLabel(rolloverConfirmData.currentActiveSemester || 'First')
+                    : rolloverConfirmData.currentActiveYear || 'the current cycle'}
+                </span>{' '}
+                to{' '}
+                <span className="font-bold text-primary">
+                  {rolloverConfirmData.kind === 'semester'
+                    ? formatSemesterLabel(rolloverConfirmData.targetSemester!)
+                    : rolloverConfirmData.targetSchoolYear}
+                </span>.
               </p>
             </div>
 
             <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[11px] text-amber-700 dark:text-amber-300 flex items-start space-x-2">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
               <span>
-                Rolling over the active academic year sets the default collegiate term for future enrollments, courses, and grading periods. Deans retain authority to roll over whenever necessary.
+                {rolloverConfirmData.kind === 'semester'
+                  ? 'Rolling over the active semester sets the default collegiate term for future course offerings and uploads. Deans retain authority to roll over whenever necessary.'
+                  : 'Rolling over the active academic year sets the default collegiate term for future enrollments, courses, and grading periods. Deans retain authority to roll over whenever necessary.'}
               </span>
             </div>
           </div>
