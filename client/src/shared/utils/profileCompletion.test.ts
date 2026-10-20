@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { isProfileComplete, isAddressComplete, parseAddress } from './profileCompletion';
 import type { User } from '../types/lms';
 
@@ -156,6 +156,10 @@ describe('isProfileComplete', () => {
 
   it('rejects future birthdays and requires previous dates', () => {
     const fixedToday = new Date('2026-10-18T12:00:00Z');
+    // The cases below are relative to fixedToday, so the clock has to be frozen.
+    // Without this the suite breaks the day after "tomorrow".
+    vi.useFakeTimers();
+    vi.setSystemTime(fixedToday);
     // Yesterday: 2026-10-17
     // Tomorrow: 2026-10-19
     // Next year: 2027-02-27
@@ -173,12 +177,16 @@ describe('isProfileComplete', () => {
       yearLevel: 1,
     };
 
-    // Valid past birthday
-    expect(isProfileComplete({ ...completeStudent, birthday: '2004-05-15' } as User)).toBe(true);
+    try {
+      // Valid past birthday
+      expect(isProfileComplete({ ...completeStudent, birthday: '2004-05-15' } as User)).toBe(true);
 
-    // Future birthday (e.g. tomorrow or 2027-02-27 as reported by user)
-    expect(isProfileComplete({ ...completeStudent, birthday: '2027-02-27' } as User)).toBe(false);
-    expect(isProfileComplete({ ...completeStudent, birthday: '2026-10-19' } as User)).toBe(false);
+      // Future birthday (e.g. tomorrow or 2027-02-27 as reported by user)
+      expect(isProfileComplete({ ...completeStudent, birthday: '2027-02-27' } as User)).toBe(false);
+      expect(isProfileComplete({ ...completeStudent, birthday: '2026-10-19' } as User)).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('treats houseStreet as optional in isAddressComplete and profile completion', () => {
