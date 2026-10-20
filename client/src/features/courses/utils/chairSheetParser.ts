@@ -20,7 +20,6 @@ export interface RawChairSheetRow {
   courseCode: string;
   descriptiveTitle: string;
   yearAndSection: string;
-  semester?: AssignedCourseSemester | string;
 }
 
 export type RawAssignedCoursesRow = RawChairSheetRow;
@@ -135,8 +134,6 @@ export function parseChairSheet(data: ArrayBuffer | Uint8Array): RawChairSheetRo
     const courseCode = getVal(['Course Code', 'CourseCode', 'Subject Code', 'SubjectCode']);
     const descriptiveTitle = getVal(['Descriptive Title', 'DescriptiveTitle', 'Course Title', 'Title']);
     const yearAndSection = getVal(['Year and Section', 'Year & Section', 'YearSection', 'Section', 'Year and Sec']);
-    const rawSemester = getVal(['Semester', 'Sem', 'Term']);
-    const semester = rawSemester ? normalizeAssignedSemester(rawSemester) : 'First';
 
     return {
       firstName,
@@ -145,7 +142,6 @@ export function parseChairSheet(data: ArrayBuffer | Uint8Array): RawChairSheetRo
       courseCode,
       descriptiveTitle,
       yearAndSection,
-      semester,
     };
   }).filter(r => r.courseCode || r.descriptiveTitle || r.lastName || r.firstName);
 }
@@ -256,47 +252,5 @@ export function formatCourseTerm(semester: string | undefined, schoolYear: strin
   }
 }
 
-/**
- * Generates an Excel workbook for the blank assigned-courses template with column headers only.
- */
-export function generateChairSheetTemplateWorkbook(): xlsx.WorkBook {
-  const headers = [
-    'First Name',
-    'Middle Name',
-    'Last Name',
-    'Course Code',
-    'Descriptive Title',
-    'Year and Section',
-    'Semester',
-  ];
-
-  // Creates sheet with headers only (row 1) and no sample data content
-  const worksheet = xlsx.utils.aoa_to_sheet([headers]);
-  worksheet['!cols'] = [
-    { wch: 18 }, // First Name
-    { wch: 18 }, // Middle Name
-    { wch: 18 }, // Last Name
-    { wch: 16 }, // Course Code
-    { wch: 36 }, // Descriptive Title
-    { wch: 18 }, // Year and Section
-    { wch: 16 }, // Semester
-  ];
-
-  const workbook = xlsx.utils.book_new();
-  xlsx.utils.book_append_sheet(workbook, worksheet, 'Assigned Courses');
-  return workbook;
-}
-
-export const generateAssignedCoursesTemplateWorkbook = generateChairSheetTemplateWorkbook;
-
-/**
- * Downloads the assigned-courses template as an Excel file (.xlsx) in the browser.
- */
-export function downloadChairSheetTemplate(filename = 'assigned-courses-template.xlsx'): void {
-  const wb = generateChairSheetTemplateWorkbook();
-  xlsx.writeFile(wb, filename);
-}
-
-export const downloadAssignedCoursesTemplate = downloadChairSheetTemplate;
 export const parseAssignedCourses = parseChairSheet;
 export const validateAssignedCoursesRows = validateChairSheetRows;

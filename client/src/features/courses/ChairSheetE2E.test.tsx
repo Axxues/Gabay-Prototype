@@ -113,7 +113,6 @@ describe('Chair-Sheet End-to-End Real Sample Verification', () => {
       courseCode: 'CSCC 103',
       descriptiveTitle: 'Object Oriented Programming',
       yearAndSection: '4-E',
-      semester: 'First',
     });
 
     // Row 1: Cherlie Seli Marzan (fuzzy matches Charlie Seli Marzan)
@@ -124,7 +123,6 @@ describe('Chair-Sheet End-to-End Real Sample Verification', () => {
       courseCode: 'CCSC 303',
       descriptiveTitle: 'Computer Programming 1',
       yearAndSection: '1-A',
-      semester: 'Mid-Year',
     });
 
     // Row 2: Raymund Ezekiel Dilan
@@ -135,7 +133,6 @@ describe('Chair-Sheet End-to-End Real Sample Verification', () => {
       courseCode: 'CSPC 112',
       descriptiveTitle: 'Software Engineering 2',
       yearAndSection: '4-E',
-      semester: 'Second',
     });
 
     // Row 3: Jayvee Geneta Reyes
@@ -146,7 +143,6 @@ describe('Chair-Sheet End-to-End Real Sample Verification', () => {
       courseCode: 'CSCB 101',
       descriptiveTitle: 'test Course',
       yearAndSection: '3-A',
-      semester: 'Mid-Year',
     });
 
     // Validate faculty matches: row 1 has 'Cherlie' typo, so it requires correction or suggests Charlie
@@ -219,6 +215,7 @@ describe('Chair-Sheet End-to-End Real Sample Verification', () => {
       expect(mockCreateCourse).toHaveBeenCalledTimes(4);
     });
 
+    // Task 7 replaces these terms with the college's active semester.
     expect(mockCreateCourse).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
@@ -228,7 +225,6 @@ describe('Chair-Sheet End-to-End Real Sample Verification', () => {
         instructorId: 'u-charlie',
         instructorName: 'Charlie Seli Marzan',
         term: '1st Sem AY 2025-2026',
-        semester: 'First',
       })
     );
 
@@ -240,8 +236,7 @@ describe('Chair-Sheet End-to-End Real Sample Verification', () => {
         section: '1-A',
         instructorId: 'u-charlie',
         instructorName: 'Charlie Seli Marzan',
-        term: 'Midyear AY 2025-2026',
-        semester: 'Mid-Year',
+        term: '1st Sem AY 2025-2026',
       })
     );
 
@@ -253,8 +248,7 @@ describe('Chair-Sheet End-to-End Real Sample Verification', () => {
         section: '4-E',
         instructorId: 'u-raymund',
         instructorName: 'Raymund Ezekiel Dilan',
-        term: '2nd Sem AY 2025-2026',
-        semester: 'Second',
+        term: '1st Sem AY 2025-2026',
       })
     );
 
@@ -266,8 +260,7 @@ describe('Chair-Sheet End-to-End Real Sample Verification', () => {
         section: '3-A',
         instructorId: 'u-jayvee',
         instructorName: 'Jayvee Geneta Reyes',
-        term: 'Midyear AY 2025-2026',
-        semester: 'Mid-Year',
+        term: '1st Sem AY 2025-2026',
       })
     );
 

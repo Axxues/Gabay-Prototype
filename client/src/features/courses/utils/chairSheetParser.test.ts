@@ -7,7 +7,6 @@ import {
   matchFaculty,
   isEligibleFaculty,
   validateChairSheetRows,
-  generateChairSheetTemplateWorkbook,
   formatCourseTerm,
   normalizeAssignedSemester,
   ASSIGNED_COURSE_SEMESTERS,
@@ -100,7 +99,6 @@ describe('chairSheetParser', () => {
       courseCode: 'CSCC 103',
       descriptiveTitle: 'Object Oriented Programming',
       yearAndSection: '4-E',
-      semester: 'First',
     });
     expect(rows[1]).toEqual({
       firstName: 'Raymund',
@@ -109,7 +107,6 @@ describe('chairSheetParser', () => {
       courseCode: 'CSPC 112',
       descriptiveTitle: 'Software Engineering 2',
       yearAndSection: '4-E',
-      semester: 'Second',
     });
   });
 
@@ -213,29 +210,19 @@ describe('chairSheetParser', () => {
     expect(validated[1].facultyErrorMessage).toBeTruthy();
   });
 
-  it('generates a clean blank template workbook with column headers only', () => {
-    const wb = generateChairSheetTemplateWorkbook();
-    expect(wb.SheetNames).toContain('Assigned Courses');
+  it('ignores a Semester column in the source workbook', () => {
+    const data = [
+      ['First Name', 'Middle Name', 'Last Name', 'Course Code', 'Descriptive Title', 'Year and Section', 'Semester'],
+      ['Charlie', 'Seli', 'Marzan', 'CSCC 103', 'OOP', '4-E', 'Summer'],
+    ];
+    const ws = xlsx.utils.aoa_to_sheet(data);
+    const wb = xlsx.utils.book_new();
+    xlsx.utils.book_append_sheet(wb, ws, 'Sheet1');
+    const buf = xlsx.write(wb, { type: 'array', bookType: 'xlsx' });
 
-    const sheet = wb.Sheets['Assigned Courses'];
-    const rows = xlsx.utils.sheet_to_json(sheet, { header: 1 }) as string[][];
-
-    // Only 1 row (the header titles)
-    expect(rows.length).toBe(1);
-    expect(rows[0]).toEqual([
-      'First Name',
-      'Middle Name',
-      'Last Name',
-      'Course Code',
-      'Descriptive Title',
-      'Year and Section',
-      'Semester',
-    ]);
-
-    // Parsing the blank template buffer returns 0 data rows
-    const buf = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
-    const parsed = parseChairSheet(buf);
-    expect(parsed.length).toBe(0);
+    const rows = parseChairSheet(buf);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).not.toHaveProperty('semester');
   });
 
   it('formats course term correctly based on semester and school year', () => {

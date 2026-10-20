@@ -269,19 +269,6 @@ describe('ChairSheetUploadView', () => {
     expect(actionRow.className).toContain('flex-nowrap');
   });
 
-  it('renders download template button in dropzone', async () => {
-    render(
-      <ChairSheetUploadView
-        onNavigateCourse={mockOnNavigateCourse}
-        onNavigateTab={mockOnNavigateTab}
-      />
-    );
-
-    const downloadBtn = screen.getByRole('button', { name: /Download Template/i });
-    expect(downloadBtn).toBeInTheDocument();
-    expect(downloadBtn).not.toBeDisabled();
-  });
-
   it('triggers confirmation modal when deleting a row with contents', async () => {
     render(
       <ChairSheetUploadView
@@ -362,7 +349,7 @@ describe('ChairSheetUploadView', () => {
     expect(options.some(t => t?.includes('Jayvee Admin'))).toBe(false);
   });
 
-  it('displays Semester column, allows editing it, and generates course with corresponding term', async () => {
+  it('creates every row without a semester field', async () => {
     render(
       <ChairSheetUploadView
         onNavigateTab={mockOnNavigateTab}
@@ -373,25 +360,18 @@ describe('ChairSheetUploadView', () => {
     const input = screen.getByTestId('assigned-courses-file-input');
     const file = createTestWorkbookBuffer([
       ['First Name', 'Middle Name', 'Last Name', 'Course Code', 'Descriptive Title', 'Year and Section', 'Semester'],
-      ['Charlie', 'Seli', 'Marzan', 'CSCC 103', 'Object Oriented Programming', '4-E', 'Second'],
+      ['Charlie', 'Seli', 'Marzan', 'CSCC 103', 'Object Oriented Programming', '4-E', 'Mid-Year'],
     ]);
 
     fireEvent.change(input, { target: { files: [file] } });
 
     await waitFor(() => {
       expect(screen.getByDisplayValue('CSCC 103')).toBeInTheDocument();
-      expect(screen.getByDisplayValue('Second')).toBeInTheDocument();
     });
 
-    // Check table header
-    expect(screen.getByRole('columnheader', { name: /^Semester$/i })).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: /^Semester$/i })).toBeNull();
+    expect(screen.queryByLabelText(/Semester for row 1/i)).toBeNull();
 
-    // Edit semester from 'Second' to 'Mid-Year'
-    const semInput = screen.getByDisplayValue('Second');
-    fireEvent.change(semInput, { target: { value: 'Mid-Year' } });
-    expect(screen.getByDisplayValue('Mid-Year')).toBeInTheDocument();
-
-    // Approve & Create
     const approveBtn = screen.getByRole('button', { name: /Approve & Create 1 Course/i });
     fireEvent.click(approveBtn);
 
@@ -402,17 +382,8 @@ describe('ChairSheetUploadView', () => {
       expect(mockCreateCourse).toHaveBeenCalledTimes(1);
     });
 
-    expect(mockCreateCourse).toHaveBeenCalledWith(
-      expect.objectContaining({
-        code: 'CSCC 103',
-        title: 'Object Oriented Programming',
-        section: '4-E',
-        instructorId: 'u-charlie',
-        instructorName: 'Charlie Seli Marzan',
-        term: 'Midyear AY 2025-2026',
-        semester: 'Mid-Year',
-      })
-    );
+    const payload = mockCreateCourse.mock.calls[0][0];
+    expect(payload).not.toHaveProperty('semester');
   });
 });
 

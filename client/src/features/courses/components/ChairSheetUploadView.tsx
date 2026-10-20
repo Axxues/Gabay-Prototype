@@ -9,7 +9,6 @@ import {
   RefreshCw,
   PlusCircle,
   HelpCircle,
-  Download,
   X
 } from 'lucide-react';
 import { useLMS } from '../../../shared/context/LMSContext';
@@ -19,7 +18,6 @@ import {
   validateChairSheetRows,
   matchFaculty,
   isEligibleFaculty,
-  downloadAssignedCoursesTemplate,
   formatCourseTerm,
   type ValidatedChairSheetRow,
   type RawChairSheetRow
@@ -243,7 +241,6 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
           courseCode: updates.courseCode !== undefined ? updates.courseCode : row.courseCode,
           descriptiveTitle: updates.descriptiveTitle !== undefined ? updates.descriptiveTitle : row.descriptiveTitle,
           yearAndSection: updates.yearAndSection !== undefined ? updates.yearAndSection : row.yearAndSection,
-          semester: updates.semester !== undefined ? updates.semester : row.semester,
         };
         const match = matchFaculty(updatedRaw, db.users || []);
         return {
@@ -269,8 +266,7 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
       target.lastName?.trim() ||
       target.courseCode?.trim() ||
       target.descriptiveTitle?.trim() ||
-      target.yearAndSection?.trim() ||
-      target.semester?.trim()
+      target.yearAndSection?.trim()
     );
 
     if (hasContent) {
@@ -288,7 +284,6 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
       courseCode: '',
       descriptiveTitle: '',
       yearAndSection: '',
-      semester: 'First',
     };
     const validated = validateChairSheetRows([newRaw], db.users || [])[0];
     setRows(prev => [...prev, validated]);
@@ -329,8 +324,7 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
           instructorId: row.matchedUser?.id,
           instructorName: row.matchedUser?.name || `${row.firstName} ${row.lastName}`.trim(),
           schoolYear: selectedSchoolYear,
-          term: formatCourseTerm(row.semester, selectedSchoolYear),
-          semester: row.semester?.trim() || undefined,
+          term: formatCourseTerm(undefined, selectedSchoolYear),
           collegeId: userCollegeId,
           department: userDepartment?.name || row.matchedUser?.department,
           departmentId: userDepartment?.id,
@@ -581,20 +575,11 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
               <UploadCloud className="w-4 h-4" />
               <span>Select Assigned Courses File</span>
             </button>
-
-            <button
-              type="button"
-              onClick={() => downloadAssignedCoursesTemplate()}
-              className="px-4 py-2.5 text-xs font-semibold bg-muted hover:bg-muted/80 text-foreground border border-border rounded-xl transition-all flex items-center space-x-2 cursor-pointer"
-            >
-              <Download className="w-4 h-4 text-primary" />
-              <span>Download Template</span>
-            </button>
           </div>
 
           <div className="mt-6 flex items-center gap-2 text-[11px] text-muted-foreground bg-muted/60 px-3 py-1.5 rounded-lg border border-border/60">
             <HelpCircle className="w-3.5 h-3.5" />
-            <span>Expected format: First Name, Middle Name, Last Name, Course Code, Descriptive Title, Year and Section, Semester</span>
+            <span>Expected format: First Name, Middle Name, Last Name, Course Code, Descriptive Title, Year and Section</span>
           </div>
         </div>
       ) : (
