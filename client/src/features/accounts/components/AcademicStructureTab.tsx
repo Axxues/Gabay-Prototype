@@ -633,76 +633,114 @@ export const AcademicStructureTab: React.FC = () => {
 
       {/* University-Wide Default Baseline Academic Term Card (Admin / Chancellor Console) */}
       {canManageBaselineSchoolYear && (
-        <div className="bg-card/70 border border-border rounded-2xl p-4 sm:p-5 flex flex-col gap-4 shadow-none">
+        <div className="bg-card/80 border border-border/80 rounded-2xl p-5 sm:p-6 shadow-sm space-y-5">
+          {/* Top row: Identity + Active Term Pill */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex items-start sm:items-center space-x-3">
-              <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20">
+            <div className="flex items-start sm:items-center space-x-3.5">
+              <div className="w-11 h-11 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20 shadow-xs">
                 <Calendar className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-xs sm:text-sm font-extrabold text-foreground">
-                  University-Wide Default Baseline Academic Term
-                </h3>
-                <span className="sr-only">University-Wide Default Baseline Academic Year</span>
-                <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+                <div className="flex items-center space-x-2">
+                  <h3 className="text-sm sm:text-base font-extrabold tracking-tight text-foreground">
+                    University-Wide Default Baseline Academic Term
+                  </h3>
+                  <span className="sr-only">University-Wide Default Baseline Academic Year</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed max-w-2xl">
                   Institutional fallback for all academic cycles, new colleges, and un-rolled units. Deans independently roll over their own colleges.
                 </p>
               </div>
             </div>
+
+            {/* Current Active Term Indicator Pill */}
+            <div className="flex items-center space-x-2.5 px-3.5 py-2 bg-muted/60 border border-border/80 rounded-xl shrink-0 self-start md:self-center shadow-xs">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+              </span>
+              <div className="text-xs">
+                <span className="text-muted-foreground font-medium mr-1.5">Current Baseline:</span>
+                <span className="font-extrabold text-foreground tracking-tight">
+                  AY {currentBaseline?.year || '—'} · {formatSemesterLabel(baselineSemester as AcademicSemester)}
+                </span>
+              </div>
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-4 pt-2 border-t border-border/50">
-            {/* Academic Year Control */}
-            <div className="flex items-center space-x-2 shrink-0">
-              <label htmlFor="baseline-sy-select" className="text-xs text-muted-foreground font-medium shrink-0">
-                Change Baseline Year:
-              </label>
-              <CustomDropdown
-                id="baseline-sy-select"
-                ariaLabel="Select University-Wide Default Baseline School Year"
-                className="w-56"
-                searchable
-                value={selectedBaselineId || currentBaseline?.id || ''}
-                onChange={setSelectedBaselineId}
-                options={universalSchoolYears.map((sy) => ({
-                  value: sy.id,
-                  label: `${sy.year} ${sy.id === currentBaseline?.id || sy.year === currentBaseline?.year ? '(Current Baseline)' : ''}`,
-                }))}
-              />
-              <button
-                type="button"
-                disabled={!selectedBaselineId || selectedBaselineId === currentBaseline?.id}
-                onClick={() => handleInitiateBaselineChange(selectedBaselineId || currentBaseline?.id || '')}
-                className="px-3.5 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-xs rounded-xl shadow-xs transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1.5"
-              >
-                <span>Update Baseline</span>
-              </button>
+          {/* Two Distinct Control Tiles (Grid: 1 col on mobile, 2 cols on md+) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+            {/* Tile 1: Baseline Academic Year */}
+            <div className="bg-background/70 border border-border/70 rounded-xl p-4 flex flex-col justify-between gap-3 shadow-none hover:border-border transition-colors">
+              <div className="flex items-center justify-between">
+                <label htmlFor="baseline-sy-select" className="text-xs font-bold text-foreground flex items-center space-x-1.5">
+                  <span>Baseline Academic Year</span>
+                </label>
+                <span className="text-[11px] font-medium text-muted-foreground">
+                  Active: <span className="text-foreground font-semibold">AY {currentBaseline?.year || '—'}</span>
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <div className="flex-1 min-w-0">
+                  <CustomDropdown
+                    id="baseline-sy-select"
+                    ariaLabel="Select University-Wide Default Baseline School Year"
+                    className="w-full"
+                    searchable
+                    value={selectedBaselineId || currentBaseline?.id || ''}
+                    onChange={setSelectedBaselineId}
+                    options={universalSchoolYears.map((sy) => ({
+                      value: sy.id,
+                      label: `${sy.year} ${sy.id === currentBaseline?.id || sy.year === currentBaseline?.year ? '(Current Baseline)' : ''}`,
+                    }))}
+                  />
+                </div>
+                <button
+                  type="button"
+                  disabled={!selectedBaselineId || selectedBaselineId === currentBaseline?.id}
+                  onClick={() => handleInitiateBaselineChange(selectedBaselineId || currentBaseline?.id || '')}
+                  className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-xs rounded-xl shadow-xs transition-all active:scale-[0.98] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0 whitespace-nowrap"
+                >
+                  <span>Update Baseline</span>
+                </button>
+              </div>
             </div>
 
-            {/* Semester Control */}
-            <div className="flex items-center space-x-2 shrink-0">
-              <label htmlFor="baseline-semester-select" className="text-xs text-muted-foreground font-medium shrink-0">
-                Change Baseline Semester:
-              </label>
-              <CustomDropdown
-                id="baseline-semester-select"
-                ariaLabel="Select University-Wide Default Baseline Semester"
-                className="w-56"
-                value={(selectedBaselineSemester || baselineSemester) as string}
-                onChange={(val) => setSelectedBaselineSemester(val as AcademicSemester)}
-                options={ACADEMIC_SEMESTERS.map((sem) => ({
-                  value: sem,
-                  label: `${formatSemesterLabel(sem)} ${sem === baselineSemester ? '(Current Baseline)' : ''}`,
-                }))}
-              />
-              <button
-                type="button"
-                disabled={!selectedBaselineSemester || selectedBaselineSemester === baselineSemester}
-                onClick={() => handleInitiateSemesterBaselineChange((selectedBaselineSemester || baselineSemester) as AcademicSemester)}
-                className="px-3.5 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-xs rounded-xl shadow-xs transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1.5"
-              >
-                <span>Update Semester</span>
-              </button>
+            {/* Tile 2: Baseline Academic Semester */}
+            <div className="bg-background/70 border border-border/70 rounded-xl p-4 flex flex-col justify-between gap-3 shadow-none hover:border-border transition-colors">
+              <div className="flex items-center justify-between">
+                <label htmlFor="baseline-semester-select" className="text-xs font-bold text-foreground flex items-center space-x-1.5">
+                  <span>Baseline Semester</span>
+                </label>
+                <span className="text-[11px] font-medium text-muted-foreground">
+                  Active: <span className="text-foreground font-semibold">{formatSemesterLabel(baselineSemester as AcademicSemester)}</span>
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <div className="flex-1 min-w-0">
+                  <CustomDropdown
+                    id="baseline-semester-select"
+                    ariaLabel="Select University-Wide Default Baseline Semester"
+                    className="w-full"
+                    value={(selectedBaselineSemester || baselineSemester) as string}
+                    onChange={(val) => setSelectedBaselineSemester(val as AcademicSemester)}
+                    options={ACADEMIC_SEMESTERS.map((sem) => ({
+                      value: sem,
+                      label: `${formatSemesterLabel(sem)} ${sem === baselineSemester ? '(Current Baseline)' : ''}`,
+                    }))}
+                  />
+                </div>
+                <button
+                  type="button"
+                  disabled={!selectedBaselineSemester || selectedBaselineSemester === baselineSemester}
+                  onClick={() => handleInitiateSemesterBaselineChange((selectedBaselineSemester || baselineSemester) as AcademicSemester)}
+                  className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-xs rounded-xl shadow-xs transition-all active:scale-[0.98] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0 whitespace-nowrap"
+                >
+                  <span>Update Semester</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
