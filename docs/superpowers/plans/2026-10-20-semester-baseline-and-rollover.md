@@ -479,7 +479,7 @@ git commit -m "refactor(courses): drop semester choice and template download fro
 - Consumes: the context's `baselineSemester` and `getActiveSemesterForCollege`; `formatCourseTerm` from the parser.
 - Produces: `assigned-courses-semester-display`; a single `mismatchErrorMessage` used by the banner, all four blocking `showAlert` calls, the dropzone copy, and the disabled button's `title`; created courses carrying `semester` and a matching `term`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `client/src/features/courses/ChairSheetSemesterBaselineMismatch.test.tsx` from the scaffold of `ChairSheetSchoolYearBaselineMismatch.test.tsx`, with `getBaselineSchoolYear` and `getActiveSchoolYearForCollege` both reporting `2026-2027` so only the semester differs: `baselineSemester: 'Second'` and `getActiveSemesterForCollege: () => 'First'`.
 
@@ -505,12 +505,12 @@ test('ignores a Semester column holding an unrecognized value', ...)
   // the uploaded sheet's Semester cells read 'Summer'; the created courses still carry the college semester
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `npm test -- run src/features/courses/ChairSheetSemesterBaselineMismatch.test.tsx`
 Expected: FAIL — `assigned-courses-semester-display` does not exist and the gating ignores the semester.
 
-- [ ] **Step 3: Gate on both axes with one message**
+- [x] **Step 3: Gate on both axes with one message**
 
 Destructure `baselineSemester` and `getActiveSemesterForCollege` from `useLMS`. Derive `activeCollegeSemester = getActiveSemesterForCollege(userCollegeId)` and `baselineSemesterValue = baselineSemester || 'First'`.
 
@@ -524,7 +524,7 @@ Build one `mismatchErrorMessage` that branches into exactly three sentences:
 
 Use that single string in the banner, in all four `showAlert` calls (`handleProcessFile`, `handleDrop`, `handleFileChange`, `handleApproveAndSave` — their titles become `Upload Restricted: Academic Baseline Mismatch` and `Cannot Create Courses: Academic Baseline Mismatch`), in the locked-dropzone paragraph, and in the disabled Select button's `title`. Only the banner keeps the longer two-sentence form, appending the existing "Please ask your College Dean or University Administrator..." line.
 
-- [ ] **Step 4: Show the semester and stamp it onto courses**
+- [x] **Step 4: Show the semester and stamp it onto courses**
 
 Next to the academic year badge, add a semester badge with `data-testid="assigned-courses-semester-display"` rendering `Semester:` and `formatSemesterLabel(activeCollegeSemester)`. Extend the header's "Academic Scope" metric card to `AY X · T Semester`.
 
@@ -532,18 +532,18 @@ In the dropzone, under the format hint, add the line `All rows are created under
 
 In `handleApproveAndSave`, set `semester: activeCollegeSemester` and `term: formatCourseTerm(activeCollegeSemester, selectedSchoolYear)` on the `createCourse` payload. Update the success alert to name both the year and the semester.
 
-- [ ] **Step 5: Update the mocks and the E2E expectations**
+- [x] **Step 5: Update the mocks and the E2E expectations**
 
 Add `baselineSemester: '<the same semester as the college>'` and `getActiveSemesterForCollege: () => '<that semester>'` to the `useLMS` mocks in `ChairSheetSchoolYearRollover.test.tsx` and `ChairSheetSchoolYearBaselineMismatch.test.tsx`, and assert the new `assigned-courses-semester-display` in the rollover test.
 
 In `ChairSheetE2E.test.tsx`, replace the Task 6 placeholder expectations: every created course now carries the mocked college semester and a matching term.
 
-- [ ] **Step 6: Run the tests to verify they pass**
+- [x] **Step 6: Run the tests to verify they pass**
 
 Run: `npm test -- run src/features/courses`
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add client/src/features/courses
@@ -562,7 +562,7 @@ git commit -m "feat(courses): gate assigned-course uploads on the baseline semes
 - Consumes: the context's `baselineSemester`, `getActiveSemesterForCollege`.
 - Produces: `governance-baseline-warning` firing on either axis.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `AppRail.test.tsx`, following its existing `useLMS` mock pattern and its existing "renders circular yellow warning tag on Academic Governance for Dean when college active year differs from baseline" test:
 
@@ -575,21 +575,21 @@ it('does not render the warning tag when both axes match', ...)
   // both years equal and both semesters 'Second' -> queryByTestId is null
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `npm test -- run src/shared/components/layout/AppRail.test.tsx`
 Expected: FAIL — no warning tag when only the semester differs.
 
-- [ ] **Step 3: Extend the warning**
+- [x] **Step 3: Extend the warning**
 
 Add `baselineSemester` and `getActiveSemesterForCollege` to the destructure, derive the college's semester the same way `collegeYear` is derived, and make `hasBaselineMismatch` true when either axis differs. Update the `title` to `University baseline (AY X · S Semester) differs from your college's active academic term (AY Y · T Semester)`, keeping the existing `data-testid` unchanged.
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `npm test -- run src/shared/components/layout/AppRail.test.tsx`
 Expected: PASS.
 
-- [ ] **Step 5: Run the full suite and the build**
+- [x] **Step 5: Run the full suite and the build**
 
 Run: `npm test -- run`
 Expected: PASS.
@@ -597,7 +597,7 @@ Expected: PASS.
 Run: `npm run build`
 Expected: exit 0. `tsc -b` is part of it, so any leftover `row.semester` reference or unused import fails here.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add client/src/shared/components/layout/AppRail.tsx client/src/shared/components/layout/AppRail.test.tsx
