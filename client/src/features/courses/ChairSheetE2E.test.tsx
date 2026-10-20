@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
+import '@testing-library/jest-dom/vitest';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import * as matchers from '@testing-library/jest-dom/matchers';
-expect.extend(matchers);
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import React from 'react';
 import fs from 'node:fs';

@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
+import '@testing-library/jest-dom/vitest';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import React from 'react';
 import { AppRail } from './AppRail';
 import { GabayChatContext } from '../../context/GabayChatContext';
 
-let mockLMSContext = {
+let mockLMSContext: any = {
   activeRole: 'student',
   activeUser: { id: 'u1' } as any,
   logout: vi.fn(),
@@ -13,6 +14,8 @@ let mockLMSContext = {
   db: { messages: [] },
   getBaselineSchoolYear: () => ({ id: 'sy-1', year: '2026-2027', isActive: true }),
   getActiveSchoolYearForCollege: (colId: string) => ({ id: 'sy-col', year: '2025-2026', isActive: true, collegeId: colId }),
+  baselineSemester: 'First',
+  getActiveSemesterForCollege: (_colId: string) => 'First',
 };
 
 vi.mock('../../context/LMSContext', () => ({
