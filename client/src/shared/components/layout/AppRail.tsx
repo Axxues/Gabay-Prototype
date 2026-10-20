@@ -4,6 +4,8 @@ import { useLMS } from '../../context/LMSContext';
 import { GabayChatContext } from '../../context/GabayChatContext';
 import { MAIN_NAV, isVisible, type NavIcon } from '../../config/navigation';
 import { isDeanRole, isChairRole } from '../../utils/roles';
+import type { AcademicSemester } from '../../types/lms';
+import { formatSemesterLabel } from '../../utils/academicSemester';
 
 const ICONS: Record<NavIcon, React.ReactNode> = {
   dashboard: <LayoutDashboard className="h-5 w-5" />, courses: <BookOpen className="h-5 w-5" />,
@@ -25,7 +27,7 @@ const ICONS: Record<NavIcon, React.ReactNode> = {
 };
 
 const AppRailComponent: React.FC<{ currentTab: string; onNavigateTab: (t: string) => void }> = ({ currentTab, onNavigateTab }) => {
-  const { activeRole, activeUser, logout, showConfirm, db, departments, getBaselineSchoolYear, getActiveSchoolYearForCollege } = useLMS();
+  const { activeRole, activeUser, logout, showConfirm, db, departments, getBaselineSchoolYear, getActiveSchoolYearForCollege, baselineSemester, getActiveSemesterForCollege } = useLMS();
   const chatCtx = useContext(GabayChatContext);
   const hasOngoingProcess = (chatCtx?.executingSessionIds.length ?? 0) > 0;
   const unread = db.messages.filter(m => m.recipientId === activeUser.id && !m.read).length;
@@ -42,12 +44,17 @@ const AppRailComponent: React.FC<{ currentTab: string; onNavigateTab: (t: string
       : undefined);
   const baselineYear = getBaselineSchoolYear?.()?.year;
   const collegeYear = effectiveCollegeId ? getActiveSchoolYearForCollege?.(effectiveCollegeId)?.year : undefined;
-  const hasBaselineMismatch = Boolean(
-    isDeanOrChair &&
+  const baselineSem: AcademicSemester = (baselineSemester as AcademicSemester) || 'First';
+  const collegeSem: AcademicSemester = (effectiveCollegeId && getActiveSemesterForCollege ? getActiveSemesterForCollege(effectiveCollegeId) : 'First') as AcademicSemester;
+
+  const isYearDiff = Boolean(
     baselineYear &&
     collegeYear &&
     baselineYear.trim().toLowerCase() !== collegeYear.trim().toLowerCase()
   );
+  const isSemDiff = Boolean(baselineSem !== collegeSem);
+
+  const hasBaselineMismatch = Boolean(isDeanOrChair && (isYearDiff || isSemDiff));
 
   return (
     <aside className="flex w-[68px] flex-shrink-0 flex-col items-center border-r border-border/70 bg-background py-3">
@@ -67,7 +74,7 @@ const AppRailComponent: React.FC<{ currentTab: string; onNavigateTab: (t: string
               type="button"
               title={
                 item.id === 'governance' && hasBaselineMismatch
-                  ? `University baseline (AY ${baselineYear}) differs from your college's active academic year (AY ${collegeYear})`
+                  ? `University baseline (AY ${baselineYear} · ${formatSemesterLabel(baselineSem)}) differs from your college's active academic term (AY ${collegeYear} · ${formatSemesterLabel(collegeSem)})`
                   : isGabayOngoing
                   ? 'GABAY is processing an inquiry…'
                   : item.label

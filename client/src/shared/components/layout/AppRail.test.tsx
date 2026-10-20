@@ -154,4 +154,55 @@ describe('AppRail Navigation', () => {
     expect(warningTag).toBeInTheDocument();
     expect(warningTag).toHaveClass('bg-amber-400');
   });
+
+  it('renders the warning tag when only the semester differs from the baseline', () => {
+    mockLMSContext = {
+      ...mockLMSContext,
+      activeRole: 'admin',
+      activeUser: {
+        id: 'u-dean',
+        role: 'admin',
+        adminSubrole: 'dean',
+        collegeId: 'col-ccs',
+      } as any,
+      getBaselineSchoolYear: () => ({ id: 'sy-base', year: '2026-2027', isActive: true }),
+      getActiveSchoolYearForCollege: () => ({ id: 'sy-ccs', year: '2026-2027', isActive: true, collegeId: 'col-ccs' }),
+      baselineSemester: 'Second',
+      getActiveSemesterForCollege: () => 'First',
+    };
+
+    render(
+      <GabayChatContext.Provider value={{ executingSessionIds: [] } as any}>
+        <AppRail currentTab="dashboard" onNavigateTab={vi.fn()} />
+      </GabayChatContext.Provider>
+    );
+
+    const warningTag = screen.getByTestId('governance-baseline-warning');
+    expect(warningTag).toBeInTheDocument();
+  });
+
+  it('does not render the warning tag when both axes match', () => {
+    mockLMSContext = {
+      ...mockLMSContext,
+      activeRole: 'admin',
+      activeUser: {
+        id: 'u-dean',
+        role: 'admin',
+        adminSubrole: 'dean',
+        collegeId: 'col-ccs',
+      } as any,
+      getBaselineSchoolYear: () => ({ id: 'sy-base', year: '2026-2027', isActive: true }),
+      getActiveSchoolYearForCollege: () => ({ id: 'sy-ccs', year: '2026-2027', isActive: true, collegeId: 'col-ccs' }),
+      baselineSemester: 'Second',
+      getActiveSemesterForCollege: () => 'Second',
+    };
+
+    render(
+      <GabayChatContext.Provider value={{ executingSessionIds: [] } as any}>
+        <AppRail currentTab="dashboard" onNavigateTab={vi.fn()} />
+      </GabayChatContext.Provider>
+    );
+
+    expect(screen.queryByTestId('governance-baseline-warning')).toBeNull();
+  });
 });

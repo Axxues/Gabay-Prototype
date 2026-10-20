@@ -106,10 +106,6 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
     return 'col-ccs';
   }, [activeUser, userDepartment, departments, colleges]);
 
-  const userCollege = useMemo(() => {
-    return colleges?.find(c => c.id === userCollegeId);
-  }, [colleges, userCollegeId]);
-
   const activeCollegeSchoolYear = useMemo(() => {
     if (getActiveSchoolYearForCollege) {
       const activeSy = getActiveSchoolYearForCollege(userCollegeId);
