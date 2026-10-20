@@ -26,7 +26,11 @@ export interface PendingRegistration {
   lastName: string;
   fullName: string;
   email: string;
-  role: 'student' | 'faculty' | 'staff';
+  /**
+   * Undecided for `@dmmmsu.edu.ph` applicants: a chair or dean assigns
+   * Faculty or Staff when approving. Student addresses set it automatically.
+   */
+  role?: 'student' | 'faculty' | 'staff';
   collegeId: string;
   collegeName: string;
   department: string;

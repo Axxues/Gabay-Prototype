@@ -68,7 +68,9 @@ describe('RegisterPage field errors', () => {
     fireEvent.blur(email);
 
     expect(
-      screen.getByText('Student institutional email must end with @student.dmmmsu.edu.ph.')
+      screen.getByText(
+        'Institutional email must end with @dmmmsu.edu.ph or @student.dmmmsu.edu.ph.'
+      )
     ).toBeInTheDocument();
     expect(email).toHaveAttribute('aria-invalid', 'true');
     expect(email.className).toContain('border-destructive');
@@ -76,8 +78,10 @@ describe('RegisterPage field errors', () => {
 
   it('shows the format error under ID number after leaving it with the wrong format', () => {
     renderPage();
+    const email = screen.getByLabelText(/institutional email/i);
     const idNumber = screen.getByLabelText(/id number/i);
 
+    fireEvent.change(email, { target: { value: 'msantos@student.dmmmsu.edu.ph' } });
     fireEvent.change(idNumber, { target: { value: '12345' } });
     fireEvent.blur(idNumber);
 
@@ -154,27 +158,37 @@ describe('RegisterPage field errors', () => {
     expect(screen.queryByText('Passwords do not match.')).not.toBeInTheDocument();
   });
 
-  it('revalidates email and ID number when the account role changes', () => {
+  it('revalidates email and ID number when the email domain changes', () => {
     renderPage();
     const email = screen.getByLabelText(/institutional email/i);
     const idNumber = screen.getByLabelText(/id number/i);
 
-    fireEvent.change(email, { target: { value: 'psantos@dmmmsu.edu.ph' } });
+    fireEvent.change(email, { target: { value: 'psantos@gmail.com' } });
     fireEvent.blur(email);
+
+    expect(
+      screen.getByText(
+        'Institutional email must end with @dmmmsu.edu.ph or @student.dmmmsu.edu.ph.'
+      )
+    ).toBeInTheDocument();
+
+    // Employee domain + 4-digit ID is a valid combination
+    fireEvent.change(email, { target: { value: 'psantos@dmmmsu.edu.ph' } });
     fireEvent.change(idNumber, { target: { value: '1082' } });
     fireEvent.blur(idNumber);
 
     expect(
-      screen.getByText('Student institutional email must end with @student.dmmmsu.edu.ph.')
-    ).toBeInTheDocument();
-    expect(screen.getByText(/ID Number must follow the format XXX-XXXX-X/i)).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('radio', { name: /faculty/i }));
-
-    expect(
-      screen.queryByText('Student institutional email must end with @student.dmmmsu.edu.ph.')
+      screen.queryByText(
+        'Institutional email must end with @dmmmsu.edu.ph or @student.dmmmsu.edu.ph.'
+      )
     ).not.toBeInTheDocument();
     expect(screen.queryByText(/ID Number must follow the format/i)).not.toBeInTheDocument();
+
+    // The same digits are invalid once the address is a student one
+    fireEvent.change(email, { target: { value: 'psantos@student.dmmmsu.edu.ph' } });
+    fireEvent.blur(idNumber);
+
+    expect(screen.getByText(/ID Number must follow the format XXX-XXXX-X/i)).toBeInTheDocument();
   });
 
   it('keeps activation-email failures in the top banner without marking inputs invalid', async () => {

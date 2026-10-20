@@ -248,23 +248,11 @@ export function getScopedCourses({
     });
   }
 
-  // Dean: sees courses across their college by default, or across other colleges/university if selected
+  // Dean: fixed to their home college (College-Wide audit).
+  // `selectedCollegeId` is an admin-only selector; a stale or forged value must
+  // never widen a dean's jurisdiction beyond their own college.
   if (isDeanRole(activeUser, activeRole)) {
-    if (selectedCollegeId === 'all') {
-      let result = [...courses];
-      if (selectedProgramId && selectedProgramId !== 'all') {
-        const targetDept = departments.find(
-          d => d.id === selectedProgramId || d.code?.toLowerCase() === selectedProgramId.toLowerCase()
-        );
-        if (targetDept) {
-          result = result.filter(course => courseMatchesProgram(course, targetDept, users));
-        }
-      }
-      return result;
-    }
-
     const deanCollegeId =
-      (selectedCollegeId && selectedCollegeId !== 'all' ? selectedCollegeId : undefined) ||
       activeUser.collegeId ||
       colleges.find(c => c.deanId === activeUser.id)?.id;
     const deanCollege = colleges.find(
@@ -280,14 +268,19 @@ export function getScopedCourses({
     );
 
     if (selectedProgramId && selectedProgramId !== 'all') {
+      const normalizedCollegeId = effectiveCollegeId.toLowerCase().trim();
       const targetDept = departments.find(
-        d => d.id === selectedProgramId || d.code?.toLowerCase() === selectedProgramId.toLowerCase()
+        d =>
+          (d.id === selectedProgramId || d.code?.toLowerCase() === selectedProgramId.toLowerCase()) &&
+          // Program tabs are limited to the dean's own college; a program from
+          // another college resolves to nothing rather than leaking its courses.
+          (!normalizedCollegeId ||
+            !d.collegeId ||
+            d.collegeId.toLowerCase().trim() === normalizedCollegeId)
       );
-      if (targetDept) {
-        collegeCourses = collegeCourses.filter(course =>
-          courseMatchesProgram(course, targetDept, users)
-        );
-      }
+      collegeCourses = targetDept
+        ? collegeCourses.filter(course => courseMatchesProgram(course, targetDept, users))
+        : [];
     }
 
     return collegeCourses;

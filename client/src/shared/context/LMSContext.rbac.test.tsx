@@ -268,6 +268,98 @@ describe('LMSContext RBAC: Registration Staging, Verification Queue & Leadership
     expect(loginRes.success).toBe(true);
   });
 
+  test('registerAccount() leaves employee applicants without a role until leadership decides', async () => {
+    render(
+      <LMSProvider>
+        <ContextProbe />
+      </LMSProvider>
+    );
+
+    let reg: any;
+    await act(async () => {
+      reg = await ctx!.registerAccount({
+        firstName: 'Nina',
+        lastName: 'Newhire',
+        email: 'nnewhire@dmmmsu.edu.ph',
+        collegeId: 'col-ccs',
+        department: 'Department of Computer Science',
+        studentId: '7077',
+        password: 'Password123!',
+      });
+    });
+
+    expect(reg.role).toBeUndefined();
+    expect(ctx!.pendingRegistrations.find(r => r.id === reg.id)?.role).toBeUndefined();
+  });
+
+  test('verifyRegistration() refuses an unassigned applicant until a role is chosen', async () => {
+    render(
+      <LMSProvider>
+        <ContextProbe />
+      </LMSProvider>
+    );
+
+    let reg: any;
+    await act(async () => {
+      reg = await ctx!.registerAccount({
+        firstName: 'Nina',
+        lastName: 'Newhire',
+        email: 'nnewhire@dmmmsu.edu.ph',
+        collegeId: 'col-ccs',
+        department: 'Department of Computer Science',
+        studentId: '7077',
+        password: 'Password123!',
+      });
+      await ctx!.activateEmail(reg.activationToken);
+    });
+
+    let verifyRes: any;
+    await act(async () => {
+      verifyRes = await ctx!.verifyRegistration(reg.id);
+    });
+
+    expect(verifyRes.success).toBe(false);
+    expect(verifyRes.message).toMatch(/faculty or staff/i);
+    expect(ctx!.pendingRegistrations.find(r => r.id === reg.id)?.status).toBe('pending');
+  });
+
+  test('verifyRegistration() provisions the chosen Faculty or Staff role', async () => {
+    render(
+      <LMSProvider>
+        <ContextProbe />
+      </LMSProvider>
+    );
+
+    let reg: any;
+    await act(async () => {
+      reg = await ctx!.registerAccount({
+        firstName: 'Nina',
+        lastName: 'Newhire',
+        email: 'nnewhire@dmmmsu.edu.ph',
+        collegeId: 'col-ccs',
+        department: 'Department of Computer Science',
+        studentId: '7077',
+        password: 'Password123!',
+      });
+      await ctx!.activateEmail(reg.activationToken);
+    });
+
+    let verifyRes: any;
+    await act(async () => {
+      verifyRes = await ctx!.verifyRegistration(reg.id, 'staff');
+    });
+
+    expect(verifyRes.success).toBe(true);
+    expect(verifyRes.user.role).toBe('staff');
+    expect(ctx!.pendingRegistrations.find(r => r.id === reg.id)?.role).toBe('staff');
+
+    let loginRes: any;
+    await act(async () => {
+      loginRes = await ctx!.login('nnewhire@dmmmsu.edu.ph', 'Password123!');
+    });
+    expect(loginRes.success).toBe(true);
+  });
+
   test('verifyRegistration() rejects unverified email registration', async () => {
     render(
       <LMSProvider>

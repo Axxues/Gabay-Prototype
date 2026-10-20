@@ -466,6 +466,83 @@ describe('ManageAccountsPage RBAC & Verification Queue', () => {
     });
   });
 
+  it('2c. shows employee applicants without a role as awaiting assignment', () => {
+    const futureDate = new Date(Date.now() + 25 * 24 * 60 * 60 * 1000).toISOString();
+    mocks.mockState.pendingRegistrations = [
+      {
+        id: 'reg-unassigned',
+        firstName: 'Nina',
+        lastName: 'Newhire',
+        fullName: 'Nina Newhire',
+        email: 'nina.newhire@dmmmsu.edu.ph',
+        collegeId: 'col-ccs',
+        collegeName: 'College of Computer Science',
+        department: 'Department of Computer Science',
+        studentId: '7077',
+        password: 'pw',
+        emailVerified: true,
+        activationToken: 'tok-unassigned',
+        registeredAt: new Date().toISOString(),
+        expiresAt: futureDate,
+        status: 'pending',
+      },
+    ];
+
+    render(<ManageAccountsPage />);
+    const queueTab = screen.getByRole('tab', { name: /pending verifications|verification queue/i });
+    fireEvent.click(queueTab);
+
+    expect(screen.getByText(/faculty \/ staff/i)).toBeInTheDocument();
+    expect(screen.getByText(/to be assigned/i)).toBeInTheDocument();
+  });
+
+  it('5d. requires a Faculty/Staff choice before approving an unassigned applicant', async () => {
+    const futureDate = new Date(Date.now() + 20 * 24 * 60 * 60 * 1000).toISOString();
+    mocks.mockState.pendingRegistrations = [
+      {
+        id: 'reg-unassigned',
+        firstName: 'Nina',
+        lastName: 'Newhire',
+        fullName: 'Nina Newhire',
+        email: 'nina.newhire@dmmmsu.edu.ph',
+        collegeId: 'col-ccs',
+        collegeName: 'College of Computer Science',
+        department: 'Department of Computer Science',
+        studentId: '7077',
+        password: 'pw',
+        emailVerified: true,
+        activationToken: 'tok-unassigned',
+        registeredAt: new Date().toISOString(),
+        expiresAt: futureDate,
+        status: 'pending',
+      },
+    ];
+
+    mocks.verifyRegistration.mockResolvedValueOnce({
+      success: true,
+      message: 'User registration approved and active account created.',
+    });
+
+    render(<ManageAccountsPage />);
+    const queueTab = screen.getByRole('tab', { name: /pending verifications|verification queue/i });
+    fireEvent.click(queueTab);
+
+    fireEvent.click(screen.getByRole('button', { name: /verify/i }));
+    const dialog = screen.getByRole('dialog');
+
+    const confirmButton = within(dialog).getByRole('button', { name: /confirm verification/i });
+    expect(confirmButton).toBeDisabled();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: /staff/i }));
+    expect(confirmButton).toBeEnabled();
+
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => {
+      expect(mocks.verifyRegistration).toHaveBeenCalledWith('reg-unassigned', 'staff');
+    });
+  });
+
   it('5b. verifies clicking Cancel in verify modal closes modal without calling verifyRegistration()', async () => {
     const futureDate = new Date(Date.now() + 20 * 24 * 60 * 60 * 1000).toISOString();
     mocks.mockState.pendingRegistrations = [

@@ -278,7 +278,12 @@ export interface LMSContextType {
       lastName: string;
       fullName?: string;
       email: string;
-      role: 'student' | 'faculty' | 'staff';
+      /**
+       * Omit for `@dmmmsu.edu.ph` applicants: the role is left unassigned for a
+       * chair or dean to settle when they approve. `@student.dmmmsu.edu.ph`
+       * addresses are always registered as students.
+       */
+      role?: 'student' | 'faculty' | 'staff';
       collegeId: string;
       collegeName?: string;
       department: string;
@@ -287,7 +292,7 @@ export interface LMSContextType {
     } & Partial<PendingRegistration>
   ) => Promise<PendingRegistration>;
   activateEmail: (token: string) => Promise<{ success: boolean; message: string }>;
-  verifyRegistration: (id: string) => Promise<{ success: boolean; message: string; user?: User }>;
+  verifyRegistration: (id: string, assignedRole?: 'faculty' | 'staff') => Promise<{ success: boolean; message: string; user?: User }>;
   rejectRegistration: (id: string, reason?: string) => Promise<{ success: boolean; message: string }>;
   purgeExpiredRegistrations: () => Promise<number>;
   transferLeadership: (
@@ -4364,7 +4369,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       lastName: string;
       fullName?: string;
       email: string;
-      role: 'student' | 'faculty' | 'staff';
+      /**
+       * Omit for `@dmmmsu.edu.ph` applicants: the role is left unassigned for a
+       * chair or dean to settle when they approve. `@student.dmmmsu.edu.ph`
+       * addresses are always registered as students.
+       */
+      role?: 'student' | 'faculty' | 'staff';
       collegeId: string;
       collegeName?: string;
       department: string;
@@ -4461,7 +4471,15 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
 
-  const verifyRegistration = async (id: string): Promise<{ success: boolean; message: string; user?: User }> => {
+  /**
+   * Approve a pending registration. Student applications already carry their
+   * role; `@dmmmsu.edu.ph` applicants arrive without one, so the approving
+   * chair or dean passes the Faculty/Staff role they picked.
+   */
+  const verifyRegistration = async (
+    id: string,
+    assignedRole?: 'faculty' | 'staff'
+  ): Promise<{ success: boolean; message: string; user?: User }> => {
     const list = pendingRegistrationsRef.current || pendingRegistrations;
     const target = list.find(r => r.id === id);
     if (!target) {
@@ -4480,6 +4498,14 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: false, message: 'Cannot verify registration: email address has not been verified yet.' };
     }
 
+    const resolvedRole = target.role || assignedRole;
+    if (!resolvedRole) {
+      return {
+        success: false,
+        message: 'Assign this applicant as Faculty or Staff before approving the account.',
+      };
+    }
+
     let createdUser: User;
     try {
       createdUser = await createUser({
@@ -4488,7 +4514,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         middleName: target.middleName,
         lastName: target.lastName,
         email: target.email,
-        role: target.role,
+        role: resolvedRole,
         department: target.department,
         collegeId: target.collegeId,
         collegeName: target.collegeName,
@@ -4507,14 +4533,14 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         middleName: target.middleName,
         lastName: target.lastName,
         email: target.email,
-        role: target.role,
+        role: resolvedRole,
         department: target.department,
         collegeId: target.collegeId,
         collegeName: target.collegeName,
         studentId: target.studentId,
         password: target.password,
         avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-        title: target.role === 'student' ? 'Undergraduate Student' : 'Instructor',
+        title: resolvedRole === 'student' ? 'Undergraduate Student' : 'Instructor',
         verificationStatus: 'verified',
         emailVerified: true,
         registeredAt: target.registeredAt,
@@ -4529,7 +4555,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     const verifyUpdated = (pendingRegistrationsRef.current || pendingRegistrations).map(r =>
-      r.id === id ? { ...r, status: 'verified' as const } : r
+      r.id === id ? { ...r, role: resolvedRole, status: 'verified' as const } : r
     );
     pendingRegistrationsRef.current = verifyUpdated;
     setPendingRegistrations(verifyUpdated);

@@ -102,6 +102,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
   const [isVerifyingId, setIsVerifyingId] = useState<string | null>(null);
   const [isRejectingId, setIsRejectingId] = useState<string | null>(null);
   const [verifyingReg, setVerifyingReg] = useState<PendingRegistration | null>(null);
+  const [assignedRole, setAssignedRole] = useState<'' | 'faculty' | 'staff'>('');
   const [rejectingReg, setRejectingReg] = useState<PendingRegistration | null>(null);
   const [rejectReason, setRejectReason] = useState<string>('');
 
@@ -400,6 +401,9 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
       return;
     }
     if (target) {
+      // Student applications already carry their role; employee applications
+      // arrive unassigned and need a Faculty/Staff call in the dialog.
+      setAssignedRole(target.role === 'faculty' || target.role === 'staff' ? target.role : '');
       setVerifyingReg(target);
     }
   };
@@ -416,11 +420,23 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
       setVerifyingReg(null);
       return;
     }
+    if (!verifyingReg.role && !assignedRole) {
+      showAlert({
+        title: 'Account Role Required',
+        message: 'Choose Faculty or Staff for this applicant before approving the account.',
+        type: 'error'
+      });
+      return;
+    }
     const targetId = verifyingReg.id;
+    const roleToAssign = verifyingReg.role ? undefined : (assignedRole as 'faculty' | 'staff');
     setIsVerifyingId(targetId);
     try {
-      const res = await verifyRegistration(targetId);
+      const res = roleToAssign
+        ? await verifyRegistration(targetId, roleToAssign)
+        : await verifyRegistration(targetId);
       setVerifyingReg(null);
+      setAssignedRole('');
       if (res.success) {
         showAlert({
           title: 'Account Verified',
@@ -1166,8 +1182,13 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
                           {/* Role & ID */}
                           <td className="py-3.5 px-4">
                             <span className="inline-block px-2 py-0.5 text-[10px] font-bold rounded-md uppercase bg-primary/10 text-primary border border-primary/20">
-                              {reg.role}
+                              {reg.role || 'Faculty / Staff'}
                             </span>
+                            {!reg.role && (
+                              <div className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 mt-0.5">
+                                Role to be assigned
+                              </div>
+                            )}
                             <div className="font-mono text-[11px] text-muted-foreground mt-0.5">
                               {reg.studentId || '—'}
                             </div>
@@ -1293,12 +1314,18 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
         <DialogFrame
           title="Verify & Approve Account"
           subtitle="Confirm verification to approve this applicant and provision their active institutional account."
-          onClose={() => setVerifyingReg(null)}
+          onClose={() => {
+            setVerifyingReg(null);
+            setAssignedRole('');
+          }}
           footer={
             <>
               <button
                 type="button"
-                onClick={() => setVerifyingReg(null)}
+                onClick={() => {
+                  setVerifyingReg(null);
+                  setAssignedRole('');
+                }}
                 className="px-4 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-colors cursor-pointer"
               >
                 Cancel
@@ -1306,8 +1333,13 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
               <button
                 type="button"
                 onClick={handleConfirmVerify}
-                disabled={isVerifyingId === verifyingReg.id}
-                className="px-4 py-2 bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground font-bold text-xs rounded-xl shadow-sm transition-all cursor-pointer disabled:opacity-60 disabled:cursor-wait flex items-center space-x-1.5"
+                disabled={isVerifyingId === verifyingReg.id || (!verifyingReg.role && !assignedRole)}
+                title={
+                  !verifyingReg.role && !assignedRole
+                    ? 'Choose Faculty or Staff before confirming'
+                    : undefined
+                }
+                className="px-4 py-2 bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground font-bold text-xs rounded-xl shadow-sm transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed flex items-center space-x-1.5"
               >
                 <CheckCircle2 className="w-3.5 h-3.5" />
                 <span>{isVerifyingId === verifyingReg.id ? 'Approving...' : 'Confirm Verification'}</span>
@@ -1334,7 +1366,9 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
               <div className="grid grid-cols-2 gap-2 pt-2 border-t border-border/60 text-[11px]">
                 <div>
                   <span className="text-muted-foreground block">Role:</span>
-                  <span className="font-bold uppercase text-primary">{verifyingReg.role}</span>
+                  <span className="font-bold uppercase text-primary">
+                    {verifyingReg.role || 'To be assigned'}
+                  </span>
                 </div>
                 <div>
                   <span className="text-muted-foreground block">Student / Employee ID:</span>
@@ -1353,6 +1387,42 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
                 </div>
               </div>
             </div>
+
+            {!verifyingReg.role && (
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-semibold text-muted-foreground block">
+                  Assign Account Role <span className="text-destructive">*</span>
+                </span>
+                <div role="radiogroup" aria-label="Assign account role" className="grid grid-cols-2 gap-2">
+                  {([
+                    { id: 'faculty', label: 'Faculty', icon: UserCheck },
+                    { id: 'staff', label: 'Staff', icon: ShieldCheck },
+                  ] as const).map(item => {
+                    const Icon = item.icon;
+                    const isSelected = assignedRole === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        aria-pressed={isSelected}
+                        onClick={() => setAssignedRole(item.id)}
+                        className={`flex items-center justify-center space-x-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-primary text-primary-foreground border-primary shadow-xs'
+                            : 'bg-background border-border text-foreground hover:bg-muted/80'
+                        }`}
+                      >
+                        <Icon className="w-3.5 h-3.5" />
+                        <span>{item.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  This employee applied with an @dmmmsu.edu.ph address. Choose Faculty or Staff before approving.
+                </p>
+              </div>
+            )}
 
             <p className="text-muted-foreground text-[11px] leading-relaxed">
               Approving this applicant will activate their account in the institutional directory, allowing them to sign in and access the LMS immediately.
@@ -1408,7 +1478,7 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
                   </div>
                   <div className="text-muted-foreground truncate">{rejectingReg.email}</div>
                   <div className="text-[11px] text-muted-foreground mt-0.5">
-                    {rejectingReg.role.toUpperCase()} • {rejectingReg.program || rejectingReg.department}
+                    {(rejectingReg.role || 'Role to be assigned').toUpperCase()} • {rejectingReg.program || rejectingReg.department}
                   </div>
                 </div>
               </div>

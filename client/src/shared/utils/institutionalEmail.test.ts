@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   INSTITUTIONAL_EMAIL_PATTERN,
   INSTITUTIONAL_EMAIL_REQUIREMENT,
+  getInstitutionalAccountKind,
   isValidInstitutionalEmail,
 } from './institutionalEmail';
 
@@ -62,5 +63,25 @@ describe('institutional email validation', () => {
     // Staff requires @dmmmsu.edu.ph and rejects @student.dmmmsu.edu.ph
     expect(isValidInstitutionalEmail('staff1@dmmmsu.edu.ph', 'staff')).toBe(true);
     expect(isValidInstitutionalEmail('staff1@student.dmmmsu.edu.ph', 'staff')).toBe(false);
+  });
+});
+
+describe('institutional account kind', () => {
+  it('classifies student.dmmmsu.edu.ph addresses as students', () => {
+    expect(getInstitutionalAccountKind('jdelacruz@student.dmmmsu.edu.ph')).toBe('student');
+    expect(getInstitutionalAccountKind('  JDeLaCruz@Student.DMMMSU.edu.ph ')).toBe('student');
+  });
+
+  it('classifies dmmmsu.edu.ph addresses as employees', () => {
+    expect(getInstitutionalAccountKind('psantos@dmmmsu.edu.ph')).toBe('employee');
+    expect(getInstitutionalAccountKind(' PSantos@DMMMSU.EDU.PH ')).toBe('employee');
+  });
+
+  it('returns undefined for empty, malformed, personal, or look-alike addresses', () => {
+    expect(getInstitutionalAccountKind('')).toBeUndefined();
+    expect(getInstitutionalAccountKind('maria@gmail.com')).toBeUndefined();
+    expect(getInstitutionalAccountKind('jdelacruz@dmmmsu.edu')).toBeUndefined();
+    expect(getInstitutionalAccountKind('jdelacruz@student.dmmmsu.edu.ph.evil.com')).toBeUndefined();
+    expect(getInstitutionalAccountKind('jdelacruz')).toBeUndefined();
   });
 });

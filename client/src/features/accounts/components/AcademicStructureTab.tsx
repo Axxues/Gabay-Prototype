@@ -844,6 +844,13 @@ export const AcademicStructureTab: React.FC = () => {
                       const isSelectedBaseline = currentBaseline && selectedTargetSY ? selectedTargetSY.year === currentBaseline.year : false;
                       const isSelectedActive = activeSY && selectedTargetSY ? activeSY.year === selectedTargetSY.year : false;
                       const isRolloverAllowed = Boolean(isSelectedBaseline && !isSelectedActive);
+                      // A college already sitting on the university baseline has no
+                      // rollover decision left to make, so the year picker is locked.
+                      const isBaselineActiveForCollege = Boolean(
+                        currentBaseline &&
+                        activeSY &&
+                        currentBaseline.year?.trim().toLowerCase() === activeSY.year?.trim().toLowerCase()
+                      );
 
                       return (
                         <div className="flex flex-col gap-2 pt-1">
@@ -876,32 +883,42 @@ export const AcademicStructureTab: React.FC = () => {
                                 >
                                   Academic Year:
                                 </label>
-                                <CustomDropdown
-                                  id={`sy-select-${college.id}`}
-                                  ariaLabel={`Select school year to roll over for ${college.name}`}
-                                  className="w-48"
-                                  searchable
-                                  value={currentSelectedId}
-                                  onChange={(next) => {
-                                    setSelectedSYByCollege(prev => ({
-                                      ...prev,
-                                      [college.id]: next,
-                                    }));
-                                  }}
-                                  options={collegeYears.map((sy: SchoolYear) => {
-                                    const isCurrentActive = activeSY ? activeSY.year === sy.year : sy.isActive;
-                                    const isBaseline = currentBaseline ? currentBaseline.year === sy.year : false;
-                                    let labelSuffix = '';
-                                    if (isCurrentActive && isBaseline) {
-                                      labelSuffix = ' (Current Active & Baseline)';
-                                    } else if (isCurrentActive) {
-                                      labelSuffix = ' (Current Active)';
-                                    } else if (isBaseline) {
-                                      labelSuffix = ' (University Baseline)';
-                                    }
-                                    return { value: sy.id, label: `${sy.year}${labelSuffix}` };
-                                  })}
-                                />
+                                <span
+                                  className="inline-flex"
+                                  title={
+                                    isBaselineActiveForCollege
+                                      ? `This college is already on the university baseline (SY ${activeSY?.year}).`
+                                      : undefined
+                                  }
+                                >
+                                  <CustomDropdown
+                                    id={`sy-select-${college.id}`}
+                                    ariaLabel={`Select school year to roll over for ${college.name}`}
+                                    className="w-48"
+                                    searchable
+                                    disabled={isBaselineActiveForCollege}
+                                    value={currentSelectedId}
+                                    onChange={(next) => {
+                                      setSelectedSYByCollege(prev => ({
+                                        ...prev,
+                                        [college.id]: next,
+                                      }));
+                                    }}
+                                    options={collegeYears.map((sy: SchoolYear) => {
+                                      const isCurrentActive = activeSY ? activeSY.year === sy.year : sy.isActive;
+                                      const isBaseline = currentBaseline ? currentBaseline.year === sy.year : false;
+                                      let labelSuffix = '';
+                                      if (isCurrentActive && isBaseline) {
+                                        labelSuffix = ' (Current Active & Baseline)';
+                                      } else if (isCurrentActive) {
+                                        labelSuffix = ' (Current Active)';
+                                      } else if (isBaseline) {
+                                        labelSuffix = ' (University Baseline)';
+                                      }
+                                      return { value: sy.id, label: `${sy.year}${labelSuffix}` };
+                                    })}
+                                  />
+                                </span>
                                 <button
                                   type="button"
                                   disabled={!isRolloverAllowed}

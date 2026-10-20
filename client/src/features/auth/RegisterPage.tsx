@@ -3,7 +3,11 @@ import { Link, useSearchParams, useNavigate, useLocation } from 'react-router-do
 
 import { useLMS } from '../../shared/context/LMSContext';
 import { formatIdNumber, isValidIdNumber, ID_NUMBER_EXAMPLE, EMPLOYEE_ID_EXAMPLE } from '../../shared/utils/idNumber';
-import { isValidInstitutionalEmail } from '../../shared/utils/institutionalEmail';
+import {
+  getInstitutionalAccountKind,
+  INSTITUTIONAL_EMAIL_REQUIREMENT,
+  type InstitutionalAccountKind,
+} from '../../shared/utils/institutionalEmail';
 import type { PendingRegistration } from '../../shared/types/lms';
 import { CustomDropdown } from '../../shared/components/common/CustomDropdown';
 import {
@@ -15,14 +19,22 @@ import {
   Moon,
   AlertCircle,
   CheckCircle2,
-  GraduationCap,
-  UserCheck,
-  ShieldCheck,
   ArrowRight,
 } from 'lucide-react';
 import { sendActivationEmail } from '../../shared/api/emailApi';
 
 type AccountRole = 'student' | 'faculty' | 'staff';
+
+/**
+ * ID Number rules still key off a role, but the registrant no longer picks one.
+ * The email domain decides: student addresses use the student format, employee
+ * addresses use the 4-digit employee format.
+ */
+const idNumberRoleFor = (kind: InstitutionalAccountKind | undefined): AccountRole | undefined => {
+  if (kind === 'student') return 'student';
+  if (kind === 'employee') return 'staff';
+  return undefined;
+};
 
 type RegisterField =
   | 'firstName'
@@ -37,7 +49,6 @@ type RegisterField =
 type RegisterFieldErrors = Partial<Record<RegisterField, string>>;
 
 type RegisterFormValues = {
-  role: AccountRole;
   firstName: string;
   lastName: string;
   email: string;
@@ -80,7 +91,6 @@ export const RegisterPage: React.FC = () => {
   const [activationResult, setActivationResult] = useState<{ success: boolean; message: string } | null>(null);
 
   // Form State
-  const [role, setRole] = useState<'student' | 'faculty' | 'staff'>('student');
   const [firstName, setFirstName] = useState('');
   const [middleName, setMiddleName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -96,6 +106,10 @@ export const RegisterPage: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  /** The institutional email alone decides what kind of account this is. */
+  const accountKind = getInstitutionalAccountKind(email);
+  const idNumberRole = idNumberRoleFor(accountKind);
+
   // Modal State after registration
   const [registeredRecord, setRegisteredRecord] = useState<PendingRegistration | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -104,7 +118,6 @@ export const RegisterPage: React.FC = () => {
   const [fieldErrors, setFieldErrors] = useState<RegisterFieldErrors>({});
 
   const formValues: RegisterFormValues = {
-    role,
     firstName,
     lastName,
     email,
@@ -128,18 +141,18 @@ export const RegisterPage: React.FC = () => {
       case 'email': {
         const cleanEmail = values.email.trim();
         if (!cleanEmail) return 'Please enter your institutional email.';
-        if (!isValidInstitutionalEmail(cleanEmail, values.role)) {
-          return values.role === 'student'
-            ? 'Student institutional email must end with @student.dmmmsu.edu.ph.'
-            : 'Institutional email must end with @dmmmsu.edu.ph.';
+        if (!getInstitutionalAccountKind(cleanEmail)) {
+          return INSTITUTIONAL_EMAIL_REQUIREMENT;
         }
         return undefined;
       }
       case 'idNumber': {
         const cleanIdNumber = values.idNumber.trim();
         if (!cleanIdNumber) return 'Please enter your ID Number.';
-        if (!isValidIdNumber(cleanIdNumber, values.role)) {
-          return values.role === 'student'
+        const kind = getInstitutionalAccountKind(values.email);
+        if (!kind) return 'Enter your institutional email first.';
+        if (!isValidIdNumber(cleanIdNumber, idNumberRoleFor(kind))) {
+          return kind === 'student'
             ? `ID Number must follow the format XXX-XXXX-X (e.g. ${ID_NUMBER_EXAMPLE}).`
             : `ID Number must follow the format XXXX (e.g. ${EMPLOYEE_ID_EXAMPLE}).`;
         }
@@ -243,21 +256,26 @@ export const RegisterPage: React.FC = () => {
   };
 
 
-  const handleRoleChange = (newRole: AccountRole) => {
-    setRole(newRole);
-    const nextIdNumber = idNumber ? formatIdNumber(idNumber, newRole) : idNumber;
-    if (idNumber) {
-      setIdNumber(nextIdNumber);
-    }
+  /**
+   * The email domain decides the account kind, so changing it can change the ID
+   * Number format underneath the user. Reformat whatever digits they already
+   * staged and re-check any field that was flagged.
+   */
+  const handleEmailChange = (value: string) => {
+    const previousKind = getInstitutionalAccountKind(email);
+    const nextKind = getInstitutionalAccountKind(value);
+
+    setEmail(value);
     if (errorMessage) setErrorMessage('');
 
-    // Email and ID rules depend on the role, so re-check any field already flagged.
-    if (fieldErrors.email || fieldErrors.idNumber) {
-      const nextValues: RegisterFormValues = {
-        ...formValues,
-        role: newRole,
-        idNumber: nextIdNumber,
-      };
+    let nextIdNumber = idNumber;
+    if (previousKind !== nextKind && nextKind) {
+      nextIdNumber = idNumber ? formatIdNumber(idNumber, idNumberRoleFor(nextKind)) : idNumber;
+      setIdNumber(nextIdNumber);
+    }
+
+    if (fieldErrors.email || (previousKind !== nextKind && fieldErrors.idNumber)) {
+      const nextValues: RegisterFormValues = { ...formValues, email: value, idNumber: nextIdNumber };
       if (fieldErrors.email) {
         applyFieldError('email', validateField('email', nextValues));
       }
@@ -304,7 +322,7 @@ export const RegisterPage: React.FC = () => {
         middleName: middleName.trim() || undefined,
         lastName: lastName.trim(),
         email: cleanEmail,
-        role,
+        role: accountKind === 'student' ? 'student' : undefined,
         collegeId,
         collegeName,
         department,
@@ -520,46 +538,6 @@ export const RegisterPage: React.FC = () => {
           )}
 
         <form onSubmit={handleSubmit} noValidate className="space-y-4">
-          {/* Role Selector */}
-          <div className="space-y-1.5">
-            <label className="text-[12px] font-semibold text-muted-foreground block">
-              Account Role
-            </label>
-            <div role="radiogroup" aria-label="Account Role" className="grid grid-cols-3 gap-2">
-              {[
-                { id: 'student', label: 'Student', icon: GraduationCap },
-                { id: 'faculty', label: 'Faculty', icon: UserCheck },
-                { id: 'staff', label: 'Staff', icon: ShieldCheck },
-              ].map(item => {
-                const Icon = item.icon;
-                const isSelected = role === item.id;
-                return (
-                  <label
-                    key={item.id}
-                    htmlFor={`role-${item.id}`}
-                    className={`flex flex-col items-center justify-center p-3 rounded-xl border text-xs font-semibold cursor-pointer transition-all ${
-                      isSelected
-                        ? 'bg-primary text-primary-foreground border-primary shadow-xs font-bold'
-                        : 'bg-background border-border text-foreground hover:bg-muted/80'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      id={`role-${item.id}`}
-                      name="accountRole"
-                      value={item.id}
-                      checked={isSelected}
-                      onChange={() => handleRoleChange(item.id as 'student' | 'faculty' | 'staff')}
-                      className="sr-only"
-                    />
-                    <Icon className={`w-4 h-4 mb-1.5 ${isSelected ? 'text-primary-foreground' : 'text-muted-foreground'}`} />
-                    <span>{item.label}</span>
-                  </label>
-                );
-              })}
-            </div>
-          </div>
-
           {/* Full Name Fields */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="space-y-1">
@@ -641,11 +619,11 @@ export const RegisterPage: React.FC = () => {
                   id="reg-email"
                   type="email"
                   value={email}
-                  onChange={e => handleFieldChange('email', e.target.value, setEmail)}
+                  onChange={e => handleEmailChange(e.target.value)}
                   onBlur={() => handleBlur('email')}
                   aria-invalid={fieldErrors.email ? true : undefined}
                   aria-describedby={fieldErrors.email ? 'reg-email-error' : undefined}
-                  placeholder={role === 'student' ? 'name@student.dmmmsu.edu.ph' : 'name@dmmmsu.edu.ph'}
+                  placeholder="name@dmmmsu.edu.ph"
                   className={`w-full pl-9 pr-3 py-2.5 bg-background border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 transition-all font-sans ${
                     fieldErrors.email
                       ? 'border-destructive focus:ring-destructive/30 focus:border-destructive'
@@ -659,7 +637,10 @@ export const RegisterPage: React.FC = () => {
               )}
             </div>
 
-            <div className="space-y-1">
+            <div
+              className="space-y-1"
+              title={!accountKind ? 'Enter your institutional email first.' : undefined}
+            >
               <label htmlFor="reg-idNumber" className="text-[12px] font-semibold text-muted-foreground">
                 ID Number
               </label>
@@ -667,18 +648,19 @@ export const RegisterPage: React.FC = () => {
                 id="reg-idNumber"
                 type="text"
                 value={idNumber}
-                onChange={e => handleFieldChange('idNumber', formatIdNumber(e.target.value, role), setIdNumber)}
+                onChange={e => handleFieldChange('idNumber', formatIdNumber(e.target.value, idNumberRole), setIdNumber)}
                 onBlur={() => handleBlur('idNumber')}
                 aria-invalid={fieldErrors.idNumber ? true : undefined}
                 aria-describedby={fieldErrors.idNumber ? 'reg-idNumber-error' : undefined}
-                placeholder={role === 'student' ? '231-1082-3' : '1082'}
-                maxLength={role === 'student' ? 10 : 4}
-                className={`w-full px-3 py-2.5 bg-background border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 transition-all font-sans ${
+                title={!accountKind ? 'Enter your institutional email first.' : undefined}
+                placeholder={accountKind === 'employee' ? EMPLOYEE_ID_EXAMPLE : ID_NUMBER_EXAMPLE}
+                maxLength={accountKind === 'employee' ? 4 : 10}
+                className={`w-full px-3 py-2.5 bg-background border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 transition-all font-sans disabled:opacity-60 disabled:pointer-events-none ${
                   fieldErrors.idNumber
                     ? 'border-destructive focus:ring-destructive/30 focus:border-destructive'
                     : 'border-border focus:ring-primary/30 focus:border-primary'
                 }`}
-                disabled={isSubmitting}
+                disabled={!accountKind || isSubmitting}
               />
               {fieldErrors.idNumber && (
                 <FieldError id="reg-idNumber-error" message={fieldErrors.idNumber} />

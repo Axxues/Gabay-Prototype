@@ -287,6 +287,59 @@ describe('AcademicStructureTab - Dean School Year Management', () => {
     expect(mockSetActiveSchoolYear).not.toHaveBeenCalled();
   });
 
+  test('school year select is disabled when the university baseline matches the college active year', () => {
+    sampleSchoolYears = [
+      {
+        id: 'sy-cet-2025-2026',
+        year: '2025-2026',
+        isActive: true,
+      },
+      {
+        id: 'sy-cet-2026-2027',
+        year: '2026-2027',
+        isActive: false,
+      },
+    ];
+    // University baseline matches this college's active academic year.
+    mockGetBaselineSchoolYear.mockReturnValue({ id: 'sy-cet-2025-2026', year: '2025-2026', isActive: true });
+
+    render(<AcademicStructureTab />);
+
+    fireEvent.click(screen.getByRole('button', { name: /toggle programs for college of engineering and technology/i }));
+
+    // Nothing left to roll over to, so the year picker must not accept changes.
+    const sySelect = screen.getByLabelText(/select school year to roll over for college of engineering and technology/i);
+    expect(sySelect).toBeDisabled();
+    expect(screen.getByRole('button', { name: /roll over/i })).toBeDisabled();
+
+    // No mismatch badge when the college already sits on the baseline.
+    expect(screen.queryByTestId('baseline-mismatch-badge-col-cet')).not.toBeInTheDocument();
+  });
+
+  test('school year select stays enabled when the university baseline differs from the college active year', () => {
+    sampleSchoolYears = [
+      {
+        id: 'sy-cet-2025-2026',
+        year: '2025-2026',
+        isActive: true,
+      },
+      {
+        id: 'sy-cet-2026-2027',
+        year: '2026-2027',
+        isActive: false,
+      },
+    ];
+    // Baseline is ahead of the college, so rolling over is a real decision.
+    mockGetBaselineSchoolYear.mockReturnValue({ id: 'sy-cet-2026-2027', year: '2026-2027', isActive: true });
+
+    render(<AcademicStructureTab />);
+
+    fireEvent.click(screen.getByRole('button', { name: /toggle programs for college of engineering and technology/i }));
+
+    const sySelect = screen.getByLabelText(/select school year to roll over for college of engineering and technology/i);
+    expect(sySelect).toBeEnabled();
+  });
+
   test('Add School Year button is removed from Academic Governance header for all roles', () => {
     mockActiveRole = 'superadmin';
     mockActiveUser = {

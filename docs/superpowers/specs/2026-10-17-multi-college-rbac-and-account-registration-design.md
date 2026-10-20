@@ -4,6 +4,8 @@
 **Status:** Approved by Engineering Review (Calls settled)  
 **Target Architecture:** Gabay LMS (React 19 Frontend + Vite + Tailwind CSS + Lucide Icons + Likha ERP Directus Data Layer / Local State Persistence)
 
+> **Amendment — 2026-10-20:** Registration no longer asks for an account role. The institutional email decides it: `@student.dmmmsu.edu.ph` registers as Student, while `@dmmmsu.edu.ph` creates an unassigned applicant whose Faculty/Staff role is chosen by the approving chairperson or dean in the Verification Queue (required before approval). The ID Number input follows the same split and stays disabled until a valid institutional email is entered. This supersedes the "Role (Student, Faculty, Staff)" input in §2 and §6.
+
 ---
 
 ## 1. Intent & The Why

@@ -27,6 +27,7 @@ import {
   ChevronRight,
   Building,
   Layers,
+  Lock,
   GraduationCap
 } from 'lucide-react';
 import { isChairRole, isDeanRole, isFacultyRole, canManageCourseContent, canDeleteCourse } from '../../shared/utils/roles';
@@ -114,11 +115,15 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     );
   }, [isDean, activeUser, colleges]);
 
-  const [selectedCollegeId, setSelectedCollegeId] = useState<string>(() => {
-    if (isDean && effectiveDeanCollegeId) return effectiveDeanCollegeId;
-    return 'all';
-  });
+  const [selectedCollegeId, setSelectedCollegeId] = useState<string>('all');
   const [selectedProgramId, setSelectedProgramId] = useState<string>('all');
+
+  /**
+   * Admins may switch colleges freely; deans are fixed to their home college
+   * (role-separation design §2). Every scoping read uses this derived value so a
+   * dean can never drift outside their jurisdiction, even from stale state.
+   */
+  const scopedCollegeId = isDean ? (effectiveDeanCollegeId || '') : selectedCollegeId;
 
   const deanCollege = useMemo(() => {
     if (!effectiveDeanCollegeId) return undefined;
@@ -143,16 +148,16 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
   const availablePrograms = useMemo(() => {
     if (isDean || isAdmin) {
-      if (selectedCollegeId === 'all') {
+      if (scopedCollegeId === 'all') {
         return (departments || []).filter(d => d && d.name && d.name !== 'null');
       }
-      return (departments || []).filter(d => d && d.collegeId === selectedCollegeId && d.name && d.name !== 'null');
+      return (departments || []).filter(d => d && d.collegeId === scopedCollegeId && d.name && d.name !== 'null');
     }
     return [];
-  }, [isDean, isAdmin, selectedCollegeId, departments]);
+  }, [isDean, isAdmin, scopedCollegeId, departments]);
 
   const userCollegeId = useMemo(() => {
-    if (selectedCollegeId && selectedCollegeId !== 'all') return selectedCollegeId;
+    if (scopedCollegeId && scopedCollegeId !== 'all') return scopedCollegeId;
     if (isDean && effectiveDeanCollegeId) return effectiveDeanCollegeId;
     if (isChair && chairDept?.collegeId) return chairDept.collegeId;
     if (activeUser?.collegeId) return activeUser.collegeId;
@@ -175,7 +180,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       if (deanMatch?.id) return deanMatch.id;
     }
     return 'col-ccs';
-  }, [selectedCollegeId, isDean, isChair, effectiveDeanCollegeId, chairDept, activeUser, departments, colleges]);
+  }, [scopedCollegeId, isDean, isChair, effectiveDeanCollegeId, chairDept, activeUser, departments, colleges]);
 
   const baseMonitoredCourses = useMemo(() => getScopedCourses({
     courses: db.courses,
@@ -185,14 +190,16 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     approvedCourseIds,
     colleges,
     departments,
-    selectedCollegeId: (isDean || isAdmin) ? selectedCollegeId : undefined,
+    // College selection is an admin-only control; deans are pinned to their
+    // home college by the scoping utility.
+    selectedCollegeId: isAdmin ? scopedCollegeId : undefined,
     selectedProgramId: 'all',
-  }), [db.courses, db.users, activeUser, activeRole, approvedCourseIds, colleges, departments, isDean, isAdmin, selectedCollegeId]);
+  }), [db.courses, db.users, activeUser, activeRole, approvedCourseIds, colleges, departments, isAdmin, scopedCollegeId]);
 
   const currentActiveSchoolYear = useMemo(() => {
     // 1. If a specific college is selected (by Admin or Dean), use that college's active school year
-    if (selectedCollegeId && selectedCollegeId !== 'all') {
-      const activeSy = getActiveSchoolYearForCollege?.(selectedCollegeId);
+    if (scopedCollegeId && scopedCollegeId !== 'all') {
+      const activeSy = getActiveSchoolYearForCollege?.(scopedCollegeId);
       if (activeSy?.year) return activeSy.year;
     }
 
@@ -238,7 +245,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
     return '2025-2026';
   }, [
-    selectedCollegeId,
+    scopedCollegeId,
     getActiveSchoolYearForCollege,
     isAdmin,
     userCollegeId,
@@ -425,7 +432,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   useEffect(() => {
     setSelectedProgramId('all');
     setCoursePage(1);
-  }, [selectedCollegeId]);
+  }, [scopedCollegeId]);
 
   // Pending rows can reference courses outside the cached (enrolled-only)
   // list — prefer the live cache, fall back to the server snapshot, and
@@ -553,16 +560,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       };
     }
     if (isDean) {
-      const isViewingAll = selectedCollegeId === 'all';
-      const isViewingOther = !isViewingAll && selectedCollegeId !== effectiveDeanCollegeId;
-      const currentSelectedCol = isViewingOther ? (colleges || []).find(c => c.id === selectedCollegeId) : deanCollege;
+      // Deans have a fixed, college-wide jurisdiction (role-separation design §2).
       return {
-        title: isViewingAll
-          ? 'University Course Monitoring'
-          : (isViewingOther ? `${currentSelectedCol?.name || 'Collegiate'} Course Monitoring` : 'Collegiate Course Monitoring'),
-        description: isViewingAll
-          ? 'Monitor academic course offerings across all university colleges and degree programs'
-          : `Monitoring academic course offerings for ${currentSelectedCol?.name || deanCollege?.name || 'your collegiate jurisdiction'}`,
+        title: 'Collegiate Course Monitoring',
+        description: `Monitoring academic course offerings for ${deanCollege?.name || 'your collegiate jurisdiction'}`,
       };
     }
     if (isAdmin) {
@@ -581,7 +582,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       title: 'My courses',
       description: 'Your enrolled course shells',
     };
-  }, [isChair, isDean, isAdmin, activeRole, chairDept, deanCollege, selectedCollegeId, effectiveDeanCollegeId, colleges]);
+  }, [isChair, isDean, isAdmin, activeRole, chairDept, deanCollege]);
 
   return (
     <div className="flex min-h-full w-full flex-1 flex-col space-y-8">
@@ -648,37 +649,51 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           {/* Option 1: Jurisdiction & Program Filters */}
           {(isDean || isAdmin) && (
             <div data-testid="course-monitoring-controls" className="p-4 bg-card border border-border/80 rounded-2xl shadow-xs space-y-3">
-              {/* College Selector (Admin & Dean) */}
+              {/* College Selector (Admin) / Fixed College Badge (Dean) */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border/60">
                 <div className="flex items-center gap-2">
                   <Building className="w-4 h-4 text-primary" />
-                  <span className="text-xs font-bold text-foreground">University College:</span>
-                  {isDean && deanCollege && (
-                    <span className="text-xs font-medium text-muted-foreground hidden sm:inline">
-                      (Home: {deanCollege.name})
-                    </span>
-                  )}
+                  <span className="text-xs font-bold text-foreground">
+                    {isDean ? 'College Jurisdiction:' : 'University College:'}
+                  </span>
                 </div>
-                <CustomDropdown
-                  value={selectedCollegeId}
-                  onChange={(val) => {
-                    setSelectedCollegeId(val);
-                    setSelectedProgramId('all');
-                  }}
-                  testId="college-scope-selector"
-                  searchable
-                  placeholder="All Colleges (University-Wide)"
-                  className="min-w-[220px] sm:max-w-xs"
-                  options={[
-                    { value: 'all', label: 'All Colleges (University-Wide)' },
-                    ...(colleges || [])
-                      .filter(col => col && col.name && typeof col.name === 'string' && col.name.trim() && col.name !== 'null' && col.name.toLowerCase() !== 'null')
-                      .map((col) => ({
-                        value: col.id,
-                        label: `${col.name} (${col.code || 'COL'})`,
-                      })),
-                  ]}
-                />
+                {isDean ? (
+                  // Deans are fixed to their home college; switching colleges is
+                  // an admin-only capability (role-separation design §2).
+                  <span
+                    data-testid="dean-college-badge"
+                    title="Your college jurisdiction is fixed"
+                    className="inline-flex items-center gap-2 min-w-[220px] sm:max-w-xs px-3 py-2.5 text-xs font-bold text-foreground bg-muted/50 border border-border rounded-xl"
+                  >
+                    <Lock className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+                    <span className="truncate">
+                      {deanCollege
+                        ? `${deanCollege.name} (${deanCollege.code || 'COL'})`
+                        : 'No college assigned'}
+                    </span>
+                  </span>
+                ) : (
+                  <CustomDropdown
+                    value={selectedCollegeId}
+                    onChange={(val) => {
+                      setSelectedCollegeId(val);
+                      setSelectedProgramId('all');
+                    }}
+                    testId="college-scope-selector"
+                    searchable
+                    placeholder="All Colleges (University-Wide)"
+                    className="min-w-[220px] sm:max-w-xs"
+                    options={[
+                      { value: 'all', label: 'All Colleges (University-Wide)' },
+                      ...(colleges || [])
+                        .filter(col => col && col.name && typeof col.name === 'string' && col.name.trim() && col.name !== 'null' && col.name.toLowerCase() !== 'null')
+                        .map((col) => ({
+                          value: col.id,
+                          label: `${col.name} (${col.code || 'COL'})`,
+                        })),
+                    ]}
+                  />
+                )}
               </div>
 
               {/* Horizontal Program Tabs with Live Counts */}

@@ -228,6 +228,44 @@ describe('getScopedCourses utility', () => {
     expect(itOnly.map(c => c.id)).toEqual(['crs-it201']);
   });
 
+  it('dean cannot escape their home college via a forged selectedCollegeId', () => {
+    const deanCCS = users.find(u => u.id === 'u-dean-ccs')!;
+
+    // `selectedCollegeId` is an admin-only selector. A stale or tampered value
+    // must never widen a dean's scope beyond their home college.
+    for (const forgedCollegeId of ['all', 'col-coe']) {
+      const scoped = getScopedCourses({
+        courses,
+        users,
+        activeUser: deanCCS,
+        activeRole: 'dean',
+        colleges,
+        departments,
+        selectedCollegeId: forgedCollegeId,
+      });
+      const ids = scoped.map(c => c.id);
+
+      expect(ids).not.toContain('crs-coe301');
+      expect(ids).toEqual(
+        expect.arrayContaining(['crs-cs101', 'crs-it201', 'crs-cs302'])
+      );
+    }
+  });
+
+  it('dean program filter cannot reach a program outside their college', () => {
+    const deanCCS = users.find(u => u.id === 'u-dean-ccs')!;
+    const scoped = getScopedCourses({
+      courses,
+      users,
+      activeUser: deanCCS,
+      activeRole: 'dean',
+      colleges,
+      departments,
+      selectedProgramId: 'dept-eled',
+    });
+    expect(scoped).toHaveLength(0);
+  });
+
   it('chairperson sees courses only in their handled program, never other programs', () => {
     const chairCS = users.find(u => u.id === 'u-chair-cs')!;
     const scoped = getScopedCourses({

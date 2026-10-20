@@ -48,17 +48,17 @@ describe('RegisterPage Component', () => {
     vi.clearAllMocks();
   });
 
-  it('renders all required registration inputs and role selections', () => {
+  it('renders all required registration inputs and no account role selection', () => {
     render(
       <MemoryRouter initialEntries={['/register']}>
         <RegisterPage />
       </MemoryRouter>
     );
 
-    // Roles
-    expect(screen.getByRole('radio', { name: /student/i })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: /faculty/i })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: /staff/i })).toBeInTheDocument();
+    // Role is never chosen on the form: the institutional email decides it.
+    expect(screen.queryByText(/account role/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+    expect(screen.queryByText(/students use @student\.dmmmsu\.edu\.ph/i)).not.toBeInTheDocument();
 
     // Inputs
     expect(screen.getByLabelText(/first name/i)).toBeInTheDocument();
@@ -155,6 +155,10 @@ describe('RegisterPage Component', () => {
       </MemoryRouter>
     );
 
+    fireEvent.change(screen.getByLabelText(/institutional email/i), {
+      target: { value: 'msantos@student.dmmmsu.edu.ph' },
+    });
+
     const idInput = screen.getByLabelText(/id number/i) as HTMLInputElement;
     fireEvent.change(idInput, { target: { value: '23110823' } });
     expect(idInput.value).toBe('231-1082-3');
@@ -184,7 +188,6 @@ describe('RegisterPage Component', () => {
 
     fireEvent.change(screen.getByLabelText(/first name/i), { target: { value: 'Maria' } });
     fireEvent.change(screen.getByLabelText(/last name/i), { target: { value: 'Santos' } });
-    fireEvent.change(screen.getByLabelText(/id number/i), { target: { value: '23110823' } });
     fireEvent.change(screen.getByLabelText(/college/i), { target: { value: 'col-ccs' } });
     fireEvent.change(screen.getByLabelText(/program|department/i), { target: { value: 'Department of Computer Science' } });
     fireEvent.change(screen.getByLabelText(/^password/i), { target: { value: 'password123' } });
@@ -195,7 +198,9 @@ describe('RegisterPage Component', () => {
     fireEvent.click(screen.getByRole('button', { name: /register|create account/i }));
 
     expect(mockRegisterAccount).not.toHaveBeenCalled();
-    expect(await screen.findByText(/student institutional email must end with @student\.dmmmsu\.edu\.ph/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/institutional email must end with @dmmmsu\.edu\.ph or @student\.dmmmsu\.edu\.ph/i)
+    ).toBeInTheDocument();
   });
 
   it('accepts student accounts registered with a student.dmmmsu.edu.ph address', async () => {
@@ -220,7 +225,6 @@ describe('RegisterPage Component', () => {
       </MemoryRouter>
     );
 
-    fireEvent.click(screen.getByRole('radio', { name: /student/i }));
     fireEvent.change(screen.getByLabelText(/first name/i), { target: { value: 'Juan' } });
     fireEvent.change(screen.getByLabelText(/last name/i), { target: { value: 'Dela Cruz' } });
     fireEvent.change(screen.getByLabelText(/institutional email/i), {
@@ -236,7 +240,10 @@ describe('RegisterPage Component', () => {
 
     await waitFor(() => {
       expect(mockRegisterAccount).toHaveBeenCalledWith(
-        expect.objectContaining({ email: 'jdelacruz@student.dmmmsu.edu.ph' })
+        expect.objectContaining({
+          email: 'jdelacruz@student.dmmmsu.edu.ph',
+          role: 'student',
+        })
       );
     });
 
@@ -244,7 +251,53 @@ describe('RegisterPage Component', () => {
     expect(screen.queryByText(/institutional email must end with/i)).not.toBeInTheDocument();
   });
 
-  it('updates email/id placeholders and maxLength dynamically when changing role', () => {
+  it('shows no helper copy under the inputs once an email is entered', () => {
+    render(
+      <MemoryRouter initialEntries={['/register']}>
+        <RegisterPage />
+      </MemoryRouter>
+    );
+
+    const emailInput = screen.getByLabelText(/institutional email/i);
+
+    fireEvent.change(emailInput, { target: { value: 'msantos@student.dmmmsu.edu.ph' } });
+    expect(screen.queryByText(/student account/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/@student\.dmmmsu\.edu\.ph address/i)).not.toBeInTheDocument();
+
+    fireEvent.change(emailInput, { target: { value: 'psantos@dmmmsu.edu.ph' } });
+    expect(screen.queryByText(/will assign your faculty or staff role/i)).not.toBeInTheDocument();
+  });
+
+  it('disables the ID Number input until a valid institutional email is entered', () => {
+    render(
+      <MemoryRouter initialEntries={['/register']}>
+        <RegisterPage />
+      </MemoryRouter>
+    );
+
+    const emailInput = screen.getByLabelText(/institutional email/i);
+    const idInput = screen.getByLabelText(/id number/i);
+
+    expect(idInput).toBeDisabled();
+    expect(idInput).toHaveAttribute('title', 'Enter your institutional email first.');
+    expect(screen.queryByText(/enter your institutional email first/i)).not.toBeInTheDocument();
+
+    // A personal address does not unlock the ID field
+    fireEvent.change(emailInput, { target: { value: 'maria@gmail.com' } });
+    expect(idInput).toBeDisabled();
+    expect(idInput).toHaveAttribute('title', 'Enter your institutional email first.');
+
+    // A student address unlocks it
+    fireEvent.change(emailInput, { target: { value: 'msantos@student.dmmmsu.edu.ph' } });
+    expect(idInput).toBeEnabled();
+    expect(idInput).not.toHaveAttribute('title');
+
+    // Clearing the email locks it again
+    fireEvent.change(emailInput, { target: { value: '' } });
+    expect(idInput).toBeDisabled();
+  });
+
+  it('switches the ID Number placeholder and format with the email domain', () => {
     render(
       <MemoryRouter initialEntries={['/register']}>
         <RegisterPage />
@@ -254,105 +307,60 @@ describe('RegisterPage Component', () => {
     const emailInput = screen.getByLabelText(/institutional email/i) as HTMLInputElement;
     const idInput = screen.getByLabelText(/id number/i) as HTMLInputElement;
 
-    // Student role by default
-    expect(emailInput.placeholder).toBe('name@student.dmmmsu.edu.ph');
+    fireEvent.change(emailInput, { target: { value: 'msantos@student.dmmmsu.edu.ph' } });
     expect(idInput.placeholder).toBe('231-1082-3');
     expect(idInput.maxLength).toBe(10);
 
-    // Switch to Faculty
-    fireEvent.click(screen.getByRole('radio', { name: /faculty/i }));
-    expect(emailInput.placeholder).toBe('name@dmmmsu.edu.ph');
+    // Employee addresses use the 4-digit employee ID
+    fireEvent.change(emailInput, { target: { value: 'psantos@dmmmsu.edu.ph' } });
     expect(idInput.placeholder).toBe('1082');
     expect(idInput.maxLength).toBe(4);
 
-    // Switch to Staff
-    fireEvent.click(screen.getByRole('radio', { name: /staff/i }));
-    expect(emailInput.placeholder).toBe('name@dmmmsu.edu.ph');
-    expect(idInput.placeholder).toBe('1082');
-    expect(idInput.maxLength).toBe(4);
-
-    // Switch back to Student
-    fireEvent.click(screen.getByRole('radio', { name: /student/i }));
-    expect(emailInput.placeholder).toBe('name@student.dmmmsu.edu.ph');
+    // Back to a student address
+    fireEvent.change(emailInput, { target: { value: 'msantos@student.dmmmsu.edu.ph' } });
     expect(idInput.placeholder).toBe('231-1082-3');
     expect(idInput.maxLength).toBe(10);
   });
 
-  it('automatically reformats existing ID input when role is changed', () => {
+  it('reformats an existing ID Number when the email domain changes', () => {
     render(
       <MemoryRouter initialEntries={['/register']}>
         <RegisterPage />
       </MemoryRouter>
     );
 
+    const emailInput = screen.getByLabelText(/institutional email/i);
     const idInput = screen.getByLabelText(/id number/i) as HTMLInputElement;
+
+    fireEvent.change(emailInput, { target: { value: 'msantos@student.dmmmsu.edu.ph' } });
     fireEvent.change(idInput, { target: { value: '23110823' } });
     expect(idInput.value).toBe('231-1082-3');
 
-    // Switching to faculty slices to 4 digits
-    fireEvent.click(screen.getByRole('radio', { name: /faculty/i }));
+    // Switching to an employee address slices to 4 digits
+    fireEvent.change(emailInput, { target: { value: 'msantos@dmmmsu.edu.ph' } });
     expect(idInput.value).toBe('2311');
 
-    // Typing in faculty mode enforces 4 digits only
+    // Typing in employee mode enforces 4 digits only
     fireEvent.change(idInput, { target: { value: '98765' } });
     expect(idInput.value).toBe('9876');
 
-    // Switching back to student formats the 4 digits
-    fireEvent.click(screen.getByRole('radio', { name: /student/i }));
+    // Switching back to a student address formats the 4 digits
+    fireEvent.change(emailInput, { target: { value: 'msantos@student.dmmmsu.edu.ph' } });
     expect(idInput.value).toBe('987-6');
   });
 
-  it('rejects student registration with @dmmmsu.edu.ph email address', async () => {
+  it('registers an employee applicant without a role so leadership can assign one', async () => {
     render(
       <MemoryRouter initialEntries={['/register']}>
         <RegisterPage />
       </MemoryRouter>
     );
 
-    fireEvent.click(screen.getByRole('radio', { name: /student/i }));
-    fireEvent.change(screen.getByLabelText(/first name/i), { target: { value: 'Juan' } });
-    fireEvent.change(screen.getByLabelText(/last name/i), { target: { value: 'Dela Cruz' } });
-    fireEvent.change(screen.getByLabelText(/institutional email/i), {
-      target: { value: 'jdelacruz@dmmmsu.edu.ph' },
-    });
-    fireEvent.change(screen.getByLabelText(/id number/i), { target: { value: '23110823' } });
-
-    fireEvent.click(screen.getByRole('button', { name: /register|create account/i }));
-
-    expect(mockRegisterAccount).not.toHaveBeenCalled();
-    expect(await screen.findByText(/student institutional email must end with @student\.dmmmsu\.edu\.ph/i)).toBeInTheDocument();
-  });
-
-  it('accepts faculty registration with @dmmmsu.edu.ph and 4-digit ID, but rejects student email and non-4-digit ID', async () => {
-    render(
-      <MemoryRouter initialEntries={['/register']}>
-        <RegisterPage />
-      </MemoryRouter>
-    );
-
-    fireEvent.click(screen.getByRole('radio', { name: /faculty/i }));
     fireEvent.change(screen.getByLabelText(/first name/i), { target: { value: 'Prof' } });
     fireEvent.change(screen.getByLabelText(/last name/i), { target: { value: 'Santos' } });
-    // Attempt with @student.dmmmsu.edu.ph
-    fireEvent.change(screen.getByLabelText(/institutional email/i), {
-      target: { value: 'psantos@student.dmmmsu.edu.ph' },
-    });
-    fireEvent.change(screen.getByLabelText(/id number/i), { target: { value: '1082' } });
-
-    fireEvent.click(screen.getByRole('button', { name: /register|create account/i }));
-    expect(mockRegisterAccount).not.toHaveBeenCalled();
-    expect(await screen.findByText(/institutional email must end with @dmmmsu\.edu\.ph/i)).toBeInTheDocument();
-
-    // Fix email to faculty format, but test invalid ID (3 digits)
     fireEvent.change(screen.getByLabelText(/institutional email/i), {
       target: { value: 'psantos@dmmmsu.edu.ph' },
     });
-    fireEvent.change(screen.getByLabelText(/id number/i), { target: { value: '123' } });
-    fireEvent.click(screen.getByRole('button', { name: /register|create account/i }));
-    expect(mockRegisterAccount).not.toHaveBeenCalled();
-    expect(await screen.findByText(/id number must follow the format xxxx/i)).toBeInTheDocument();
-
-    // Provide valid 4-digit ID and academic info
     fireEvent.change(screen.getByLabelText(/id number/i), { target: { value: '1082' } });
     fireEvent.change(screen.getByLabelText(/college/i), { target: { value: 'col-ccs' } });
     fireEvent.change(screen.getByLabelText(/program|department/i), { target: { value: 'Department of Computer Science' } });
@@ -360,60 +368,40 @@ describe('RegisterPage Component', () => {
     fireEvent.change(screen.getByLabelText(/confirm password/i), { target: { value: 'facultyPass12' } });
 
     mockRegisterAccount.mockResolvedValueOnce({
-      id: 'reg-fac-1',
-      role: 'faculty',
+      id: 'reg-emp-1',
       studentId: '1082',
-      activationToken: 'token-fac-1',
+      activationToken: 'token-emp-1',
     });
 
     fireEvent.click(screen.getByRole('button', { name: /register|create account/i }));
+
     await waitFor(() => {
       expect(mockRegisterAccount).toHaveBeenCalledWith(
         expect.objectContaining({
-          role: 'faculty',
           email: 'psantos@dmmmsu.edu.ph',
           studentId: '1082',
         })
       );
     });
+    expect(mockRegisterAccount.mock.calls[0][0].role).toBeUndefined();
   });
 
-  it('accepts staff registration with @dmmmsu.edu.ph and 4-digit ID', async () => {
+  it('rejects an employee ID that is not four digits', async () => {
     render(
       <MemoryRouter initialEntries={['/register']}>
         <RegisterPage />
       </MemoryRouter>
     );
 
-    fireEvent.click(screen.getByRole('radio', { name: /staff/i }));
-    fireEvent.change(screen.getByLabelText(/first name/i), { target: { value: 'Staff' } });
-    fireEvent.change(screen.getByLabelText(/last name/i), { target: { value: 'Member' } });
     fireEvent.change(screen.getByLabelText(/institutional email/i), {
-      target: { value: 'staff@dmmmsu.edu.ph' },
+      target: { value: 'psantos@dmmmsu.edu.ph' },
     });
-    fireEvent.change(screen.getByLabelText(/id number/i), { target: { value: '5566' } });
-    fireEvent.change(screen.getByLabelText(/college/i), { target: { value: 'col-ccs' } });
-    fireEvent.change(screen.getByLabelText(/program|department/i), { target: { value: 'Department of Computer Science' } });
-    fireEvent.change(screen.getByLabelText(/^password/i), { target: { value: 'staffPass12' } });
-    fireEvent.change(screen.getByLabelText(/confirm password/i), { target: { value: 'staffPass12' } });
-
-    mockRegisterAccount.mockResolvedValueOnce({
-      id: 'reg-staff-1',
-      role: 'staff',
-      studentId: '5566',
-      activationToken: 'token-staff-1',
-    });
+    fireEvent.change(screen.getByLabelText(/id number/i), { target: { value: '123' } });
 
     fireEvent.click(screen.getByRole('button', { name: /register|create account/i }));
-    await waitFor(() => {
-      expect(mockRegisterAccount).toHaveBeenCalledWith(
-        expect.objectContaining({
-          role: 'staff',
-          email: 'staff@dmmmsu.edu.ph',
-          studentId: '5566',
-        })
-      );
-    });
+
+    expect(mockRegisterAccount).not.toHaveBeenCalled();
+    expect(await screen.findByText(/id number must follow the format xxxx/i)).toBeInTheDocument();
   });
 
   it('submits registration successfully, dispatches activation email, and shows modal with Okay button without exposing the link', async () => {
@@ -438,7 +426,6 @@ describe('RegisterPage Component', () => {
       </MemoryRouter>
     );
 
-    fireEvent.click(screen.getByRole('radio', { name: /student/i }));
     fireEvent.change(screen.getByLabelText(/first name/i), { target: { value: 'Juan' } });
     fireEvent.change(screen.getByLabelText(/middle name/i), { target: { value: 'Protacio' } });
     fireEvent.change(screen.getByLabelText(/last name/i), { target: { value: 'Dela Cruz' } });

@@ -302,7 +302,7 @@ describe('DashboardPage admin access', () => {
     expect(screen.queryByTestId('academic-scope-baseline-badge')).not.toBeInTheDocument();
   });
 
-  test('dean monitors collegiate courses with horizontal program tabs and college selector', () => {
+  test('dean is locked to their home college with no cross-college navigation', () => {
     mocks.activeRole = 'dean';
     mocks.activeUser = {
       id: 'u-dean-1',
@@ -321,17 +321,22 @@ describe('DashboardPage admin access', () => {
     expect(screen.getByText('Collegiate Course Monitoring')).toBeInTheDocument();
     expect(screen.getByTestId('program-tabs-container')).toBeInTheDocument();
     expect(screen.getByTestId('program-tab-all')).toBeInTheDocument();
-    // College selector IS shown for Dean so they can view courses across other colleges or university-wide
-    expect(screen.getByTestId('college-scope-selector')).toBeInTheDocument();
 
-    // Initially scoped to Dean's college (CCS)
+    // The college switcher is an admin-only control; a dean has a fixed jurisdiction.
+    expect(screen.queryByTestId('college-scope-selector')).not.toBeInTheDocument();
+
+    // The fixed jurisdiction is surfaced as a static badge instead.
+    expect(screen.getByTestId('dean-college-badge')).toHaveTextContent('College of Computer Science');
+
+    // Only the dean's own college is visible — no university-wide or foreign-college scope.
     expect(screen.getByText('Data Structures')).toBeInTheDocument();
     expect(screen.queryByText('Engineering Mechanics')).not.toBeInTheDocument();
+    expect(screen.queryByText('University Course Monitoring')).not.toBeInTheDocument();
 
-    // Selecting All Colleges allows viewing courses from other colleges
-    fireEvent.change(screen.getByTestId('college-scope-selector'), { target: { value: 'all' } });
-    expect(screen.getByText('Data Structures')).toBeInTheDocument();
-    expect(screen.getByText('Engineering Mechanics')).toBeInTheDocument();
+    // Program tabs are limited to the dean's college departments.
+    expect(screen.getByTestId('program-tab-dept-cs')).toBeInTheDocument();
+    expect(screen.getByTestId('program-tab-dept-it')).toBeInTheDocument();
+    expect(screen.queryByTestId('program-tab-dept-ce')).not.toBeInTheDocument();
   });
 
   test('chairperson monitors program courses with jurisdiction badge and upload chair-sheet action', () => {
