@@ -1989,6 +1989,13 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               }
               return merged;
             });
+            const activeRow = sySettled.value.find((sy: any) => Boolean(sy.is_active ?? sy.isActive ?? false));
+            if (activeRow) {
+              const normSemester = normalizeAcademicSemester(activeRow.semester);
+              baselineSemesterRef.current = normSemester;
+              setBaselineSemesterState(normSemester);
+              safeSetLocalStorage(STORAGE_KEY_BASELINE_SEMESTER, normSemester);
+            }
           }
         }
       } catch {
@@ -5407,7 +5414,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (likhaLmsApi?.academicStructure?.updateSchoolYear) {
       try {
         if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(target.id)) {
-          await likhaLmsApi.academicStructure.updateSchoolYear(target.id, { is_active: true }).catch(() => {});
+          await likhaLmsApi.academicStructure.updateSchoolYear(target.id, { is_active: true, semester: 'First' }).catch(() => {});
         }
         for (const item of list) {
           if (item.id !== target.id && item.isActive && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(item.id)) {
@@ -5519,6 +5526,17 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...prev,
         notifications: [...newNotifs, ...(prev.notifications || [])],
       }));
+    }
+
+    const activeSyId = getBaselineSchoolYear()?.id;
+    if (
+      activeSyId &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(activeSyId) &&
+      likhaLmsApi?.academicStructure?.updateSchoolYearSemester
+    ) {
+      try {
+        await likhaLmsApi.academicStructure.updateSchoolYearSemester(activeSyId, norm);
+      } catch {}
     }
 
     return {

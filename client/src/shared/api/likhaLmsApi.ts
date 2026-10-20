@@ -2006,6 +2006,13 @@ export const likhaLmsApi = {
         body: JSON.stringify(updates),
       });
     },
+
+    async updateSchoolYearSemester(id: string, semester: string): Promise<any> {
+      return likhaRequest(`/items/school_years/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ semester }),
+      });
+    },
   },
 };
 
