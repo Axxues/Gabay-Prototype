@@ -705,10 +705,6 @@ export const AcademicStructureTab: React.FC = () => {
               </button>
             </div>
           </div>
-
-          <p className="text-[11px] text-muted-foreground/80 italic">
-            Changing the baseline academic year resets the baseline semester to First Semester and requires Deans to roll over again.
-          </p>
         </div>
       )}
 
