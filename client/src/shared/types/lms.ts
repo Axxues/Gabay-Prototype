@@ -55,6 +55,8 @@ export interface SchoolYear {
   createdAt?: string;
 }
 
+export type AcademicSemester = 'First' | 'Second' | 'Mid-Year';
+
 export interface NormalizedPersonName {
   firstName: string;
   middleName?: string;

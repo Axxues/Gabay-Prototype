@@ -1,25 +1,17 @@
 import * as xlsx from 'xlsx';
-import type { User } from '../../../shared/types/lms';
+import type { AcademicSemester, User } from '../../../shared/types/lms';
 import { isFacultyRole } from '../../../shared/utils/roles';
+import { ACADEMIC_SEMESTERS, normalizeAcademicSemester } from '../../../shared/utils/academicSemester';
 
-export type AssignedCourseSemester = 'First' | 'Mid-Year' | 'Second';
+/**
+ * Semesters are canonical in `shared/utils/academicSemester`; the aliases below
+ * keep the chair-sheet call sites (and their established order) working.
+ */
+export type AssignedCourseSemester = AcademicSemester;
 
-export const ASSIGNED_COURSE_SEMESTERS: readonly AssignedCourseSemester[] = [
-  'First',
-  'Mid-Year',
-  'Second',
-] as const;
+export const ASSIGNED_COURSE_SEMESTERS: readonly AssignedCourseSemester[] = ACADEMIC_SEMESTERS;
 
-export function normalizeAssignedSemester(raw?: string | null): AssignedCourseSemester {
-  const s = (raw || '').trim().toLowerCase().replace(/[-_\s]+/g, ' ');
-  if (s.includes('mid') || s.includes('summer')) {
-    return 'Mid-Year';
-  }
-  if (s.includes('second') || /\b(2nd|2)\b/.test(s) || s.startsWith('2nd') || s.includes('2nd sem')) {
-    return 'Second';
-  }
-  return 'First';
-}
+export const normalizeAssignedSemester = normalizeAcademicSemester;
 
 export interface RawChairSheetRow {
   firstName: string;

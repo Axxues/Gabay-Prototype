@@ -34,9 +34,11 @@ import type {
   Program,
   PendingRegistration,
   AdminSubrole,
-  SchoolYear
+  SchoolYear,
+  AcademicSemester
 } from '../types/lms';
 import type { Activity } from '../types/lms';
+import { formatSemesterLabel, normalizeAcademicSemester } from '../utils/academicSemester';
 import { activityPointsPossible } from '../utils/activities';
 import {
   autoScoreFraction,
@@ -325,6 +327,15 @@ export interface LMSContextType {
   setBaselineSchoolYear: (schoolYearIdOrYear: string) => Promise<{ success: boolean; message?: string }>;
   getBaselineSchoolYear: () => SchoolYear | undefined;
 
+  // Semester Management
+  baselineSemester: AcademicSemester;
+  setBaselineSemester: (semester: AcademicSemester) => Promise<{ success: boolean; message?: string }>;
+  getActiveSemesterForCollege: (collegeId?: string) => AcademicSemester;
+  setActiveSemesterForCollege: (
+    collegeId: string,
+    semester: AcademicSemester
+  ) => Promise<{ success: boolean; message?: string }>;
+
   logHistory: (path: string, title: string) => void;
   clearHistory: () => void;
 }
@@ -335,6 +346,8 @@ const STORAGE_KEY_DEPARTMENTS = 'gabay_departments';
 const STORAGE_KEY_PENDING_REGISTRATIONS = 'gabay_pending_registrations';
 const STORAGE_KEY_SCHOOL_YEARS = 'gabay_school_years';
 const STORAGE_KEY_COLLEGE_ACTIVE_SY = 'gabay_college_active_school_years';
+const STORAGE_KEY_BASELINE_SEMESTER = 'gabay_baseline_semester_v1';
+const STORAGE_KEY_COLLEGE_ACTIVE_SEMESTERS = 'gabay_college_active_semesters';
 export const STORAGE_KEY_DB = 'gabay_lms_db_v6';
 export const STORAGE_KEY_USER_PROFILES = 'gabay_user_profiles_v1';
 
@@ -1851,6 +1864,41 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     collegeActiveSYRef.current = collegeActiveSchoolYears;
     safeSetLocalStorage(STORAGE_KEY_COLLEGE_ACTIVE_SY, JSON.stringify(collegeActiveSchoolYears));
   }, [collegeActiveSchoolYears]);
+
+  const [baselineSemester, setBaselineSemesterState] = useState<AcademicSemester>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_BASELINE_SEMESTER);
+      if (saved) return normalizeAcademicSemester(saved);
+    } catch (_) {}
+    return 'First';
+  });
+  const baselineSemesterRef = useRef(baselineSemester);
+  useEffect(() => {
+    baselineSemesterRef.current = baselineSemester;
+    safeSetLocalStorage(STORAGE_KEY_BASELINE_SEMESTER, baselineSemester);
+  }, [baselineSemester]);
+
+  const [collegeActiveSemesters, setCollegeActiveSemesters] = useState<Record<string, AcademicSemester>>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_COLLEGE_ACTIVE_SEMESTERS);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') {
+          const normalized: Record<string, AcademicSemester> = {};
+          for (const [k, v] of Object.entries(parsed)) {
+            normalized[k] = normalizeAcademicSemester(v as string);
+          }
+          return normalized;
+        }
+      }
+    } catch (_) {}
+    return {};
+  });
+  const collegeActiveSemestersRef = useRef(collegeActiveSemesters);
+  useEffect(() => {
+    collegeActiveSemestersRef.current = collegeActiveSemesters;
+    safeSetLocalStorage(STORAGE_KEY_COLLEGE_ACTIVE_SEMESTERS, JSON.stringify(collegeActiveSemesters));
+  }, [collegeActiveSemesters]);
 
   // Synchronize academic hierarchy with Likha ERP backend (Directus)
   useEffect(() => {
@@ -5351,6 +5399,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return next;
     });
 
+    baselineSemesterRef.current = 'First';
+    setBaselineSemesterState('First');
+    safeSetLocalStorage(STORAGE_KEY_BASELINE_SEMESTER, 'First');
+
     // Sync with Likha ERP if possible
     if (likhaLmsApi?.academicStructure?.updateSchoolYear) {
       try {
@@ -5393,6 +5445,85 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return {
       success: true,
       message: `University-Wide Default Baseline Academic Year updated to ${target.year}.`,
+    };
+  };
+
+  const getActiveSemesterForCollege = useCallback(
+    (collegeId?: string): AcademicSemester => {
+      const targetColId = collegeId || activeUser?.collegeId;
+      if (targetColId) {
+        const rec = collegeActiveSemestersRef.current?.[targetColId] || collegeActiveSemesters?.[targetColId];
+        if (rec) return normalizeAcademicSemester(rec);
+      }
+      return 'First';
+    },
+    [collegeActiveSemesters, activeUser]
+  );
+
+  const setActiveSemesterForCollege = async (
+    collegeId: string,
+    semester: AcademicSemester
+  ): Promise<{ success: boolean; message?: string }> => {
+    const norm = normalizeAcademicSemester(semester);
+    if (norm !== baselineSemesterRef.current) {
+      return {
+        success: false,
+        message: `Colleges can only roll over to the current university baseline semester (${formatSemesterLabel(baselineSemesterRef.current)}).`,
+      };
+    }
+    const next = { ...collegeActiveSemestersRef.current, [collegeId]: norm };
+    collegeActiveSemestersRef.current = next;
+    setCollegeActiveSemesters(next);
+    safeSetLocalStorage(STORAGE_KEY_COLLEGE_ACTIVE_SEMESTERS, JSON.stringify(next));
+    return {
+      success: true,
+      message: `College rolled over to ${formatSemesterLabel(norm)}.`,
+    };
+  };
+
+  const setBaselineSemester = async (
+    semester: AcademicSemester
+  ): Promise<{ success: boolean; message?: string }> => {
+    const norm = normalizeAcademicSemester(semester);
+    if (norm === baselineSemesterRef.current) {
+      return {
+        success: false,
+        message: `The university baseline semester is already ${formatSemesterLabel(norm)}.`,
+      };
+    }
+
+    baselineSemesterRef.current = norm;
+    setBaselineSemesterState(norm);
+    safeSetLocalStorage(STORAGE_KEY_BASELINE_SEMESTER, norm);
+
+    // Notify deans and chairs that the baseline has changed
+    const recipients = (db.users || []).filter(u => isDeanRole(u) || isChairRole(u));
+    if (recipients.length > 0) {
+      const now = new Date().toISOString();
+      const newNotifs: Notification[] = recipients.map(u => ({
+        id: `notif-baseline-semester-${norm}-${u.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        type: 'baseline_changed',
+        recipientId: u.id,
+        actorId: activeUser?.id || 'admin',
+        actorName: activeUser?.name || 'University Administrator',
+        actorAvatar: activeUser?.avatar || '',
+        relatedId: norm,
+        relatedTitle: formatSemesterLabel(norm),
+        content: `The baseline semester has now changed to ${formatSemesterLabel(norm)}.`,
+        read: false,
+        createdAt: now,
+      }));
+
+      setNotifications(prev => [...newNotifs, ...prev]);
+      setDb(prev => ({
+        ...prev,
+        notifications: [...newNotifs, ...(prev.notifications || [])],
+      }));
+    }
+
+    return {
+      success: true,
+      message: `University-Wide Default Baseline Semester updated to ${formatSemesterLabel(norm)}.`,
     };
   };
 
@@ -8313,6 +8444,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         getActiveSchoolYearForCollege,
         setBaselineSchoolYear,
         getBaselineSchoolYear,
+        baselineSemester,
+        setBaselineSemester,
+        getActiveSemesterForCollege,
+        setActiveSemesterForCollege,
         logHistory,
         clearHistory,
         isSessionExpired,
