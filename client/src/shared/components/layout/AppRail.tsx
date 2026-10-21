@@ -74,7 +74,7 @@ const AppRailComponent: React.FC<{ currentTab: string; onNavigateTab: (t: string
               type="button"
               title={
                 item.id === 'governance' && hasBaselineMismatch
-                  ? `University baseline (AY ${baselineYear} · ${formatSemesterLabel(baselineSem)}) differs from your college's active academic term (AY ${collegeYear} · ${formatSemesterLabel(collegeSem)})`
+                  ? `The University A.Y. and University Semester (AY ${baselineYear} · ${formatSemesterLabel(baselineSem)}) differ from your college's active academic term (AY ${collegeYear} · ${formatSemesterLabel(collegeSem)})`
                   : isGabayOngoing
                   ? 'GABAY is processing an inquiry…'
                   : item.label
@@ -103,7 +103,7 @@ const AppRailComponent: React.FC<{ currentTab: string; onNavigateTab: (t: string
               {item.id === 'governance' && hasBaselineMismatch && (
                 <span
                   data-testid="governance-baseline-warning"
-                  aria-label="Academic baseline mismatch warning"
+                  aria-label="University A.Y. and University Semester mismatch warning"
                   className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-amber-400 ring-2 ring-background shadow-xs pointer-events-none"
                 />
               )}

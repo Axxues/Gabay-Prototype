@@ -197,7 +197,7 @@ export const AcademicStructureTab: React.FC = () => {
   const [isRollingOver, setIsRollingOver] = useState(false);
   const [selectedSemesterByCollege, setSelectedSemesterByCollege] = useState<Record<string, AcademicSemester>>({});
 
-  // Admin / Chancellor authority to manage the University-Wide Default Baseline Academic Year
+  // Admin / Chancellor authority to manage the University-Wide Default A.Y.
   const canManageBaselineSchoolYear =
     isSuperadminOrChancellor || (activeRole === 'admin' && !activeUser?.adminSubrole);
 
@@ -238,7 +238,7 @@ export const AcademicStructureTab: React.FC = () => {
     if (currentBaseline && targetSY.year.trim().toLowerCase() !== currentBaseline.year.trim().toLowerCase()) {
       showAlert({
         title: 'Rollover Restricted',
-        message: `Colleges can only roll over to the current university baseline academic year (SY ${currentBaseline.year}).`,
+        message: `Colleges can only roll over to the University A.Y. (SY ${currentBaseline.year}).`,
         type: 'warning',
       });
       return;
@@ -259,7 +259,7 @@ export const AcademicStructureTab: React.FC = () => {
     if (!targetSemester || targetSemester !== baselineSemester) {
       showAlert({
         title: 'Semester Rollover Restricted',
-        message: `Colleges can only roll over to the current university baseline semester (${formatSemesterLabel(baselineSemester)}).`,
+        message: `Colleges can only roll over to the University Semester (${formatSemesterLabel(baselineSemester)}).`,
         type: 'warning',
       });
       return;
@@ -343,8 +343,8 @@ export const AcademicStructureTab: React.FC = () => {
       const res = await setBaselineSchoolYear(baselineConfirmData.targetId);
       if (res.success) {
         showAlert({
-          title: 'Baseline Academic Year Updated',
-          message: res.message || `University-Wide Default Baseline Year updated to SY ${baselineConfirmData.targetYear}.`,
+          title: 'University A.Y. Updated',
+          message: res.message || `University A.Y. updated to SY ${baselineConfirmData.targetYear}.`,
           type: 'success',
         });
         setBaselineConfirmData(null);
@@ -352,7 +352,7 @@ export const AcademicStructureTab: React.FC = () => {
       } else {
         showAlert({
           title: 'Update Failed',
-          message: res.message || 'Failed to update university baseline academic year.',
+          message: res.message || 'Failed to update the University A.Y.',
           type: 'error',
         });
       }
@@ -376,8 +376,8 @@ export const AcademicStructureTab: React.FC = () => {
       const res = await setBaselineSemester(semesterConfirmData.target);
       if (res.success) {
         showAlert({
-          title: 'Baseline Semester Updated',
-          message: res.message || `University-Wide Default Baseline Semester updated to ${formatSemesterLabel(semesterConfirmData.target)}.`,
+          title: 'University Semester Updated',
+          message: res.message || `University Semester updated to ${formatSemesterLabel(semesterConfirmData.target)}.`,
           type: 'success',
         });
         setSemesterConfirmData(null);
@@ -385,7 +385,7 @@ export const AcademicStructureTab: React.FC = () => {
       } else {
         showAlert({
           title: 'Update Failed',
-          message: res.message || 'Failed to update university baseline semester.',
+          message: res.message || 'Failed to update the University Semester.',
           type: 'error',
         });
       }
@@ -631,7 +631,7 @@ export const AcademicStructureTab: React.FC = () => {
         </div>
       </div>
 
-      {/* University-Wide Default Baseline Academic Term Card (Admin / Chancellor Console) */}
+      {/* University-Wide Default Academic Term Card (Admin / Chancellor Console) */}
       {canManageBaselineSchoolYear && (
         <div className="bg-card/80 border border-border/80 rounded-2xl p-5 sm:p-6 shadow-sm space-y-5">
           {/* Top row: Identity + Active Term Pill */}
@@ -643,9 +643,9 @@ export const AcademicStructureTab: React.FC = () => {
               <div>
                 <div className="flex items-center space-x-2">
                   <h3 className="text-sm sm:text-base font-extrabold tracking-tight text-foreground">
-                    University-Wide Default Baseline Academic Term
+                    University-Wide Default Academic Term
                   </h3>
-                  <span className="sr-only">University-Wide Default Baseline Academic Year</span>
+                  <span className="sr-only">University-Wide Default A.Y. and Semester</span>
                 </div>
                 <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed max-w-2xl">
                   Institutional fallback for all academic cycles, new colleges, and un-rolled units. Deans independently roll over their own colleges.
@@ -653,14 +653,14 @@ export const AcademicStructureTab: React.FC = () => {
               </div>
             </div>
 
-            {/* Current Active Term Indicator Pill */}
+            {/* College A.Y./Semester Indicator Pill */}
             <div className="flex items-center space-x-2.5 px-3.5 py-2 bg-muted/60 border border-border/80 rounded-xl shrink-0 self-start md:self-center shadow-xs">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
               </span>
               <div className="text-xs">
-                <span className="text-muted-foreground font-medium mr-1.5">Current Baseline:</span>
+                <span className="text-muted-foreground font-medium mr-1.5">University A.Y. & Semester:</span>
                 <span className="font-extrabold text-foreground tracking-tight">
                   AY {currentBaseline?.year || '—'} · {formatSemesterLabel(baselineSemester as AcademicSemester)}
                 </span>
@@ -670,11 +670,11 @@ export const AcademicStructureTab: React.FC = () => {
 
           {/* Two Distinct Control Tiles (Grid: 1 col on mobile, 2 cols on md+) */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
-            {/* Tile 1: Baseline Academic Year */}
+            {/* Tile 1: University A.Y. */}
             <div className="bg-background/70 border border-border/70 rounded-xl p-4 flex flex-col justify-between gap-3 shadow-none hover:border-border transition-colors">
               <div className="flex items-center justify-between">
                 <label htmlFor="baseline-sy-select" className="text-xs font-bold text-foreground flex items-center space-x-1.5">
-                  <span>Baseline Academic Year</span>
+                  <span>University A.Y.</span>
                 </label>
                 <span className="text-[11px] font-medium text-muted-foreground">
                   Active: <span className="text-foreground font-semibold">AY {currentBaseline?.year || '—'}</span>
@@ -685,14 +685,14 @@ export const AcademicStructureTab: React.FC = () => {
                 <div className="flex-1 min-w-0">
                   <CustomDropdown
                     id="baseline-sy-select"
-                    ariaLabel="Select University-Wide Default Baseline School Year"
+                    ariaLabel="Select University A.Y."
                     className="w-full"
                     searchable
                     value={selectedBaselineId || currentBaseline?.id || ''}
                     onChange={setSelectedBaselineId}
                     options={universalSchoolYears.map((sy) => ({
                       value: sy.id,
-                      label: `${sy.year} ${sy.id === currentBaseline?.id || sy.year === currentBaseline?.year ? '(Current Baseline)' : ''}`,
+                      label: `${sy.year} ${sy.id === currentBaseline?.id || sy.year === currentBaseline?.year ? '(University A.Y.)' : ''}`,
                     }))}
                   />
                 </div>
@@ -702,16 +702,16 @@ export const AcademicStructureTab: React.FC = () => {
                   onClick={() => handleInitiateBaselineChange(selectedBaselineId || currentBaseline?.id || '')}
                   className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-xs rounded-xl shadow-xs transition-all active:scale-[0.98] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0 whitespace-nowrap"
                 >
-                  <span>Update Baseline</span>
+                  <span>Update A.Y.</span>
                 </button>
               </div>
             </div>
 
-            {/* Tile 2: Baseline Academic Semester */}
+            {/* Tile 2: University Semester */}
             <div className="bg-background/70 border border-border/70 rounded-xl p-4 flex flex-col justify-between gap-3 shadow-none hover:border-border transition-colors">
               <div className="flex items-center justify-between">
                 <label htmlFor="baseline-semester-select" className="text-xs font-bold text-foreground flex items-center space-x-1.5">
-                  <span>Baseline Semester</span>
+                  <span>University Semester</span>
                 </label>
                 <span className="text-[11px] font-medium text-muted-foreground">
                   Active: <span className="text-foreground font-semibold">{formatSemesterLabel(baselineSemester as AcademicSemester)}</span>
@@ -722,13 +722,13 @@ export const AcademicStructureTab: React.FC = () => {
                 <div className="flex-1 min-w-0">
                   <CustomDropdown
                     id="baseline-semester-select"
-                    ariaLabel="Select University-Wide Default Baseline Semester"
+                    ariaLabel="Select University Semester"
                     className="w-full"
                     value={(selectedBaselineSemester || baselineSemester) as string}
                     onChange={(val) => setSelectedBaselineSemester(val as AcademicSemester)}
                     options={ACADEMIC_SEMESTERS.map((sem) => ({
                       value: sem,
-                      label: `${formatSemesterLabel(sem)} ${sem === baselineSemester ? '(Current Baseline)' : ''}`,
+                      label: `${formatSemesterLabel(sem)} ${sem === baselineSemester ? '(University Semester)' : ''}`,
                     }))}
                   />
                 </div>
@@ -1000,7 +1000,7 @@ export const AcademicStructureTab: React.FC = () => {
                         );
                       }
 
-                      // Default the selection to the current baseline year if available, else first non-active, else active, else first
+                      // Default the selection to the University A.Y. if available, else first non-active, else active, else first
                       const currentSelectedId =
                         selectedSYByCollege[college.id] ||
                         (currentBaseline ? collegeYears.find(sy => sy.year === currentBaseline.year)?.id : undefined) ||
@@ -1013,7 +1013,7 @@ export const AcademicStructureTab: React.FC = () => {
                       const isSelectedBaseline = currentBaseline && selectedTargetSY ? selectedTargetSY.year === currentBaseline.year : false;
                       const isSelectedActive = activeSY && selectedTargetSY ? activeSY.year === selectedTargetSY.year : false;
                       const isRolloverAllowed = Boolean(isSelectedBaseline && !isSelectedActive);
-                      // A college already sitting on the university baseline has no
+                      // A college already sitting on the University A.Y. has no
                       // rollover decision left to make, so the year picker is locked.
                       const isBaselineActiveForCollege = Boolean(
                         currentBaseline &&
@@ -1024,7 +1024,7 @@ export const AcademicStructureTab: React.FC = () => {
                       return (
                         <div className="flex flex-col gap-2 pt-1">
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                            {/* Current Active Badge Display & Baseline Mismatch Badge */}
+                            {/* College A.Y. Badge Display & University A.Y. Mismatch Badge */}
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="text-xs text-muted-foreground font-medium">Active School Year:</span>
                               <div className="inline-flex items-center px-3 py-1.5 rounded-xl text-xs font-bold bg-primary/10 text-primary border border-primary/20">
@@ -1033,11 +1033,11 @@ export const AcademicStructureTab: React.FC = () => {
                               {currentBaseline && activeSY && currentBaseline.year.trim().toLowerCase() !== activeSY.year.trim().toLowerCase() && (
                                 <div
                                   data-testid={`baseline-mismatch-badge-${college.id}`}
-                                  title={`The university baseline is AY ${currentBaseline.year}, which differs from this college's active academic year.`}
+                                  title={`The University A.Y. is AY ${currentBaseline.year}, which differs from this college's active academic year.`}
                                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/25 shadow-xs"
                                 >
                                   <span className="h-2 w-2 rounded-full bg-amber-400 shrink-0" />
-                                  <span className="text-muted-foreground font-normal">Current Baseline:</span>
+                                  <span className="text-muted-foreground font-normal">University A.Y.:</span>
                                   <span className="font-extrabold">{currentBaseline.year}</span>
                                 </div>
                               )}
@@ -1056,7 +1056,7 @@ export const AcademicStructureTab: React.FC = () => {
                                   className="inline-flex"
                                   title={
                                     isBaselineActiveForCollege
-                                      ? `This college is already on the university baseline (SY ${activeSY?.year}).`
+                                      ? `This college is already on the University A.Y. (SY ${activeSY?.year}).`
                                       : undefined
                                   }
                                 >
@@ -1078,11 +1078,11 @@ export const AcademicStructureTab: React.FC = () => {
                                       const isBaseline = currentBaseline ? currentBaseline.year === sy.year : false;
                                       let labelSuffix = '';
                                       if (isCurrentActive && isBaseline) {
-                                        labelSuffix = ' (Current Active & Baseline)';
+                                        labelSuffix = ' (College A.Y. & University A.Y.)';
                                       } else if (isCurrentActive) {
-                                        labelSuffix = ' (Current Active)';
+                                        labelSuffix = ' (College A.Y.)';
                                       } else if (isBaseline) {
-                                        labelSuffix = ' (University Baseline)';
+                                        labelSuffix = ' (University A.Y.)';
                                       }
                                       return { value: sy.id, label: `${sy.year}${labelSuffix}` };
                                     })}
@@ -1093,7 +1093,7 @@ export const AcademicStructureTab: React.FC = () => {
                                   disabled={!isRolloverAllowed}
                                   title={
                                     !isSelectedBaseline
-                                      ? `Colleges can only roll over to the current university baseline academic year (SY ${currentBaseline?.year || ''}).`
+                                      ? `Colleges can only roll over to the University A.Y. (SY ${currentBaseline?.year || ''}).`
                                       : isSelectedActive
                                       ? 'This academic year is already active for this college.'
                                       : `Roll over ${college.name} to SY ${selectedTargetSY?.year || ''}`
@@ -1117,7 +1117,7 @@ export const AcademicStructureTab: React.FC = () => {
                                   onChange={() => {}}
                                   options={collegeYears.map((sy: SchoolYear) => ({
                                     value: sy.id,
-                                    label: `${sy.year} ${activeSY && activeSY.year === sy.year ? '(Current Active)' : ''}`,
+                                    label: `${sy.year} ${activeSY && activeSY.year === sy.year ? '(College A.Y.)' : ''}`,
                                   }))}
                                 />
                               </div>
@@ -1125,7 +1125,7 @@ export const AcademicStructureTab: React.FC = () => {
                           </div>
                           {canRollover && selectedTargetSY && !isSelectedBaseline && (
                             <p className="text-[11px] text-amber-600 dark:text-amber-400 text-left sm:text-right">
-                              Colleges can only roll over to the current university baseline academic year (SY {currentBaseline?.year}).
+                              Colleges can only roll over to the University A.Y. (SY {currentBaseline?.year}).
                             </p>
                           )}
                         </div>
@@ -1145,7 +1145,7 @@ export const AcademicStructureTab: React.FC = () => {
                       return (
                         <div className="flex flex-col gap-2 pt-2 border-t border-border/40 mt-2">
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                            {/* Active Semester Badge & Baseline Semester Mismatch Badge */}
+                            {/* Active Semester Badge & University Semester Mismatch Badge */}
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="text-xs text-muted-foreground font-medium">Active Semester:</span>
                               <div
@@ -1157,11 +1157,11 @@ export const AcademicStructureTab: React.FC = () => {
                               {baselineSemester && activeSem !== baselineSemester && (
                                 <div
                                   data-testid={`baseline-semester-mismatch-badge-${college.id}`}
-                                  title={`The university baseline is ${formatSemesterLabel(baselineSemester)}, which differs from this college's active semester.`}
+                                  title={`The University Semester is ${formatSemesterLabel(baselineSemester)}, which differs from this college's active semester.`}
                                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/25 shadow-xs"
                                 >
                                   <span className="h-2 w-2 rounded-full bg-amber-400 shrink-0" />
-                                  <span className="text-muted-foreground font-normal">Current Baseline:</span>
+                                  <span className="text-muted-foreground font-normal">University Semester:</span>
                                   <span className="font-extrabold">{formatSemesterLabel(baselineSemester)}</span>
                                 </div>
                               )}
@@ -1180,7 +1180,7 @@ export const AcademicStructureTab: React.FC = () => {
                                   className="inline-flex"
                                   title={
                                     isBaselineSemActiveForCollege
-                                      ? `This college is already on the university baseline (${formatSemesterLabel(activeSem)}).`
+                                      ? `This college is already on the University Semester (${formatSemesterLabel(activeSem)}).`
                                       : undefined
                                   }
                                 >
@@ -1201,11 +1201,11 @@ export const AcademicStructureTab: React.FC = () => {
                                       const isBaseline = baselineSemester === sem;
                                       let labelSuffix = '';
                                       if (isCurrentActive && isBaseline) {
-                                        labelSuffix = ' (Current Active & Baseline)';
+                                        labelSuffix = ' (College Semester & University Semester)';
                                       } else if (isCurrentActive) {
-                                        labelSuffix = ' (Current Active)';
+                                        labelSuffix = ' (College Semester)';
                                       } else if (isBaseline) {
-                                        labelSuffix = ' (University Baseline)';
+                                        labelSuffix = ' (University Semester)';
                                       }
                                       return { value: sem, label: `${formatSemesterLabel(sem)}${labelSuffix}` };
                                     })}
@@ -1216,7 +1216,7 @@ export const AcademicStructureTab: React.FC = () => {
                                   disabled={!isSemRolloverAllowed}
                                   title={
                                     !isSemSelectedBaseline
-                                      ? `Colleges can only roll over to the current university baseline semester (${formatSemesterLabel(baselineSemester)}).`
+                                      ? `Colleges can only roll over to the University Semester (${formatSemesterLabel(baselineSemester)}).`
                                       : isSemSelectedActive
                                       ? 'This semester is already active for this college.'
                                       : `Roll over ${college.name} to ${formatSemesterLabel(selectedSem)}`
@@ -1240,7 +1240,7 @@ export const AcademicStructureTab: React.FC = () => {
                                   onChange={() => {}}
                                   options={ACADEMIC_SEMESTERS.map((sem) => ({
                                     value: sem,
-                                    label: `${formatSemesterLabel(sem)} ${activeSem === sem ? '(Current Active)' : ''}`,
+                                    label: `${formatSemesterLabel(sem)} ${activeSem === sem ? '(College Semester)' : ''}`,
                                   }))}
                                 />
                               </div>
@@ -1248,7 +1248,7 @@ export const AcademicStructureTab: React.FC = () => {
                           </div>
                           {canRollover && !isSemSelectedBaseline && (
                             <p className="text-[11px] text-amber-600 dark:text-amber-400 text-left sm:text-right">
-                              Colleges can only roll over to the current university baseline semester ({formatSemesterLabel(baselineSemester)}).
+                              Colleges can only roll over to the University Semester ({formatSemesterLabel(baselineSemester)}).
                             </p>
                           )}
                         </div>
@@ -1609,11 +1609,11 @@ export const AcademicStructureTab: React.FC = () => {
         </DialogFrame>
       )}
 
-      {/* BASELINE CONFIRMATION MODAL */}
+      {/* UNIVERSITY A.Y. CONFIRMATION MODAL */}
       {baselineConfirmData && (
         <DialogFrame
-          title="Confirm Baseline Academic Year Update"
-          subtitle="Update the university-wide baseline school year"
+          title="Confirm University A.Y. Update"
+          subtitle="Update the University A.Y."
           onClose={() => !isUpdatingBaseline && setBaselineConfirmData(null)}
           footer={
             <>
@@ -1640,10 +1640,10 @@ export const AcademicStructureTab: React.FC = () => {
             <div className="p-3.5 bg-primary/10 border border-primary/20 rounded-xl text-foreground space-y-1">
               <div className="font-bold text-sm text-primary flex items-center gap-1.5">
                 <Calendar className="w-4 h-4" />
-                <span>New University Baseline: SY {baselineConfirmData.targetYear}</span>
+                <span>New University A.Y.: SY {baselineConfirmData.targetYear}</span>
               </div>
               <p className="text-muted-foreground text-xs leading-relaxed">
-                You are updating the University-Wide Default Baseline Academic Year from{' '}
+                You are updating the University A.Y. from{' '}
                 <span className="font-semibold text-foreground">{baselineConfirmData.currentYear}</span> to{' '}
                 <span className="font-bold text-primary">{baselineConfirmData.targetYear}</span>.
               </p>
@@ -1652,18 +1652,18 @@ export const AcademicStructureTab: React.FC = () => {
             <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[11px] text-amber-700 dark:text-amber-300 flex items-start space-x-2">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
               <span>
-                This updates the baseline active flag in Likha ERP (`school_years` table). Existing colleges that have independently rolled over to their own active school year will retain their respective collegiate years.
+                This updates the active flag in Likha ERP (`school_years` table). Existing colleges that have independently rolled over to their own active school year will retain their respective collegiate years.
               </span>
             </div>
           </div>
         </DialogFrame>
       )}
 
-      {/* BASELINE SEMESTER CONFIRMATION MODAL */}
+      {/* UNIVERSITY SEMESTER CONFIRMATION MODAL */}
       {semesterConfirmData && (
         <DialogFrame
-          title="Confirm Baseline Semester Update"
-          subtitle="Set the university-wide baseline semester"
+          title="Confirm University Semester Update"
+          subtitle="Set the University Semester"
           onClose={() => !isUpdatingSemester && setSemesterConfirmData(null)}
           footer={
             <>
@@ -1681,7 +1681,7 @@ export const AcademicStructureTab: React.FC = () => {
                 onClick={handleConfirmSemesterBaselineChange}
                 className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-xs rounded-xl shadow-xs cursor-pointer disabled:opacity-50 flex items-center space-x-1.5"
               >
-                <span>{isUpdatingSemester ? 'Updating...' : 'Confirm Baseline Semester'}</span>
+                <span>{isUpdatingSemester ? 'Updating...' : 'Confirm University Semester'}</span>
               </button>
             </>
           }
@@ -1690,10 +1690,10 @@ export const AcademicStructureTab: React.FC = () => {
             <div className="p-3.5 bg-primary/10 border border-primary/20 rounded-xl text-foreground space-y-1">
               <div className="font-bold text-sm text-primary flex items-center gap-1.5">
                 <Calendar className="w-4 h-4" />
-                <span>New Baseline Semester: {formatSemesterLabel(semesterConfirmData.target)}</span>
+                <span>New University Semester: {formatSemesterLabel(semesterConfirmData.target)}</span>
               </div>
               <p className="text-muted-foreground text-xs leading-relaxed">
-                You are updating the University-Wide Default Baseline Semester from{' '}
+                You are updating the University Semester from{' '}
                 <span className="font-semibold text-foreground">{formatSemesterLabel(semesterConfirmData.current)}</span> to{' '}
                 <span className="font-bold text-primary">{formatSemesterLabel(semesterConfirmData.target)}</span>.
               </p>

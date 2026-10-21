@@ -395,7 +395,7 @@ Update the existing `DialogFrame` so its title is `Confirm Semester Rollover` wh
 Immediately after the academic year row's closing markup, still inside the expanded college body and outside the `getColYears(college.id).length === 0` early return, render:
 
 - `Active Semester:` label and a badge with `data-testid={'college-active-semester-' + college.id}` showing `formatSemesterLabel(getActiveSemesterForCollege(college.id))`;
-- when that semester differs from `baselineSemester`, a badge with `data-testid={'baseline-semester-mismatch-badge-' + college.id}` reading `Current Baseline:` and `formatSemesterLabel(baselineSemester)`, styled like the existing academic year mismatch badge;
+- when that semester differs from `baselineSemester`, a badge with `data-testid={'baseline-semester-mismatch-badge-' + college.id}` reading `University Semester:` and `formatSemesterLabel(baselineSemester)`, styled like the existing academic year mismatch badge;
 - when `canRolloverCollegeSchoolYear(college)` is true, a `CustomDropdown` with `id={'semester-select-' + college.id}`, `ariaLabel={'Select semester to roll over for ' + college.name}`, `className="w-48"`, options from `ACADEMIC_SEMESTERS`, plus a `Roll Over to Semester` button disabled unless the selection is non-empty, differs from the college's active semester, and equals `baselineSemester`. Its `title` explains which condition fails, in the same style as the academic year button.
 
 Track the selection per college in a `Record<string, AcademicSemester>` state, defaulting to the baseline semester, mirroring `selectedSYByCollege`.

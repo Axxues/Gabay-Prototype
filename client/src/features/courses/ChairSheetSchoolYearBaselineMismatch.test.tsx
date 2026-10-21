@@ -111,7 +111,7 @@ describe('Chair-Sheet Upload Baseline School Year Mismatch Restriction', () => {
     // 4. Verify Select File button is disabled and titled with restriction explanation
     const selectBtn = screen.getByRole('button', { name: /Select Assigned Courses File/i });
     expect(selectBtn).toBeDisabled();
-    expect(selectBtn).toHaveAttribute('title', expect.stringContaining('differs from University Baseline'));
+    expect(selectBtn).toHaveAttribute('title', expect.stringContaining('differs from the University A.Y.'));
 
     // 5. Dropping a file on the dropzone triggers restriction alert and does not process
     const file = createChairSheetFile([

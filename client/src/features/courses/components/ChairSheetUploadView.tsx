@@ -139,8 +139,8 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
 
   const baselineSemesterValue: AcademicSemester = (baselineSemester as AcademicSemester) || 'First';
 
-  // Baseline Mismatch Check:
-  // If the college's active school year or semester does not match the university baseline,
+  // University A.Y. and Semester Mismatch Check:
+  // If the college's active school year or semester does not match the University A.Y. and University Semester,
   // the chairperson cannot upload assigned courses or generate course shells.
   const isYearMismatch = useMemo(() => {
     if (!baselineSchoolYear) return false;
@@ -158,12 +158,12 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
   const mismatchErrorMessage = useMemo(() => {
     const currentCollegeYear = activeCollegeSchoolYear || defaultSchoolYear;
     if (isYearMismatch && isSemesterMismatch) {
-      return `Cannot upload assigned courses. The university baseline is AY ${baselineSchoolYear} · ${formatSemesterLabel(baselineSemesterValue)}, but your college is active for AY ${currentCollegeYear} · ${formatSemesterLabel(activeCollegeSemester)}. Both the academic year and semester must match the baseline before uploading curriculum assignments.`;
+      return `Cannot upload assigned courses. The University A.Y. is AY ${baselineSchoolYear} and the University Semester is ${formatSemesterLabel(baselineSemesterValue)}, but your college is active for AY ${currentCollegeYear} · ${formatSemesterLabel(activeCollegeSemester)}. Both the A.Y. and semester must match the University A.Y. and University Semester before uploading curriculum assignments.`;
     }
     if (isYearMismatch) {
-      return `Cannot upload assigned courses. The university baseline academic year (AY ${baselineSchoolYear}) does not match your college's active academic year (AY ${currentCollegeYear}). Your college must be rolled over to the university baseline before uploading curriculum assignments.`;
+      return `Cannot upload assigned courses. The University A.Y. (AY ${baselineSchoolYear}) does not match your college's active academic year (AY ${currentCollegeYear}). Your college must be rolled over to the University A.Y. before uploading curriculum assignments.`;
     }
-    return `Cannot upload assigned courses. This college is active for ${formatSemesterLabel(activeCollegeSemester)}, which does not match the university-wide baseline semester (${formatSemesterLabel(baselineSemesterValue)}). Roll the semester over in Academic Governance to continue.`;
+    return `Cannot upload assigned courses. This college is active for ${formatSemesterLabel(activeCollegeSemester)}, which does not match the University Semester (${formatSemesterLabel(baselineSemesterValue)}). Roll the semester over in Academic Governance to continue.`;
   }, [isYearMismatch, isSemesterMismatch, baselineSchoolYear, activeCollegeSchoolYear, defaultSchoolYear, baselineSemesterValue, activeCollegeSemester]);
 
   const handleProcessFile = async (file: File) => {
@@ -171,7 +171,7 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
 
     if (isBaselineMismatch) {
       showAlert({
-        title: 'Upload Restricted: Academic Baseline Mismatch',
+        title: 'Upload Restricted: University A.Y. & Semester Mismatch',
         message: mismatchErrorMessage,
         type: 'error',
       });
@@ -219,7 +219,7 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
 
     if (isBaselineMismatch) {
       showAlert({
-        title: 'Upload Restricted: Academic Baseline Mismatch',
+        title: 'Upload Restricted: University A.Y. & Semester Mismatch',
         message: mismatchErrorMessage,
         type: 'error',
       });
@@ -235,7 +235,7 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (isBaselineMismatch) {
       showAlert({
-        title: 'Upload Restricted: Academic Baseline Mismatch',
+        title: 'Upload Restricted: University A.Y. & Semester Mismatch',
         message: mismatchErrorMessage,
         type: 'error',
       });
@@ -320,7 +320,7 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
     if (!canApprove || isBaselineMismatch) {
       if (isBaselineMismatch) {
         showAlert({
-          title: 'Cannot Create Courses: Academic Baseline Mismatch',
+          title: 'Cannot Create Courses: University A.Y. & Semester Mismatch',
           message: mismatchErrorMessage,
           type: 'error',
         });
@@ -435,11 +435,17 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
           {isBaselineMismatch && (
             <div
               data-testid="assigned-courses-baseline-mismatch-badge"
-              title={`University baseline is AY ${baselineSchoolYear} · ${formatSemesterLabel(baselineSemesterValue)}, differing from this college's active AY ${activeCollegeSchoolYear || defaultSchoolYear} · ${formatSemesterLabel(activeCollegeSemester)}`}
+              title={`University A.Y. and University Semester (AY ${baselineSchoolYear} · ${formatSemesterLabel(baselineSemesterValue)}) differ from this college's active AY ${activeCollegeSchoolYear || defaultSchoolYear} · ${formatSemesterLabel(activeCollegeSemester)}`}
               className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/25 rounded-xl whitespace-nowrap shadow-xs"
             >
               <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0" />
-              <span className="text-muted-foreground font-normal">Current Baseline:</span>
+              <span className="text-muted-foreground font-normal">
+                {isYearMismatch && isSemesterMismatch
+                  ? 'University A.Y. & Semester:'
+                  : isYearMismatch
+                  ? 'University A.Y.:'
+                  : 'University Semester:'}
+              </span>
               <span className="font-extrabold">
                 {isYearMismatch && isSemesterMismatch
                   ? `AY ${baselineSchoolYear} · ${formatSemesterLabel(baselineSemesterValue)}`
@@ -500,7 +506,7 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
         </div>
       </div>
 
-      {/* Baseline Mismatch Alert Banner */}
+      {/* University A.Y. and Semester Mismatch Alert Banner */}
       {isBaselineMismatch && (
         <div
           data-testid="assigned-courses-baseline-mismatch-banner"
@@ -512,7 +518,7 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
           <div className="space-y-1.5 text-xs flex-1">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h4 className="font-extrabold text-sm text-amber-950 dark:text-amber-100">
-                Assigned Courses Upload Restricted: Academic Baseline Mismatch
+                Assigned Courses Upload Restricted: University A.Y. & Semester Mismatch
               </h4>
               <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-500/30 rounded-md uppercase tracking-wider">
                 Upload Blocked
@@ -522,7 +528,7 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
               {mismatchErrorMessage}
             </p>
             <p className="text-[11px] text-muted-foreground leading-normal">
-              Department chairpersons cannot upload curriculum assignments or generate course shells until the college matches the university baseline. Please ask your College Dean or University Administrator to complete the rollover in Academic Governance.
+              Department chairpersons cannot upload curriculum assignments or generate course shells until the college matches the University A.Y. and University Semester. Please ask your College Dean or University Administrator to complete the rollover in Academic Governance.
             </p>
           </div>
         </div>
@@ -588,7 +594,7 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
               onClick={() => {
                 if (isBaselineMismatch) {
                   showAlert({
-                    title: 'Upload Restricted: Academic Baseline Mismatch',
+                    title: 'Upload Restricted: University A.Y. & Semester Mismatch',
                     message: mismatchErrorMessage,
                     type: 'error',
                   });
@@ -598,7 +604,7 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
               }}
               title={
                 isBaselineMismatch
-                  ? `Upload disabled: College (${activeCollegeSchoolYear || defaultSchoolYear} · ${formatSemesterLabel(activeCollegeSemester)}) differs from University Baseline (${baselineSchoolYear} · ${formatSemesterLabel(baselineSemesterValue)})`
+                  ? `Upload disabled: College (${activeCollegeSchoolYear || defaultSchoolYear} · ${formatSemesterLabel(activeCollegeSemester)}) differs from the University A.Y. and University Semester (${baselineSchoolYear} · ${formatSemesterLabel(baselineSemesterValue)})`
                   : undefined
               }
               className={`px-5 py-2.5 text-xs font-bold rounded-xl shadow-primary-sm transition-all flex items-center space-x-2 ${

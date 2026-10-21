@@ -63,7 +63,7 @@ vi.mock('../api/client', () => ({
 
 import { LMSProvider, useLMS } from './LMSContext';
 
-describe('Baseline Semester ERP persistence and hydration', () => {
+describe('University Semester ERP persistence and hydration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     try {

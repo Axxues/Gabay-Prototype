@@ -126,7 +126,7 @@ vi.mock('../../../shared/context/LMSContext', () => ({
 
 import { AcademicStructureTab } from './AcademicStructureTab';
 
-describe('AcademicStructureTab - Baseline Semester Control', () => {
+  describe('AcademicStructureTab - University Semester Control', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockActiveRole = 'admin';
@@ -142,7 +142,7 @@ describe('AcademicStructureTab - Baseline Semester Control', () => {
   test('renders the baseline semester control for a university administrator', () => {
     render(<AcademicStructureTab />);
 
-    expect(screen.getByLabelText(/Select University-Wide Default Baseline Semester/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Select University Semester/i)).toBeInTheDocument();
     expect(screen.getAllByText(/Second Semester/)[0]).toBeInTheDocument();
   });
 
@@ -159,13 +159,13 @@ describe('AcademicStructureTab - Baseline Semester Control', () => {
 
     render(<AcademicStructureTab />);
 
-    expect(screen.queryByLabelText(/Select University-Wide Default Baseline Semester/i)).toBeNull();
+    expect(screen.queryByLabelText(/Select University Semester/i)).toBeNull();
   });
 
   test('confirms before updating the baseline semester', async () => {
     render(<AcademicStructureTab />);
 
-    const select = screen.getByLabelText(/Select University-Wide Default Baseline Semester/i);
+    const select = screen.getByLabelText(/Select University Semester/i);
     fireEvent.change(select, { target: { value: 'Mid-Year' } });
 
     const updateBtn = screen.getByRole('button', { name: /Update Semester/i });
@@ -173,9 +173,9 @@ describe('AcademicStructureTab - Baseline Semester Control', () => {
 
     fireEvent.click(updateBtn);
 
-    expect(screen.getByText('Confirm Baseline Semester Update')).toBeInTheDocument();
+    expect(screen.getByText('Confirm University Semester Update')).toBeInTheDocument();
 
-    const confirmBtn = screen.getByRole('button', { name: 'Confirm Baseline Semester' });
+    const confirmBtn = screen.getByRole('button', { name: 'Confirm University Semester' });
     fireEvent.click(confirmBtn);
 
     await waitFor(() => {
@@ -189,7 +189,7 @@ describe('AcademicStructureTab - Baseline Semester Control', () => {
     const updateBtn = screen.getByRole('button', { name: /Update Semester/i });
     expect(updateBtn).toBeDisabled();
 
-    const select = screen.getByLabelText(/Select University-Wide Default Baseline Semester/i);
+    const select = screen.getByLabelText(/Select University Semester/i);
     fireEvent.change(select, { target: { value: 'Second' } });
 
     expect(updateBtn).toBeDisabled();

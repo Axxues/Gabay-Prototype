@@ -132,7 +132,7 @@ describe('ChairSheetSemesterBaselineMismatch', () => {
 
     expect(mockShowAlert).toHaveBeenCalledWith(
       expect.objectContaining({
-        title: expect.stringMatching(/Academic Baseline Mismatch/i),
+        title: expect.stringMatching(/University A\.Y\. & Semester Mismatch/i),
         message: expect.stringMatching(/semester/i),
         type: 'error',
       })

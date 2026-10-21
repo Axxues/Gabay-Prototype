@@ -135,7 +135,7 @@ describe('Semester baseline and college semester rollover in LMSContext', () => 
     });
 
     expect(res.success).toBe(false);
-    expect(res.message).toContain('university baseline semester');
+    expect(res.message).toContain('University Semester');
     expect(get().getActiveSemesterForCollege('col-ccs')).toBe('First');
   });
 

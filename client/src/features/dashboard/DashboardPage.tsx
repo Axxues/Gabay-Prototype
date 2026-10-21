@@ -233,7 +233,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       }
     }
 
-    // 5. University baseline school year
+    // 5. University A.Y.
     const baseline = getBaselineSchoolYear ? getBaselineSchoolYear() : undefined;
     if (baseline?.year) return baseline.year;
 
@@ -878,7 +878,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                             isCurrent
                               ? `Current Academic Year (AY ${yr})`
                               : isBaseline
-                              ? `University Baseline Academic Year (AY ${yr})`
+                              ? `University A.Y. (AY ${yr})`
                               : `Academic Year (AY ${yr})`
                           }
                           className={`px-3 py-1.5 text-xs rounded-xl font-bold transition-all cursor-pointer border flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
@@ -908,7 +908,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                                   : 'bg-muted text-muted-foreground border-border'
                               }`}
                             >
-                              Baseline
+                              University A.Y.
                             </span>
                           )}
                         </button>

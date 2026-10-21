@@ -225,7 +225,7 @@ describe('School Year Management & Scoping State in LMSContext', () => {
     await act(async () => {
       const failRes = await contextValues.setActiveSchoolYear('col-ccs', targetYear!.id);
       expect(failRes.success).toBe(false);
-      expect(failRes.message).toContain('Colleges can only roll over to the current university baseline academic year');
+      expect(failRes.message).toContain('Colleges can only roll over to the University A.Y.');
     });
 
     // Admin sets university baseline to 2026-2027

@@ -202,7 +202,7 @@ describe('AcademicStructureTab - Dean School Year Management', () => {
     // Baseline is 2026-2027 while college active year is 2025-2026 -> baseline mismatch badge appears
     const mismatchBadge = screen.getByTestId('baseline-mismatch-badge-col-cet');
     expect(mismatchBadge).toBeInTheDocument();
-    expect(within(mismatchBadge).getByText('Current Baseline:')).toBeInTheDocument();
+    expect(within(mismatchBadge).getByText('University A.Y.:')).toBeInTheDocument();
     expect(within(mismatchBadge).getByText('2026-2027')).toBeInTheDocument();
 
     // Select list / combo box is rendered
@@ -280,7 +280,7 @@ describe('AcademicStructureTab - Dean School Year Management', () => {
 
     // Guidance message must inform that only the current university baseline can be rolled over to
     expect(
-      screen.getByText(/colleges can only roll over to the current university baseline academic year \(sy 2025-2026\)/i)
+      screen.getByText(/colleges can only roll over to the university a\.y\. \(sy 2025-2026\)/i)
     ).toBeInTheDocument();
 
     // Even if clicked, no dialog opens
@@ -458,12 +458,12 @@ describe('AcademicStructureTab - Dean School Year Management', () => {
 
     render(<AcademicStructureTab />);
 
-    // Baseline card should be visible for Admin/Chancellor
-    expect(screen.getByText('University-Wide Default Baseline Academic Year')).toBeInTheDocument();
-    const select = screen.getByLabelText('Select University-Wide Default Baseline School Year');
+    // University A.Y. card should be visible for Admin/Chancellor
+    expect(screen.getByText('University-Wide Default Academic Term')).toBeInTheDocument();
+    const select = screen.getByLabelText('Select University A.Y.');
     expect(select).toBeInTheDocument();
 
-    const updateBtn = screen.getByRole('button', { name: /update baseline/i });
+    const updateBtn = screen.getByRole('button', { name: /update a\.y\./i });
     expect(updateBtn).toBeDisabled();
 
     // Select another baseline year
@@ -478,7 +478,7 @@ describe('AcademicStructureTab - Dean School Year Management', () => {
     });
 
     const dialog = screen.getByRole('dialog');
-    expect(within(dialog).getByRole('heading', { name: /confirm baseline academic year update/i })).toBeInTheDocument();
+    expect(within(dialog).getByRole('heading', { name: /confirm university a\.y\. update/i })).toBeInTheDocument();
 
     // Confirm update in modal
     const confirmBtn = within(dialog).getByRole('button', { name: /confirm update/i });
@@ -508,9 +508,9 @@ describe('AcademicStructureTab - Dean School Year Management', () => {
 
     render(<AcademicStructureTab />);
 
-    // Dean sees collegiate rollover, but NOT the university-wide baseline management card
-    expect(screen.queryByText('University-Wide Default Baseline Academic Year')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Select University-Wide Default Baseline School Year')).not.toBeInTheDocument();
+    // Dean sees collegiate rollover, but NOT the university-wide A.Y. management card
+    expect(screen.queryByText('University-Wide Default Academic Term')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Select University A.Y.')).not.toBeInTheDocument();
   });
 
   test('Available Years only renders on the college card the viewer leads as Dean', () => {

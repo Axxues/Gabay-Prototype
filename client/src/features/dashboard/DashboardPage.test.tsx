@@ -239,7 +239,7 @@ describe('DashboardPage admin access', () => {
     // Baseline AY 2025-2026 is present with Baseline badge
     const baselineBadge = screen.getByTestId('academic-scope-baseline-badge');
     expect(baselineBadge).toBeInTheDocument();
-    expect(baselineBadge.textContent).toBe('Baseline');
+    expect(baselineBadge.textContent).toBe('University A.Y.');
 
     // Admin can switch to Baseline 2025-2026
     const baselineBtn = baselineBadge.closest('button');
@@ -272,7 +272,7 @@ describe('DashboardPage admin access', () => {
     expect(screen.getByText('Current')).toBeInTheDocument();
     const baselineBadge = screen.getByTestId('academic-scope-baseline-badge');
     expect(baselineBadge).toBeInTheDocument();
-    expect(baselineBadge.textContent).toBe('Baseline');
+    expect(baselineBadge.textContent).toBe('University A.Y.');
 
     // The baseline badge is on the AY 2025-2026 button
     const baselineBtn = baselineBadge.closest('button');

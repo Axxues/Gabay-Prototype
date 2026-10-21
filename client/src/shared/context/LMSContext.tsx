@@ -5393,7 +5393,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: false, message: 'School year not found.' };
     }
 
-    // Set the new baseline active flag across universal school years
+    // Set the new University A.Y. active flag across universal school years
     setSchoolYears(prev => {
       const next = prev.map(sy => {
         if (!sy.collegeId) {
@@ -5424,7 +5424,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } catch {}
     }
 
-    // Notify deans and chairs that the baseline has changed
+    // Notify deans and chairs that the University A.Y. has changed
     const recipients = (db.users || []).filter(u => isDeanRole(u) || isChairRole(u));
     if (recipients.length > 0) {
       const now = new Date().toISOString();
@@ -5437,7 +5437,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         actorAvatar: activeUser?.avatar || '',
         relatedId: target.id,
         relatedTitle: `AY ${target.year}`,
-        content: `The baseline academic year has now changed to AY ${target.year}.`,
+        content: `The University A.Y. has now changed to AY ${target.year}.`,
         read: false,
         createdAt: now,
       }));
@@ -5451,7 +5451,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     return {
       success: true,
-      message: `University-Wide Default Baseline Academic Year updated to ${target.year}.`,
+      message: `University A.Y. updated to ${target.year}.`,
     };
   };
 
@@ -5475,7 +5475,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (norm !== baselineSemesterRef.current) {
       return {
         success: false,
-        message: `Colleges can only roll over to the current university baseline semester (${formatSemesterLabel(baselineSemesterRef.current)}).`,
+        message: `Colleges can only roll over to the University Semester (${formatSemesterLabel(baselineSemesterRef.current)}).`,
       };
     }
     const next = { ...collegeActiveSemestersRef.current, [collegeId]: norm };
@@ -5495,7 +5495,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (norm === baselineSemesterRef.current) {
       return {
         success: false,
-        message: `The university baseline semester is already ${formatSemesterLabel(norm)}.`,
+        message: `The University Semester is already ${formatSemesterLabel(norm)}.`,
       };
     }
 
@@ -5503,7 +5503,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setBaselineSemesterState(norm);
     safeSetLocalStorage(STORAGE_KEY_BASELINE_SEMESTER, norm);
 
-    // Notify deans and chairs that the baseline has changed
+    // Notify deans and chairs that the University Semester has changed
     const recipients = (db.users || []).filter(u => isDeanRole(u) || isChairRole(u));
     if (recipients.length > 0) {
       const now = new Date().toISOString();
@@ -5516,7 +5516,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         actorAvatar: activeUser?.avatar || '',
         relatedId: norm,
         relatedTitle: formatSemesterLabel(norm),
-        content: `The baseline semester has now changed to ${formatSemesterLabel(norm)}.`,
+        content: `The University Semester has now changed to ${formatSemesterLabel(norm)}.`,
         read: false,
         createdAt: now,
       }));
@@ -5541,7 +5541,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     return {
       success: true,
-      message: `University-Wide Default Baseline Semester updated to ${formatSemesterLabel(norm)}.`,
+      message: `University Semester updated to ${formatSemesterLabel(norm)}.`,
     };
   };
 
@@ -5597,7 +5597,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (baseline && target.year.trim().toLowerCase() !== baseline.year.trim().toLowerCase()) {
       return {
         success: false,
-        message: `Colleges can only roll over to the current university baseline academic year (SY ${baseline.year}).`,
+        message: `Colleges can only roll over to the University A.Y. (SY ${baseline.year}).`,
       };
     }
 
