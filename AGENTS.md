@@ -39,6 +39,53 @@
 
 ---
 
+## 📐 DIRECTUS / LIKHA ERP OPERATIONAL RELATIONSHIP & SCHEMA RULES
+
+**These rules originate from real crashes and system failures on the Likha ERP production server. They MUST be strictly respected at all times:**
+
+1. **Rule 2 — NEVER PATCH `/relations`:**
+   - Any `PATCH /relations/{collection}/{field}` — even with an entirely valid, verified payload — enters `RelationsService.alterType` -> `schema.collections[...].fields` -> `TypeError` -> **fatal server process crash**.
+   - On this server, `nodemon` does NOT auto-restart; recovery requires manual server intervention (`rs`).
+   - `POST /relations` is safe.
+   - **Safe alternatives when changing a relation post-creation:**
+     - **Option A (UI):** Directus Admin UI via browser subagent using synthetic DOM mouse clicks and keyboard events only.
+     - **Option B (Re-creation):** Delete + recreate the relation (`POST /relations` is safe).
+     - **Option C (Sanctioned SQL Flow):** Execute sanctioned SQL via a webhook-triggered `likha_sql` flow (e.g., fixing `one_deselect_action` / junction FKs):
+       ```sql
+       ALTER TABLE <junction> DROP CONSTRAINT <fk_name>,
+         ADD CONSTRAINT <fk_name> FOREIGN KEY (<parent_fk>) REFERENCES <parent>(id) ON DELETE CASCADE;
+       UPDATE directus_relations SET one_deselect_action='delete'
+         WHERE many_collection='<junction>' AND many_field='<parent_fk>';
+       ```
+       Followed by: `POST /utils/cache/clear {"cache":"system"}` to refresh the Directus schema cache.
+
+2. **Rule 3 — Missing-Field GET Queries Return 403, Not 404:**
+   - In Directus, querying or filtering by a field that does not exist on a collection returns `403 Forbidden` (`"You don't have permission to access field '<field>' or it does not exist"`), NOT `404 Not Found`.
+   - Never assume a 403 error implies bad user credentials or permissions alone.
+   - Verify fields by listing `/fields/{collection}` and searching, or handle appropriately.
+
+3. **Rule 6 — Reverse O2M Aliases & M2M Requirements:**
+   - Reverse O2M aliases are created by `meta.one_field` on the relation `POST`.
+   - After creation, use `PATCH /fields/{col}/{alias}` to set `interface: list-o2m`, options template, and group for tab placement.
+   - M2M relationships require `junction_field` on the junction -> parent relation + patching the alias to `list-m2m` or `files`.
+
+4. **Rule 9 — Audit Relations Are NOT Auto-Created:**
+   - `user_created` and `user_updated` fields save UUIDs, but the M2O relation to `directus_users` must be `POST`ed manually — otherwise Directus raises `"relationship not configured"` errors.
+
+5. **Rule 10 — Junction FK Fields Must NOT Be Hidden & Bidirectional M2M:**
+   - Hiding junction foreign key fields (e.g. `directus_files_id`, `<parent>_id`) breaks `list-m2m` and file interfaces with `"relationship not configured"`.
+   - M2M relationships require **BOTH** junction relations pointing at each other's field (`junction_field` on both sides). A missing second side results in `"relationship not configured"` in the application.
+
+6. **Rule 17 — Bash `$` Expansion Corrupts Flow Options:**
+   - Bash shell variable expansion corrupts Directus flow option templates containing `{{$trigger}}` or `{{$last}}`.
+   - Always write flow configurations and script operations via dedicated script files, never inline `python -c` or inline bash strings.
+
+7. **Rule 20 — `likha_sql` Only Fires Via Webhook-Triggered Flows:**
+   - Directus `likha_sql` execution only fires via a webhook-triggered flow (`GET /flows/trigger/{id}`).
+   - Manual flow execution triggers return `403 Forbidden`.
+
+---
+
 ## 🛡️ MANDATORY DIRECTIVE: BACKEND VS. FRONTEND RESPONSIBILITY BOUNDARIES
 
 **NEVER PLACE BACKEND-OWNED PROCESSES, CASCADES, OR ELEVATED PRIVILEGES IN THE CLIENT / FRONTEND.**
