@@ -881,6 +881,23 @@ export const likhaLmsApi = {
       });
     },
 
+    async addRubricScoresBatch(
+      submissionId: string,
+      scores: Array<{ criterionId: string; points: number; feedback?: string }>
+    ): Promise<any> {
+      if (!scores || scores.length === 0) return [];
+      const payload = scores.map(s => ({
+        submission_id: submissionId,
+        criterion_id: s.criterionId,
+        points_awarded: s.points,
+        feedback: s.feedback || '',
+      }));
+      return likhaRequest('/items/submission_rubric_scores', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+    },
+
     async addSubmissionComment(submissionId: string, authorId: string, content: string): Promise<any> {
       return likhaRequest('/items/submission_comments', {
         method: 'POST',
@@ -919,17 +936,18 @@ export const likhaLmsApi = {
         });
       }
 
-      // Upsert spr_cells child rows
-      for (const cell of cells) {
+      // Upsert spr_cells child rows via bulk POST
+      if (Array.isArray(cells) && cells.length > 0) {
+        const sprPayload = cells.map(cell => ({
+          id: `spr-${gradeRecord.id}-${cell.task_id}`,
+          course_grade_id: gradeRecord.id,
+          student_id: studentId,
+          task_id: cell.task_id,
+          score: cell.score,
+        }));
         await likhaRequest('/items/spr_cells', {
           method: 'POST',
-          body: JSON.stringify({
-            id: `spr-${gradeRecord.id}-${cell.task_id}`,
-            course_grade_id: gradeRecord.id,
-            student_id: studentId,
-            task_id: cell.task_id,
-            score: cell.score,
-          }),
+          body: JSON.stringify(sprPayload),
         }).catch(() => {});
       }
       return gradeRecord;

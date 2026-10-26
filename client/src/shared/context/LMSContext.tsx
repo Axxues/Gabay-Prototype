@@ -6571,14 +6571,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const saved = await likhaLmsApi.submissions.gradeSubmission(submissionId, grade);
       const criteria = Object.entries(rubricScores || {});
       if (criteria.length > 0) {
-        // Grade is already persisted above, so a criterion failure must not
-        // roll it back — surface partial success instead of throwing.
-        const results = await Promise.allSettled(
-          criteria.map(([criterionId, points]) =>
-            likhaLmsApi.submissions.addRubricScore(submissionId, criterionId, points)
-          )
-        );
-        if (results.some(r => r.status === 'rejected')) {
+        try {
+          await likhaLmsApi.submissions.addRubricScoresBatch(
+            submissionId,
+            criteria.map(([criterionId, points]) => ({ criterionId, points }))
+          );
+        } catch {
           showAlert({
             title: 'Partial Rubric Save',
             message: 'Grade saved; some rubric scores failed to persist.',
