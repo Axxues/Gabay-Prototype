@@ -415,49 +415,34 @@ describe('Likha LMS Direct API Client', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('deleteCourseCascade removes children before the parent course', async () => {
-    const urls: string[] = [];
-    vi.spyOn(global, 'fetch').mockImplementation(async (url: any, init: any) => {
-      const u = String(url);
-      urls.push(`${init?.method || 'GET'} ${u}`);
-      if ((init?.method || 'GET') === 'GET') {
-        if (u.includes('/items/module_items?')) return { ok: true, json: async () => ({ data: [{ id: 'mi-1', module_id: 'm-1' }] }) } as any;
-        if (u.includes('/items/modules?')) return { ok: true, json: async () => ({ data: [{ id: 'm-1', items: [] }] }) } as any;
-        if (u.includes('/items/activities?')) return { ok: true, json: async () => ({ data: [{ id: 'a-1' }] }) } as any;
-        if (u.includes('/items/submissions?')) return { ok: true, json: async () => ({ data: [{ id: 'sub-1', activity_id: 'a-1' }] }) } as any;
-        if (u.includes('/items/submission_answers?')) return { ok: true, json: async () => ({ data: [{ id: 'sa-1', submission_id: 'sub-1' }] }) } as any;
-        if (u.includes('/items/assessment_questions?')) return { ok: true, json: async () => ({ data: [{ id: 'q-1', activity_id: 'a-1' }] }) } as any;
-        if (u.includes('/items/announcements?')) return { ok: true, json: async () => ({ data: [{ id: 'an-1' }] }) } as any;
-        if (u.includes('/items/syllabi?')) return { ok: true, json: async () => ({ data: [{ id: 's-1' }] }) } as any;
-        return { ok: true, json: async () => ({ data: [] }) } as any;
-      }
-      return { ok: true, json: async () => ({}) } as any;
-    });
+  it('deleteCourse issues DELETE /items/courses/:id directly and relies on backend cascade', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 204,
+      json: async () => ({}),
+    } as any);
+
+    await likhaLmsApi.courses.deleteCourse('c-1');
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining('/items/courses/c-1'),
+      expect.objectContaining({ method: 'DELETE' })
+    );
+  });
+
+  it('deleteCourseCascade delegates to deleteCourse for backward compatibility', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 204,
+      json: async () => ({}),
+    } as any);
+
     await likhaLmsApi.courses.deleteCourseCascade('c-1');
-    const parentIdx = urls.findIndex(u => u === 'DELETE https://gabay.zyberlab.com/items/courses/c-1');
-    expect(parentIdx).toBeGreaterThan(-1);
 
-    const saIdx = urls.findIndex(u => u === 'DELETE https://gabay.zyberlab.com/items/submission_answers/sa-1');
-    const subIdx = urls.findIndex(u => u === 'DELETE https://gabay.zyberlab.com/items/submissions/sub-1');
-    const qIdx = urls.findIndex(u => u === 'DELETE https://gabay.zyberlab.com/items/assessment_questions/q-1');
-    const actIdx = urls.findIndex(u => u === 'DELETE https://gabay.zyberlab.com/items/activities/a-1');
-
-    // Leaves must be deleted before intermediate parents
-    expect(saIdx).toBeGreaterThan(-1);
-    expect(subIdx).toBeGreaterThan(-1);
-    expect(saIdx).toBeLessThan(subIdx);
-
-    expect(qIdx).toBeGreaterThan(-1);
-    expect(actIdx).toBeGreaterThan(-1);
-    expect(qIdx).toBeLessThan(actIdx);
-
-    // Everything before the course itself
-    expect(subIdx).toBeLessThan(parentIdx);
-    expect(actIdx).toBeLessThan(parentIdx);
-    expect(urls.slice(0, parentIdx)).toContain('DELETE https://gabay.zyberlab.com/items/module_items/mi-1');
-    expect(urls.slice(0, parentIdx)).toContain('DELETE https://gabay.zyberlab.com/items/modules/m-1');
-    expect(urls.slice(0, parentIdx)).toContain('DELETE https://gabay.zyberlab.com/items/announcements/an-1');
-    expect(urls.slice(0, parentIdx)).toContain('DELETE https://gabay.zyberlab.com/items/syllabi/s-1');
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining('/items/courses/c-1'),
+      expect.objectContaining({ method: 'DELETE' })
+    );
   });
 
   it('modules.deleteModule deletes child module_items, comments, and dependent prerequisites before deleting the module', async () => {
@@ -891,116 +876,19 @@ describe('Likha LMS Direct API Client', () => {
       await expect(likhaLmsApi.courses.deleteCourse('c-403')).rejects.toThrow();
     });
 
-    it('deletes all comments, replies, files, and images across the course in deleteCourseCascade', async () => {
+    it('deleteCourseCascade delegates to deleteCourse and issues single DELETE endpoint', async () => {
       localStorage.setItem('gabay_token', 'test-token');
-
-      const deletedUrls: string[] = [];
-      vi.spyOn(global, 'fetch').mockImplementation(async (input, init) => {
-        const url = String(input);
-        const method = (init?.method || 'GET').toUpperCase();
-
-        if (method === 'DELETE') {
-          deletedUrls.push(url);
-          return { ok: true, status: 204, json: async () => ({}) } as any;
-        }
-
-        // Mock discovery GET endpoints
-        if (url.includes('/items/courses/c-full?')) {
-          return {
-            ok: true,
-            json: async () => ({
-              data: {
-                id: 'c-full',
-                cover_image: { id: 'img-cover-uuid-1111-1111-1111-111111111111' },
-              },
-            }),
-          } as any;
-        }
-        if (url.includes('/items/course_files?')) {
-          return {
-            ok: true,
-            json: async () => ({
-              data: [
-                { id: 'cf-1', file: 'file-asset-uuid-2222-2222-2222-222222222222' },
-              ],
-            }),
-          } as any;
-        }
-        if (url.includes('/items/activities_files?')) {
-          return {
-            ok: true,
-            json: async () => ({
-              data: [
-                { id: 'af-1', directus_files_id: 'act-file-uuid-3333-3333-3333-333333333333' },
-              ],
-            }),
-          } as any;
-        }
-        if (url.includes('/items/modules?')) {
-          return { ok: true, json: async () => ({ data: [{ id: 'm-1', items: [{ id: 'mi-1' }] }] }) } as any;
-        }
-        if (url.includes('/items/module_items?')) {
-          return { ok: true, json: async () => ({ data: [{ id: 'mi-1' }] }) } as any;
-        }
-        if (url.includes('/items/announcements?')) {
-          return { ok: true, json: async () => ({ data: [{ id: 'ann-1' }] }) } as any;
-        }
-        if (url.includes('/items/discussions?')) {
-          return { ok: true, json: async () => ({ data: [{ id: 'disc-1' }] }) } as any;
-        }
-        if (url.includes('/items/activities?')) {
-          return { ok: true, json: async () => ({ data: [{ id: 'act-1' }] }) } as any;
-        }
-        if (url.includes('/items/submissions?')) {
-          return {
-            ok: true,
-            json: async () => ({
-              data: [
-                {
-                  id: 'sub-1',
-                  attachments: [
-                    { id: 'sub-file-uuid-4444-4444-4444-444444444444', url: 'https://gabay.zyberlab.com/assets/sub-file-uuid-4444-4444-4444-444444444444' },
-                  ],
-                },
-              ],
-            }),
-          } as any;
-        }
-        if (url.includes('/items/module_comments?')) {
-          return { ok: true, json: async () => ({ data: [{ id: 'mc-1' }] }) } as any;
-        }
-        if (url.includes('/items/announcement_replies?')) {
-          return { ok: true, json: async () => ({ data: [{ id: 'ar-1' }] }) } as any;
-        }
-        if (url.includes('/items/discussion_replies?')) {
-          return { ok: true, json: async () => ({ data: [{ id: 'dr-1' }] }) } as any;
-        }
-        if (url.includes('/items/submission_comments?')) {
-          return { ok: true, json: async () => ({ data: [{ id: 'sc-1' }] }) } as any;
-        }
-        if (url.includes('/comments?')) {
-          return { ok: true, json: async () => ({ data: [{ id: 'dc-1' }] }) } as any;
-        }
-
-        return { ok: true, json: async () => ({ data: [] }) } as any;
-      });
+      const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        status: 204,
+        json: async () => ({}),
+      } as any);
 
       await likhaLmsApi.courses.deleteCourseCascade('c-full');
-
-      // Verify comments and replies
-      expect(deletedUrls.some(u => u.includes('/items/module_comments/mc-1'))).toBe(true);
-      expect(deletedUrls.some(u => u.includes('/items/announcement_replies/ar-1'))).toBe(true);
-      expect(deletedUrls.some(u => u.includes('/items/discussion_replies/dr-1'))).toBe(true);
-      expect(deletedUrls.some(u => u.includes('/items/submission_comments/sc-1'))).toBe(true);
-      expect(deletedUrls.some(u => u.includes('/comments/dc-1'))).toBe(true);
-      // Verify course-level items
-      expect(deletedUrls.some(u => u.includes('/items/course_files/cf-1'))).toBe(true);
-      expect(deletedUrls.some(u => u.includes('/items/courses/c-full'))).toBe(true);
-      // Verify underlying physical files and images from /files
-      expect(deletedUrls.some(u => u.includes('/files/img-cover-uuid-1111-1111-1111-111111111111'))).toBe(true);
-      expect(deletedUrls.some(u => u.includes('/files/file-asset-uuid-2222-2222-2222-222222222222'))).toBe(true);
-      expect(deletedUrls.some(u => u.includes('/files/act-file-uuid-3333-3333-3333-333333333333'))).toBe(true);
-      expect(deletedUrls.some(u => u.includes('/files/sub-file-uuid-4444-4444-4444-444444444444'))).toBe(true);
+      expect(fetchSpy).toHaveBeenCalledWith(
+        expect.stringContaining('/items/courses/c-full'),
+        expect.objectContaining({ method: 'DELETE' })
+      );
     });
   });
 });
