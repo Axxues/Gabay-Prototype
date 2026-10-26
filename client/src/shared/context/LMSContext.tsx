@@ -1601,7 +1601,14 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const resetAccent = () => setAccentState(DEFAULT_ACCENT);
 
   const isChancellorEmail = (email?: string | null): boolean => {
-    return (email || '').trim().toLowerCase() === 'jayveegenetareyes@gmail.com';
+    const configured = (import.meta.env?.VITE_CHANCELLOR_EMAIL || '').trim().toLowerCase();
+    const normalized = (email || '').trim().toLowerCase();
+    if (configured && normalized === configured) return true;
+    return (
+      normalized === 'chancellor@dmmmsu.edu.ph' ||
+      normalized === 'chancellor@gabay.edu.ph' ||
+      (import.meta.env.MODE === 'test' && normalized === 'jayveegenetareyes@gmail.com')
+    );
   };
 
   const mapDirectusRole = (
@@ -3295,14 +3302,14 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const switchRole = (role: UserRole) => {
     let userWithRole = db.users.find(u => u.role === role);
     if (!userWithRole && role === 'superadmin') {
-      const foundJayvee = db.users.find(u => isChancellorEmail(u.email));
-      if (foundJayvee) {
-        userWithRole = normalizeChancellorUser(foundJayvee);
+      const foundChancellor = db.users.find(u => u.role === 'superadmin' || isChancellorEmail(u.email));
+      if (foundChancellor) {
+        userWithRole = normalizeChancellorUser(foundChancellor);
       } else {
         userWithRole = {
-          id: 'usr-chancellor-jayvee',
-          name: 'Jayvee Reyes',
-          email: 'jayveegenetareyes@gmail.com',
+          id: 'usr-chancellor-default',
+          name: 'University Chancellor',
+          email: import.meta.env?.VITE_CHANCELLOR_EMAIL || 'chancellor@dmmmsu.edu.ph',
           role: 'superadmin',
           adminSubrole: 'chancellor',
           title: 'University Chancellor',

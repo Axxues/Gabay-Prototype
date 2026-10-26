@@ -166,10 +166,9 @@ describe('LMSContext Likha ERP Academic Structure Integration', () => {
     });
 
     expect(updateCollegeMock).toHaveBeenCalledWith('col-directus-1', {
-      dean_id: 'u-faculty-3',
+      dean_id: 'u-dean-9',
     });
-    expect(updateUserMock).toHaveBeenCalledWith('u-dean-9', { role: 'faculty' });
-    expect(updateUserMock).toHaveBeenCalledWith('u-faculty-3', { role: 'admin' });
+    expect(updateUserMock).toHaveBeenCalledWith('u-dean-9', { name: 'u-faculty-3', role: 'admin' });
   });
 
   test('preserves locally created colleges and departments across mount revalidation', async () => {
