@@ -789,23 +789,21 @@ export const likhaLmsApi = {
         body: JSON.stringify({ ...rootPayload, id: quizId }),
       });
 
-      if (Array.isArray(questions)) {
-        for (let i = 0; i < questions.length; i++) {
-          const q = questions[i];
-          await likhaRequest('/items/assessment_questions', {
-            method: 'POST',
-            body: JSON.stringify({
-              id: q.id || `q-quiz-${quizId}-${i}`,
-              quiz_id: quizId,
-              question_text: q.question_text || q.text || q.prompt || '',
-              question_type: q.question_type || q.type || 'multiple_choice',
-              points: Number(q.points) || 1,
-              correct_answer: q.correct_answer || q.correctAnswer || null,
-              options_json: typeof q.options === 'string' ? q.options : JSON.stringify(q.options || []),
-              order: i + 1,
-            }),
-          }).catch(() => {});
-        }
+      if (Array.isArray(questions) && questions.length > 0) {
+        const questionsPayload = questions.map((q, idx) => ({
+          id: q.id || `q-quiz-${quizId}-${idx}`,
+          quiz_id: quizId,
+          question_text: q.question_text || q.text || q.prompt || "",
+          question_type: q.question_type || q.type || "multiple_choice",
+          points: Number(q.points) || 1,
+          correct_answer: q.correct_answer || q.correctAnswer || null,
+          options_json: typeof q.options === "string" ? q.options : JSON.stringify(q.options || []),
+          order: idx + 1,
+        }));
+        await likhaRequest("/items/assessment_questions", {
+          method: "POST",
+          body: JSON.stringify(questionsPayload),
+        }).catch(() => {});
       }
       return { ...saved, questions: questions || [] };
     },
@@ -829,23 +827,21 @@ export const likhaLmsApi = {
         body: JSON.stringify({ ...rootPayload, id: examId }),
       });
 
-      if (Array.isArray(questions)) {
-        for (let i = 0; i < questions.length; i++) {
-          const q = questions[i];
-          await likhaRequest('/items/assessment_questions', {
-            method: 'POST',
-            body: JSON.stringify({
-              id: q.id || `q-exam-${examId}-${i}`,
-              exam_id: examId,
-              question_text: q.question_text || q.text || q.prompt || '',
-              question_type: q.question_type || q.type || 'multiple_choice',
-              points: Number(q.points) || 1,
-              correct_answer: q.correct_answer || q.correctAnswer || null,
-              options_json: typeof q.options === 'string' ? q.options : JSON.stringify(q.options || []),
-              order: i + 1,
-            }),
-          }).catch(() => {});
-        }
+      if (Array.isArray(questions) && questions.length > 0) {
+        const questionsPayload = questions.map((q, idx) => ({
+          id: q.id || `q-exam-${examId}-${idx}`,
+          exam_id: examId,
+          question_text: q.question_text || q.text || q.prompt || "",
+          question_type: q.question_type || q.type || "multiple_choice",
+          points: Number(q.points) || 1,
+          correct_answer: q.correct_answer || q.correctAnswer || null,
+          options_json: typeof q.options === "string" ? q.options : JSON.stringify(q.options || []),
+          order: idx + 1,
+        }));
+        await likhaRequest("/items/assessment_questions", {
+          method: "POST",
+          body: JSON.stringify(questionsPayload),
+        }).catch(() => {});
       }
       return { ...saved, questions: questions || [] };
     },
@@ -1471,39 +1467,35 @@ export const likhaLmsApi = {
     });
 
     if (Array.isArray(questions) && questions.length > 0) {
-      for (let i = 0; i < questions.length; i++) {
-        const q = questions[i];
-        await likhaRequest('/items/assessment_questions', {
-          method: 'POST',
-          body: JSON.stringify({
-            id: q.id || `q-${actId}-${i}`,
-            activity_id: actId,
-            question_text: q.question_text || q.text || q.prompt || '',
-            question_type: q.question_type || q.type || 'essay',
-            points: Number(q.points) || 10,
-            correct_answer: q.correct_answer || q.correctAnswer || null,
-            options_json: typeof q.options === 'string' ? q.options : JSON.stringify(q.options || []),
-            order: i + 1,
-          }),
-        }).catch(() => {});
-      }
+      const questionsPayload = questions.map((q, idx) => ({
+        id: q.id || `q-${actId}-${idx}`,
+        activity_id: actId,
+        question_text: q.question_text || q.text || q.prompt || "",
+        question_type: q.question_type || q.type || "essay",
+        points: Number(q.points) || 10,
+        correct_answer: q.correct_answer || q.correctAnswer || null,
+        options_json: typeof q.options === "string" ? q.options : JSON.stringify(q.options || []),
+        order: idx + 1,
+      }));
+      await likhaRequest("/items/assessment_questions", {
+        method: "POST",
+        body: JSON.stringify(questionsPayload),
+      }).catch(() => {});
     }
 
     if (Array.isArray(rubric) && rubric.length > 0) {
-      for (let i = 0; i < rubric.length; i++) {
-        const r = rubric[i];
-        await likhaRequest('/items/rubric_criteria', {
-          method: 'POST',
-          body: JSON.stringify({
-            id: r.id || `rub-${actId}-${i}`,
-            activity_id: actId,
-            title: r.title || r.criterion || '',
-            description: r.description || '',
-            max_points: Number(r.max_points ?? r.points) || 10,
-            order: i + 1,
-          }),
-        }).catch(() => {});
-      }
+      const rubricPayload = rubric.map((r, idx) => ({
+        id: r.id || `rub-${actId}-${idx}`,
+        activity_id: actId,
+        title: r.title || r.criterion || "",
+        description: r.description || "",
+        max_points: Number(r.max_points ?? r.points) || 10,
+        order: idx + 1,
+      }));
+      await likhaRequest("/items/rubric_criteria", {
+        method: "POST",
+        body: JSON.stringify(rubricPayload),
+      }).catch(() => {});
     }
 
     return { ...saved, questions: questions || [], rubric: rubric || [] };
@@ -1523,21 +1515,20 @@ export const likhaLmsApi = {
         ? Object.entries(answers).map(([qid, val]) => ({ questionId: qid, answer: String(val) }))
         : [];
 
-    for (let i = 0; i < answersList.length; i++) {
-      const a = answersList[i];
-      await likhaRequest('/items/submission_answers', {
-        method: 'POST',
-        body: JSON.stringify({
-          id: `sa-${subId}-${i}`,
-          submission_id: subId,
-          question_id: a.questionId || a.question_id || `q-${i}`,
-          student_answer: a.answer || a.studentAnswer || String(a),
-          awarded_points: a.points ?? null,
-          feedback: a.feedback || null,
-        }),
+    if (answersList.length > 0) {
+      const answersPayload = answersList.map((a, idx) => ({
+        id: `sa-${subId}-${idx}`,
+        submission_id: subId,
+        question_id: a.questionId || a.question_id || `q-${idx}`,
+        student_answer: a.answer || a.studentAnswer || String(a),
+        awarded_points: a.points ?? null,
+        feedback: a.feedback || null,
+      }));
+      await likhaRequest("/items/submission_answers", {
+        method: "POST",
+        body: JSON.stringify(answersPayload),
       }).catch(() => {});
     }
-
     return { ...saved, answers: answersList };
   },
 

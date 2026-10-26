@@ -862,6 +862,80 @@ describe('Likha LMS Direct API Client', () => {
         expect.objectContaining({ method: 'DELETE' })
       );
     });
+
+    it('saveActivity batches child questions and rubric criteria in single bulk requests', async () => {
+      localStorage.setItem('gabay_token', 'test-token');
+      const fetchSpy = vi.spyOn(global, 'fetch')
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: { id: 'act-batch-1', title: 'Batch Activity' } }),
+        } as any)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: [{ id: 'q-1' }, { id: 'q-2' }] }),
+        } as any)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: [{ id: 'rub-1' }, { id: 'rub-2' }] }),
+        } as any);
+
+      await likhaLmsApi.saveActivity({
+        id: 'act-batch-1',
+        title: 'Batch Activity',
+        questions: [
+          { text: 'Question 1', points: 5 },
+          { text: 'Question 2', points: 10 },
+        ],
+        rubric: [
+          { title: 'Criterion 1', max_points: 10 },
+          { title: 'Criterion 2', max_points: 20 },
+        ],
+      });
+
+      expect(fetchSpy).toHaveBeenCalledTimes(3);
+
+      const questionsCall = fetchSpy.mock.calls.find(call => String(call[0]).includes('/items/assessment_questions'));
+      expect(questionsCall).toBeDefined();
+      const questionsBody = JSON.parse((questionsCall![1] as any).body);
+      expect(Array.isArray(questionsBody)).toBe(true);
+      expect(questionsBody).toHaveLength(2);
+
+      const rubricCall = fetchSpy.mock.calls.find(call => String(call[0]).includes('/items/rubric_criteria'));
+      expect(rubricCall).toBeDefined();
+      const rubricBody = JSON.parse((rubricCall![1] as any).body);
+      expect(Array.isArray(rubricBody)).toBe(true);
+      expect(rubricBody).toHaveLength(2);
+    });
+
+    it('submitActivity batches answers into a single bulk write', async () => {
+      localStorage.setItem('gabay_token', 'test-token');
+      const fetchSpy = vi.spyOn(global, 'fetch')
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: { id: 'sub-batch-1' } }),
+        } as any)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: [{ id: 'sa-1', submission_id: 'sub-batch-1' }] }),
+        } as any);
+
+      await likhaLmsApi.submitActivity({
+        id: 'sub-batch-1',
+        student_id: 'std-1',
+        answers: [
+          { questionId: 'q-1', answer: 'Answer 1' },
+          { questionId: 'q-2', answer: 'Answer 2' },
+        ],
+      });
+
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+
+      const answersCall = fetchSpy.mock.calls.find(call => String(call[0]).includes('/items/submission_answers'));
+      expect(answersCall).toBeDefined();
+      const answersBody = JSON.parse((answersCall![1] as any).body);
+      expect(Array.isArray(answersBody)).toBe(true);
+      expect(answersBody).toHaveLength(2);
+    });
   });
 });
 
