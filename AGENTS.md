@@ -4,6 +4,10 @@
 
 **Programmatic interaction, scripts, and direct API calls are the standard methods for modifying, configuring, and extending the Likha ERP (Directus) backend. The browser subagent is NO LONGER REQUIRED.**
 
+> [!IMPORTANT]
+> **ALWAYS FOLLOW THE LIKHA ERP SKILL (`likha-erp-api`):**
+> Whenever any agent or developer modifies, extends, queries, or configures the Likha ERP backend (including schema, collections, fields, relations, flows, operations, permissions, or API integrations), you **MUST ALWAYS inspect and follow the instructions and protocols in the `likha-erp-api` skill** located at [`.agents/skills/likha-erp-api/SKILL.md`](.agents/skills/likha-erp-api/SKILL.md). Never perform ad-hoc operations without referencing that skill.
+
 All agents and developers modifying the Likha ERP backend must strictly adhere to the safety rules below. Every constraint originates from a verified production crash or failure vector on the live Likha ERP instance (`https://gabay.zyberlab.com`).
 
 ---
