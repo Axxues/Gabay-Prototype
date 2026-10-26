@@ -88,38 +88,9 @@ function isTokenExpired(token: string | null): boolean {
   }
 }
 
-let likhaUploadServiceToken: string | null = null;
-let likhaUploadServicePromise: Promise<string | null> | null = null;
-
-async function getLikhaServiceToken(): Promise<string | null> {
-  if (likhaUploadServiceToken && !isTokenExpired(likhaUploadServiceToken)) return likhaUploadServiceToken;
-  if (likhaUploadServicePromise) return likhaUploadServicePromise;
-
-  likhaUploadServicePromise = (async () => {
-    try {
-      const res = await fetch(`${LIKHA_URL}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: 'jayveegenetareyes@gmail.com',
-          password: 'qwerty12345',
-          mode: 'json',
-        }),
-      });
-      if (!res.ok) return null;
-      const json = await res.json();
-      likhaUploadServiceToken = json.data?.access_token || null;
-      return likhaUploadServiceToken;
-    } catch {
-      return null;
-    } finally {
-      likhaUploadServicePromise = null;
-    }
-  })();
-
-  return likhaUploadServicePromise;
-}
-
+// Hardcoded superadmin credentials and client-side elevation have been removed per AGENTS.md.
+// All operations authenticate strictly with the active user's session JWT.
+const getLikhaServiceToken = async (): Promise<string | null> => null;
 const getLikhaUploadServiceToken = getLikhaServiceToken;
 
 export const UUID_ITEM_COLLECTIONS = new Set([
@@ -286,41 +257,10 @@ async function likhaRequest<T = any>(
 }
 
 /**
- * Executes a Likha request using the current authenticated user's token.
- * If the request fails with a 403 Forbidden (e.g. role lacks collection delete/write permissions
- * on shared Likha Directus while Gabay LMS domain authorization has already approved the action),
- * transparently falls back to an elevated service token.
+ * Directus helper: per AGENTS.md, elevation in frontend is prohibited.
+ * All mutations execute with the active user session JWT without elevation.
  */
-async function likhaElevatedRequest<T = any>(
-  path: string,
-  options: RequestInit = {}
-): Promise<T> {
-  try {
-    return await likhaRequest<T>(path, options);
-  } catch (err: any) {
-    const isForbidden =
-      err?.status === 403 ||
-      err?.code === 'forbidden' ||
-      (typeof err?.message === 'string' &&
-        (err.message.includes('403') || err.message.toLowerCase().includes('permission')));
-
-    if (isForbidden) {
-      const serviceToken = await getLikhaServiceToken();
-      if (serviceToken) {
-        const headers = new Headers(options.headers || {});
-        headers.set('Authorization', `Bearer ${serviceToken}`);
-        const result = await rawLikhaFetch<T>(path, { ...options, headers });
-        const resourceBase = path.split('?')[0];
-        likhaCache.invalidate(resourceBase);
-        if (resourceBase.startsWith('/users')) {
-          likhaCache.invalidate('/users');
-        }
-        return result;
-      }
-    }
-    throw err;
-  }
-}
+const likhaElevatedRequest = likhaRequest;
 
 
 // In-module name→UUID map so one /roles lookup serves the session
@@ -425,9 +365,6 @@ export const likhaLmsApi = {
   invalidateCache(pattern?: string): void {
     if (!pattern || pattern.includes('role')) {
       roleIdByName.clear();
-    }
-    if (!pattern) {
-      likhaUploadServiceToken = null;
     }
     if (pattern) {
       likhaCache.invalidate(pattern);
@@ -768,7 +705,7 @@ export const likhaLmsApi = {
         subAnswers, subComments, subRubricScores,
         questions, rubrics, actFiles,
         sylSignatories, sylReferences, sylPolicies, sylRubrics, sylPlans, sylMaps,
-        modCommentsByMod, modCommentsByItem,
+        allModComments,
         annReplies, discReplies,
         sprCells
       ] = await Promise.all([
@@ -785,15 +722,12 @@ export const likhaLmsApi = {
         syllabi.length > 0 ? fetchItems('syllabus_learning_plans', `filter[syllabus_id][_in]=${syllabi.map(s => s.id ?? s.revisionId).join(',')}`) : [],
         syllabi.length > 0 ? fetchItems('syllabus_course_maps', `filter[syllabus_id][_in]=${syllabi.map(s => s.id ?? s.revisionId).join(',')}`) : [],
         mods.length > 0 ? fetchItems('module_comments', `filter[module_id][_in]=${mods.map(m => m.id).join(',')}`) : [],
-        modItems.length > 0 ? fetchItems('module_comments', `filter[item_id][_in]=${modItems.map(i => i.id).join(',')}`) : [],
         anns.length > 0 ? fetchItems('announcement_replies', `filter[announcement_id][_in]=${anns.map(a => a.id).join(',')}`) : [],
         discs.length > 0 ? fetchItems('discussion_replies', `filter[discussion_id][_in]=${discs.map(d => d.id).join(',')}`) : [],
         sprConfig?.id ? fetchItems('spr_cells', `filter[config_id][_eq]=${encodeURIComponent(sprConfig.id)}`) : [],
       ]);
 
-      const allModComments = Array.from(
-        new Map([...modCommentsByMod, ...modCommentsByItem].map(c => [c.id, c])).values()
-      );
+
 
       // Collect all physical file and image asset UUIDs to delete from Directus storage (/files)
       const allFileIdsSet = new Set<string>();
@@ -1063,7 +997,62 @@ export const likhaLmsApi = {
     },
 
     async deleteModule(id: string): Promise<void> {
-      await likhaRequest(`/items/modules/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      // Robust children-first relational cascade: Directus does not apply server-side
+      // CASCADE ON DELETE, so parent deletes are blocked by foreign key constraints.
+      // 1. Fetch child module_items
+      const modItems = await likhaElevatedRequest<any[]>(
+        `/items/module_items?filter[module_id][_eq]=${encodeURIComponent(id)}&limit=-1`
+      ).catch(() => []);
+      const itemIds = (Array.isArray(modItems) ? modItems : []).map((it: any) => it.id).filter(Boolean);
+
+      // 2. Fetch comments tied to the module (module_comments is keyed by module_id in Likha)
+      const modComments = await likhaElevatedRequest<any[]>(
+        `/items/module_comments?filter[module_id][_eq]=${encodeURIComponent(id)}&limit=-1`
+      ).catch(() => []);
+      const allComments = Array.isArray(modComments) ? modComments : [];
+
+      // 3. Clear prerequisite references on other modules that depend on this module
+      const dependentModules = await likhaElevatedRequest<any[]>(
+        `/items/modules?filter[prerequisite_module_id][_eq]=${encodeURIComponent(id)}&limit=-1`
+      ).catch(() => []);
+      if (Array.isArray(dependentModules) && dependentModules.length > 0) {
+        await Promise.allSettled(
+          dependentModules.map((m: any) =>
+            likhaElevatedRequest(`/items/modules/${encodeURIComponent(m.id)}`, {
+              method: 'PATCH',
+              body: JSON.stringify({ prerequisite_module_id: null }),
+            }).catch(() => {})
+          )
+        );
+      }
+
+      // 4. Delete leaf records first: module comments, then module items
+      if (allComments.length > 0) {
+        await Promise.allSettled(
+          allComments.map((c: any) =>
+            likhaElevatedRequest(`/items/module_comments/${encodeURIComponent(c.id)}`, { method: 'DELETE' }).catch(
+              () => {}
+            )
+          )
+        );
+      }
+
+      if (itemIds.length > 0) {
+        await Promise.allSettled(
+          itemIds.map((itemId: string) =>
+            likhaElevatedRequest(`/items/module_items/${encodeURIComponent(itemId)}`, { method: 'DELETE' }).catch(
+              () => {}
+            )
+          )
+        );
+      }
+
+      // 5. Delete the module itself
+      await likhaElevatedRequest(`/items/modules/${encodeURIComponent(id)}`, { method: 'DELETE' });
+
+      likhaCache.invalidate('/items/modules');
+      likhaCache.invalidate('/items/module_items');
+      likhaCache.invalidate('/items/module_comments');
     },
 
     async createModuleItem(item: any): Promise<any> {
@@ -1082,11 +1071,12 @@ export const likhaLmsApi = {
     },
 
     async deleteModuleItem(id: string): Promise<void> {
-      await likhaRequest(`/items/module_items/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      await likhaElevatedRequest(`/items/module_items/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      likhaCache.invalidate('/items/module_items');
     },
 
-    async getComments(itemId: string): Promise<any[]> {
-      return likhaRequest(`/items/module_comments?filter[item_id][_eq]=${encodeURIComponent(itemId)}&sort=created_at`);
+    async getComments(moduleId: string): Promise<any[]> {
+      return likhaRequest(`/items/module_comments?filter[module_id][_eq]=${encodeURIComponent(moduleId)}&sort=created_at`);
     },
 
     async addComment(comment: any): Promise<any> {
@@ -1789,17 +1779,7 @@ export const likhaLmsApi = {
           });
         }
       }
-      if (!res.ok) {
-        const serviceToken = await getLikhaUploadServiceToken();
-        if (serviceToken) {
-          const serviceHeaders: Record<string, string> = {
-            Authorization: `Bearer ${serviceToken}`,
-          };
-          const retryFormData = new FormData();
-          retryFormData.append('file', file);
-          res = await fetch(`${LIKHA_URL}/files`, { method: 'POST', headers: serviceHeaders, body: retryFormData });
-        }
-      }
+
     }
 
     if (!res.ok) throw new Error(`File upload to Likha failed: ${res.status}`);

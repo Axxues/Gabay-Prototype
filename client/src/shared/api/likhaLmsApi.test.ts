@@ -93,30 +93,15 @@ describe('Likha LMS Direct API Client', () => {
     expect(uploaded.id).toBe('file-retry-502');
   });
 
-  it('recovers with service token when initial upload returns 403', async () => {
-    const fetchSpy = vi.spyOn(global, 'fetch')
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 403,
-      } as any)
-      // Login call to fetch service token
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          data: { access_token: 'srv-token-fresh', expires: 900 },
-        }),
-      } as any)
-      // Retry upload with service token
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          data: { id: 'file-recovered', filename_download: 'avatar.jpg' },
-        }),
-      } as any);
+  it('throws on 403 Forbidden without elevating credentials on uploadFile', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      text: async () => JSON.stringify({ errors: [{ message: 'Forbidden' }] }),
+    } as any);
 
     const dummyFile = new File(['content'], 'avatar.jpg', { type: 'image/jpeg' });
-    const uploaded = await likhaLmsApi.uploadFile(dummyFile);
-    expect(uploaded.id).toBe('file-recovered');
+    await expect(likhaLmsApi.uploadFile(dummyFile)).rejects.toThrow();
   });
 
   it('silently refreshes expired user token before uploadFile to avoid 401 Unauthorized', async () => {
@@ -473,6 +458,61 @@ describe('Likha LMS Direct API Client', () => {
     expect(urls.slice(0, parentIdx)).toContain('DELETE https://gabay.zyberlab.com/items/modules/m-1');
     expect(urls.slice(0, parentIdx)).toContain('DELETE https://gabay.zyberlab.com/items/announcements/an-1');
     expect(urls.slice(0, parentIdx)).toContain('DELETE https://gabay.zyberlab.com/items/syllabi/s-1');
+  });
+
+  it('modules.deleteModule deletes child module_items, comments, and dependent prerequisites before deleting the module', async () => {
+    const urls: string[] = [];
+    vi.spyOn(global, 'fetch').mockImplementation(async (url: any, init: any) => {
+      const u = String(url);
+      urls.push(`${init?.method || 'GET'} ${u}`);
+      if ((init?.method || 'GET') === 'GET') {
+        if (u.includes('/items/module_items?')) {
+          return { ok: true, json: async () => ({ data: [{ id: 'mi-10', module_id: 'mod-1' }, { id: 'mi-11', module_id: 'mod-1' }] }) } as any;
+        }
+        if (u.includes('/items/module_comments?')) {
+          return { ok: true, json: async () => ({ data: [{ id: 'mc-10', module_id: 'mod-1' }] }) } as any;
+        }
+        if (u.includes('/items/modules?')) {
+          return { ok: true, json: async () => ({ data: [{ id: 'mod-2', prerequisite_module_id: 'mod-1' }] }) } as any;
+        }
+        return { ok: true, json: async () => ({ data: [] }) } as any;
+      }
+      return { ok: true, json: async () => ({ data: {} }) } as any;
+    });
+
+    await likhaLmsApi.modules.deleteModule('mod-1');
+
+    const parentIdx = urls.findIndex(u => u === 'DELETE https://gabay.zyberlab.com/items/modules/mod-1');
+    expect(parentIdx).toBeGreaterThan(-1);
+
+    const commentIdx = urls.findIndex(u => u === 'DELETE https://gabay.zyberlab.com/items/module_comments/mc-10');
+    const item10Idx = urls.findIndex(u => u === 'DELETE https://gabay.zyberlab.com/items/module_items/mi-10');
+    const item11Idx = urls.findIndex(u => u === 'DELETE https://gabay.zyberlab.com/items/module_items/mi-11');
+    const patchDepIdx = urls.findIndex(u => u === 'PATCH https://gabay.zyberlab.com/items/modules/mod-2');
+
+    expect(commentIdx).toBeGreaterThan(-1);
+    expect(item10Idx).toBeGreaterThan(-1);
+    expect(item11Idx).toBeGreaterThan(-1);
+    expect(patchDepIdx).toBeGreaterThan(-1);
+
+    expect(commentIdx).toBeLessThan(parentIdx);
+    expect(item10Idx).toBeLessThan(parentIdx);
+    expect(item11Idx).toBeLessThan(parentIdx);
+    expect(patchDepIdx).toBeLessThan(parentIdx);
+  });
+
+  it('modules.deleteModuleItem deletes the module item', async () => {
+    const urls: string[] = [];
+    vi.spyOn(global, 'fetch').mockImplementation(async (url: any, init: any) => {
+      const u = String(url);
+      urls.push(`${init?.method || 'GET'} ${u}`);
+      return { ok: true, json: async () => ({ data: {} }) } as any;
+    });
+
+    await likhaLmsApi.modules.deleteModuleItem('mi-1');
+
+    const itemIdx = urls.findIndex(u => u === 'DELETE https://gabay.zyberlab.com/items/module_items/mi-1');
+    expect(itemIdx).toBeGreaterThan(-1);
   });
 
   describe('academicStructure controller', () => {
@@ -834,50 +874,21 @@ describe('Likha LMS Direct API Client', () => {
       window.removeEventListener('gabay:session-expired', listener);
     });
 
-    it('elevates deleteCourse with service token when receiving 403 Forbidden', async () => {
-      localStorage.setItem('gabay_token', 'chair-user-token');
+    it('throws 403 Forbidden on deleteCourse when user lacks permission instead of elevating with service token', async () => {
+      localStorage.setItem('gabay_token', 'unauthorized-user-token');
 
-      const fetchSpy = vi.spyOn(global, 'fetch')
-        // 1. Initial DELETE fails with 403
-        .mockResolvedValueOnce({
-          ok: false,
-          status: 403,
-          text: async () => JSON.stringify({
-            errors: [{
-              message: 'You don\'t have permission to access collection "courses" or it does not exist. Queried in root.',
-              extensions: { code: 'FORBIDDEN' },
-            }],
-          }),
-        } as any)
-        // 2. Fetch service token via /auth/login
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({
-            data: { access_token: 'srv-token-admin' },
-          }),
-        } as any)
-        // 3. Retry DELETE with elevated service token succeeds
-        .mockResolvedValueOnce({
-          ok: true,
-          status: 204,
-          json: async () => ({}),
-        } as any);
+      vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        text: async () => JSON.stringify({
+          errors: [{
+            message: 'You don\'t have permission to access collection "courses" or it does not exist.',
+            extensions: { code: 'FORBIDDEN' },
+          }],
+        }),
+      } as any);
 
-      await expect(likhaLmsApi.courses.deleteCourse('c-403')).resolves.toBeUndefined();
-
-      expect(fetchSpy).toHaveBeenCalledTimes(3);
-      expect(fetchSpy).toHaveBeenNthCalledWith(
-        1,
-        expect.stringContaining('/items/courses/c-403'),
-        expect.objectContaining({ method: 'DELETE' })
-      );
-      expect(fetchSpy).toHaveBeenNthCalledWith(
-        2,
-        expect.stringContaining('/auth/login'),
-        expect.objectContaining({ method: 'POST' })
-      );
-      const thirdCallHeaders = (fetchSpy.mock.calls[2][1] as RequestInit).headers as Headers;
-      expect(thirdCallHeaders.get('Authorization')).toBe('Bearer srv-token-admin');
+      await expect(likhaLmsApi.courses.deleteCourse('c-403')).rejects.toThrow();
     });
 
     it('deletes all comments, replies, files, and images across the course in deleteCourseCascade', async () => {
