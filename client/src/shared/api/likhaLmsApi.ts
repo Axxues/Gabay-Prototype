@@ -1600,6 +1600,40 @@ export const likhaLmsApi = {
   // =========================================================================
   // 10. ACADEMIC STRUCTURE (COLLEGES & DEPARTMENTS)
   // =========================================================================
+  // =========================================================================
+  // 11. GOVERNANCE & LEADERSHIP TENURES
+  // =========================================================================
+  governance: {
+    async getTenures(): Promise<any[]> {
+      return likhaRequest('/items/leadership_tenures?sort=-start_date&limit=100').catch(() => []);
+    },
+
+    async createTenure(payload: any): Promise<any> {
+      return likhaRequest('/items/leadership_tenures', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }).catch(() => {});
+    },
+
+    async updateTenure(id: string, updates: any): Promise<any> {
+      return likhaRequest(`/items/leadership_tenures/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(updates),
+      }).catch(() => {});
+    },
+
+    async getAuditLogs(): Promise<any[]> {
+      return likhaRequest('/items/governance_audit_logs?sort=-timestamp&limit=100').catch(() => []);
+    },
+
+    async createAuditLog(payload: any): Promise<any> {
+      return likhaRequest('/items/governance_audit_logs', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }).catch(() => {});
+    },
+  },
+
   academicStructure: {
     async getColleges(): Promise<any[]> {
       const colleges = await likhaRequest<any[]>('/items/colleges?fields=*,dean_id.*&limit=100&sort=name');

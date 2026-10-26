@@ -755,6 +755,39 @@ const mapLikhaChatGroupRow = (g: any, fallbackMemberId?: string): ChatGroup => (
   createdBy: String(g.created_by ?? g.createdBy ?? fallbackMemberId ?? ''),
 });
 
+const mapLikhaTenureRow = (r: any): LeadershipTenure => ({
+  id: String(r.id),
+  role: r.role,
+  unitId: r.unit_id || r.unitId || '',
+  unitName: r.unit_name || r.unitName || '',
+  unitType: r.unit_type || r.unitType || 'system',
+  leaderId: r.leader_id || r.leaderId || '',
+  leaderName: r.leader_name || r.leaderName || '',
+  leaderEmail: r.leader_email || r.leaderEmail,
+  leaderAvatar: r.leader_avatar || r.leaderAvatar,
+  startDate: r.start_date || r.startDate || new Date().toISOString(),
+  endDate: r.end_date ?? r.endDate ?? null,
+  status: r.status || 'active',
+  appointedBy: r.appointed_by || r.appointedBy,
+  transitionNotes: r.transition_notes || r.transitionNotes,
+});
+
+const mapLikhaAuditLogRow = (r: any): GovernanceAuditLog => ({
+  id: String(r.id),
+  timestamp: r.timestamp || new Date().toISOString(),
+  eventType: r.event_type || r.eventType,
+  title: r.title || '',
+  description: r.description || '',
+  actorId: r.actor_id || r.actorId || '',
+  actorName: r.actor_name || r.actorName || '',
+  actorRole: r.actor_role || r.actorRole,
+  unitId: r.unit_id || r.unitId,
+  unitType: r.unit_type || r.unitType,
+  targetId: r.target_id || r.targetId,
+  targetType: r.target_type || r.targetType,
+  metadata: typeof r.metadata === 'string' ? JSON.parse(r.metadata) : r.metadata,
+});
+
 const mapLikhaCalendarEventRow = (e: any): CalendarEvent => ({
   id: String(e.id),
   title: e.title ?? 'Untitled event',
@@ -5095,6 +5128,21 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       const nextTenures = [newTenure, ...updated];
       safeSetLocalStorage(STORAGE_KEY_LEADERSHIP_TENURES, JSON.stringify(nextTenures));
+      void likhaLmsApi.governance.createTenure({
+        id: newTenure.id,
+        role: newTenure.role,
+        unit_id: newTenure.unitId,
+        unit_name: newTenure.unitName,
+        unit_type: newTenure.unitType,
+        leader_id: newTenure.leaderId,
+        leader_name: newTenure.leaderName,
+        leader_email: newTenure.leaderEmail,
+        start_date: newTenure.startDate,
+        end_date: newTenure.endDate,
+        status: newTenure.status,
+        appointed_by: newTenure.appointedBy,
+        transition_notes: newTenure.transitionNotes,
+      }).catch(() => {});
       return nextTenures;
     });
 
@@ -5124,6 +5172,21 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setGovernanceAuditLogs(prev => {
       const nextLogs = [newAuditLog, ...prev];
       safeSetLocalStorage(STORAGE_KEY_GOVERNANCE_AUDIT_LOGS, JSON.stringify(nextLogs));
+      void likhaLmsApi.governance.createAuditLog({
+        id: newAuditLog.id,
+        timestamp: newAuditLog.timestamp,
+        event_type: newAuditLog.eventType,
+        title: newAuditLog.title,
+        description: newAuditLog.description,
+        actor_id: newAuditLog.actorId,
+        actor_name: newAuditLog.actorName,
+        actor_role: newAuditLog.actorRole,
+        unit_id: newAuditLog.unitId,
+        unit_type: newAuditLog.unitType,
+        target_id: newAuditLog.targetId,
+        target_type: newAuditLog.targetType,
+        metadata: newAuditLog.metadata,
+      }).catch(() => {});
       return nextLogs;
     });
 
@@ -5151,6 +5214,21 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setGovernanceAuditLogs(prev => {
       const next = [newLog, ...prev];
       safeSetLocalStorage(STORAGE_KEY_GOVERNANCE_AUDIT_LOGS, JSON.stringify(next));
+      void likhaLmsApi.governance.createAuditLog({
+        id: newLog.id,
+        timestamp: newLog.timestamp,
+        event_type: newLog.eventType,
+        title: newLog.title,
+        description: newLog.description,
+        actor_id: newLog.actorId,
+        actor_name: newLog.actorName,
+        actor_role: newLog.actorRole,
+        unit_id: newLog.unitId,
+        unit_type: newLog.unitType,
+        target_id: newLog.targetId,
+        target_type: newLog.targetType,
+        metadata: newLog.metadata,
+      }).catch(() => {});
       return next;
     });
   }, []);
