@@ -8461,6 +8461,15 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     const effectiveIds = succeeded.length > 0 ? succeeded : requestIds;
 
+    const existingPending = (dbRef.current.enrollmentRequests || []).filter(
+      r => effectiveIds.includes(r.id) && r.status === 'pending' && r.type !== 'section_switch'
+    );
+    if (existingPending.length > 0) {
+      void likhaLmsApi.courses.enrollStudentsBatch(
+        existingPending.map(r => ({ courseId: r.courseId, studentId: r.studentId }))
+      ).catch(() => {});
+    }
+
     setDb(prev => {
       const now = new Date().toISOString();
       const existingRequests = prev.enrollmentRequests || [];

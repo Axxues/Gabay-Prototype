@@ -587,6 +587,28 @@ export const likhaLmsApi = {
       return likhaRequest<any[]>(`/items/Course_Enrollments?${query}`).catch(() => []);
     },
 
+    async enrollStudent(courseId: string, studentId: string): Promise<any> {
+      return likhaRequest('/items/Course_Enrollments', {
+        method: 'POST',
+        body: JSON.stringify({
+          course: courseId,
+          user: studentId,
+        }),
+      }).catch(() => {});
+    },
+
+    async enrollStudentsBatch(enrollments: Array<{ courseId: string; studentId: string }>): Promise<any> {
+      if (!enrollments || enrollments.length === 0) return [];
+      const payload = enrollments.map(e => ({
+        course: e.courseId,
+        user: e.studentId,
+      }));
+      return likhaRequest('/items/Course_Enrollments', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }).catch(() => {});
+    },
+
     async createCourse(course: any): Promise<any> {
       const payload = {
         id: course.id || generateUuid(),
