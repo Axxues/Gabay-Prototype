@@ -409,6 +409,30 @@ export const likhaLmsApi = {
       return me;
     },
 
+    async getPendingRegistrations(): Promise<any[]> {
+      return likhaRequest('/items/pending_registrations?sort=-registered_at&limit=100').catch(() => []);
+    },
+
+    async submitRegistration(payload: any): Promise<any> {
+      return likhaRequest('/items/pending_registrations', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+    },
+
+    async updatePendingRegistration(id: string, updates: any): Promise<any> {
+      return likhaRequest(`/items/pending_registrations/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(updates),
+      });
+    },
+
+    async deletePendingRegistration(id: string): Promise<void> {
+      await likhaRequest(`/items/pending_registrations/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      }).catch(() => {});
+    },
+
     logout(): void {
       clearToken();
       likhaCache.clear();

@@ -755,6 +755,26 @@ const mapLikhaChatGroupRow = (g: any, fallbackMemberId?: string): ChatGroup => (
   createdBy: String(g.created_by ?? g.createdBy ?? fallbackMemberId ?? ''),
 });
 
+const mapLikhaPendingRegistrationRow = (r: any): PendingRegistration => ({
+  id: String(r.id),
+  firstName: r.first_name || '',
+  middleName: r.middle_name || undefined,
+  lastName: r.last_name || '',
+  fullName: r.full_name || `${r.first_name || ''} ${r.last_name || ''}`.trim(),
+  email: r.email,
+  role: r.role || undefined,
+  collegeId: r.college_id || '',
+  collegeName: r.college_name || '',
+  department: r.department || '',
+  program: r.program || undefined,
+  studentId: r.student_id || '',
+  emailVerified: Boolean(r.email_verified),
+  activationToken: r.activation_token || '',
+  registeredAt: r.registered_at || new Date().toISOString(),
+  expiresAt: r.expires_at || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+  status: r.status || 'pending',
+});
+
 const mapLikhaTenureRow = (r: any): LeadershipTenure => ({
   id: String(r.id),
   role: r.role,
@@ -1871,6 +1891,23 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     pendingRegistrationsRef.current = pendingRegistrations;
     const sanitized = pendingRegistrations.map(({ password: _, ...rest }) => rest);
     safeSetLocalStorage(STORAGE_KEY_PENDING_REGISTRATIONS, JSON.stringify(sanitized));
+    void likhaLmsApi.auth.submitRegistration({
+      id: record.id,
+      first_name: record.firstName,
+      middle_name: record.middleName,
+      last_name: record.lastName,
+      full_name: record.fullName,
+      email: record.email,
+      role: record.role,
+      college_id: record.collegeId,
+      college_name: record.collegeName,
+      department: record.department,
+      program: record.program,
+      student_id: record.studentId,
+      email_verified: record.emailVerified,
+      activation_token: record.activationToken,
+      registered_at: record.registeredAt,
+    }).catch(() => {});
   }, [pendingRegistrations]);
 
   useEffect(() => {
@@ -4782,6 +4819,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const sanitized = updated.map(({ password: _, ...rest }) => rest);
       safeSetLocalStorage(STORAGE_KEY_PENDING_REGISTRATIONS, JSON.stringify(sanitized));
     } catch (_) {}
+    void likhaLmsApi.auth.updatePendingRegistration(target.id, { email_verified: true }).catch(() => {});
     return { success: true, message: 'Email address successfully verified.' };
   }, []);
 
@@ -4874,6 +4912,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
     pendingRegistrationsRef.current = verifyUpdated;
     setPendingRegistrations(verifyUpdated);
+    void likhaLmsApi.auth.updatePendingRegistration(id, { role: resolvedRole, status: 'verified' }).catch(() => {});
 
     return {
       success: true,
@@ -4888,6 +4927,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
     pendingRegistrationsRef.current = rejectUpdated;
     setPendingRegistrations(rejectUpdated);
+    void likhaLmsApi.auth.updatePendingRegistration(id, { status: 'rejected' }).catch(() => {});
     return {
       success: true,
       message: reason ? `Registration rejected: ${reason}` : 'Registration rejected.',
