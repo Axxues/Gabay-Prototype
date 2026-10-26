@@ -445,45 +445,17 @@ describe('Likha LMS Direct API Client', () => {
     );
   });
 
-  it('modules.deleteModule deletes child module_items, comments, and dependent prerequisites before deleting the module', async () => {
+  it('modules.deleteModule issues single DELETE request relying on backend cascade', async () => {
     const urls: string[] = [];
     vi.spyOn(global, 'fetch').mockImplementation(async (url: any, init: any) => {
       const u = String(url);
       urls.push(`${init?.method || 'GET'} ${u}`);
-      if ((init?.method || 'GET') === 'GET') {
-        if (u.includes('/items/module_items?')) {
-          return { ok: true, json: async () => ({ data: [{ id: 'mi-10', module_id: 'mod-1' }, { id: 'mi-11', module_id: 'mod-1' }] }) } as any;
-        }
-        if (u.includes('/items/module_comments?')) {
-          return { ok: true, json: async () => ({ data: [{ id: 'mc-10', module_id: 'mod-1' }] }) } as any;
-        }
-        if (u.includes('/items/modules?')) {
-          return { ok: true, json: async () => ({ data: [{ id: 'mod-2', prerequisite_module_id: 'mod-1' }] }) } as any;
-        }
-        return { ok: true, json: async () => ({ data: [] }) } as any;
-      }
       return { ok: true, json: async () => ({ data: {} }) } as any;
     });
 
     await likhaLmsApi.modules.deleteModule('mod-1');
 
-    const parentIdx = urls.findIndex(u => u === 'DELETE https://gabay.zyberlab.com/items/modules/mod-1');
-    expect(parentIdx).toBeGreaterThan(-1);
-
-    const commentIdx = urls.findIndex(u => u === 'DELETE https://gabay.zyberlab.com/items/module_comments/mc-10');
-    const item10Idx = urls.findIndex(u => u === 'DELETE https://gabay.zyberlab.com/items/module_items/mi-10');
-    const item11Idx = urls.findIndex(u => u === 'DELETE https://gabay.zyberlab.com/items/module_items/mi-11');
-    const patchDepIdx = urls.findIndex(u => u === 'PATCH https://gabay.zyberlab.com/items/modules/mod-2');
-
-    expect(commentIdx).toBeGreaterThan(-1);
-    expect(item10Idx).toBeGreaterThan(-1);
-    expect(item11Idx).toBeGreaterThan(-1);
-    expect(patchDepIdx).toBeGreaterThan(-1);
-
-    expect(commentIdx).toBeLessThan(parentIdx);
-    expect(item10Idx).toBeLessThan(parentIdx);
-    expect(item11Idx).toBeLessThan(parentIdx);
-    expect(patchDepIdx).toBeLessThan(parentIdx);
+    expect(urls).toEqual(['DELETE https://gabay.zyberlab.com/items/modules/mod-1']);
   });
 
   it('modules.deleteModuleItem deletes the module item', async () => {

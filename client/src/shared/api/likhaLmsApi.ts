@@ -707,59 +707,7 @@ export const likhaLmsApi = {
     },
 
     async deleteModule(id: string): Promise<void> {
-      // Robust children-first relational cascade: Directus does not apply server-side
-      // CASCADE ON DELETE, so parent deletes are blocked by foreign key constraints.
-      // 1. Fetch child module_items
-      const modItems = await likhaElevatedRequest<any[]>(
-        `/items/module_items?filter[module_id][_eq]=${encodeURIComponent(id)}&limit=-1`
-      ).catch(() => []);
-      const itemIds = (Array.isArray(modItems) ? modItems : []).map((it: any) => it.id).filter(Boolean);
-
-      // 2. Fetch comments tied to the module (module_comments is keyed by module_id in Likha)
-      const modComments = await likhaElevatedRequest<any[]>(
-        `/items/module_comments?filter[module_id][_eq]=${encodeURIComponent(id)}&limit=-1`
-      ).catch(() => []);
-      const allComments = Array.isArray(modComments) ? modComments : [];
-
-      // 3. Clear prerequisite references on other modules that depend on this module
-      const dependentModules = await likhaElevatedRequest<any[]>(
-        `/items/modules?filter[prerequisite_module_id][_eq]=${encodeURIComponent(id)}&limit=-1`
-      ).catch(() => []);
-      if (Array.isArray(dependentModules) && dependentModules.length > 0) {
-        await Promise.allSettled(
-          dependentModules.map((m: any) =>
-            likhaElevatedRequest(`/items/modules/${encodeURIComponent(m.id)}`, {
-              method: 'PATCH',
-              body: JSON.stringify({ prerequisite_module_id: null }),
-            }).catch(() => {})
-          )
-        );
-      }
-
-      // 4. Delete leaf records first: module comments, then module items
-      if (allComments.length > 0) {
-        await Promise.allSettled(
-          allComments.map((c: any) =>
-            likhaElevatedRequest(`/items/module_comments/${encodeURIComponent(c.id)}`, { method: 'DELETE' }).catch(
-              () => {}
-            )
-          )
-        );
-      }
-
-      if (itemIds.length > 0) {
-        await Promise.allSettled(
-          itemIds.map((itemId: string) =>
-            likhaElevatedRequest(`/items/module_items/${encodeURIComponent(itemId)}`, { method: 'DELETE' }).catch(
-              () => {}
-            )
-          )
-        );
-      }
-
-      // 5. Delete the module itself
-      await likhaElevatedRequest(`/items/modules/${encodeURIComponent(id)}`, { method: 'DELETE' });
-
+      await likhaRequest(`/items/modules/${encodeURIComponent(id)}`, { method: 'DELETE' });
       likhaCache.invalidate('/items/modules');
       likhaCache.invalidate('/items/module_items');
       likhaCache.invalidate('/items/module_comments');
@@ -781,7 +729,7 @@ export const likhaLmsApi = {
     },
 
     async deleteModuleItem(id: string): Promise<void> {
-      await likhaElevatedRequest(`/items/module_items/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      await likhaRequest(`/items/module_items/${encodeURIComponent(id)}`, { method: 'DELETE' });
       likhaCache.invalidate('/items/module_items');
     },
 
@@ -1222,7 +1170,7 @@ export const likhaLmsApi = {
     },
 
     async deleteFile(fileId: string): Promise<void> {
-      await likhaElevatedRequest(`/files/${encodeURIComponent(fileId)}`, {
+      await likhaRequest(`/files/${encodeURIComponent(fileId)}`, {
         method: 'DELETE',
       });
     },
@@ -1230,11 +1178,11 @@ export const likhaLmsApi = {
     async deleteCourseFile(id: string): Promise<void> {
       const item = await likhaRequest<any>(`/items/course_files/${encodeURIComponent(id)}?fields=*,file.*`).catch(() => null);
       const fileAssetId = item?.file?.id || (typeof item?.file === 'string' ? item.file : null);
-      await likhaElevatedRequest(`/items/course_files/${encodeURIComponent(id)}`, {
+      await likhaRequest(`/items/course_files/${encodeURIComponent(id)}`, {
         method: 'DELETE',
       });
       if (fileAssetId) {
-        await likhaElevatedRequest(`/files/${encodeURIComponent(fileAssetId)}`, {
+        await likhaRequest(`/files/${encodeURIComponent(fileAssetId)}`, {
           method: 'DELETE',
         }).catch(() => {});
       }
@@ -1260,7 +1208,7 @@ export const likhaLmsApi = {
     },
 
     async deleteCourseFolder(id: string): Promise<void> {
-      await likhaElevatedRequest(`/items/course_folders/${encodeURIComponent(id)}`, {
+      await likhaRequest(`/items/course_folders/${encodeURIComponent(id)}`, {
         method: 'DELETE',
       });
     },
