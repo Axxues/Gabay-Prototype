@@ -253,6 +253,7 @@ def parse_syllabus_to_sections(
     course_code: str,
     course_title: str,
     syllabus_data: Any,
+    course_id: Optional[str] = None,
 ) -> list[dict]:
     """Break syllabus data into 6 semantic sections for vector upsert.
 
@@ -260,11 +261,12 @@ def parse_syllabus_to_sections(
         course_code: Unique course identifier (e.g. 'CMSC101').
         course_title: Official course title (e.g. 'Introduction to Computing').
         syllabus_data: Dictionary or JSON string containing syllabus contents.
+        course_id: Optional unique course ID to namespace section documents.
 
     Returns:
         List of section dictionaries matching:
         {
-            "id": f"{course_code}_{section_key}",
+            "id": f"{course_id}_{course_code}_{section_key}" or f"{course_code}_{section_key}",
             "text": f"Course: {course_code} - {course_title}\nSection: {section_title}\n{content}",
             "metadata": {
                 "source": f"{course_code} Syllabus",
@@ -309,7 +311,7 @@ def parse_syllabus_to_sections(
 
     for section_key, section_title, content in extractors:
         if content and content.strip():
-            section_id = f"{clean_code}_{section_key}"
+            section_id = f"{course_id}_{clean_code}_{section_key}" if course_id else f"{clean_code}_{section_key}"
             text_payload = (
                 f"Course: {clean_code} - {clean_title}\n"
                 f"Section: {section_title}\n"
@@ -322,6 +324,8 @@ def parse_syllabus_to_sections(
                 "section_key": section_key,
                 "category": "curriculum_and_instruction",
             }
+            if course_id:
+                metadata["course_id"] = str(course_id)
             sections.append({
                 "id": section_id,
                 "text": text_payload,
@@ -388,13 +392,11 @@ def fetch_likha_data(
         resp_data = courses_resp.json()
         courses: list[dict] = resp_data.get("data", []) if isinstance(resp_data, dict) else resp_data
 
-        # Filter by published status in-memory if published flag is utilized
-        has_published_flag = any(c.get("published") is True or c.get("status") == "published" for c in courses)
-        if has_published_flag:
-            courses = [
-                c for c in courses
-                if c.get("published") is True or c.get("status") == "published"
-            ]
+        # Filter strictly by published status in-memory (fail-closed)
+        courses = [
+            c for c in courses
+            if c.get("published") is True or c.get("status") == "published"
+        ]
 
         # Normalize syllabus field for each course
         for course in courses:

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Save, AlertCircle, Info, Calendar, Phone, Users, CheckCircle2 } from 'lucide-react';
+import { Save, AlertCircle, Info, Calendar, Phone, Users, CheckCircle2, UserCheck } from 'lucide-react';
 import type { User, NormalizedPersonName, NormalizedAddress } from '../../../shared/types/lms';
 import { getMaxBirthdayDate, isValidBirthday, parseAddress, formatAddress, isAddressComplete } from '../../../shared/utils/profileCompletion';
 import { NormalizedAddressFields } from './NormalizedAddressFields';
@@ -11,6 +11,25 @@ interface StudentProfileFormProps {
   onSuccess?: () => void;
 }
 
+const parseInitialName = (u: User) => {
+  if (u.firstName !== undefined || u.lastName !== undefined) {
+    return {
+      firstName: u.firstName || '',
+      middleName: u.middleName || '',
+      lastName: u.lastName || '',
+    };
+  }
+  const parts = (u.name || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { firstName: '', middleName: '', lastName: '' };
+  if (parts.length === 1) return { firstName: parts[0], middleName: '', lastName: '' };
+  if (parts.length === 2) return { firstName: parts[0], middleName: '', lastName: parts[1] };
+  return {
+    firstName: parts[0],
+    middleName: parts.slice(1, -1).join(' '),
+    lastName: parts[parts.length - 1],
+  };
+};
+
 export const StudentProfileForm: React.FC<StudentProfileFormProps> = ({
   user,
   updateUser,
@@ -20,6 +39,11 @@ export const StudentProfileForm: React.FC<StudentProfileFormProps> = ({
   const initialSameAs = user.sameAsPermanentAddress ?? (
     Boolean(user.permanentAddress && user.presentAddress && user.permanentAddress === user.presentAddress)
   );
+
+  const initialNames = parseInitialName(user);
+  const [firstName, setFirstName] = useState(initialNames.firstName);
+  const [middleName, setMiddleName] = useState(initialNames.middleName);
+  const [lastName, setLastName] = useState(initialNames.lastName);
 
   const [birthday, setBirthday] = useState(user.birthday || '');
   const [permanentAddressDetails, setPermanentAddressDetails] = useState<NormalizedAddress>(
@@ -85,6 +109,21 @@ export const StudentProfileForm: React.FC<StudentProfileFormProps> = ({
     e.preventDefault();
     setErrorMessage(null);
 
+    if (!firstName.trim()) {
+      setErrorMessage('Please enter a First Name.');
+      return;
+    }
+
+    if (!lastName.trim()) {
+      setErrorMessage('Please enter a Last Name.');
+      return;
+    }
+
+    if (!contactNumber.trim()) {
+      setErrorMessage('Please enter a Contact Number.');
+      return;
+    }
+
     if (!isValidBirthday(birthday)) {
       setErrorMessage('Birthday must be from a previous date and cannot be in the future (such as tomorrow or later).');
       return;
@@ -106,8 +145,13 @@ export const StudentProfileForm: React.FC<StudentProfileFormProps> = ({
 
     const formattedPermanent = formatAddress(permanentAddressDetails);
     const formattedPresent = formatAddress(effectivePresentDetails);
+    const computedFullName = [firstName.trim(), middleName.trim(), lastName.trim()].filter(Boolean).join(' ') || user.name;
 
     const updates: Partial<User> = {
+      firstName: firstName.trim(),
+      middleName: middleName.trim(),
+      lastName: lastName.trim(),
+      name: computedFullName,
       birthday,
       permanentAddress: formattedPermanent,
       presentAddress: formattedPresent,
@@ -189,6 +233,63 @@ export const StudentProfileForm: React.FC<StudentProfileFormProps> = ({
               <Info className="w-3 h-3" />
               Locked
             </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Account Identity & Legal Name */}
+      <div className="space-y-4">
+        <div className="flex items-center space-x-2 text-xs font-bold text-foreground uppercase tracking-wider">
+          <UserCheck className="w-4 h-4 text-primary" />
+          <span>Account Identity & Legal Name</span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="space-y-1.5">
+            <label htmlFor="student-first-name" className="block text-xs font-semibold text-foreground">
+              First Name <span className="text-destructive">*</span>
+            </label>
+            <input
+              id="student-first-name"
+              type="text"
+              required
+              aria-label="First Name"
+              value={firstName}
+              onChange={e => setFirstName(e.target.value)}
+              placeholder="e.g. Maria"
+              className="w-full px-3.5 py-2.5 bg-background border border-border focus:ring-2 focus:ring-primary/30 rounded-xl text-xs text-foreground font-sans outline-none transition-all"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label htmlFor="student-middle-name" className="block text-xs font-semibold text-foreground">
+              Middle Name <span className="text-[10px] font-normal text-muted-foreground">(Optional)</span>
+            </label>
+            <input
+              id="student-middle-name"
+              type="text"
+              aria-label="Middle Name"
+              value={middleName}
+              onChange={e => setMiddleName(e.target.value)}
+              placeholder="e.g. Delos"
+              className="w-full px-3.5 py-2.5 bg-background border border-border focus:ring-2 focus:ring-primary/30 rounded-xl text-xs text-foreground font-sans outline-none transition-all"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label htmlFor="student-last-name" className="block text-xs font-semibold text-foreground">
+              Last Name <span className="text-destructive">*</span>
+            </label>
+            <input
+              id="student-last-name"
+              type="text"
+              required
+              aria-label="Last Name"
+              value={lastName}
+              onChange={e => setLastName(e.target.value)}
+              placeholder="e.g. Santos"
+              className="w-full px-3.5 py-2.5 bg-background border border-border focus:ring-2 focus:ring-primary/30 rounded-xl text-xs text-foreground font-sans outline-none transition-all"
+            />
           </div>
         </div>
       </div>

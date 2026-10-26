@@ -25,7 +25,7 @@ vi.mock('../api/client', () => ({
         id: 'u-chancellor',
         first_name: 'Jayvee',
         last_name: 'Admin',
-        email: 'jayveegenetareyes@gmail.com',
+        email: 'chancellor@dmmmsu.edu.ph',
         role: { name: 'Administrator' },
       },
     })),

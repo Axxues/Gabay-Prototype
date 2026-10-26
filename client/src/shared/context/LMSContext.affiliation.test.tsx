@@ -51,7 +51,7 @@ const loginLikhaMock = vi.fn(async () => ({
     id: 'u-chancellor',
     first_name: 'Jayvee',
     last_name: 'Admin',
-    email: 'jayveegenetareyes@gmail.com',
+    email: 'chancellor@dmmmsu.edu.ph',
     role: { name: 'Administrator' },
   },
 }));
@@ -110,7 +110,7 @@ let seenUsers: any[] | null = null;
 const Probe: React.FC = () => {
   const { db, login } = useLMS();
   seenUsers = db.users as any[];
-  doLogin = () => login('jayveegenetareyes@gmail.com', 'pw');
+  doLogin = () => login('chancellor@dmmmsu.edu.ph', 'pw');
   return null;
 };
 
@@ -144,7 +144,7 @@ describe('Institutional Academic Hierarchy Affiliations', () => {
     );
 
     // 1. Chancellor: Office of the Chancellor
-    const chancellor = userByEmail['jayveegenetareyes@gmail.com'];
+    const chancellor = userByEmail['chancellor@dmmmsu.edu.ph'];
     expect(chancellor).toBeDefined();
     expect(chancellor.department).toBe('Office of the Chancellor');
 

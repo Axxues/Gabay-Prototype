@@ -66,7 +66,7 @@ import { syllabusApi, deleteDraft, withdrawSyllabus } from '../api/syllabus';
 import type { SyllabusRevisionHeader, SyllabusRevisionResponse, SyllabusSectionKey } from '../types/syllabusApi';
 import { settledValue } from '../utils/promise';
 import { formatFileSize, toShortFileType } from '../utils/fileUploader';
-import { isValidUuid, generateSecureActivationToken, generateUuid } from '../utils/cryptoToken';
+import { isValidUuid, generateSecureActivationToken, generateUuid, generateSecureId, generateSecureDigits } from '../utils/cryptoToken';
 import { isChairRole, isDeanRole, isFacultyRole, canDeleteCourse } from '../utils/roles';
 
 export interface LMSContextType {
@@ -1408,14 +1408,19 @@ const mergeSPRGrades = (
 /** Task 7: Likha course_grades rows arrive Directus-shaped (snake_case);
  *  client-shaped camelCase still maps. Term scalars stay null when the row
  *  carries neither casing (cells remain the source of truth). */
-const mapLikhaGradeRow = (row: any, courseId: string): any => ({
-  ...row,
-  courseId: String(row.course_id ?? row.courseId ?? courseId),
-  studentId: String(row.student_id ?? row.studentId ?? ''),
-  midtermGrade: toFiniteNumber(row.midterm_grade) ?? toFiniteNumber(row.midtermGrade) ?? null,
-  finalGrade: toFiniteNumber(row.final_grade) ?? toFiniteNumber(row.finalGrade) ?? null,
-  updatedAt: row.updated_at ?? row.updatedAt ?? undefined,
-});
+const mapLikhaGradeRow = (row: any, courseId: string): any => {
+  const cells = Array.isArray(row.spr_cells) ? row.spr_cells : (Array.isArray(row.sprCells) ? row.sprCells : []);
+  const mtCell = cells.find((c: any) => c?.task_id === '__term_midterm');
+  const ftCell = cells.find((c: any) => c?.task_id === '__term_final');
+  return {
+    ...row,
+    courseId: String(row.course_id ?? row.courseId ?? courseId),
+    studentId: String(row.student_id ?? row.studentId ?? ''),
+    midtermGrade: toFiniteNumber(row.midterm_grade) ?? toFiniteNumber(row.midtermGrade) ?? toFiniteNumber(mtCell?.score) ?? null,
+    finalGrade: toFiniteNumber(row.final_grade) ?? toFiniteNumber(row.finalGrade) ?? toFiniteNumber(ftCell?.score) ?? null,
+    updatedAt: row.updated_at ?? row.updatedAt ?? undefined,
+  };
+};
 
 /** Task 7: Likha spr_cells child rows [{ task_id, score }] (expanded via
  *  fields=*,spr_cells.*) -> the client manual-cell model. Exam keys
@@ -1659,8 +1664,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (configured && normalized === configured) return true;
     return (
       normalized === 'chancellor@dmmmsu.edu.ph' ||
-      normalized === 'chancellor@gabay.edu.ph' ||
-      (import.meta.env.MODE === 'test' && normalized === 'jayveegenetareyes@gmail.com')
+      normalized === 'chancellor@gabay.edu.ph'
     );
   };
 
@@ -1814,14 +1818,16 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     governanceAuditLogs: [],
   });
 
-  // Database State (API-backed cache; starts empty or loads from localStorage if persisted)
+  // Database State (API-backed cache; starts empty or loads from localStorage if persisted in dev)
   const [db, setDbState] = useState<LMSDatabase>(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY_DB);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && typeof parsed === 'object') {
-          return { ...emptyDb(), ...parsed };
+      if (import.meta.env.DEV) {
+        const saved = localStorage.getItem(STORAGE_KEY_DB);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed && typeof parsed === 'object') {
+            return { ...emptyDb(), ...parsed };
+          }
         }
       }
     } catch (_) {}
@@ -3366,16 +3372,18 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    const localUser = db.users.find(
-      u => (u.email.toLowerCase() === cleanEmail || u.studentId?.toLowerCase() === cleanEmail)
-    );
-    if (localUser) {
-      const effectiveUser = normalizeChancellorUser(applyStoredUserProfile(localUser));
-      if (!effectiveUser.password || effectiveUser.password !== password) {
-        return { success: false, message: 'Invalid email or password.' };
+    if (import.meta.env.DEV) {
+      const localUser = db.users.find(
+        u => (u.email.toLowerCase() === cleanEmail || u.studentId?.toLowerCase() === cleanEmail)
+      );
+      if (localUser) {
+        const effectiveUser = normalizeChancellorUser(applyStoredUserProfile(localUser));
+        if (!effectiveUser.password || effectiveUser.password !== password) {
+          return { success: false, message: 'Invalid email or password.' };
+        }
+        setCurrentUser(effectiveUser);
+        return { success: true, user: effectiveUser };
       }
-      setCurrentUser(effectiveUser);
-      return { success: true, user: effectiveUser };
     }
 
     return { success: false, message: 'Login failed.' };
@@ -4438,7 +4446,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       email: person.email || `user.${Date.now()}@dmmmsu.edu.ph`,
       role: person.role || 'student',
       avatar: person.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
-      studentId: person.studentId || (person.role === 'student' ? `2026-SLUC-${Math.floor(1000 + Math.random() * 9000)}` : undefined),
+      studentId: person.studentId || (person.role === 'student' ? `2026-SLUC-${generateSecureDigits(4)}` : undefined),
       department: person.department || 'BS Computer Science',
       title: person.title || (person.role === 'student' ? 'Enrolled Student' : 'Instructor'),
       enrolledCourseIds: person.enrolledCourseIds || (targetCourseId ? [targetCourseId] : [])
@@ -4563,7 +4571,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           mapped.avatar ||
           'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
         title: userData.title || (role === 'student' ? 'Undergraduate Student' : (role === 'faculty' ? 'Instructor' : mapped.title)),
-        studentId: userData.studentId || (role === 'student' ? `2026-${Math.floor(10000 + Math.random() * 90000)}` : undefined),
+        studentId: userData.studentId || (role === 'student' ? `2026-${generateSecureDigits(5)}` : undefined),
         password: userData.password || 'password123',
         enrolledCourseIds: userData.enrolledCourseIds || [],
         name: userData.name || mapped.name,
@@ -4760,7 +4768,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       password: string;
     } & Partial<PendingRegistration>
   ): Promise<PendingRegistration> => {
-    const id = payload.id || `reg-${Math.random().toString(36).substring(2, 9)}-${Date.now().toString(36)}`;
+    const id = payload.id || generateSecureId('reg');
     const fullName =
       payload.fullName ||
       [payload.firstName, payload.middleName, payload.lastName].filter(Boolean).join(' ');
@@ -5196,7 +5204,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
 
       const newTenure: LeadershipTenure = {
-        id: `tenure-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        id: generateSecureId('tenure'),
         role: roleType,
         unitId,
         unitName: targetUnitName,
@@ -5233,7 +5241,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     const newAuditLog: GovernanceAuditLog = {
-      id: `audit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      id: generateSecureId('audit'),
       timestamp: nowIso,
       eventType: 'leadership_transfer',
       title: `Leadership Handover: ${roleType === 'dean' ? 'Dean' : roleType === 'chairperson' ? 'Program Chair' : 'System Admin'}`,
@@ -5294,7 +5302,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const logGovernanceEvent = useCallback((event: Omit<GovernanceAuditLog, 'id' | 'timestamp'>) => {
     const newLog: GovernanceAuditLog = {
       ...event,
-      id: `audit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      id: generateSecureId('audit'),
       timestamp: new Date().toISOString(),
     };
     setGovernanceAuditLogs(prev => {
@@ -5536,7 +5544,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             return t;
           });
           const newTenure: LeadershipTenure = {
-            id: `tenure-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+            id: generateSecureId('tenure'),
             role: 'dean',
             unitId: college.id,
             unitName: college.name,
@@ -5557,7 +5565,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
 
         const newAuditLog: GovernanceAuditLog = {
-          id: `audit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+          id: generateSecureId('audit'),
           timestamp: nowIso,
           eventType: 'leadership_transfer',
           title: 'Leadership Handover: Dean',
@@ -5748,7 +5756,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             return t;
           });
           const newTenure: LeadershipTenure = {
-            id: `tenure-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+            id: generateSecureId('tenure'),
             role: 'chairperson',
             unitId: department.id,
             unitName: department.name,
@@ -5769,7 +5777,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
 
         const newAuditLog: GovernanceAuditLog = {
-          id: `audit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+          id: generateSecureId('audit'),
           timestamp: nowIso,
           eventType: 'leadership_transfer',
           title: 'Leadership Handover: Program Chair',
@@ -6166,7 +6174,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (recipients.length > 0) {
       const now = new Date().toISOString();
       const newNotifs: Notification[] = recipients.map(u => ({
-        id: `notif-baseline-${target.year}-${u.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        id: `notif-baseline-${target.year}-${u.id}-${generateSecureId('notif')}`,
         type: 'baseline_changed',
         recipientId: u.id,
         actorId: activeUser?.id || 'admin',
@@ -6245,7 +6253,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (recipients.length > 0) {
       const now = new Date().toISOString();
       const newNotifs: Notification[] = recipients.map(u => ({
-        id: `notif-baseline-semester-${norm}-${u.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        id: `notif-baseline-semester-${norm}-${u.id}-${generateSecureId('notif')}`,
         type: 'baseline_changed',
         recipientId: u.id,
         actorId: activeUser?.id || 'admin',
@@ -6378,7 +6386,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return u;
       });
       const nextDb = { ...prev, users: updatedUsers };
-      safeSetLocalStorage(STORAGE_KEY_DB, JSON.stringify(nextDb));
+      if (import.meta.env.DEV) {
+        safeSetLocalStorage(STORAGE_KEY_DB, JSON.stringify(nextDb));
+      }
       return nextDb;
     });
 
@@ -6678,12 +6688,27 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...prevDb,
       courses: prevDb.courses.map(c => (c.id === courseId ? { ...c, gradesReleased: optimistic } : c))
     }));
-    await likhaLmsApi.courses.updateCourse(courseId, { grades_released: optimistic }).catch(() => {});
-    showAlert({
-      title: released ? 'Grades Released' : 'Grades Un-released',
-      message: `${term} grades are now ${released ? 'visible to students' : 'hidden from students'}.`,
-      type: 'success'
-    });
+    try {
+      await likhaLmsApi.courses.updateCourse(courseId, { grades_released: optimistic });
+      showAlert({
+        title: released ? 'Grades Released' : 'Grades Un-released',
+        message: `${term} grades are now ${released ? 'visible to students' : 'hidden from students'}.`,
+        type: 'success'
+      });
+    } catch (err: any) {
+      setDb(prevDb => ({
+        ...prevDb,
+        courses: prevDb.courses.map(c => (c.id === courseId ? { ...c, gradesReleased: prev } : c))
+      }));
+      const message = err?.message || 'Failed to update grade release status on server.';
+      setLastError(message);
+      showAlert({
+        title: 'Grade Release Failed',
+        message,
+        type: 'error',
+      });
+      throw err;
+    }
   };
 
   const importCommonsTemplate = async (templateId: string, targetCourseId: string): Promise<{ success: boolean; message: string }> => {
@@ -8338,6 +8363,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         await likhaLmsApi.grades.saveGradeWithCells(courseId, studentId, [
           { task_id: key, score: value },
         ]);
+      } else if (typeof likhaLmsApi.grades.clearSPRCell === 'function') {
+        await likhaLmsApi.grades.clearSPRCell(courseId, studentId, key);
       }
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to save SPR cell.';

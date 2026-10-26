@@ -123,6 +123,14 @@ const RequireAdmin: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   return <>{children}</>;
 };
 
+const RequireSuperAdmin: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { activeRole } = useLMS();
+  if (activeRole !== 'superadmin') {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return <>{children}</>;
+};
+
 const RequireChair: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { activeUser, activeRole } = useLMS();
   if (!isChairRole(activeUser, activeRole)) {
@@ -242,8 +250,10 @@ export const AppShell: React.FC = () => {
       if (!allowedStaffTabs.includes(currentTab)) {
         navigate('/inbox', { replace: true });
       }
-    } else if (activeRole !== 'admin' && activeRole !== 'superadmin') {
-      if (currentTab === 'accounts' || currentTab === 'create-account' || currentTab === 'create-leadership' || currentTab === 'edit-account' || currentTab === 'account-profile' || currentTab === 'governance') {
+    } else if (currentTab === 'create-leadership' && (activeRole as string) !== 'superadmin') {
+      navigate('/dashboard', { replace: true });
+    } else if (activeRole !== 'admin' && (activeRole as string) !== 'superadmin') {
+      if (currentTab === 'accounts' || currentTab === 'create-account' || currentTab === 'edit-account' || currentTab === 'account-profile' || currentTab === 'governance') {
         navigate('/dashboard', { replace: true });
       }
     }
@@ -311,7 +321,7 @@ export const AppShell: React.FC = () => {
         onNavigateCourse={(id, sub) => { nav.handleNavigateCourse(id, sub); setSearchOpen(false); }}
         onNavigateTab={(t) => { nav.handleNavigateTab(t); setSearchOpen(false); }}
       />
-      <RoleSwitcherModal />
+      {import.meta.env.DEV && <RoleSwitcherModal />}
       <React.Suspense fallback={null}>
         <SpeedGraderModal />
       </React.Suspense>
@@ -351,7 +361,7 @@ export const AppContent: React.FC = () => {
         <Route path="/governance/programs/:deptId" element={<RequireAdmin><RouteWithNav element={(nav) => <ProgramDetailsPage onNavigateTab={nav.handleNavigateTab} />} /></RequireAdmin>} />
         <Route path="/governance/departments/:deptId" element={<RequireAdmin><RouteWithNav element={(nav) => <ProgramDetailsPage onNavigateTab={nav.handleNavigateTab} />} /></RequireAdmin>} />
         <Route path="/accounts" element={<RequireAdmin><RouteWithNav element={(nav) => <ManageAccountsPage onNavigateTab={nav.handleNavigateTab} onEditAccount={nav.handleEditAccount} onViewAccount={nav.handleViewAccount} />} /></RequireAdmin>} />
-        <Route path="/accounts/create-leadership" element={<RequireAdmin><RouteWithNav element={(nav) => <CreateLeadershipAccountPage onNavigateTab={nav.handleNavigateTab} />} /></RequireAdmin>} />
+        <Route path="/accounts/create-leadership" element={<RequireSuperAdmin><RouteWithNav element={(nav) => <CreateLeadershipAccountPage onNavigateTab={nav.handleNavigateTab} />} /></RequireSuperAdmin>} />
         <Route path="/accounts/new" element={<Navigate to="/accounts" replace />} />
         <Route path="/accounts/:userId/view" element={<RequireAdmin><RouteWithNav element={(nav) => <AccountProfileRoute nav={nav} />} /></RequireAdmin>} />
         <Route path="/accounts/:userId" element={<RequireAdmin><RouteWithNav element={(nav) => <AccountProfileRoute nav={nav} />} /></RequireAdmin>} />

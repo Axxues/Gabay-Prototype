@@ -28,6 +28,9 @@ class Settings(BaseModel):
     likha_admin_password: Optional[str] = None
     cors_allowed_origins: str = "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,https://gabay.zyberlab.com"
     rag_client_key: Optional[str] = None
+    trust_proxy: bool = False
+    allowed_activation_origins: str = "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,https://gabay.zyberlab.com,https://gabay-prototype.vercel.app"
+    allowed_email_domains: str = ""
     port: int = 8000
     smtp_host: str = "smtp.gmail.com"
     smtp_port: int = 465
@@ -57,6 +60,12 @@ def get_settings() -> Settings:
             "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,https://gabay.zyberlab.com",
         ),
         rag_client_key=os.getenv("RAG_CLIENT_KEY"),
+        trust_proxy=os.getenv("TRUST_PROXY", "false").lower() in ("true", "1", "yes"),
+        allowed_activation_origins=os.getenv(
+            "ALLOWED_ACTIVATION_ORIGINS",
+            "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,https://gabay.zyberlab.com,https://gabay-prototype.vercel.app",
+        ),
+        allowed_email_domains=os.getenv("ALLOWED_EMAIL_DOMAINS", ""),
         port=int(os.getenv("PORT", "8000")),
         smtp_host=os.getenv("SMTP_HOST", "smtp.gmail.com"),
         smtp_port=int(os.getenv("SMTP_PORT", "465")),

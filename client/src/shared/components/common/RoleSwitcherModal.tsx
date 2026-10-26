@@ -21,7 +21,7 @@ export const RoleSwitcherModal: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isRoleModalOpen, startClose]);
 
-  if (!isRoleModalOpen) return null;
+  if (!import.meta.env.DEV || !isRoleModalOpen) return null;
 
   const superadminUser = db?.users?.find(u => u.role === 'superadmin');
   const adminUser = db?.users?.find(u => u.role === 'admin');
@@ -43,7 +43,7 @@ export const RoleSwitcherModal: React.FC = () => {
     {
       role: 'superadmin',
       title: '0. Chancellor (Superadmin)',
-      personName: superadminUser?.name || 'Chancellor (Jayvee)',
+      personName: superadminUser?.name || 'Chancellor',
       icon: <Crown className="w-5 h-5 text-purple-600 dark:text-purple-400" />,
       badgeColor: 'bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/20',
       scope: 'Institution-wide oversight across all colleges, academic programs & course shells.',

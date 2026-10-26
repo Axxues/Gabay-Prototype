@@ -70,7 +70,7 @@ export const CreateAccountPage: React.FC<CreateAccountPageProps> = ({ onNavigate
   }, [currentCollegeId, getActiveSchoolYearForCollege, getSchoolYearsByCollege, schoolYears]);
 
   const [formSchoolYear, setFormSchoolYear] = useState(defaultSchoolYear);
-  const [formPassword, setFormPassword] = useState('gabay2026');
+  const [formPassword, setFormPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -167,7 +167,7 @@ export const CreateAccountPage: React.FC<CreateAccountPageProps> = ({ onNavigate
         collegeId: currentCollegeId,
         title: previewMeta.defaultTitle,
         studentId: cleanIdNumber,
-        password: formPassword.trim() || 'gabay2026',
+        password: formPassword.trim(),
         avatar: ''
       }).catch(() => null);
       if (!created) return;
@@ -348,7 +348,7 @@ export const CreateAccountPage: React.FC<CreateAccountPageProps> = ({ onNavigate
                   type={showPassword ? 'text' : 'password'}
                   value={formPassword}
                   onChange={e => setFormPassword(e.target.value)}
-                  placeholder="gabay2026"
+                  placeholder="Min. 8 characters"
                   className="w-full pr-10 p-2.5 bg-background border border-border hover:border-primary/40 focus:border-primary rounded-xl text-foreground text-xs font-sans outline-none focus:ring-2 focus:ring-primary/30 shadow-none"
                 />
                 <button
@@ -360,7 +360,7 @@ export const CreateAccountPage: React.FC<CreateAccountPageProps> = ({ onNavigate
                 </button>
               </div>
               <p className="text-[11px] text-muted-foreground mt-1.5">
-                Default demo password is "gabay2026". Users can use this to sign into Gabay LMS.
+                Enter a secure temporary password (at least 8 characters) for the user to sign in.
               </p>
             </div>
           </div>

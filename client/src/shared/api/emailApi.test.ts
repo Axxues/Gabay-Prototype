@@ -74,5 +74,42 @@ describe('emailApi client', () => {
       expect(res.success).toBe(false);
       expect(res.message).toBe('Internal server error');
     });
+
+    it('attaches X-Gabay-Client-Key header when VITE_RAG_CLIENT_KEY is configured', async () => {
+      import.meta.env.VITE_RAG_CLIENT_KEY = 'test-secret-key';
+      const fetchMock = vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ success: true }),
+      }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      await sendActivationEmail({
+        email: 'juan@dmmmsu.edu.ph',
+        activationUrl: 'http://localhost:5173/activate?token=test',
+      });
+
+      const [, init] = fetchMock.mock.calls[0] as unknown as [string, { headers: Record<string, string> }];
+      expect(init.headers['X-Gabay-Client-Key']).toBe('test-secret-key');
+      import.meta.env.VITE_RAG_CLIENT_KEY = '';
+    });
+  });
+
+  describe('verifyLeadershipCode', () => {
+    it('sends POST request to /api/auth/verify-leadership-code', async () => {
+      const { verifyLeadershipCode } = await import('./emailApi');
+      const fetchMock = vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ success: true, message: 'Code confirmed' }),
+      }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const res = await verifyLeadershipCode('dean@dmmmsu.edu.ph', '123456');
+      expect(fetchMock).toHaveBeenCalledOnce();
+      const [url, init] = fetchMock.mock.calls[0] as unknown as [string, { method: string; body: string }];
+      expect(url).toBe('http://localhost:8000/api/auth/verify-leadership-code');
+      expect(init.method).toBe('POST');
+      expect(JSON.parse(init.body)).toEqual({ email: 'dean@dmmmsu.edu.ph', code: '123456' });
+      expect(res.success).toBe(true);
+    });
   });
 });

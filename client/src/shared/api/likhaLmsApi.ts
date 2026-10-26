@@ -379,6 +379,22 @@ export const likhaLmsApi = {
   // 1. AUTHENTICATION & DIRECTORY
   // =========================================================================
   auth: {
+    async verifyPassword(email: string, password: string): Promise<boolean> {
+      try {
+        const res = await fetch(`${LIKHA_URL}/auth/login`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': 'curl/8.5.0',
+          },
+          body: JSON.stringify({ email, password, mode: 'json' }),
+        });
+        return res.ok;
+      } catch {
+        return false;
+      }
+    },
+
     async login(email: string, password: string): Promise<{ token: string; user: any }> {
       const res = await fetch(`${LIKHA_URL}/auth/login`, {
         method: 'POST',
@@ -961,8 +977,8 @@ export const likhaLmsApi = {
   // 6. GRADES & SPR
   // =========================================================================
   grades: {
-    async getCourseGrades(courseId: string): Promise<any[]> {
-      return likhaLmsApi.getCourseGrades(courseId);
+    async getCourseGrades(courseId: string, studentId?: string): Promise<any[]> {
+      return likhaLmsApi.getCourseGrades(courseId, studentId);
     },
 
     async saveGradeWithCells(courseId: string, studentId: string, cells: Array<{ task_id: string; score: number }>): Promise<any> {
@@ -982,21 +998,56 @@ export const likhaLmsApi = {
         });
       }
 
-      // Upsert spr_cells child rows via bulk POST
+      // Upsert spr_cells child rows: update existing by id, post new
       if (Array.isArray(cells) && cells.length > 0) {
-        const sprPayload = cells.map(cell => ({
-          id: `spr-${gradeRecord.id}-${cell.task_id}`,
-          course_grade_id: gradeRecord.id,
-          student_id: studentId,
-          task_id: cell.task_id,
-          score: cell.score,
-        }));
-        await likhaRequest('/items/spr_cells', {
-          method: 'POST',
-          body: JSON.stringify(sprPayload),
-        }).catch(() => {});
+        const existingCells = await likhaRequest<any[]>(
+          `/items/spr_cells?filter[course_grade_id][_eq]=${encodeURIComponent(gradeRecord.id)}&limit=250`
+        ).catch(() => []);
+        const existingMap = new Map<string, any>(
+          (Array.isArray(existingCells) ? existingCells : []).map((c: any) => [c.task_id, c])
+        );
+
+        for (const cell of cells) {
+          const matched = existingMap.get(cell.task_id);
+          if (matched) {
+            await likhaRequest(`/items/spr_cells/${encodeURIComponent(matched.id)}`, {
+              method: 'PATCH',
+              body: JSON.stringify({ score: cell.score }),
+            });
+          } else {
+            await likhaRequest('/items/spr_cells', {
+              method: 'POST',
+              body: JSON.stringify({
+                id: `spr-${gradeRecord.id}-${cell.task_id}`,
+                course_grade_id: gradeRecord.id,
+                student_id: studentId,
+                task_id: cell.task_id,
+                score: cell.score,
+              }),
+            });
+          }
+        }
       }
       return gradeRecord;
+    },
+
+    async clearSPRCell(courseId: string, studentId: string, taskId: string): Promise<void> {
+      const existing = await likhaRequest<any[]>(
+        `/items/course_grades?filter[course_id][_eq]=${encodeURIComponent(courseId)}&filter[student_id][_eq]=${encodeURIComponent(studentId)}&limit=1`
+      ).catch(() => []);
+      const gradeRecord = existing && existing[0];
+      if (!gradeRecord) return;
+
+      const existingCells = await likhaRequest<any[]>(
+        `/items/spr_cells?filter[course_grade_id][_eq]=${encodeURIComponent(gradeRecord.id)}&filter[task_id][_eq]=${encodeURIComponent(taskId)}&limit=1`
+      ).catch(() => []);
+      const cell = existingCells && existingCells[0];
+      if (cell) {
+        await likhaRequest(`/items/spr_cells/${encodeURIComponent(cell.id)}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ score: null }),
+        }).catch(() => {});
+      }
     },
 
     async getSPRConfig(courseId: string): Promise<any> {
@@ -1608,15 +1659,16 @@ export const likhaLmsApi = {
     });
   },
 
-  async getCourseGrades(courseId: string): Promise<any[]> {
+  async getCourseGrades(courseId: string, studentId?: string): Promise<any[]> {
     try {
+      const studentFilter = studentId ? `&filter[student_id][_eq]=${encodeURIComponent(studentId)}` : '';
       return await likhaRequest(
-        `/items/course_grades?filter[course_id][_eq]=${encodeURIComponent(courseId)}&fields=*,spr_cells.*`
+        `/items/course_grades?filter[course_id][_eq]=${encodeURIComponent(courseId)}${studentFilter}&fields=*,spr_cells.*`
       );
     } catch {
-      // Graceful fallback to unexpanded query if relation expansion encounters transient issues
+      const studentFilter = studentId ? `&filter[student_id][_eq]=${encodeURIComponent(studentId)}` : '';
       return await likhaRequest(
-        `/items/course_grades?filter[course_id][_eq]=${encodeURIComponent(courseId)}`
+        `/items/course_grades?filter[course_id][_eq]=${encodeURIComponent(courseId)}${studentFilter}`
       ).catch(() => []);
     }
   },

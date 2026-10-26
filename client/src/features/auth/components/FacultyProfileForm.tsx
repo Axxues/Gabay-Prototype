@@ -141,6 +141,11 @@ export const FacultyProfileForm: React.FC<FacultyProfileFormProps> = ({
       return;
     }
 
+    if (!contactNumber.trim()) {
+      setErrorMessage('Please enter a Contact Number.');
+      return;
+    }
+
     if (!isValidBirthday(birthday)) {
       setErrorMessage('Birthday must be from a previous date and cannot be in the future (such as tomorrow or later).');
       return;
@@ -159,6 +164,10 @@ export const FacultyProfileForm: React.FC<FacultyProfileFormProps> = ({
     }
 
     if (!isAdministrativeAccount) {
+      if (yearsOfTeaching === '' || yearsOfTeaching === undefined || yearsOfTeaching === null || Number(yearsOfTeaching) < 0 || isNaN(Number(yearsOfTeaching))) {
+        setErrorMessage('Please enter your years of teaching experience.');
+        return;
+      }
       const invalidDegree = educationalBackground.find(deg => !deg.degreeLevel || !isDegreeComplete(deg));
       if (educationalBackground.length > 0 && invalidDegree) {
         if (!invalidDegree.degreeLevel) {
@@ -254,7 +263,7 @@ export const FacultyProfileForm: React.FC<FacultyProfileFormProps> = ({
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="space-y-1.5">
             <label htmlFor="faculty-first-name" className="block text-xs font-semibold text-foreground">
-              First Name *
+              First Name <span className="text-destructive">*</span>
             </label>
             <input
               id="faculty-first-name"
@@ -270,7 +279,7 @@ export const FacultyProfileForm: React.FC<FacultyProfileFormProps> = ({
 
           <div className="space-y-1.5">
             <label htmlFor="faculty-middle-name" className="block text-xs font-semibold text-foreground">
-              Middle Name
+              Middle Name <span className="text-[10px] font-normal text-muted-foreground">(Optional)</span>
             </label>
             <input
               id="faculty-middle-name"
@@ -285,7 +294,7 @@ export const FacultyProfileForm: React.FC<FacultyProfileFormProps> = ({
 
           <div className="space-y-1.5">
             <label htmlFor="faculty-last-name" className="block text-xs font-semibold text-foreground">
-              Last Name *
+              Last Name <span className="text-destructive">*</span>
             </label>
             <input
               id="faculty-last-name"
@@ -312,7 +321,7 @@ export const FacultyProfileForm: React.FC<FacultyProfileFormProps> = ({
           <div className="space-y-1.5">
             <label htmlFor="faculty-birthday" className="flex items-center space-x-1.5 text-xs font-semibold text-foreground">
               <Calendar className="w-3.5 h-3.5 text-primary" />
-              <span>Birthday</span>
+              <span>Birthday <span className="text-destructive">*</span></span>
             </label>
             <input
               id="faculty-birthday"
@@ -338,11 +347,13 @@ export const FacultyProfileForm: React.FC<FacultyProfileFormProps> = ({
           <div className="space-y-1.5">
             <label htmlFor="faculty-contact" className="flex items-center space-x-1.5 text-xs font-semibold text-foreground">
               <Phone className="w-3.5 h-3.5 text-primary" />
-              <span>Contact Number</span>
+              <span>Contact Number <span className="text-destructive">*</span></span>
             </label>
             <input
               id="faculty-contact"
               type="tel"
+              required
+              aria-label="Contact Number"
               value={contactNumber}
               onChange={e => setContactNumber(e.target.value)}
               placeholder="e.g. 09123456789"
@@ -370,7 +381,7 @@ export const FacultyProfileForm: React.FC<FacultyProfileFormProps> = ({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <label htmlFor="faculty-years-teaching" className="block text-xs font-bold text-foreground">
-                Years of Teaching Experience
+                Years of Teaching Experience <span className="text-destructive">*</span>
               </label>
               <p className="text-[11px] text-muted-foreground mt-0.5">
                 Cumulative teaching experience in academic institutions.
@@ -388,6 +399,7 @@ export const FacultyProfileForm: React.FC<FacultyProfileFormProps> = ({
             <input
               id="faculty-years-teaching"
               type="number"
+              required
               min={0}
               max={70}
               value={yearsOfTeaching}
@@ -406,7 +418,7 @@ export const FacultyProfileForm: React.FC<FacultyProfileFormProps> = ({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border pb-3">
             <div className="flex items-center space-x-2 text-xs font-bold text-foreground uppercase tracking-wider">
               <GraduationCap className="w-4 h-4 text-primary" />
-              <span>Educational Background</span>
+              <span>Educational Background <span className="text-[10px] font-normal text-muted-foreground normal-case tracking-normal">(Optional)</span></span>
             </div>
             <button
               type="button"

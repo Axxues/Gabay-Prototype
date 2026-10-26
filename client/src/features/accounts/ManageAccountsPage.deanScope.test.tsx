@@ -2,6 +2,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import React from 'react';
+import { MemoryRouter } from 'react-router-dom';
 import { ManageAccountsPage } from './ManageAccountsPage';
 import type { User, College, Department, PendingRegistration } from '../../shared/types/lms';
 
@@ -152,7 +153,7 @@ describe('ManageAccountsPage - Dean Access & Full Collegiate Scoping', () => {
 
   describe('When viewing as Dean (CCS)', () => {
     it('renders the Manage Accounts header, Active Directory, and Pending Verifications tabs, without embedded Academic Structure', () => {
-      render(<ManageAccountsPage />);
+      render(<MemoryRouter><ManageAccountsPage /></MemoryRouter>);
 
       // The header reflects Manage College Accounts
       expect(screen.getByRole('heading', { name: 'Manage College Accounts' })).toBeInTheDocument();
@@ -164,7 +165,7 @@ describe('ManageAccountsPage - Dean Access & Full Collegiate Scoping', () => {
     });
 
     it('scopes Active Directory users strictly to the Dean college', () => {
-      render(<ManageAccountsPage />);
+      render(<MemoryRouter><ManageAccountsPage /></MemoryRouter>);
 
       // Users belonging to col-ccs must be visible
       expect(screen.getByText('Dr. Alan Dean')).toBeInTheDocument();
@@ -178,7 +179,7 @@ describe('ManageAccountsPage - Dean Access & Full Collegiate Scoping', () => {
     });
 
     it('scopes summary metric cards to the Dean college counts', () => {
-      render(<ManageAccountsPage />);
+      render(<MemoryRouter><ManageAccountsPage /></MemoryRouter>);
 
       // In CCS: 4 total accounts (1 admin, 1 faculty, 1 student, 1 staff)
       const totalCard = screen.getByText('Total Accounts').closest('div')?.parentElement;
@@ -198,7 +199,7 @@ describe('ManageAccountsPage - Dean Access & Full Collegiate Scoping', () => {
     });
 
     it('scopes department filter dropdown options to departments in the Dean college', () => {
-      render(<ManageAccountsPage />);
+      render(<MemoryRouter><ManageAccountsPage /></MemoryRouter>);
 
       // Open department dropdown
       const dropdownButton = screen.getByRole('button', { name: /all programs|all departments/i });
@@ -221,7 +222,7 @@ describe('ManageAccountsPage - Dean Access & Full Collegiate Scoping', () => {
         collegeName: 'College of Computer Science',
       };
 
-      render(<ManageAccountsPage />);
+      render(<MemoryRouter><ManageAccountsPage /></MemoryRouter>);
 
       // Open department dropdown
       const dropdownButton = screen.getByRole('button', { name: /all programs|all departments/i });
@@ -242,7 +243,7 @@ describe('ManageAccountsPage - Dean Access & Full Collegiate Scoping', () => {
         collegeName: undefined,
       };
 
-      render(<ManageAccountsPage />);
+      render(<MemoryRouter><ManageAccountsPage /></MemoryRouter>);
 
       // Open department dropdown
       const dropdownButton = screen.getByRole('button', { name: /all programs|all departments/i });
@@ -272,7 +273,7 @@ describe('ManageAccountsPage - Dean Access & Full Collegiate Scoping', () => {
     });
 
     it('displays users from all colleges in Active Directory', () => {
-      render(<ManageAccountsPage />);
+      render(<MemoryRouter><ManageAccountsPage /></MemoryRouter>);
 
       expect(screen.getByText('Prof. Ada Lovelace')).toBeInTheDocument();
       expect(screen.getByText('Prof. John Dewey')).toBeInTheDocument();
@@ -297,7 +298,7 @@ describe('ManageAccountsPage - Dean Access & Full Collegiate Scoping', () => {
         courses: [],
       };
 
-      render(<ManageAccountsPage />);
+      render(<MemoryRouter><ManageAccountsPage /></MemoryRouter>);
 
       const adminRow = screen.getByText('Jayvee Admin').closest('tr') as HTMLTableRowElement;
 
@@ -309,7 +310,7 @@ describe('ManageAccountsPage - Dean Access & Full Collegiate Scoping', () => {
     });
 
     it('reflects university-wide counts in summary metric cards', () => {
-      render(<ManageAccountsPage />);
+      render(<MemoryRouter><ManageAccountsPage /></MemoryRouter>);
 
       // University-wide: 6 total accounts, 2 faculty, 2 students, 1 admin (Dean), 1 staff
       const totalCard = screen.getByText('Total Accounts').closest('div')?.parentElement;
@@ -323,7 +324,7 @@ describe('ManageAccountsPage - Dean Access & Full Collegiate Scoping', () => {
     });
 
     it('includes departments from all colleges in department filter', () => {
-      render(<ManageAccountsPage />);
+      render(<MemoryRouter><ManageAccountsPage /></MemoryRouter>);
 
       const dropdownButton = screen.getByRole('button', { name: /all programs|all departments/i });
       fireEvent.click(dropdownButton);

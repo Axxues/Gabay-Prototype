@@ -10,7 +10,7 @@ const loginLikhaMock = vi.fn(async () => ({
     id: 'u-chancellor',
     first_name: 'Jayvee',
     last_name: 'Admin',
-    email: 'jayveegenetareyes@gmail.com',
+    email: 'chancellor@dmmmsu.edu.ph',
     role: { name: 'Administrator' },
   },
 }));
@@ -206,7 +206,7 @@ describe('School Year Management & Scoping State in LMSContext', () => {
     );
 
     await act(async () => {
-      await contextValues.login('jayveegenetareyes@gmail.com', 'pw');
+      await contextValues.login('chancellor@dmmmsu.edu.ph', 'pw');
     });
 
     await waitFor(() => {
@@ -272,7 +272,7 @@ describe('School Year Management & Scoping State in LMSContext', () => {
     );
 
     await act(async () => {
-      await contextValues.login('jayveegenetareyes@gmail.com', 'pw');
+      await contextValues.login('chancellor@dmmmsu.edu.ph', 'pw');
     });
 
     await waitFor(() => {

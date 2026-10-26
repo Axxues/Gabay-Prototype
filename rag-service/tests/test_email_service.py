@@ -6,7 +6,7 @@ from app.services.email_service import (
     send_activation_email,
 )
 
-client = TestClient(app)
+client = TestClient(app, headers={"X-Gabay-Client-Key": "test-client-key"})
 
 
 def test_render_activation_email_html_contains_branding_and_links():
@@ -127,13 +127,12 @@ def test_send_leadership_code_email_simulates_when_unconfigured():
 
 def test_api_send_leadership_code_endpoint_success():
     with patch("app.main.send_leadership_code_email") as mock_send:
-        mock_send.return_value = {"success": True, "delivered": True, "code": "654321"}
+        mock_send.return_value = {"success": True, "delivered": True}
         response = client.post(
             "/api/auth/send-leadership-code",
             json={
                 "email": "chair@dmmmsu.edu.ph",
                 "recipient_name": "Prof. Alan Turing",
-                "code": "654321",
                 "role_type": "chairperson",
                 "unit_name": "Department of Computer Science",
             },
@@ -141,12 +140,8 @@ def test_api_send_leadership_code_endpoint_success():
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
-        assert data["code"] == "654321"
-        mock_send.assert_called_once_with(
-            to_email="chair@dmmmsu.edu.ph",
-            recipient_name="Prof. Alan Turing",
-            code="654321",
-            role_type="chairperson",
-            unit_name="Department of Computer Science",
-        )
+        assert mock_send.called
+        call_kwargs = mock_send.call_args[1]
+        assert call_kwargs["to_email"] == "chair@dmmmsu.edu.ph"
+        assert len(call_kwargs["code"]) == 6
 

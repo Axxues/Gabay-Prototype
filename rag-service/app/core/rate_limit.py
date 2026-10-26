@@ -67,9 +67,11 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
         if request.method == "OPTIONS" or path in self.exempt_paths:
             return await call_next(request)
 
-        # Extract client IP (respecting X-Forwarded-For if behind a proxy like Render)
+        # Extract client IP (respecting X-Forwarded-For only if configured to trust proxy)
+        from app.core.config import get_settings
+        app_settings = get_settings()
         forwarded_for = request.headers.get("x-forwarded-for")
-        if forwarded_for:
+        if app_settings.trust_proxy and forwarded_for:
             client_ip = forwarded_for.split(",")[0].strip()
         elif request.client and request.client.host:
             client_ip = request.client.host

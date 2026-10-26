@@ -236,16 +236,19 @@ describe('Zero-Express LMS Operations in LMSContext', () => {
     expect(screen.getByText(/midterm grades are now visible to students/i)).toBeTruthy();
   });
 
-  test('setGradesReleased tolerates Likha rejection silently without rollback', async () => {
+  test('setGradesReleased rolls back state and shows error on Likha rejection', async () => {
     updateCourseMock.mockRejectedValueOnce(new Error('Directus schema absence 403'));
 
     await act(async () => {
-      await testCtx.setGradesReleased('c1', 'final', true);
+      try {
+        await testCtx.setGradesReleased('c1', 'final', true);
+      } catch (_) {}
     });
 
     expect(apiFetchMock).not.toHaveBeenCalled();
     const updated = testCtx.db.courses.find((c: any) => c.id === 'c1');
-    expect(updated?.gradesReleased?.final).toBe(true);
+    expect(updated?.gradesReleased?.final).toBeFalsy();
+    expect(screen.getByText(/Directus schema absence 403/i)).toBeTruthy();
   });
 
   test('editModuleComment updates state optimistically, calls likhaLmsApi.modules.updateComment, never calls apiFetch', async () => {

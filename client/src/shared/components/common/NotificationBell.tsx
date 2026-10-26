@@ -63,7 +63,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
 
   const hasIncompleteProfile = Boolean(activeUser && !isProfileComplete(activeUser));
   const unreadCount = getUnreadNotificationCount(activeUser?.id || '') + (hasIncompleteProfile ? 1 : 0);
-  const isStaff = activeRole === 'faculty' || activeRole === 'admin';
+  const isStaff = activeRole === 'faculty' || activeRole === 'admin' || activeRole === 'superadmin';
 
   const staffPending: EnrollmentRequest[] = isStaff
     ? (db.enrollmentRequests || []).filter((r: EnrollmentRequest) => r.status === 'pending')

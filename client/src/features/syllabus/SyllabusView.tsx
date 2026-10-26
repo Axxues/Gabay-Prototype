@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { useLMS } from '../../shared/context/LMSContext';
 import { createDefaultSyllabusForCourse, type OfficialSyllabusData, type FacultySchedule } from '../../shared/data/syllabusData';
-import { scanSyllabusDocument, formatBytes, type ScanResult } from '../../shared/utils/syllabusParser';
+import { scanSyllabusDocument, type ScanResult } from '../../shared/utils/syllabusParser';
 import { resolveSPRWeights } from '../../shared/utils/spr';
 import { effectiveTerms, resolveCourseTerms } from '../../shared/utils/gradingTerms';
 import type { TermId } from '../../shared/types/lms';
@@ -73,20 +73,95 @@ export interface InstructorOption {
   label: string;
 }
 
+const NON_FACULTY_POSITION_PATTERN = /\b(director|institute|dean|chair(?:person)?|chancellor|president|coordinator|head|officer|signatory)\b/i;
+
+export function normalizeCourseCode(code: string): string {
+  return (code || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+export function isCourseNumberMismatch(courseCode?: string, detectedCode?: string): boolean {
+  if (!courseCode || !detectedCode) return false;
+  const a = normalizeCourseCode(courseCode);
+  const b = normalizeCourseCode(detectedCode);
+  return Boolean(a && b && a !== b);
+}
+
+export function normalizeCourseTitle(title: string): string {
+  return (title || '')
+    .toLowerCase()
+    .replace(/\b(ii|2)\b/g, '2')
+    .replace(/\b(i|1)\b/g, '1')
+    .replace(/\b(iii|3)\b/g, '3')
+    .replace(/\b(iv|4)\b/g, '4')
+    .replace(/\b(v|5)\b/g, '5')
+    .replace(/[^a-z0-9]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function isCourseTitleMismatch(courseTitle?: string, detectedTitle?: string): boolean {
+  if (!courseTitle || !detectedTitle) return false;
+  const normA = normalizeCourseTitle(courseTitle);
+  const normB = normalizeCourseTitle(detectedTitle);
+  if (!normA || !normB) return false;
+  return normA !== normB && !normA.includes(normB) && !normB.includes(normA);
+}
+
+export function cleanPersonTokens(name: string): string[] {
+  return (name || '')
+    .toLowerCase()
+    .replace(/\b(dr|prof|engr|atty|ms|mr|mrs|ph\.?d|ms\.?c|m\.?a|m\.?s|mit|bs|cpa)\b\.?/gi, '')
+    .replace(/[^a-z\s]/g, ' ')
+    .split(/\s+/)
+    .filter(token => token.length > 1);
+}
+
+export function matchesPersonName(nameA?: string, nameB?: string): boolean {
+  if (!nameA || !nameB) return false;
+  const lowerA = nameA.trim().toLowerCase();
+  const lowerB = nameB.trim().toLowerCase();
+  if (lowerA === lowerB) return true;
+  if (lowerA.includes(lowerB) || lowerB.includes(lowerA)) return true;
+
+  const tokensA = cleanPersonTokens(nameA);
+  const tokensB = cleanPersonTokens(nameB);
+  if (tokensA.length === 0 || tokensB.length === 0) return false;
+
+  const common = tokensA.filter(t => tokensB.includes(t));
+  return common.length >= Math.min(2, Math.min(tokensA.length, tokensB.length));
+}
+
 export function buildInstructorOptions(
   scanResult: ScanResult | null,
   facultyUsers: Array<{ id: string; name: string; title?: string }>,
+  currentCourse?: { instructorId?: string; instructorName?: string } | null,
 ): InstructorOption[] {
   const scannedNames: string[] = scanResult?.detectedFacultyNames || [];
   const result: InstructorOption[] = [];
   for (const name of [...new Set(scannedNames)]) {
-    const match = facultyUsers.find(u => u.name.toLowerCase() === name.toLowerCase());
+    if (NON_FACULTY_POSITION_PATTERN.test(name)) continue;
+    const match = facultyUsers.find(u => matchesPersonName(u.name, name));
     if (match) {
       result.push({ id: match.id, name: match.name, label: `${match.name} — ${match.title || 'Faculty'}` });
     } else {
       result.push({ id: `scanned:${name}`, name, label: `${name} — from scanned syllabus` });
     }
   }
+
+  // Also include the assigned course instructor if not already in the options list
+  if (currentCourse?.instructorName) {
+    const alreadyIncluded = result.some(
+      opt => (currentCourse.instructorId && opt.id === currentCourse.instructorId) || matchesPersonName(opt.name, currentCourse.instructorName)
+    );
+    if (!alreadyIncluded) {
+      result.push({
+        id: currentCourse.instructorId || `assigned:${currentCourse.instructorName}`,
+        name: currentCourse.instructorName,
+        label: `${currentCourse.instructorName} — Assigned Course Instructor`
+      });
+    }
+  }
+
   return result;
 }
 
@@ -274,7 +349,6 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
   const [scanStepText, setScanStepText] = useState('');
-  const [scanLogs, setScanLogs] = useState<string[]>([]);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
   // Raw scanned file retained so syllabus apply can send the bytes to the
@@ -294,8 +368,8 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
   // facultyMembers array (the scanner never rewrites it), so those entries
   // must not be presented as "from scanned syllabus".
   const instructorOptions = useMemo(
-    () => buildInstructorOptions(scanResult, facultyUsers),
-    [scanResult, facultyUsers],
+    () => buildInstructorOptions(scanResult, facultyUsers, currentCourse),
+    [scanResult, facultyUsers, currentCourse],
   );
 
   // Collapsible Accordion State - MINIMIZED BY DEFAULT as requested!
@@ -467,44 +541,67 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
     setScanError(null);
     setIsScanning(true);
     setScanProgress(10);
-    setScanLogs([`Selected file: ${file.name} (${formatBytes(file.size)})`]);
     setScanStepText(`Initializing parser for ${file.name}...`);
 
     try {
       const result = await scanSyllabusDocument(file, (progress, step) => {
         setScanProgress(progress);
         setScanStepText(step);
-        setScanLogs(prev => [...prev.slice(-4), step]);
       });
       setScanResult(result);
       setScannedFile(file);
 
       // Auto-detect faculty member from document text
-      const detectedNames = result.detectedFacultyNames || [];
-      const foundFaculty = facultyUsers.find(u =>
-        detectedNames.some(dName =>
-          u.name.toLowerCase().includes(dName.toLowerCase()) ||
-          dName.toLowerCase().includes(u.name.toLowerCase())
-        )
-      );
+      const syllabusFacultyNames = [
+        ...(result.detectedFacultyNames || []),
+        ...(result.syllabus?.facultyMembers || []).map(f => f.name),
+        ...(result.syllabus?.signatories?.preparedBy || []).map(p => p.name)
+      ].filter(Boolean);
 
-      if (foundFaculty) {
-        setSelectedFacultyId(foundFaculty.id);
-        setDetectedFacultyName(foundFaculty.name);
+      // Prioritize the Assigned Instructor of the course: if they match a faculty in the syllabus,
+      // automatically set them as the auto-matched instructor.
+      const assignedInstructorName = (currentCourse?.instructorName || '').trim();
+      const assignedInstructorUser = (db.users || []).find(
+        u => (currentCourse?.instructorId && u.id === currentCourse.instructorId) ||
+             (assignedInstructorName && matchesPersonName(u.name, assignedInstructorName))
+      );
+      const effectiveAssignedName = assignedInstructorUser?.name || assignedInstructorName;
+
+      const matchedAssignedSyllabusName = effectiveAssignedName
+        ? syllabusFacultyNames.find(sName => matchesPersonName(sName, effectiveAssignedName))
+        : undefined;
+
+      if (matchedAssignedSyllabusName) {
+        const assignedId = assignedInstructorUser?.id || currentCourse?.instructorId || `scanned:${matchedAssignedSyllabusName}`;
+        const assignedDisplayName = assignedInstructorUser?.name || currentCourse?.instructorName || matchedAssignedSyllabusName;
+        setSelectedFacultyId(assignedId);
+        setDetectedFacultyName(assignedDisplayName);
         setIsAutoDetected(true);
-        setScanLogs(prev => [...prev, `Auto-detected Course Faculty: ${foundFaculty.name}`]);
-      } else if (currentCourse?.instructorId && facultyUsers.some(u => u.id === currentCourse.instructorId)) {
-        // Fallback: Default to course creator/instructor if not explicitly found in document text
-        setSelectedFacultyId(currentCourse.instructorId);
-        setDetectedFacultyName(currentCourse.instructorName || 'Course Instructor');
-        setIsAutoDetected(false);
       } else {
-        setSelectedFacultyId(facultyUsers[0]?.id || activeUser.id);
-        setDetectedFacultyName(facultyUsers[0]?.name || activeUser.name);
-        setIsAutoDetected(false);
+        const otherFoundFaculty = facultyUsers.find(u =>
+          syllabusFacultyNames.some(sName => matchesPersonName(u.name, sName))
+        );
+
+        if (otherFoundFaculty) {
+          setSelectedFacultyId(otherFoundFaculty.id);
+          setDetectedFacultyName(otherFoundFaculty.name);
+          setIsAutoDetected(true);
+        } else if (currentCourse?.instructorId && facultyUsers.some(u => u.id === currentCourse.instructorId)) {
+          // Fallback: Default to course creator/instructor if not explicitly found in document text
+          setSelectedFacultyId(currentCourse.instructorId);
+          setDetectedFacultyName(currentCourse.instructorName || 'Course Instructor');
+          setIsAutoDetected(false);
+        } else if (syllabusFacultyNames.length > 0) {
+          setSelectedFacultyId(`scanned:${syllabusFacultyNames[0]}`);
+          setDetectedFacultyName(syllabusFacultyNames[0]);
+          setIsAutoDetected(false);
+        } else {
+          setSelectedFacultyId(facultyUsers[0]?.id || activeUser.id);
+          setDetectedFacultyName(facultyUsers[0]?.name || activeUser.name);
+          setIsAutoDetected(false);
+        }
       }
 
-      setScanLogs(prev => [...prev, 'Scan completed and verified against CHED/DMMMSU standards.']);
       // Close upload modal to transition to full-width review page
       setIsUploadModalOpen(false);
     } catch (err: any) {
@@ -514,7 +611,6 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
       setScannedFile(null);
       // Keep the upload modal open so the user sees why the file was rejected
       setIsUploadModalOpen(true);
-      setScanLogs(prev => [...prev, `Rejected: ${message}`]);
     } finally {
       setIsScanning(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -873,9 +969,16 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
 
   // Full-page Review & Verification when scanResult is present
   if (scanResult && !isScanning) {
-    const chosenFaculty = facultyUsers.find(u => u.id === selectedFacultyId)
+    const chosenFaculty = (db.users || []).find(u => u.id === selectedFacultyId)
+      || facultyUsers.find(u => u.id === selectedFacultyId)
       || instructorOptions.find(o => o.id === selectedFacultyId)
-      || activeUser;
+      || (detectedFacultyName ? { id: selectedFacultyId, name: detectedFacultyName } : activeUser);
+
+    const detectedCode = scanResult.detectedCourseCode || scanResult.syllabus?.courseInfo?.code || '';
+    const detectedTitle = scanResult.detectedCourseTitle || scanResult.syllabus?.courseInfo?.title || '';
+    const isNumberMismatch = isCourseNumberMismatch(currentCourse?.code, detectedCode);
+    const isTitleMismatch = isCourseTitleMismatch(currentCourse?.title, detectedTitle);
+    const isCourseMismatch = isNumberMismatch || isTitleMismatch;
 
     return (
       <div className="space-y-5 max-w-5xl mx-auto animate-fade-in pb-20 font-sans">
@@ -922,6 +1025,61 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
             </div>
           </div>
         </div>
+
+        {/* Course Code & Descriptive Title Mismatch Warning Tab */}
+        {isCourseMismatch && (
+          <div
+            data-testid="syllabus-course-mismatch-warning"
+            role="alert"
+            className="p-4 sm:p-5 bg-amber-500/10 border-2 border-amber-500/30 rounded-2xl shadow-subtle space-y-3 animate-fade-in"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400 font-bold text-sm">
+                <AlertTriangle className="w-5 h-5 shrink-0 text-amber-600 dark:text-amber-400" />
+                <span>
+                  {isNumberMismatch && isTitleMismatch
+                    ? 'Course Number & Descriptive Title Mismatch'
+                    : isNumberMismatch
+                    ? 'Course Number Mismatch'
+                    : 'Descriptive Title Mismatch'}
+                </span>
+              </div>
+              <span className="px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-amber-500/20 text-amber-800 dark:text-amber-300 rounded-full border border-amber-500/30">
+                Warning
+              </span>
+            </div>
+
+            <p className="text-xs text-amber-900/90 dark:text-amber-200/90 leading-relaxed">
+              The uploaded syllabus document does not match the currently open course shell (<strong className="font-semibold text-foreground">{currentCourse?.code || 'Course'} — {currentCourse?.title || ''}</strong>). Please verify that you selected the intended syllabus file before applying.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 text-xs">
+              <div className="p-3 bg-card/90 border border-border rounded-xl space-y-1">
+                <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground block">
+                  Current Course Shell
+                </span>
+                <div className="font-bold text-foreground">
+                  {currentCourse?.code || '—'}
+                </div>
+                <div className="text-muted-foreground text-[11px] truncate">
+                  {currentCourse?.title || '—'}
+                </div>
+              </div>
+
+              <div className="p-3 bg-amber-500/10 border border-amber-500/25 rounded-xl space-y-1">
+                <span className="text-[10px] uppercase font-bold tracking-wider text-amber-800 dark:text-amber-400 block">
+                  Detected in Uploaded Syllabus
+                </span>
+                <div className="font-bold text-amber-950 dark:text-amber-200">
+                  {detectedCode || '—'}
+                </div>
+                <div className="text-amber-900/80 dark:text-amber-300/80 text-[11px] truncate">
+                  {detectedTitle || '—'}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Status line — quiet confirmation, not a second header */}
         <div className="flex items-start gap-2.5 px-1">
@@ -1122,8 +1280,13 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               <dl className="divide-y divide-border text-xs">
                 <div className="flex items-baseline justify-between gap-4 py-2.5">
                   <dt className="text-muted-foreground shrink-0">Course</dt>
-                  <dd className="font-semibold text-foreground text-right">
-                    {scanResult.detectedCourseCode} · {scanResult.detectedCourseTitle}
+                  <dd className="font-semibold text-foreground text-right flex items-center justify-end gap-1.5 flex-wrap">
+                    <span>{scanResult.detectedCourseCode} · {scanResult.detectedCourseTitle}</span>
+                    {isCourseMismatch && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30">
+                        Differs from course shell
+                      </span>
+                    )}
                   </dd>
                 </div>
 
@@ -1256,7 +1419,6 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                   setScannedFile(null);
                   setIsScanning(false);
                   setScanProgress(0);
-                  setScanLogs([]);
                   setIsUploadModalOpen(true);
                 }}
                 className="px-4 py-2.5 text-xs font-bold bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl transition-all shadow-subtle cursor-pointer flex items-center space-x-2 active:scale-98"
@@ -1328,7 +1490,6 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                   setScannedFile(null);
                   setIsScanning(false);
                   setScanProgress(0);
-                  setScanLogs([]);
                   setIsUploadModalOpen(true);
                 }}
                 className="px-3.5 py-2 text-xs font-bold bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl transition-all shadow-xs cursor-pointer flex items-center space-x-1.5 active:scale-98"
@@ -3840,16 +4001,6 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                       className="h-full bg-gradient-to-r from-primary to-pink-500 transition-all duration-300 rounded-full"
                       style={{ width: `${scanProgress}%` }}
                     />
-                  </div>
-
-                  {/* Terminal-style Scanner Logs */}
-                  <div className="w-full max-w-md bg-black/80 dark:bg-black/50 p-3 rounded-xl border border-border text-left font-sans text-[11px] space-y-1 text-emerald-400">
-                    {scanLogs.map((log, index) => (
-                      <div key={index} className="flex items-center space-x-2 truncate">
-                        <span className="text-muted-foreground">&gt;</span>
-                        <span>{log}</span>
-                      </div>
-                    ))}
                   </div>
                 </div>
               )}

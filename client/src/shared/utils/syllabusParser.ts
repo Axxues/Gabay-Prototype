@@ -440,7 +440,11 @@ const NON_NAME_HINTS = [
   'syllabus', 'program', 'outcome', 'learning', 'grading', 'rubric', 'reference',
   'polic', 'vision', 'mission', 'goal', 'consultation', 'schedule', 'semester',
   'faculty', 'instructor', 'prepared', 'associate', 'professor', 'doctor',
-  'complete', 'activities', 'project', 'exam', 'examination', 'presentation', 'documentation', 'assignment'
+  'complete', 'activities', 'project', 'exam', 'examination', 'presentation', 'documentation', 'assignment',
+  'director', 'institute', 'dean', 'chair', 'chairperson', 'chancellor', 'president',
+  'coordinator', 'campus', 'signatory', 'signatories', 'approval', 'approved',
+  'recommending', 'reviewed', 'endorsed', 'noted', 'verified', 'evaluated', 'specialist',
+  'committee', 'officer', 'office', 'division', 'head'
 ];
 
 function cleanTitle(candidate: string): string | null {

@@ -10,7 +10,7 @@ from app.main import app
 
 @pytest.fixture
 def client():
-    return TestClient(app)
+    return TestClient(app, headers={"X-Gabay-Client-Key": "test-client-key"})
 
 
 def test_health_check_bypasses_rate_limiting(client):

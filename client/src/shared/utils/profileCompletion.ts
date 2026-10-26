@@ -1,3 +1,4 @@
+import { isAdministrativeMonitor } from './roles';
 import type { User, NormalizedPersonName, EducationalDegree, NormalizedAddress } from '../types/lms';
 
 export const DEGREE_LABELS: Record<string, string> = {
@@ -96,7 +97,6 @@ export function isDegreeComplete(degree?: EducationalDegree | null): boolean {
     degree.yearGraduated !== undefined &&
     degree.yearGraduated !== null &&
     String(degree.yearGraduated).trim() !== '';
-
   return Boolean(hasSchool && hasDegreeLevel && hasSpecialization && hasYearGraduated);
 }
 
@@ -126,75 +126,89 @@ export function isValidBirthday(birthday?: string | null, referenceDate: Date = 
 }
 
 /**
+ * Validates whether a user's name has the required first name and last name.
+ */
+export function hasUserFirstAndLastName(user?: Partial<User> | null): boolean {
+  if (!user) return false;
+  if (user.firstName !== undefined || user.lastName !== undefined) {
+    return Boolean(
+      typeof user.firstName === 'string' && user.firstName.trim() !== '' &&
+      typeof user.lastName === 'string' && user.lastName.trim() !== ''
+    );
+  }
+  if (typeof user.name === 'string' && user.name.trim() !== '') {
+    const parts = user.name.trim().split(/\s+/).filter(Boolean);
+    return parts.length >= 2;
+  }
+  return false;
+}
+
+/**
  * Validates whether a user has fulfilled the institutional profile requirements for their role.
- * - Students require birthday, permanent & present address, contact number, parent/guardian info, and yearLevel.
- * - Faculty & staff require address, contact number, birthday, years of teaching, and educational background.
- * - Administrators and other administrative roles without mandatory academic profiles return true.
+ * - Only the first name, last name, birthday, contact number, barangay, municipality/city,
+ *   province, present address, years of teaching experience (for faculty/staff),
+ *   family information (for students, first and last name), and parent/guardian contact number
+ *   (for students) are required. The rest are optional.
  */
 export function isProfileComplete(user: Partial<User> | null | undefined): boolean {
   if (!user || !user.role) {
     return false;
   }
 
+  // First name and last name are required for all users
+  if (!hasUserFirstAndLastName(user)) {
+    return false;
+  }
+
+  // Birthday and contact number are required for all users
+  const hasBirthday = isValidBirthday(user.birthday);
+  const hasContactNumber = typeof user.contactNumber === 'string' && user.contactNumber.trim() !== '';
+  if (!hasBirthday || !hasContactNumber) {
+    return false;
+  }
+
+  // Permanent and present address (Barangay, Municipality/City, Province) are required for all users
+  const hasPermanentAddress =
+    isAddressComplete(user.permanentAddressDetails) ||
+    isAddressComplete(user.addressDetails) ||
+    (typeof user.permanentAddress === 'string' && user.permanentAddress.trim() !== '') ||
+    (typeof user.address === 'string' && user.address.trim() !== '');
+
+  const hasPresentAddress = (user.role === 'student' ? user.sameAsPermanentAddress : user.sameAsPermanentAddress !== false)
+    ? hasPermanentAddress
+    : isAddressComplete(user.presentAddressDetails) ||
+      (typeof user.presentAddress === 'string' && user.presentAddress.trim() !== '');
+
+  if (!hasPermanentAddress || !hasPresentAddress) {
+    return false;
+  }
+
   if (user.role === 'student') {
-    const hasBirthday = isValidBirthday(user.birthday);
-    const hasPermanentAddress =
-      isAddressComplete(user.permanentAddressDetails) ||
-      (typeof user.permanentAddress === 'string' && user.permanentAddress.trim() !== '');
-    const hasContactNumber = typeof user.contactNumber === 'string' && user.contactNumber.trim() !== '';
+    // Parent/guardian contact number is required for students
     const hasParentContactNumber =
       typeof user.parentContactNumber === 'string' && user.parentContactNumber.trim() !== '';
 
-    const hasPresentAddress = user.sameAsPermanentAddress
-      ? hasPermanentAddress
-      : isAddressComplete(user.presentAddressDetails) ||
-        (typeof user.presentAddress === 'string' && user.presentAddress.trim() !== '');
-
-    const hasYearLevel =
-      typeof user.yearLevel === 'number' &&
-      !isNaN(user.yearLevel) &&
-      user.yearLevel >= 1 &&
-      user.yearLevel <= 4;
-
+    // Family information (first name and last name) is required for students
     const hasParentOrGuardianInfo = user.hasGuardianOnly
       ? isPersonNameComplete(user.guardianName)
       : isPersonNameComplete(user.motherName) && isPersonNameComplete(user.fatherName);
 
-    return Boolean(
-      hasBirthday &&
-      hasPermanentAddress &&
-      hasPresentAddress &&
-      hasContactNumber &&
-      hasParentContactNumber &&
-      hasYearLevel &&
-      hasParentOrGuardianInfo
-    );
+    // yearLevel is optional
+    return Boolean(hasParentContactNumber && hasParentOrGuardianInfo);
   }
 
-  // All academic and administrative personnel (faculty, staff, administrators, deans, chairpersons, superadmin)
-  // require professional credentials: address, contact number, birthday, years of teaching, and educational background.
-  const hasAddress =
-    isAddressComplete(user.addressDetails) ||
-    isAddressComplete(user.permanentAddressDetails) ||
-    (typeof user.address === 'string' && user.address.trim() !== '') ||
-    (typeof user.permanentAddress === 'string' && user.permanentAddress.trim() !== '');
-  const hasContactNumber = typeof user.contactNumber === 'string' && user.contactNumber.trim() !== '';
-  const hasBirthday = isValidBirthday(user.birthday);
+  // Administrative personnel (superadmin, chancellor, admin, dean, chairperson)
+  // require first name, last name, birthday, contact number, permanent and present address.
+  if (isAdministrativeMonitor(user, user.role)) {
+    return true;
+  }
+
+  // Faculty and staff require years of teaching experience.
+  // Educational background degrees are optional.
   const hasTeachingExperience =
     typeof user.yearsOfTeaching === 'number' &&
     !isNaN(user.yearsOfTeaching) &&
     user.yearsOfTeaching >= 0;
 
-  const hasDegrees =
-    Array.isArray(user.educationalBackground) &&
-    user.educationalBackground.length > 0 &&
-    user.educationalBackground.every((deg) => isDegreeComplete(deg));
-
-  return Boolean(
-    hasAddress &&
-    hasContactNumber &&
-    hasBirthday &&
-    hasTeachingExperience &&
-    hasDegrees
-  );
+  return Boolean(hasTeachingExperience);
 }

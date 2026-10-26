@@ -4,6 +4,17 @@ export interface SendActivationEmailParams {
   activationUrl: string;
 }
 
+export function getEmailApiHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  const clientKey = import.meta.env.VITE_RAG_CLIENT_KEY;
+  if (clientKey && typeof clientKey === 'string' && clientKey.trim()) {
+    headers['X-Gabay-Client-Key'] = clientKey.trim();
+  }
+  return headers;
+}
+
 export function getEmailApiUrl(): string {
   const envUrl = import.meta.env.VITE_RAG_API_URL;
   const baseUrl = (envUrl && typeof envUrl === 'string' && envUrl.trim()
@@ -18,9 +29,7 @@ export async function sendActivationEmail(
   try {
     const res = await fetch(getEmailApiUrl(), {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: getEmailApiHeaders(),
       body: JSON.stringify({
         email: params.email,
         recipient_name: params.recipientName,
@@ -42,7 +51,7 @@ export async function sendActivationEmail(
 export interface SendLeadershipCodeEmailParams {
   email: string;
   recipientName?: string;
-  code: string;
+  code?: string;
   roleType?: 'dean' | 'chairperson';
   unitName?: string;
 }
@@ -61,13 +70,10 @@ export async function sendLeadershipCodeEmail(
   try {
     const res = await fetch(getLeadershipCodeEmailApiUrl(), {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: getEmailApiHeaders(),
       body: JSON.stringify({
         email: params.email,
         recipient_name: params.recipientName,
-        code: params.code,
         role_type: params.roleType || 'dean',
         unit_name: params.unitName || '',
       }),
@@ -80,14 +86,49 @@ export async function sendLeadershipCodeEmail(
 
     return await res.json();
   } catch (err: any) {
-    // If backend RAG service is unreachable (e.g. running mock client or dev server alone),
-    // fallback gracefully to simulated dispatch so development and demo continue smoothly.
+    // If backend RAG service is unreachable, fallback only in dev
+    if (import.meta.env.DEV) {
+      return {
+        success: true,
+        simulated: true,
+        delivered: false,
+        code: params.code,
+        message: 'Verification code simulated (service running in standalone mode).',
+      };
+    }
     return {
-      success: true,
-      simulated: true,
+      success: false,
       delivered: false,
-      code: params.code,
-      message: 'Verification code simulated (service running in standalone mode).',
+      message: err?.message || 'Failed to dispatch verification code email.',
     };
+  }
+}
+
+export async function verifyLeadershipCode(
+  email: string,
+  code: string
+): Promise<{ success: boolean; message: string }> {
+  try {
+    const envUrl = import.meta.env.VITE_RAG_API_URL;
+    const baseUrl = (envUrl && typeof envUrl === 'string' && envUrl.trim()
+      ? envUrl.trim()
+      : 'http://localhost:8000').replace(/\/+$/, '');
+    const res = await fetch(`${baseUrl}/api/auth/verify-leadership-code`, {
+      method: 'POST',
+      headers: getEmailApiHeaders(),
+      body: JSON.stringify({ email, code }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text().catch(() => '');
+      return { success: false, message: err || `Verification failed (${res.status})` };
+    }
+
+    return await res.json();
+  } catch (err: any) {
+    if (import.meta.env.DEV) {
+      return { success: true, message: 'Code verified (development fallback).' };
+    }
+    return { success: false, message: err?.message || 'Failed to verify leadership code.' };
   }
 }

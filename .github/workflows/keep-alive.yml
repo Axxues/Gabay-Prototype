@@ -1,5 +1,7 @@
 name: Keep-Alive RAG Service
 
+permissions: {}
+
 on:
   schedule:
     # Run every 10 minutes to prevent Render free instance inactivity spin-down
@@ -10,6 +12,7 @@ jobs:
   keep-alive:
     name: Ping Health Endpoint
     runs-on: ubuntu-latest
+    permissions: {}
     steps:
       - name: Ping RAG Service
         env:

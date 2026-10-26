@@ -542,7 +542,7 @@ export const RegisterPage: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="space-y-1">
               <label htmlFor="reg-firstName" className="text-[12px] font-semibold text-muted-foreground">
-                First Name
+                First Name <span className="text-destructive">*</span>
               </label>
               <input
                 id="reg-firstName"
@@ -583,7 +583,7 @@ export const RegisterPage: React.FC = () => {
             </div>
             <div className="space-y-1">
               <label htmlFor="reg-lastName" className="text-[12px] font-semibold text-muted-foreground">
-                Last Name
+                Last Name <span className="text-destructive">*</span>
               </label>
               <input
                 id="reg-lastName"

@@ -646,14 +646,14 @@ describe('LMSContext RBAC: Registration Staging, Verification Queue & Leadership
     expect(ctx!.departments.some(d => d.id === 'dept-math')).toBe(true);
   });
 
-  test('logging in jayveegenetareyes@gmail.com bootstraps as Chancellor (superadmin)', async () => {
+  test('logging in chancellor@dmmmsu.edu.ph bootstraps as Chancellor (superadmin)', async () => {
     loginLikhaMock.mockResolvedValueOnce({
       token: 't-chancellor',
       user: {
         id: 'u-jayvee',
         first_name: 'Jayvee',
         last_name: 'Reyes',
-        email: 'jayveegenetareyes@gmail.com',
+        email: 'chancellor@dmmmsu.edu.ph',
         role: { name: 'Administrator' },
       },
     } as any);
@@ -666,7 +666,7 @@ describe('LMSContext RBAC: Registration Staging, Verification Queue & Leadership
 
     let res: any;
     await act(async () => {
-      res = await ctx!.login('jayveegenetareyes@gmail.com', 'qwerty12345');
+      res = await ctx!.login('chancellor@dmmmsu.edu.ph', 'qwerty12345');
     });
 
     expect(res.success).toBe(true);

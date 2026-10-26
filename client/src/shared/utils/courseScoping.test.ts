@@ -18,7 +18,7 @@ describe('getScopedCourses utility', () => {
     {
       id: 'u-chancellor',
       name: 'Jayvee Reyes',
-      email: 'jayveegenetareyes@gmail.com',
+      email: 'chancellor@dmmmsu.edu.ph',
       role: 'superadmin',
       adminSubrole: 'chancellor',
       title: 'University Chancellor',

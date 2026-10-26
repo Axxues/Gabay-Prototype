@@ -37,12 +37,7 @@ interface ManageAccountsPageProps {
 }
 
 export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNavigateTab, onEditAccount, onViewAccount }) => {
-  let navigate: ReturnType<typeof useNavigate>;
-  try {
-    navigate = useNavigate();
-  } catch {
-    navigate = (() => {}) as any;
-  }
+  const navigate = useNavigate();
   const {
     db,
     activeUser,

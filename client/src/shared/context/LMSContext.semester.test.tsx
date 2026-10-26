@@ -9,7 +9,7 @@ const loginLikhaMock = vi.fn(async () => ({
     id: 'u-chancellor',
     first_name: 'Jayvee',
     last_name: 'Admin',
-    email: 'jayveegenetareyes@gmail.com',
+    email: 'chancellor@dmmmsu.edu.ph',
     role: { name: 'Administrator' },
   },
 }));
@@ -209,7 +209,7 @@ describe('Semester baseline and college semester rollover in LMSContext', () => 
     const { get } = await mountLms();
 
     await act(async () => {
-      await get().login('jayveegenetareyes@gmail.com', 'pw');
+      await get().login('chancellor@dmmmsu.edu.ph', 'pw');
     });
     await waitFor(() => {
       expect(get().db.users.length).toBeGreaterThan(0);
@@ -257,7 +257,7 @@ describe('Semester baseline and college semester rollover in LMSContext', () => 
     const { get } = await mountLms();
 
     await act(async () => {
-      await get().login('jayveegenetareyes@gmail.com', 'pw');
+      await get().login('chancellor@dmmmsu.edu.ph', 'pw');
     });
     await waitFor(() => {
       expect(get().db.users.length).toBeGreaterThan(0);

@@ -139,6 +139,20 @@ describe('scan detectors', () => {
     expect(detectFacultyNames(doc).map(f => f.name)).toContain('JUAN D. CRUZ');
   });
 
+  test('ignores position titles like "Institute Director" and "Program Chairperson"', () => {
+    const doc = [
+      'Prepared by:',
+      'FLORIBETH P. CUISON',
+      'Faculty Member',
+      'CHARLIE S. MARZAN',
+      'Institute Director',
+    ].join('\n');
+    const names = detectFacultyNames(doc).map(f => f.name);
+    expect(names).toContain('FLORIBETH P. CUISON');
+    expect(names).toContain('CHARLIE S. MARZAN');
+    expect(names).not.toContain('INSTITUTE DIRECTOR');
+  });
+
   test('returns null when nothing detectable is present', () => {
     expect(detectCourseCode('plain text without codes')).toBeNull();
     expect(detectCourseTitle('plain text without codes')).toBeNull();

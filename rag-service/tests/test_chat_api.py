@@ -10,8 +10,8 @@ from app.main import app
 
 @pytest.fixture
 def client():
-    """Create a FastAPI TestClient."""
-    return TestClient(app)
+    """Create a FastAPI TestClient with authenticated client key."""
+    return TestClient(app, headers={"X-Gabay-Client-Key": "test-client-key"})
 
 
 def test_chat_endpoint_missing_message(client):

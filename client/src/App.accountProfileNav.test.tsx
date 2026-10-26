@@ -43,12 +43,15 @@ vi.mock('./shared/context/LMSContext', () => ({
   LMSProvider: ({ children }: any) => children,
 }));
 
-vi.mock('./features/accounts/AccountProfilePage', () => ({
+vi.mock('./features/accounts', () => ({
   AccountProfilePage: () => <div data-testid="account-profile-page">Profile Content</div>,
-}));
-
-vi.mock('./features/accounts/ManageAccountsPage', () => ({
   ManageAccountsPage: () => <div data-testid="manage-accounts-page">Manage Accounts Content</div>,
+  CreateLeadershipAccountPage: () => null,
+  DepartmentDetailsPage: () => null,
+  AcademicGovernancePage: () => null,
+  CreateAccountPage: () => null,
+  EditAccountPage: () => null,
+  ProgramDetailsPage: () => null,
 }));
 
 import { AppContent } from './App';

@@ -51,6 +51,7 @@ def query_vector_store(
     top_k: int = 3,
     filter_str: Optional[str] = None,
     index: Optional[Index] = None,
+    min_score: float = 0.0,
 ) -> list[dict]:
     """Query Upstash Vector store with an embedded text query.
 
@@ -59,6 +60,7 @@ def query_vector_store(
         top_k: Number of most similar vectors to retrieve (default 3).
         filter_str: Optional metadata SQL-like filter string (e.g., "source = 'faq'").
         index: Optional Upstash Index instance (defaults to get_upstash_index()).
+        min_score: Minimum similarity score threshold (default 0.0). Results below this are filtered.
 
     Returns:
         List of dictionaries with keys:
@@ -95,6 +97,9 @@ def query_vector_store(
             text = data if data is not None else meta.get("text", "")
             source = meta.get("source", "")
             score = float(getattr(res, "score", 0.0))
+
+        if score < min_score:
+            continue
 
         parsed_results.append({
             "text": text,

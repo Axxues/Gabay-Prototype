@@ -68,7 +68,7 @@ export const EditAccountPage: React.FC<EditAccountPageProps> = ({ user, onNaviga
   const rawUserDept = user.program || user.department || 'Computer Science';
   const initialDept = rawUserDept.replace(/^Program in\s+/i, '');
   const [formDepartment, setFormDepartment] = useState(initialDept);
-  const [formPassword, setFormPassword] = useState(user.password || 'gabay2026');
+  const [formPassword, setFormPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -146,7 +146,7 @@ export const EditAccountPage: React.FC<EditAccountPageProps> = ({ user, onNaviga
         department: formDepartment,
         program: formDepartment,
         studentId: cleanIdNumber,
-        password: formPassword.trim() || user.password || 'gabay2026',
+        ...(formPassword.trim() ? { password: formPassword.trim() } : {}),
         ...(formRole === 'student' ? { yearLevel: formYearLevel } : {})
       });
       if (!ok) return;
@@ -230,7 +230,7 @@ export const EditAccountPage: React.FC<EditAccountPageProps> = ({ user, onNaviga
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <label htmlFor="edit-first-name" className="block text-[12px] font-semibold text-muted-foreground mb-1.5">
-                  First name *
+                  First Name <span className="text-destructive">*</span>
                 </label>
                 <input
                   id="edit-first-name"
@@ -244,7 +244,7 @@ export const EditAccountPage: React.FC<EditAccountPageProps> = ({ user, onNaviga
               </div>
               <div>
                 <label htmlFor="edit-middle-name" className="block text-[12px] font-semibold text-muted-foreground mb-1.5">
-                  Middle name
+                  Middle Name <span className="text-[10px] font-normal text-muted-foreground">(Optional)</span>
                 </label>
                 <input
                   id="edit-middle-name"
@@ -257,7 +257,7 @@ export const EditAccountPage: React.FC<EditAccountPageProps> = ({ user, onNaviga
               </div>
               <div>
                 <label htmlFor="edit-last-name" className="block text-[12px] font-semibold text-muted-foreground mb-1.5">
-                  Last name *
+                  Last Name <span className="text-destructive">*</span>
                 </label>
                 <input
                   id="edit-last-name"

@@ -75,6 +75,9 @@ describe('NotificationBell Profile Incomplete Card', () => {
     mockLMS.activeUser = {
       id: 'student-complete',
       role: 'student',
+      firstName: 'Juana',
+      lastName: 'Cruz',
+      name: 'Juana Cruz',
       birthday: '2004-01-01',
       permanentAddress: 'Brgy 1, City',
       presentAddress: 'Brgy 1, City',
@@ -120,4 +123,135 @@ describe('NotificationBell Profile Incomplete Card', () => {
     fireEvent.click(screen.getByTitle('Notifications'));
     expect(screen.getByText('Profile Information Required')).toBeInTheDocument();
   });
+
+  it('does not render profile incomplete card for admin, dean, chair, or superadmin when profile is complete', () => {
+    mockLMS.activeUser = {
+      id: 'admin-complete',
+      role: 'admin',
+      adminSubrole: 'dean',
+      firstName: 'Dean',
+      lastName: 'Official',
+      name: 'Dean Official',
+      address: 'Dean Office, CIT Campus',
+      contactNumber: '09171234567',
+      birthday: '1982-03-20',
+    };
+    mockLMS.activeRole = 'admin';
+
+    render(
+      <MemoryRouter>
+        <NotificationBell />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByTitle('Notifications'));
+    expect(screen.queryByText('Profile Information Required')).not.toBeInTheDocument();
+  });
+
+  it('does not render profile incomplete card for faculty when all faculty required fields are complete', () => {
+    mockLMS.activeUser = {
+      id: 'faculty-complete',
+      role: 'faculty',
+      firstName: 'Maria',
+      lastName: 'Santos',
+      name: 'Dr. Maria Santos',
+      address: 'Faculty Housing, North Campus',
+      contactNumber: '09181234567',
+      birthday: '1985-05-10',
+      yearsOfTeaching: 8,
+      educationalBackground: [
+        {
+          id: 'deg-1',
+          degreeLevel: 'masters',
+          school: 'DMMMSU',
+          yearGraduated: 2012,
+          specialization: 'Information Technology',
+        },
+      ],
+    };
+    mockLMS.activeRole = 'faculty';
+
+    render(
+      <MemoryRouter>
+        <NotificationBell />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByTitle('Notifications'));
+    expect(screen.queryByText('Profile Information Required')).not.toBeInTheDocument();
+  });
+
+  it('does not render profile incomplete card for staff when all staff required fields are complete', () => {
+    mockLMS.activeUser = {
+      id: 'staff-complete',
+      role: 'staff',
+      firstName: 'Staff',
+      lastName: 'Member',
+      name: 'Staff Member',
+      address: 'Staff Village, South Campus',
+      contactNumber: '09191234567',
+      birthday: '1988-11-25',
+      yearsOfTeaching: 0,
+      educationalBackground: [
+        {
+          id: 'deg-2',
+          degreeLevel: 'bachelors',
+          school: 'DMMMSU',
+          yearGraduated: 2010,
+          specialization: 'Public Administration',
+        },
+      ],
+    };
+    mockLMS.activeRole = 'staff';
+
+    render(
+      <MemoryRouter>
+        <NotificationBell />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByTitle('Notifications'));
+    expect(screen.queryByText('Profile Information Required')).not.toBeInTheDocument();
+  });
+
+  it('shows badge and renders Profile Information Required card for student when required fields are missing', () => {
+    mockLMS.activeUser = {
+      id: 'stud-incomplete',
+      role: 'student',
+      // Missing birthday, contactNumber, etc.
+    };
+    mockLMS.activeRole = 'student';
+
+    render(
+      <MemoryRouter>
+        <NotificationBell />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText('1')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTitle('Notifications'));
+    expect(screen.getByText('Profile Information Required')).toBeInTheDocument();
+  });
+
+  it('shows badge and renders Profile Information Required card for superadmin when required fields are missing', () => {
+    mockLMS.activeUser = {
+      id: 'super-incomplete',
+      role: 'superadmin',
+      // Missing address, contactNumber, birthday
+    };
+    mockLMS.activeRole = 'superadmin';
+
+    render(
+      <MemoryRouter>
+        <NotificationBell />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText('1')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTitle('Notifications'));
+    expect(screen.getByText('Profile Information Required')).toBeInTheDocument();
+  });
 });
+

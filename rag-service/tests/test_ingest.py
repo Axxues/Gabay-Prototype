@@ -256,7 +256,7 @@ def test_fetch_likha_data_with_static_token():
 
     mock_courses_resp = MagicMock(spec=httpx.Response)
     mock_courses_resp.status_code = 200
-    mock_courses_resp.json.return_value = {"data": [{"id": "c1", "code": "CMSC12", "title": "Prog 1"}]}
+    mock_courses_resp.json.return_value = {"data": [{"id": "c1", "code": "CMSC12", "title": "Prog 1", "status": "published"}]}
 
     mock_client = MagicMock(spec=httpx.Client)
     mock_client.get.return_value = mock_courses_resp
@@ -271,6 +271,30 @@ def test_fetch_likha_data_with_static_token():
     )
     assert len(courses) == 1
     assert courses[0]["code"] == "CMSC12"
+
+
+def test_fetch_likha_data_filters_unpublished():
+    """Verify that draft/unpublished courses are strictly excluded (fail closed)."""
+    settings = Settings(
+        likha_url="https://gabay.zyberlab.com",
+        likha_token="token-xyz",
+    )
+    mock_courses_resp = MagicMock(spec=httpx.Response)
+    mock_courses_resp.status_code = 200
+    mock_courses_resp.json.return_value = {
+        "data": [
+            {"id": "c1", "code": "CMSC101", "status": "draft"},
+            {"id": "c2", "code": "CMSC102", "status": "published"},
+            {"id": "c3", "code": "CMSC103", "published": True},
+            {"id": "c4", "code": "CMSC104", "published": False},
+        ]
+    }
+    mock_client = MagicMock(spec=httpx.Client)
+    mock_client.get.return_value = mock_courses_resp
+
+    courses = fetch_likha_data(settings=settings, client=mock_client)
+    assert len(courses) == 2
+    assert {c["code"] for c in courses} == {"CMSC102", "CMSC103"}
 
 
 def test_fetch_likha_data_login_failure():

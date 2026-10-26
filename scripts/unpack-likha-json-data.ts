@@ -1,7 +1,12 @@
 const LIKHA_URL = process.env.VITE_LIKHA_URL || process.env.LIKHA_URL || 'https://gabay.zyberlab.com';
 
-const SERVICE_EMAIL = 'jayveegenetareyes@gmail.com';
-const SERVICE_PASSWORD = 'qwerty12345';
+const SERVICE_EMAIL = process.env.LIKHA_ADMIN_EMAIL;
+const SERVICE_PASSWORD = process.env.LIKHA_ADMIN_PASSWORD;
+
+if (!SERVICE_EMAIL || !SERVICE_PASSWORD) {
+  console.error('[unpack-likha] LIKHA_ADMIN_EMAIL and LIKHA_ADMIN_PASSWORD environment variables are required.');
+  process.exit(1);
+}
 
 async function getServiceToken(): Promise<string> {
   const res = await fetch(`${LIKHA_URL}/auth/login`, {

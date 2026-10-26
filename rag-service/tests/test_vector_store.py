@@ -145,6 +145,26 @@ class TestVectorStore:
         assert results == []
 
     @patch("app.services.vector_store.embed_text")
+    def test_query_vector_store_filters_low_score(self, mock_embed_text):
+        """Verify query_vector_store filters out chunks below min_score threshold."""
+        mock_embed_text.return_value = [0.1] * 768
+        mock_index = MagicMock()
+        mock_index.query.return_value = [
+            QueryResult(id="doc_1", score=0.85, metadata={"source": "faq"}, data="High relevance text."),
+            QueryResult(id="doc_2", score=0.15, metadata={"source": "faq"}, data="Low relevance noise."),
+        ]
+
+        results = query_vector_store(
+            query_text="Exam schedule",
+            top_k=2,
+            index=mock_index,
+            min_score=0.25,
+        )
+
+        assert len(results) == 1
+        assert results[0]["score"] == 0.85
+
+    @patch("app.services.vector_store.embed_text")
     def test_query_vector_store_data_fallback_to_metadata(self, mock_embed_text):
         """Verify query_vector_store falls back to metadata['text'] if data is None."""
         mock_embed_text.return_value = [0.3] * 768

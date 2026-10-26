@@ -2,6 +2,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import React from 'react';
+import { MemoryRouter } from 'react-router-dom';
 import { ManageAccountsPage } from './ManageAccountsPage';
 import type { User, College, Department, SchoolYear } from '../../shared/types/lms';
 
@@ -129,7 +130,7 @@ describe('ManageAccountsPage - School Year Tagging & Filtering', () => {
   });
 
   it('renders a school year dropdown filter alongside program filter with "All School Years"', () => {
-    render(<ManageAccountsPage />);
+    render(<MemoryRouter><ManageAccountsPage /></MemoryRouter>);
 
     // School Year dropdown button with placeholder / initial label
     const syDropdownBtn = screen.getByRole('button', { name: /all school years/i });
@@ -137,7 +138,7 @@ describe('ManageAccountsPage - School Year Tagging & Filtering', () => {
   });
 
   it('filters directory accounts when a specific school year is selected', () => {
-    render(<ManageAccountsPage />);
+    render(<MemoryRouter><ManageAccountsPage /></MemoryRouter>);
 
     // Initially all users appear (Ada 2024, Grace 2025, Linus Legacy, Dr. Alan Admin)
     expect(screen.getByText('Ada 2024')).toBeInTheDocument();
@@ -159,7 +160,7 @@ describe('ManageAccountsPage - School Year Tagging & Filtering', () => {
   });
 
   it('gracefully matches users without explicit schoolYear to "2025-2026"', () => {
-    render(<ManageAccountsPage />);
+    render(<MemoryRouter><ManageAccountsPage /></MemoryRouter>);
 
     // Open School Year dropdown
     const syDropdownBtn = screen.getByRole('button', { name: /all school years/i });
@@ -176,7 +177,7 @@ describe('ManageAccountsPage - School Year Tagging & Filtering', () => {
   });
 
   it('displays a school year badge in each user directory row', () => {
-    render(<ManageAccountsPage />);
+    render(<MemoryRouter><ManageAccountsPage /></MemoryRouter>);
 
     // Check school year badge text in directory
     expect(screen.getByText('AY 2024-2025')).toBeInTheDocument();

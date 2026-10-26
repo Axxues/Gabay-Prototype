@@ -1,3 +1,4 @@
+import { likhaLmsApi } from '../../shared/api/likhaLmsApi';
 import React, { useRef, useState } from 'react';
 import { useLMS, ACCENT_PRESETS } from '../../shared/context/LMSContext';
 import { uploadFileToPublic } from '../../shared/utils/fileUploader';
@@ -161,7 +162,15 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
       });
       return;
     }
-    if ((currentUser.password || 'gabay2026') !== currentPassword) {
+    let isCurrentValid = false;
+    if (currentUser.email) {
+      isCurrentValid = await likhaLmsApi.auth.verifyPassword(currentUser.email, currentPassword);
+    }
+    if (!isCurrentValid && currentUser.password && currentUser.password === currentPassword) {
+      isCurrentValid = true;
+    }
+
+    if (!isCurrentValid) {
       showAlert({
         title: 'Incorrect Password',
         message: 'Your current password does not match our records.',

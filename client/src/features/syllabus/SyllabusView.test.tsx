@@ -18,8 +18,17 @@ const mocks = vi.hoisted(() => ({
   updateCourseGradingTerms: vi.fn(),
   showAlert: vi.fn(),
   showConfirm: vi.fn(),
+  scanSyllabusDocument: vi.fn(),
   revision: null as SyllabusRevisionHeader | null,
 }));
+
+vi.mock('../../shared/utils/syllabusParser', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../shared/utils/syllabusParser')>();
+  return {
+    ...actual,
+    scanSyllabusDocument: (...args: unknown[]) => mocks.scanSyllabusDocument(...args),
+  };
+});
 
 vi.mock('../../shared/context/LMSContext', () => ({
   useLMS: () => ({
@@ -98,14 +107,21 @@ const pubRev = (): SyllabusRevisionHeader => ({
   ...draftRev(), id: 'rev-pub-1', revisionNo: 2, status: 'published', publishedAt: '2026-09-24T01:00:00.000Z',
 });
 
-import { SyllabusView, buildSourceDocumentValue, buildInstructorOptions } from './SyllabusView';
+import {
+  SyllabusView,
+  buildSourceDocumentValue,
+  buildInstructorOptions,
+  isCourseNumberMismatch,
+  isCourseTitleMismatch,
+  matchesPersonName,
+} from './SyllabusView';
 
 beforeEach(() => {
   mocks.revision = draftRev();
   for (const fn of [
     mocks.updateCourseSyllabus, mocks.updateSyllabusSection, mocks.publishSyllabusDraft,
     mocks.refreshPublishedSyllabus, mocks.removeCourseSyllabus, mocks.uploadCourseFile,
-    mocks.updateCourseGradingTerms, mocks.showAlert, mocks.showConfirm,
+    mocks.updateCourseGradingTerms, mocks.showAlert, mocks.showConfirm, mocks.scanSyllabusDocument,
   ]) {
     fn.mockReset();
   }
@@ -172,7 +188,7 @@ describe('SyllabusView revision editing', () => {
 
   test('instructor options list detected names and never template faculty as scanned', () => {
     const scanResult = {
-      detectedFacultyNames: ['Floribeth P. Cuison'],
+      detectedFacultyNames: ['Floribeth P. Cuison', 'Institute Director'],
       syllabus: {
         facultyMembers: [{ name: 'Ezekiel O. Bacungan' }, { name: 'Raymund E. Dilan' }],
       },
@@ -201,5 +217,77 @@ describe('SyllabusView revision editing', () => {
     expect(linked.uploadedAt).toBeTruthy();
     render(<SyllabusView courseId="c1" />);
     expect(screen.getAllByTitle(/download/i)[0]).toBeInTheDocument();
+  });
+
+  describe('course mismatch and faculty auto-match detection', () => {
+    test('isCourseNumberMismatch flags distinct course codes and ignores dash/space variations', () => {
+      expect(isCourseNumberMismatch('CSPC 112', 'CSPC - 103')).toBe(true);
+      expect(isCourseNumberMismatch('CSPC 112', 'CSPC - 112')).toBe(false);
+      expect(isCourseNumberMismatch('CS 101', 'CS101')).toBe(false);
+      expect(isCourseNumberMismatch(undefined, 'CSPC 112')).toBe(false);
+    });
+
+    test('isCourseTitleMismatch flags distinct titles and normalizes roman numerals', () => {
+      expect(isCourseTitleMismatch('Software Engineering 2', 'Information and Knowledge Management')).toBe(true);
+      expect(isCourseTitleMismatch('Software Engineering 2', 'Software Engineering II')).toBe(false);
+      expect(isCourseTitleMismatch('Software Engineering 2', 'Software Engineering 2 (Laboratory)')).toBe(false);
+      expect(isCourseTitleMismatch(undefined, 'Software Engineering 2')).toBe(false);
+    });
+
+    test('matchesPersonName compares faculty names ignoring middle initials and academic honorifics', () => {
+      expect(matchesPersonName('Floribeth P. Cuison', 'Floribeth Cuison')).toBe(true);
+      expect(matchesPersonName('Dr. Charlie S. Marzan', 'Charlie Marzan')).toBe(true);
+      expect(matchesPersonName('Jayvee G. Reyes', 'Jayvee Reyes')).toBe(true);
+      expect(matchesPersonName('Floribeth P. Cuison', 'Charlie S. Marzan')).toBe(false);
+    });
+
+    test('buildInstructorOptions includes assigned course instructor if not already scanned', () => {
+      const scanResult = {
+        detectedFacultyNames: ['Floribeth P. Cuison'],
+      } as never;
+      const options = buildInstructorOptions(scanResult, [], {
+        instructorId: 'usr-fac-assigned',
+        instructorName: 'Assigned Professor',
+      });
+      expect(options.some(o => o.name === 'Assigned Professor')).toBe(true);
+      expect(options.some(o => o.name === 'Floribeth P. Cuison')).toBe(true);
+    });
+
+    test('scanned syllabus with course code/title mismatch displays warning tab and auto-matches assigned instructor', async () => {
+      mocks.scanSyllabusDocument.mockResolvedValue({
+        success: true,
+        fileName: 'CSPC103_Syllabus.docx',
+        fileSize: '250 KB',
+        fileType: 'docx',
+        detectedCourseCode: 'CSPC 103',
+        detectedCourseTitle: 'Information and Knowledge Management',
+        detectedFacultyNames: ['Faculty One'],
+        validation: { isSyllabus: true, confidence: 95, reasons: [], isScannedImage: false },
+        stats: { outcomesCount: 3, learningWeeksCount: 18, rubricsCount: 1, referencesCount: 5 },
+        rawTextPreview: 'Preview',
+        syllabus: syllabusDoc(),
+      });
+
+      render(<SyllabusView courseId="c1" />);
+      fireEvent.click(screen.getByRole('button', { name: /upload & scan syllabus/i }));
+
+      const fileInput = document.body.querySelector('input[type="file"]') as HTMLInputElement;
+      expect(fileInput).toBeInTheDocument();
+
+      const fakeFile = new File(['dummy content'], 'CSPC103_Syllabus.docx', {
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      });
+      fireEvent.change(fileInput, { target: { files: [fakeFile] } });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('syllabus-course-mismatch-warning')).toBeInTheDocument();
+      });
+
+      expect(screen.getByText(/Course Number & Descriptive Title Mismatch/i)).toBeInTheDocument();
+      expect(screen.getByText('CSPC 103')).toBeInTheDocument();
+      expect(screen.getByText('Information and Knowledge Management')).toBeInTheDocument();
+      expect(screen.getByText('Auto-Matched')).toBeInTheDocument();
+      expect(screen.getByText('Course Faculty Auto-Detected in Syllabus')).toBeInTheDocument();
+    });
   });
 });

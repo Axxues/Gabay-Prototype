@@ -122,7 +122,7 @@ def retriever_node(state: RagState) -> Dict[str, Any]:
 
     logger.debug("Querying vector store with filter: %s", filter_str)
     try:
-        docs = query_vector_store(query_text=query, top_k=3, filter_str=filter_str)
+        docs = query_vector_store(query_text=query, top_k=3, filter_str=filter_str, min_score=0.25)
     except Exception as exc:
         logger.warning("Vector retrieval failed, continuing with empty context: %s", exc)
         docs = []

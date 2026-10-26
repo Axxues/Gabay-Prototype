@@ -568,7 +568,7 @@ export const CreateLeadershipAccountPage: React.FC<CreateLeadershipAccountPagePr
                   htmlFor="lead-firstName"
                   className="text-[12px] font-semibold text-muted-foreground block"
                 >
-                  First Name *
+                  First Name <span className="text-destructive">*</span>
                 </label>
                 <input
                   id="lead-firstName"
@@ -613,7 +613,7 @@ export const CreateLeadershipAccountPage: React.FC<CreateLeadershipAccountPagePr
                   htmlFor="lead-lastName"
                   className="text-[12px] font-semibold text-muted-foreground block"
                 >
-                  Last Name *
+                  Last Name <span className="text-destructive">*</span>
                 </label>
                 <input
                   id="lead-lastName"
