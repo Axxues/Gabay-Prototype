@@ -2,20 +2,24 @@
 
 ## 🚨 MANDATORY DIRECTIVE: LIKHA ERP BACKEND MODIFICATIONS
 
-**DO NOT USE THE DIRECTUS / REST API TO MODIFY THE LIKHA ERP BACKEND.**
+**DO NOT USE DIRECTUS REST / DDL ENDPOINTS TO MODIFY THE LIKHA ERP BACKEND — IN CODE, VIA SCRIPTS, OR VIA BROWSER CONSOLE.**
 
-1. **Browser Subagent Only for ERP Backend Modifications:**
+1. **Strict DOM-Only Interaction via Browser Subagent:**
    - Whenever you need to alter, configure, or inspect Likha ERP data models, collections, fields, relations, interfaces, or system settings, you **MUST use the browser subagent (`browser_subagent`)** navigating `https://gabay.zyberlab.com/admin`.
-   - Never use curl, Node.js scripts, or REST endpoints (`/fields`, `/relations`, `/collections`, etc.) for schema or backend modifications.
-   - Reference: [Browser Subagent Documentation](https://antigravity.google/docs/ide/browser/)
+   - **DOM-ONLY INTERACTION RULE:** The browser subagent must interact **strictly and exclusively through synthetic mouse clicks (`click`), dropdown selections, and form inputs (`fill_form`) on the rendered HTML interface**.
+   - **ZERO IN-BROWSER SCRIPTED API CALLS:** The browser subagent is **STRICTLY FORBIDDEN** from using `evaluate_script`, `page.evaluate()`, `window.fetch()`, `XMLHttpRequest`, or browser console scripts to issue `POST`, `PATCH`, or `DELETE` requests against `/relations`, `/fields`, `/collections`, `/schema`, or any system endpoints. Calling REST DDL from inside the browser console is just as fatal as calling it from curl.
 
-2. **Reason:**
+2. **Mandatory Guardrail in Subagent Prompts:**
+   - Every prompt provided to a browser subagent targeting Likha ERP MUST explicitly include this negative constraint:
+     > *"CRITICAL RESTRICTION: You must ONLY configure settings by clicking DOM elements (`click`) and typing into inputs (`fill_form`). You are STRICTLY PROHIBITED from using `evaluate_script` or console execution to call `fetch()` against `/relations`, `/fields`, or `/collections`. Scripted schema calls crash the Directus server (502 Bad Gateway). If a button or setting is not clickable in the UI, STOP and report it immediately."*
+
+3. **Reason:**
    - `https://gabay.zyberlab.com` is a live, shared production system actively used by multiple developers and teams.
-   - Scripted REST API DDL calls (`/fields`, `/relations`) trigger uncaught exceptions in Directus that crash the host's `nodemon` process and cause an outage (HTTP 502 Bad Gateway) for all users.
-   - Using the Directus Admin UI via `browser_subagent` ensures safe, validated, interactive operations without server crashes.
+   - Directus contains an unhandled exception bug in its Knex/database layer when foreign key relationship DDL (`/relations`, `/fields`) is called via REST. This crashes the server process and takes down the entire system (`HTTP 502 Bad Gateway`).
+   - Using the Directus Admin UI purely through interactive mouse and keyboard events ensures Directus's internal UI validation handlers run properly without crashing the server.
 
-3. **Client App Data Operations:**
-   - Frontend and local server code may only read/write regular application items (`/items/:collection`) for normal LMS operations once authorized. No DDL or schema alterations are permitted via code.
+4. **Client App Data Operations:**
+   - Frontend and local server code may only read/write regular application items (`/items/:collection`) for normal LMS operations once authorized. No DDL or schema alterations are permitted via code or console under any circumstance.
 
 ---
 
