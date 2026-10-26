@@ -34,7 +34,7 @@ import { isChairRole, isDeanRole, isFacultyRole, canManageCourseContent, canDele
 import { courseMatchesProgram } from '../../shared/utils/courseScoping';
 import { useProcessing } from '../../shared/hooks/useProcessing';
 import { useModalAnimate } from '../../shared/hooks/useModalAnimate';
-import { normalizeAssignedSemester } from '../courses/utils/chairSheetParser';
+import { normalizeAcademicSemester } from '../../shared/utils/academicSemester';
 
 const SEMESTER_FILTERS = [
   { value: 'all', label: 'All Semesters' },
@@ -400,7 +400,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       'Mid-Year': 0,
     };
     programFilteredCourses.forEach(c => {
-      const sem = normalizeAssignedSemester(c.semester || c.term);
+      const sem = normalizeAcademicSemester(c.semester || c.term);
       if (counts[sem] !== undefined) {
         counts[sem]++;
       }
@@ -414,7 +414,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       return programFilteredCourses;
     }
     return programFilteredCourses.filter(c => {
-      const sem = normalizeAssignedSemester(c.semester || c.term);
+      const sem = normalizeAcademicSemester(c.semester || c.term);
       return sem === selectedSemester;
     });
   }, [programFilteredCourses, selectedSemester]);

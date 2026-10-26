@@ -20,6 +20,8 @@ export function normalizeAcademicSemester(raw?: string | null): AcademicSemester
   return 'First';
 }
 
+export const normalizeAssignedSemester = normalizeAcademicSemester;
+
 /** Display label for a semester: `First Semester`, `Second Semester`, `Mid-Year`. */
 export function formatSemesterLabel(semester: AcademicSemester): string {
   return semester === 'Mid-Year' ? 'Mid-Year' : `${semester} Semester`;

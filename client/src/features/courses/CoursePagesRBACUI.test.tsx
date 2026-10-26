@@ -2,8 +2,8 @@
 import { describe, expect, test, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import React from 'react';
-import { ModulesView } from '../modules/ModulesView';
-import { AnnouncementsView } from '../inbox/AnnouncementsView';
+import { ModulesView } from '../modules';
+import { AnnouncementsView } from '../inbox';
 
 const testCourse = {
   id: 'c-test-1',

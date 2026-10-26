@@ -32,27 +32,23 @@ import { FilePickerModal } from '../../shared/components/common/FilePickerModal'
 import type { AggregatedCourseFile } from '../../shared/hooks/useCourseFiles';
 import {
   ActivityFormFields,
-  buildActivityPayload as buildClassicActivityPayload,
+  buildClassicActivityPayload,
   emptyActivityFormValue,
   validateActivityForm,
-  type ActivityFormValue
-} from '../assessments/components/forms/ActivityFormFields';
-import {
+  type ActivityFormValue,
   QuizBuilderFields,
   buildQuizPayload,
   emptyQuizBuilderValue,
   validateQuizBuilder,
   type QuestionDraft,
-  type QuizBuilderValue
-} from '../assessments/components/forms/QuizBuilderFields';
-import {
+  type QuizBuilderValue,
   QuestionSetFields,
   buildActivityPayload,
   emptyQuestionSetValue,
   validateQuestionSet,
   type ActivityQuestionDraft,
-  type QuestionSetValue
-} from '../assessments/components/forms/QuestionSetFields';
+  type QuestionSetValue,
+} from '../assessments';
 
 interface AddModuleItemPageProps {
   courseId: string;

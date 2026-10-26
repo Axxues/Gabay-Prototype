@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { emptyQuestionSetValue, compileActivityQuestions } from '../../features/assessments/components/forms/QuestionSetFields';
-import { emptyQuizBuilderValue, compileQuizQuestions } from '../../features/assessments/components/forms/QuizBuilderFields';
-import { parseQuizText } from './quizImport';
+import { emptyQuestionSetValue, compileActivityQuestions } from './QuestionSetFields';
+import { emptyQuizBuilderValue, compileQuizQuestions } from './QuizBuilderFields';
+import { parseQuizText } from '../../../../shared/utils/quizImport';
 
 describe('default question points should be 1', () => {
   it('activity: empty set defaults to 1 point', () => {

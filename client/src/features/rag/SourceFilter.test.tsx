@@ -27,8 +27,7 @@ vi.mock('../../shared/context/LMSContext', () => ({
   }),
 }));
 
-import { ActivitiesView } from '../assessments/ActivitiesView';
-import { QuizzesView } from '../assessments/QuizzesView';
+import { ActivitiesView, QuizzesView } from '../assessments';
 
 function renderActivities() {
   return render(

@@ -30,20 +30,20 @@ const CourseSubTabSkeleton: React.FC = () => (
   </div>
 );
 
-const ModulesView = React.lazy(() => import('../modules/ModulesView').then(m => ({ default: m.ModulesView })));
-const SyllabusView = React.lazy(() => import('../syllabus/SyllabusView').then(m => ({ default: m.SyllabusView })));
-const AssessmentsOverviewView = React.lazy(() => import('../assessments/AssessmentsOverviewView').then(m => ({ default: m.AssessmentsOverviewView })));
-const ActivitiesView = React.lazy(() => import('../assessments/ActivitiesView').then(m => ({ default: m.ActivitiesView })));
-const AssignmentsView = React.lazy(() => import('../assessments/AssignmentsView').then(m => ({ default: m.AssignmentsView })));
-const ProjectsView = React.lazy(() => import('../assessments/ProjectsView').then(m => ({ default: m.ProjectsView })));
-const PresentationsView = React.lazy(() => import('../assessments/PresentationsView').then(m => ({ default: m.PresentationsView })));
-const QuizzesView = React.lazy(() => import('../assessments/QuizzesView').then(m => ({ default: m.QuizzesView })));
-const ExamsView = React.lazy(() => import('../assessments/ExamsView').then(m => ({ default: m.ExamsView })));
-const PeopleView = React.lazy(() => import('../people/PeopleView').then(m => ({ default: m.PeopleView })));
-const AnnouncementsView = React.lazy(() => import('../inbox/AnnouncementsView').then(m => ({ default: m.AnnouncementsView })));
-const FilesView = React.lazy(() => import('../files/FilesView').then(m => ({ default: m.FilesView })));
-const FacultyGradebook = React.lazy(() => import('../assessments/components/grading/FacultyGradebook').then(m => ({ default: m.FacultyGradebook })));
-const StudentGradebook = React.lazy(() => import('../assessments/components/grading/StudentGradebook').then(m => ({ default: m.StudentGradebook })));
+const ModulesView = React.lazy(() => import('../modules').then(m => ({ default: m.ModulesView })));
+const SyllabusView = React.lazy(() => import('../syllabus').then(m => ({ default: m.SyllabusView })));
+const AssessmentsOverviewView = React.lazy(() => import('../assessments').then(m => ({ default: m.AssessmentsOverviewView })));
+const ActivitiesView = React.lazy(() => import('../assessments').then(m => ({ default: m.ActivitiesView })));
+const AssignmentsView = React.lazy(() => import('../assessments').then(m => ({ default: m.AssignmentsView })));
+const ProjectsView = React.lazy(() => import('../assessments').then(m => ({ default: m.ProjectsView })));
+const PresentationsView = React.lazy(() => import('../assessments').then(m => ({ default: m.PresentationsView })));
+const QuizzesView = React.lazy(() => import('../assessments').then(m => ({ default: m.QuizzesView })));
+const ExamsView = React.lazy(() => import('../assessments').then(m => ({ default: m.ExamsView })));
+const PeopleView = React.lazy(() => import('../people').then(m => ({ default: m.PeopleView })));
+const AnnouncementsView = React.lazy(() => import('../inbox').then(m => ({ default: m.AnnouncementsView })));
+const FilesView = React.lazy(() => import('../files').then(m => ({ default: m.FilesView })));
+const FacultyGradebook = React.lazy(() => import('../assessments').then(m => ({ default: m.FacultyGradebook })));
+const StudentGradebook = React.lazy(() => import('../assessments').then(m => ({ default: m.StudentGradebook })));
 
 interface CoursesPageProps {
   initialSubTab?: string;

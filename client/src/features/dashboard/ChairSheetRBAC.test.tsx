@@ -4,7 +4,7 @@ import * as matchers from '@testing-library/jest-dom/matchers';
 expect.extend(matchers);
 import { render, screen, cleanup } from '@testing-library/react';
 import React from 'react';
-import { DashboardPage } from '../dashboard/DashboardPage';
+import { DashboardPage } from './DashboardPage';
 import { isChairRole } from '../../shared/utils/roles';
 
 const mockOnNavigateCourse = vi.fn();

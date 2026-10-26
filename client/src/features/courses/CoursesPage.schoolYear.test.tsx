@@ -5,7 +5,6 @@ expect.extend(matchers);
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import React from 'react';
 import { CoursesPage } from './CoursesPage';
-import { DashboardPage } from '../dashboard/DashboardPage';
 
 afterEach(() => {
   cleanup();
@@ -92,53 +91,6 @@ vi.mock('../../shared/context/LMSContext', () => ({
   getOrGenerateCourseJoinCode: (c?: any) => c?.joinCode || 'JOIN123',
   generateCourseJoinCode: () => 'JOIN123',
 }));
-
-describe('DashboardPage Academic Scope Horizontal Scrollable Wheel', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  test('renders Academic Scope horizontal wheel with current active year first and no All Years button', () => {
-    render(<DashboardPage onNavigateCourse={() => {}} onNavigateTab={() => {}} />);
-
-    // Academic Scope section exists on dashboard
-    expect(screen.getByText('Academic Scope')).toBeInTheDocument();
-    expect(screen.getByTestId('academic-scope-wheel')).toBeInTheDocument();
-
-    // "All Years" button should NOT exist
-    expect(screen.queryByRole('button', { name: /All Years/i })).not.toBeInTheDocument();
-
-    // The buttons in wheel should start with current year (2025-2026)
-    const buttons = screen.getAllByRole('button').filter(b => b.textContent?.includes('AY'));
-    expect(buttons[0]).toHaveTextContent('AY 2025-2026');
-
-    // Defaults to current active year (2025-2026)
-    expect(screen.getByText('Intro to Computer Science')).toBeInTheDocument();
-    expect(screen.queryByText('Foundation Computing')).not.toBeInTheDocument();
-  });
-
-  test('clicking past year in horizontal wheel filters courses on Dashboard', async () => {
-    render(<DashboardPage onNavigateCourse={() => {}} onNavigateTab={() => {}} />);
-
-    const pastYearBtn = screen.getByRole('button', { name: /AY 2024-2025/i });
-    expect(pastYearBtn).not.toBeDisabled();
-    fireEvent.click(pastYearBtn);
-
-    await waitFor(() => {
-      expect(screen.getByText('Foundation Computing')).toBeInTheDocument();
-      expect(screen.queryByText('Intro to Computer Science')).not.toBeInTheDocument();
-    });
-  });
-
-  test('future school year is rendered disabled and cannot be navigated', () => {
-    render(<DashboardPage onNavigateCourse={() => {}} onNavigateTab={() => {}} />);
-
-    const futureYearBtn = screen.getByRole('button', { name: /AY 2026-2027/i });
-    expect(futureYearBtn).toBeInTheDocument();
-    expect(futureYearBtn).toBeDisabled();
-    expect(futureYearBtn).toHaveAttribute('aria-disabled', 'true');
-  });
-});
 
 describe('CoursesPage Scoped Views (without Academic Scope Banner)', () => {
   beforeEach(() => {

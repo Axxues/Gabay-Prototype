@@ -15,3 +15,30 @@ export { QuizzesView } from './QuizzesView';
 export { SpeedGraderModal } from './components/grading/SpeedGraderModal';
 export { FacultyGradebook } from './components/grading/FacultyGradebook';
 export { StudentGradebook } from './components/grading/StudentGradebook';
+
+// Form fields, builders, validators, and types for assessments authoring
+export {
+  ActivityFormFields,
+  buildActivityPayload as buildClassicActivityPayload,
+  emptyActivityFormValue,
+  validateActivityForm,
+  type ActivityFormValue,
+} from './components/forms/ActivityFormFields';
+
+export {
+  QuizBuilderFields,
+  buildQuizPayload,
+  emptyQuizBuilderValue,
+  validateQuizBuilder,
+  type QuestionDraft,
+  type QuizBuilderValue,
+} from './components/forms/QuizBuilderFields';
+
+export {
+  QuestionSetFields,
+  buildActivityPayload,
+  emptyQuestionSetValue,
+  validateQuestionSet,
+  type ActivityQuestionDraft,
+  type QuestionSetValue,
+} from './components/forms/QuestionSetFields';
