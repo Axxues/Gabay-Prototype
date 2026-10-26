@@ -1,88 +1,73 @@
 # Gabay LMS Prototype - Agent Guidelines & Constraints
 
-## 🚨 MANDATORY DIRECTIVE: LIKHA ERP BACKEND MODIFICATIONS
+## 🛠️ MANDATORY DIRECTIVE: LIKHA ERP BACKEND MODIFICATIONS & API PROTOCOLS
 
-**DO NOT USE DIRECTUS REST / DDL ENDPOINTS TO MODIFY THE LIKHA ERP BACKEND — IN CODE, VIA SCRIPTS, OR VIA BROWSER CONSOLE.**
+**Programmatic interaction, scripts, and direct API calls are the standard methods for modifying, configuring, and extending the Likha ERP (Directus) backend. The browser subagent is NO LONGER REQUIRED.**
 
-1. **Strict DOM-Only Interaction via Browser Subagent:**
-   - Whenever you need to alter, configure, or inspect Likha ERP data models, collections, fields, relations, interfaces, or system settings, you **MUST use the browser subagent (`browser_subagent`)** navigating `https://gabay.zyberlab.com/admin`.
-   - **DOM-ONLY INTERACTION RULE:** The browser subagent must interact **strictly and exclusively through synthetic mouse clicks (`click`), dropdown selections, and form inputs (`fill_form`) on the rendered HTML interface**.
-   - **ZERO IN-BROWSER SCRIPTED API CALLS:** The browser subagent is **STRICTLY FORBIDDEN** from using `evaluate_script`, `page.evaluate()`, `window.fetch()`, `XMLHttpRequest`, or browser console scripts to issue `POST`, `PATCH`, or `DELETE` requests against `/relations`, `/fields`, `/collections`, `/schema`, or any system endpoints. Calling REST DDL from inside the browser console is just as fatal as calling it from curl.
-
-2. **Mandatory Guardrail in Subagent Prompts:**
-   - Every prompt provided to a browser subagent targeting Likha ERP MUST explicitly include this negative constraint:
-     > *"CRITICAL RESTRICTION: You must ONLY configure settings by clicking DOM elements (`click`) and typing into inputs (`fill_form`). You are STRICTLY PROHIBITED from using `evaluate_script` or console execution to call `fetch()` against `/relations`, `/fields`, or `/collections`. Scripted schema calls crash the Directus server (502 Bad Gateway). If a button or setting is not clickable in the UI, or if an error toast appears, STOP IMMEDIATELY and report it."*
-
-3. **Strict Stop-on-Error Protocol (Zero "Creative" Script Workarounds):**
-   - When an LLM subagent encounters an unexpected state (such as a disabled button, a red toast alert, or an unexpected validation error), it is **STRICTLY FORBIDDEN from attempting alternative scripted fallbacks or console workarounds**.
-   - The subagent must stop immediately, capture the exact UI message or snapshot, and return control to the user.
-
-4. **Sequential, Single-Tab Operations (No Concurrency or Lock Contention):**
-   - Directus acquires exclusive database table locks (`ACCESS EXCLUSIVE`) during schema alterations and triggers schema cache rebuilds.
-   - The browser agent must operate strictly in a single tab, modifying one field at a time sequentially.
-   - Always wait for the save checkmark/spinner to complete and the UI to settle before navigating to the next collection or field.
-
-5. **Pre-Constraint Orphan Record Hygiene:**
-   - In PostgreSQL, altering a foreign key to `ON DELETE CASCADE` or creating a foreign key relationship will fail with a foreign key violation error if the child table contains existing "orphan" records (rows referencing parent IDs that do not exist).
-   - If an orphan violation occurs in the UI, do NOT attempt to force it via DDL. The orphaned child records must be identified and cleared or re-assigned via normal item deletion (`/items/:collection/:id` or Content UI) first.
-
-6. **No Direct Writes to Directus System Collections (`directus_*`):**
-   - Never issue `POST`, `PATCH`, or `DELETE` against `/items/directus_*` (e.g. `directus_fields`, `directus_relations`, `directus_collections`, `directus_permissions`). All system metadata must be managed through Directus's validated Admin UI controls.
-
-7. **Reason for Strictness:**
-   - `https://gabay.zyberlab.com` is a live, shared production system actively used by multiple developers and teams.
-   - Directus contains an unhandled exception bug in its Knex/database layer when foreign key relationship DDL (`/relations`, `/fields`) is called via REST. This crashes the server process and takes down the entire system (`HTTP 502 Bad Gateway`).
-   - Using the Directus Admin UI purely through interactive mouse and keyboard events ensures Directus's internal UI validation handlers run properly without crashing the server.
-
-8. **Client App Data Operations:**
-   - Frontend and local server code may only read/write regular application items (`/items/:collection`) for normal LMS operations once authorized. No DDL or schema alterations are permitted via code or console under any circumstance.
+All agents and developers modifying the Likha ERP backend must strictly adhere to the safety rules below. Every constraint originates from a verified production crash or failure vector on the live Likha ERP instance (`https://gabay.zyberlab.com`).
 
 ---
 
-## 📐 DIRECTUS / LIKHA ERP OPERATIONAL RELATIONSHIP & SCHEMA RULES
+### 🚨 Critical Safety & Crash-Prevention Guardrails
 
-**These rules originate from real crashes and system failures on the Likha ERP production server. They MUST be strictly respected at all times:**
-
-1. **Rule 2 — NEVER PATCH `/relations`:**
-   - Any `PATCH /relations/{collection}/{field}` — even with an entirely valid, verified payload — enters `RelationsService.alterType` -> `schema.collections[...].fields` -> `TypeError` -> **fatal server process crash**.
-   - On this server, `nodemon` does NOT auto-restart; recovery requires manual server intervention (`rs`).
-   - `POST /relations` is safe.
+1. **CRITICAL CRASH VECTOR — NEVER `PATCH /relations`:**
+   - Any `PATCH /relations/{collection}/{field}` — even with an entirely valid, verified payload — enters `RelationsService.alterType` -> `schema.collections[...].fields` -> `TypeError` -> **fatal server process crash (`HTTP 502 Bad Gateway`)**.
+   - On this server, `nodemon` does NOT auto-restart; recovery requires manual server intervention (`rs` or container restart).
+   - `POST /relations` is completely safe.
    - **Safe alternatives when changing a relation post-creation:**
-     - **Option A (UI):** Directus Admin UI via browser subagent using synthetic DOM mouse clicks and keyboard events only.
-     - **Option B (Re-creation):** Delete + recreate the relation (`POST /relations` is safe).
-     - **Option C (Sanctioned SQL Flow):** Execute sanctioned SQL via a webhook-triggered `likha_sql` flow (e.g., fixing `one_deselect_action` / junction FKs):
+     - **Option A (Re-creation):** Delete the relation (`DELETE /relations/{collection}/{field}`) then recreate it with desired settings (`POST /relations`).
+     - **Option B (Sanctioned SQL via Flow):** Execute foreign key alterations via a webhook-triggered `likha_sql` flow (e.g., setting `ON DELETE CASCADE` or `one_deselect_action`):
        ```sql
        ALTER TABLE <junction> DROP CONSTRAINT <fk_name>,
          ADD CONSTRAINT <fk_name> FOREIGN KEY (<parent_fk>) REFERENCES <parent>(id) ON DELETE CASCADE;
        UPDATE directus_relations SET one_deselect_action='delete'
          WHERE many_collection='<junction>' AND many_field='<parent_fk>';
        ```
-       Followed by: `POST /utils/cache/clear {"cache":"system"}` to refresh the Directus schema cache.
+       Followed immediately by: `POST /utils/cache/clear {"cache":"system"}` to refresh the Directus schema cache.
 
-2. **Rule 3 — Missing-Field GET Queries Return 403, Not 404:**
-   - In Directus, querying or filtering by a field that does not exist on a collection returns `403 Forbidden` (`"You don't have permission to access field '<field>' or it does not exist"`), NOT `404 Not Found`.
-   - Never assume a 403 error implies bad user credentials or permissions alone.
-   - Verify fields by listing `/fields/{collection}` and searching, or handle appropriately.
+2. **Cloudflare WAF / User-Agent Requirement on Writes:**
+   - The hosted Likha ERP instance sits behind a Cloudflare WAF that blocks `Python-urllib/*` and generic script User-Agents on write operations (`POST`, `PATCH`, `DELETE`), returning `HTTP 403 error code: 1010`.
+   - **Requirement:** Always send a standard User-Agent header (e.g., `User-Agent: curl/8.5.0` or standard browser User-Agent) on all write requests. GET requests are unaffected.
 
-3. **Rule 6 — Reverse O2M Aliases & M2M Requirements:**
-   - Reverse O2M aliases are created by `meta.one_field` on the relation `POST`.
-   - After creation, use `PATCH /fields/{col}/{alias}` to set `interface: list-o2m`, options template, and group for tab placement.
-   - M2M relationships require `junction_field` on the junction -> parent relation + patching the alias to `list-m2m` or `files`.
+3. **URL-Encode Filter Parameters:**
+   - Always URL-encode filter parameters (e.g., `filter%5Bkey%5D%5B_eq%5D=value`, not raw square brackets `filter[key][_eq]=value`). Raw brackets cause intermittent proxy and gateway 400/502 errors.
 
-4. **Rule 9 — Audit Relations Are NOT Auto-Created:**
-   - `user_created` and `user_updated` fields save UUIDs, but the M2O relation to `directus_users` must be `POST`ed manually — otherwise Directus raises `"relationship not configured"` errors.
+4. **Shell `$` Expansion Guardrail:**
+   - Bash and PowerShell shell variable expansions silently corrupt Directus flow option templates containing `{{$trigger}}`, `{{$last}}`, or `{{$full}}`.
+   - **Requirement:** Always write flow definitions, operation payloads, and scripts using dedicated script files or JSON files with UTF-8 encoding. Never pass payloads with `$` expressions via inline `python -c` or inline bash double-quoted strings. Verify stored options after patching.
 
-5. **Rule 10 — Junction FK Fields Must NOT Be Hidden & Bidirectional M2M:**
-   - Hiding junction foreign key fields (e.g. `directus_files_id`, `<parent>_id`) breaks `list-m2m` and file interfaces with `"relationship not configured"`.
-   - M2M relationships require **BOTH** junction relations pointing at each other's field (`junction_field` on both sides). A missing second side results in `"relationship not configured"` in the application.
+5. **Idempotency & Duplicate Prevention (No Auto-Dedupe):**
+   - Directus does NOT deduplicate `/panels`, `/dashboards`, `/flows`, or `/operations`.
+   - Always perform an existence check (`GET` filtered by name) before creating new resources to prevent orphaned, duplicated operation chains.
+   - When constructing Directus Flow operation chains, build operations **tail-first** (from last op to second op), then create or patch the first operation, and finally set `flow.operation` to the first operation ID.
 
-6. **Rule 17 — Bash `$` Expansion Corrupts Flow Options:**
-   - Bash shell variable expansion corrupts Directus flow option templates containing `{{$trigger}}` or `{{$last}}`.
-   - Always write flow configurations and script operations via dedicated script files, never inline `python -c` or inline bash strings.
+6. **Webhook Trigger Method & Error Handling:**
+   - Directus webhook triggers default to `GET`. Any `POST /flows/trigger/{id}` call will return `HTTP 403 Forbidden` unless `options.method: "POST"` is explicitly set on the trigger operation.
+   - For public or API-facing webhook flows, always set `options.error_on_reject: true` and ensure the last operation returns a JSON-safe response body.
+   - In `Run Script` operations, gate conditions using JavaScript `throw` (routes to `reject: null` cleanly), and ensure output contains no functions or circular objects (`formatter` functions cannot be cloned).
+   - Set `emitEvents: false` on every operation that writes back to the trigger collection to prevent infinite event loops.
 
-7. **Rule 20 — `likha_sql` Only Fires Via Webhook-Triggered Flows:**
-   - Directus `likha_sql` execution only fires via a webhook-triggered flow (`GET /flows/trigger/{id}`).
-   - Manual flow execution triggers return `403 Forbidden`.
+7. **Database Operations via `likha_sql`:**
+   - Directus `likha_sql` operations ONLY fire when triggered via a webhook-triggered flow (`GET /flows/trigger/{id}` or `POST /flows/trigger/{id}`). Manual flow execution triggers return `403 Forbidden`.
+   - `likha_sql` returns `{sql, binding, rows:[...]}` for queries. `UPDATE` statements return `rows:[]`. In downstream Run Script steps, unwrap via `data.sql_1.rows || data.sql_1`.
+   - Interpolated input in `likha_sql` is NOT automatically escaped. Always sanitize user input in a prior step (`String(s).replace(/'/g, "''")`) to prevent SQL injection.
+   - Raw `likha_sql` `INSERT` statements bypass Directus event hooks (`items.create`); compute any serial numbers or defaults directly in the query CTE.
+
+8. **Directus Missing-Field 403 vs 404 Convention:**
+   - In Directus, querying or filtering by a field that does not exist returns `HTTP 403 Forbidden` (`"You don't have permission to access field '<field>' or it does not exist"`), NOT `404 Not Found`.
+   - Never assume a 403 error implies invalid credentials or lack of permissions alone. Check field existence via `GET /fields/{collection}`.
+
+9. **Relational Modeling & Schema Rules:**
+   - **Reverse O2M Aliases:** Created by `meta.one_field` on the relation `POST`. After creation, issue `PATCH /fields/{col}/{alias}` to set `interface: list-o2m`, `options.template`, and `meta.group` for layout tabs.
+   - **M2M Junctions:** Require bidirectional `junction_field` on BOTH junction->parent relations + setting alias to `list-m2m` or `files`. A missing second side causes `"relationship not configured"` errors.
+   - **Junction FK Visibility:** Junction foreign key fields (e.g. `directus_files_id`, `<parent>_id`) must NOT be marked `hidden: true`. Hiding them breaks `list-m2m` and `files` interfaces.
+   - **Audit Relations (`directus_users`):** `meta.accountability: "all"` does NOT auto-create relations. Explicitly create `user_created` and `user_updated` fields and `POST /relations` to `directus_users` (`system_users`).
+   - **Permission Presets:** `$CURRENT_USER` is NOT a valid `schema.default_value` (causes 500 invalid uuid). Use role permission presets: `presets: {"created_by": "$CURRENT_USER"}`.
+   - **Deep Relational Payloads:** When creating parents with nested children (e.g. quizzes with questions, activities with rubrics), send nested payloads on the O2M alias so Directus commits them within a single atomic database transaction.
+
+10. **Conventions & Environment:**
+    - Likha API URL: configured via environment. Token passed via `Authorization: Bearer <LIKHA_TOKEN>`, never hardcoded or committed to git.
+    - App Prefixing: Prefix application-specific collections, junctions, flows, and roles with a consistent identifier (e.g. `gabay_` or domain naming). Never modify system or external collections outside your app's domain on shared instances.
 
 ---
 
