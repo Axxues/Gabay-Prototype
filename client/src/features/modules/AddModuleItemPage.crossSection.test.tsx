@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
       schoolYear: '2026-2027',
       term: '1st Semester',
       instructorId: 'inst-1',
+      syllabus: {} as any,
     },
     {
       id: 'c2',
@@ -27,6 +28,7 @@ const mocks = vi.hoisted(() => ({
       schoolYear: '2026-2027',
       term: '1st Semester',
       instructorId: 'inst-1',
+      syllabus: {} as any,
     },
   ],
   mockModules: [

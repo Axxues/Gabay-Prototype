@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import React from 'react';
 import { CreateLeadershipAccountPage } from './CreateLeadershipAccountPage';
 import type { User, College, Department } from '../../shared/types/lms';
@@ -144,7 +144,7 @@ describe('CreateLeadershipAccountPage', () => {
     expect(idInput.getAttribute('maxlength')).toBe('4');
 
     fireEvent.change(idInput, { target: { value: '12' } });
-    fireEvent.click(screen.getByRole('button', { name: /send verification code/i }));
+    fireEvent.click(screen.getByRole('button', { name: /create leadership account/i }));
 
     await waitFor(() => {
       expect(screen.getByText('ID Number must be exactly 4 digits (e.g. 1082).')).toBeDefined();
@@ -176,7 +176,7 @@ describe('CreateLeadershipAccountPage', () => {
   it('validates required fields before submitting', async () => {
     render(<CreateLeadershipAccountPage />);
 
-    const submitBtn = screen.getByRole('button', { name: /send verification code/i });
+    const submitBtn = screen.getByRole('button', { name: /create leadership account/i });
     fireEvent.click(submitBtn);
 
     await waitFor(() => {
@@ -209,7 +209,7 @@ describe('CreateLeadershipAccountPage', () => {
       target: { value: 'DifferentPass' },
     });
 
-    const submitBtn = screen.getByRole('button', { name: /send verification code/i });
+    const submitBtn = screen.getByRole('button', { name: /create leadership account/i });
     fireEvent.click(submitBtn);
 
     await waitFor(() => {
@@ -232,7 +232,7 @@ describe('CreateLeadershipAccountPage', () => {
     });
   });
 
-  it('dispatches 6-digit code and transitions to verification step', async () => {
+  it('opens confirmation modal with leadership appointment summary without email verification', async () => {
     render(<CreateLeadershipAccountPage />);
 
     // Select unassigned college
@@ -252,30 +252,25 @@ describe('CreateLeadershipAccountPage', () => {
       target: { value: 'SecurePass123' },
     });
 
-    const submitBtn = screen.getByRole('button', { name: /send verification code/i });
+    const submitBtn = screen.getByRole('button', { name: /create leadership account/i });
     fireEvent.click(submitBtn);
 
     await waitFor(() => {
-      expect(mockSendLeadershipCodeEmail).toHaveBeenCalledWith(
-        expect.objectContaining({
-          email: 'mcurie@dmmmsu.edu.ph',
-          recipientName: 'Marie Curie',
-          roleType: 'dean',
-          unitName: 'College of Engineering',
-          code: expect.stringMatching(/^\d{6}$/),
-        })
-      );
-      expect(screen.getByText('Verify Leadership Appointment')).toBeDefined();
-      expect(screen.getByText('Marie Curie')).toBeDefined();
-      expect(screen.getByText('mcurie@dmmmsu.edu.ph')).toBeDefined();
+      const modal = screen.getByRole('dialog');
+      expect(within(modal).getByRole('heading', { name: /confirm leadership appointment/i })).toBeDefined();
+      expect(within(modal).getByText('Marie Curie')).toBeDefined();
+      expect(within(modal).getByText('mcurie@dmmmsu.edu.ph')).toBeDefined();
+      expect(within(modal).getByText('College Dean • College of Engineering')).toBeDefined();
+      expect(within(modal).getByText('1099')).toBeDefined();
     });
 
-    // Check dev hint badge
-    const devHint = screen.getByTestId('dev-verification-code');
-    expect(devHint).toBeDefined();
+    // Email dispatch must NOT be triggered
+    expect(mockSendLeadershipCodeEmail).not.toHaveBeenCalled();
+    // Verification OTP screen must NOT be displayed
+    expect(screen.queryByText(/Verify Leadership Appointment/i)).toBeNull();
   });
 
-  it('rejects invalid verification code and accepts correct 6-digit code to finalize appointment', async () => {
+  it('cancels appointment in confirmation modal without creating user', async () => {
     render(<CreateLeadershipAccountPage />);
 
     // Fill valid form
@@ -293,43 +288,52 @@ describe('CreateLeadershipAccountPage', () => {
       target: { value: 'SecurePass123' },
     });
 
-    fireEvent.click(screen.getByRole('button', { name: /send verification code/i }));
+    fireEvent.click(screen.getByRole('button', { name: /create leadership account/i }));
 
     await waitFor(() => {
-      expect(screen.getByText('Verify Leadership Appointment')).toBeDefined();
+      expect(screen.getByRole('heading', { name: /confirm leadership appointment/i })).toBeDefined();
     });
 
-    // Extract the generated 6-digit code from the dev hint or mock call
-    const sentCode = mockSendLeadershipCodeEmail.mock.calls[0][0].code;
-    expect(sentCode).toHaveLength(6);
-
-    const digitInputs = screen.getAllByRole('textbox').slice(0, 6);
-    expect(digitInputs).toHaveLength(6);
-
-    // Enter wrong code first
-    const wrongDigits = '999999'.split('');
-    wrongDigits.forEach((d, idx) => {
-      fireEvent.change(digitInputs[idx], { target: { value: d } });
-    });
-
-    const verifyBtn = screen.getByRole('button', { name: /verify & appoint leader/i });
-    fireEvent.click(verifyBtn);
+    // Click Cancel inside the modal
+    const modal = screen.getByRole('dialog');
+    fireEvent.click(within(modal).getByRole('button', { name: /^cancel$/i }));
 
     await waitFor(() => {
-      expect(
-        screen.getByText(
-          'Invalid verification code. Please check the code received by the incoming leader.'
-        )
-      ).toBeDefined();
+      expect(screen.queryByRole('heading', { name: /confirm leadership appointment/i })).toBeNull();
     });
 
-    // Enter correct code
-    const correctDigits = sentCode.split('');
-    correctDigits.forEach((d, idx) => {
-      fireEvent.change(digitInputs[idx], { target: { value: d } });
+    expect(mockCreateUser).not.toHaveBeenCalled();
+    expect(mockAppointLeadership).not.toHaveBeenCalled();
+  });
+
+  it('confirms appointment in confirmation modal and provisions leadership account without email verification', async () => {
+    render(<CreateLeadershipAccountPage />);
+
+    // Fill valid form
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'col-coe' } });
+    fireEvent.change(screen.getByLabelText(/first name \*/i), { target: { value: 'Marie' } });
+    fireEvent.change(screen.getByLabelText(/last name \*/i), { target: { value: 'Curie' } });
+    fireEvent.change(screen.getByLabelText(/institutional email \*/i), {
+      target: { value: 'mcurie@dmmmsu.edu.ph' },
+    });
+    fireEvent.change(screen.getByLabelText(/id number/i), { target: { value: '1099' } });
+    fireEvent.change(screen.getByLabelText(/^account password \*/i), {
+      target: { value: 'SecurePass123' },
+    });
+    fireEvent.change(screen.getByLabelText(/confirm password \*/i), {
+      target: { value: 'SecurePass123' },
     });
 
-    fireEvent.click(verifyBtn);
+    fireEvent.click(screen.getByRole('button', { name: /create leadership account/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /confirm leadership appointment/i })).toBeDefined();
+    });
+
+    // Confirm in modal
+    const modal = screen.getByRole('dialog');
+    const confirmBtn = within(modal).getByRole('button', { name: /confirm & create account/i });
+    fireEvent.click(confirmBtn);
 
     await waitFor(() => {
       expect(mockCreateUser).toHaveBeenCalledWith(
@@ -357,6 +361,72 @@ describe('CreateLeadershipAccountPage', () => {
       );
       expect(mockNavigate).toHaveBeenCalledWith('/accounts');
     });
+
+    // Ensure no email code was sent
+    expect(mockSendLeadershipCodeEmail).not.toHaveBeenCalled();
+  });
+
+  it('confirms chairperson appointment in confirmation modal and provisions chairperson', async () => {
+    mockSearchParams = new URLSearchParams('role=chairperson&collegeId=col-ccs&departmentId=dept-it');
+
+    render(<CreateLeadershipAccountPage />);
+
+    fireEvent.change(screen.getByLabelText(/first name \*/i), { target: { value: 'Grace' } });
+    fireEvent.change(screen.getByLabelText(/last name \*/i), { target: { value: 'Hopper' } });
+    fireEvent.change(screen.getByLabelText(/institutional email \*/i), {
+      target: { value: 'ghopper@dmmmsu.edu.ph' },
+    });
+    fireEvent.change(screen.getByLabelText(/id number/i), { target: { value: '1042' } });
+    fireEvent.change(screen.getByLabelText(/^account password \*/i), {
+      target: { value: 'SecurePass123' },
+    });
+    fireEvent.change(screen.getByLabelText(/confirm password \*/i), {
+      target: { value: 'SecurePass123' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /create leadership account/i }));
+
+    await waitFor(() => {
+      const modal = screen.getByRole('dialog');
+      expect(within(modal).getByRole('heading', { name: /confirm leadership appointment/i })).toBeDefined();
+      expect(within(modal).getByText('Grace Hopper')).toBeDefined();
+      expect(within(modal).getByText(/Department Chairperson • Information Technology/i)).toBeDefined();
+    });
+
+    const modal = screen.getByRole('dialog');
+    const confirmBtn = within(modal).getByRole('button', { name: /confirm & create account/i });
+    fireEvent.click(confirmBtn);
+
+    await waitFor(() => {
+      expect(mockCreateUser).toHaveBeenCalledWith(
+        expect.objectContaining({
+          firstName: 'Grace',
+          lastName: 'Hopper',
+          name: 'Grace Hopper',
+          email: 'ghopper@dmmmsu.edu.ph',
+          studentId: '1042',
+          role: 'admin',
+          adminSubrole: 'chairperson',
+          collegeId: 'col-ccs',
+          collegeName: 'College of Computer Science',
+          department: 'Information Technology',
+          program: 'Information Technology',
+          title: 'Program Chairperson',
+          emailVerified: true,
+          verificationStatus: 'verified',
+        })
+      );
+      expect(mockAppointLeadership).toHaveBeenCalledWith('chairperson', 'new-user-123', 'dept-it');
+      expect(mockShowAlert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Leadership Account Created',
+          type: 'success',
+        })
+      );
+      expect(mockNavigate).toHaveBeenCalledWith('/accounts');
+    });
+
+    expect(mockSendLeadershipCodeEmail).not.toHaveBeenCalled();
   });
 
   it('pre-fills role and unit from query parameters', () => {

@@ -26,7 +26,7 @@ interface AssessmentsOverviewViewProps {
   onNavigateCategory: (category: string, itemId?: string) => void;
 }
 
-type CategoryFilter = 'all' | 'activities' | 'quizzes' | 'assignments' | 'projects' | 'presentations' | 'exams';
+type CategoryFilter = 'all' | 'activities' | 'quizzes' | 'assignments' | 'projects' | 'presentations';
 
 interface UnifiedAssessmentItem {
   id: string;
@@ -48,14 +48,14 @@ const CATEGORY_TABS: { id: CategoryFilter; label: string; icon: React.ReactNode 
   { id: 'assignments', label: 'Assignments', icon: <FileText className="h-3.5 w-3.5" /> },
   { id: 'projects', label: 'Projects', icon: <Briefcase className="h-3.5 w-3.5" /> },
   { id: 'presentations', label: 'Presentations', icon: <Presentation className="h-3.5 w-3.5" /> },
-  { id: 'exams', label: 'Exams', icon: <QuizIcon className="h-3.5 w-3.5" /> },
+
 ];
 
 export const AssessmentsOverviewView: React.FC<AssessmentsOverviewViewProps> = ({
   courseId,
   onNavigateCategory,
 }) => {
-  const { db, activeRole, activeUser, effectiveTermsForCourse } = useLMS();
+  const { db, activeRole, activeUser, effectiveTermsForCourse, showAlert } = useLMS();
   const course = (db.courses || []).find(c => c.id === courseId);
   const isAssignedInstructor = canManageCourseContent(course, activeUser);
 
@@ -123,26 +123,8 @@ export const AssessmentsOverviewView: React.FC<AssessmentsOverviewViewProps> = (
         });
       });
 
-    // Exams
-    (db.exams || [])
-      .filter(e => e.courseId === courseId)
-      .forEach(e => {
-        const points = (e.questions || []).reduce((sum, item) => sum + (item.points || 0), 0);
-        list.push({
-          id: e.id,
-          category: 'exam',
-          categoryLabel: 'Exam',
-          title: e.title,
-          term: normalizeTermId(e.term) || 'finals',
-          points,
-          dueDate: e.dueDate,
-          published: e.published,
-          targetSubTab: 'exams',
-        });
-      });
-
     return list;
-  }, [db.activities, db.quizzes, db.exams, courseId]);
+  }, [db.activities, db.quizzes, courseId]);
 
   // Filter items
   const filteredItems = useMemo(() => {
@@ -157,8 +139,7 @@ export const AssessmentsOverviewView: React.FC<AssessmentsOverviewViewProps> = (
           (categoryFilter === 'quizzes' && item.category === 'quiz') ||
           (categoryFilter === 'assignments' && item.category === 'assignment') ||
           (categoryFilter === 'projects' && item.category === 'project') ||
-          (categoryFilter === 'presentations' && item.category === 'presentation') ||
-          (categoryFilter === 'exams' && item.category === 'exam');
+          (categoryFilter === 'presentations' && item.category === 'presentation');
         if (!matchesCategory) return false;
       }
 
@@ -299,7 +280,13 @@ export const AssessmentsOverviewView: React.FC<AssessmentsOverviewViewProps> = (
           <div className="relative">
             <button
               type="button"
-              onClick={() => setIsCreateMenuOpen(prev => !prev)}
+              onClick={() => {
+                if (course && !course.syllabus) {
+                  showAlert('A syllabus must be uploaded before creating assessments.', 'Syllabus Required');
+                  return;
+                }
+                setIsCreateMenuOpen(prev => !prev);
+              }}
               className="flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-2 text-xs font-bold text-primary-foreground shadow-sm hover:opacity-95 transition-all cursor-pointer"
             >
               <Plus className="h-4 w-4" />
@@ -320,7 +307,6 @@ export const AssessmentsOverviewView: React.FC<AssessmentsOverviewViewProps> = (
                   { label: 'Assignment', tab: 'assignments', icon: <FileText className="h-4 w-4 text-amber-500" /> },
                   { label: 'Project', tab: 'projects', icon: <Briefcase className="h-4 w-4 text-emerald-500" /> },
                   { label: 'Presentation', tab: 'presentations', icon: <Presentation className="h-4 w-4 text-rose-500" /> },
-                  { label: 'Exam', tab: 'exams', icon: <Award className="h-4 w-4 text-indigo-500" /> },
                 ].map(item => (
                   <button
                     key={item.tab}

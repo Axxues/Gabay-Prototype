@@ -4,7 +4,7 @@ import { useLMS } from '../../shared/context/LMSContext';
 import { JoinCourseModal } from '../../shared/components/common/JoinCourseModal';
 import { EmptyState } from '../../shared/components/common/EmptyState';
 import { PageTransition } from '../../shared/components/common/PageTransition';
-import { COURSE_CHILDREN, isVisible } from '../../shared/config/navigation';
+import { COURSE_CHILDREN, isVisible, isAssessmentTab } from '../../shared/config/navigation';
 import { getScopedCourses } from '../../shared/utils/courseScoping';
 import {
   countNewFiles,
@@ -61,7 +61,8 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
     departments,
     getUnreadNotificationCount,
     markTabVisited,
-    isCourseGradeReady
+    isCourseGradeReady,
+    hasCourseSyllabus
   } = useLMS();
 
   const [subTab, setSubTab] = useState(initialSubTab);
@@ -96,6 +97,9 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
       });
 
   const activeCourse = availableCourses.find(c => c.id === activeCourseId) || availableCourses[0];
+  const courseHasSyllabus = activeCourse
+    ? (hasCourseSyllabus ? hasCourseSyllabus(activeCourse.id) : Boolean(activeCourse.syllabus))
+    : false;
 
   // Student explicitly navigated to a course they are not enrolled in
   // (stale activeCourseId from history/search), or has no enrollments at
@@ -151,7 +155,7 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
         badgeCount = countTotalAssessmentBadge({
           activities: db.activities || [],
           quizzes: db.quizzes || [],
-          exams: db.exams || [],
+          exams: [],
           submissions: db.submissions || [],
           userId: activeUser.id,
           role: activeRole,
@@ -253,7 +257,17 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
         </div>
         <PageTransition pageKey={`${subTab}:${activeCourse.id}`} className="w-full min-w-0">
         <React.Suspense fallback={<CourseSubTabSkeleton />}>
-        {subTab === 'modules' && (
+        {subTab === 'modules' && activeCourse && !courseHasSyllabus && (
+          <div className="bg-card border border-border rounded-2xl p-8 text-center" data-testid="modules-syllabus-gate">
+            <h3 className="text-sm font-bold text-foreground">Syllabus required for modules</h3>
+            <p className="text-xs text-muted-foreground mt-1">Course modules and items are derived from the official course syllabus. {(activeRole === 'faculty' || activeRole === 'admin' || activeRole === 'superadmin') ? 'Upload a syllabus to enable creating modules and items.' : 'Waiting for your instructor to upload the syllabus.'}</p>
+            {(activeRole === 'faculty' || activeRole === 'admin' || activeRole === 'superadmin') && (
+              <button type="button" onClick={() => setSubTab('syllabus')} className="mt-3 px-4 py-2 text-xs font-bold bg-primary text-primary-foreground rounded-xl cursor-pointer">Go to Syllabus</button>
+            )}
+          </div>
+        )}
+
+        {subTab === 'modules' && activeCourse && courseHasSyllabus && (
           <ModulesView
             courseId={activeCourse.id}
             onSelectActivity={actId => {
@@ -273,7 +287,17 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
 
         {subTab === 'announcements' && <AnnouncementsView courseId={activeCourse.id} />}
 
-        {subTab === 'assessments' && (
+        {(isAssessmentTab(subTab) || subTab === 'exams') && activeCourse && !courseHasSyllabus && (
+          <div className="bg-card border border-border rounded-2xl p-8 text-center" data-testid="assessments-syllabus-gate">
+            <h3 className="text-sm font-bold text-foreground">Syllabus required for assessments</h3>
+            <p className="text-xs text-muted-foreground mt-1">Course assessments and items are derived from the official course syllabus. {(activeRole === 'faculty' || activeRole === 'admin' || activeRole === 'superadmin') ? 'Upload a syllabus to enable creating assessment items.' : 'Waiting for your instructor to upload the syllabus.'}</p>
+            {(activeRole === 'faculty' || activeRole === 'admin' || activeRole === 'superadmin') && (
+              <button type="button" onClick={() => setSubTab('syllabus')} className="mt-3 px-4 py-2 text-xs font-bold bg-primary text-primary-foreground rounded-xl cursor-pointer">Go to Syllabus</button>
+            )}
+          </div>
+        )}
+
+        {subTab === 'assessments' && activeCourse && courseHasSyllabus && (
           <AssessmentsOverviewView
             courseId={activeCourse.id}
             onNavigateCategory={(cat, itemId) => {
@@ -288,7 +312,7 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
           />
         )}
 
-        {subTab === 'activities' && (
+        {subTab === 'activities' && activeCourse && courseHasSyllabus && (
           <ActivitiesView
             courseId={activeCourse.id}
             selectedActivityId={selectedActivityId}
@@ -305,7 +329,7 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
           />
         )}
 
-        {subTab === 'assignments' && (
+        {subTab === 'assignments' && activeCourse && courseHasSyllabus && (
           <AssignmentsView
             courseId={activeCourse.id}
             selectedAssignmentId={selectedAssignmentId}
@@ -322,7 +346,7 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
           />
         )}
 
-        {subTab === 'projects' && (
+        {subTab === 'projects' && activeCourse && courseHasSyllabus && (
           <ProjectsView
             courseId={activeCourse.id}
             selectedProjectId={selectedProjectId}
@@ -339,7 +363,7 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
           />
         )}
 
-        {subTab === 'presentations' && (
+        {subTab === 'presentations' && activeCourse && courseHasSyllabus && (
           <PresentationsView
             courseId={activeCourse.id}
             selectedPresentationId={selectedPresentationId}
@@ -356,7 +380,7 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
           />
         )}
 
-        {subTab === 'quizzes' && (
+        {subTab === 'quizzes' && activeCourse && courseHasSyllabus && (
           <QuizzesView
             courseId={activeCourse.id}
             selectedQuizId={selectedQuizId}
@@ -373,7 +397,7 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
           />
         )}
 
-        {subTab === 'exams' && (
+        {subTab === 'exams' && activeCourse && courseHasSyllabus && (
           <ExamsView
             courseId={activeCourse.id}
             selectedExamId={selectedExamId}

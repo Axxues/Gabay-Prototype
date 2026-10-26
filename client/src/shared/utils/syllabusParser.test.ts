@@ -174,4 +174,67 @@ describe('extractTextFromDocx', () => {
     expect(v.isScannedImage).toBe(true);
     expect(v.isSyllabus).toBe(true);
   });
+
+  test('dynamically extracts full syllabus sections from uploaded document without static CSPC112 fallback', async () => {
+    const { scanSyllabusDocument } = await import('./syllabusParser');
+    const filePath = path.resolve(__dirname, '../../../../file-samples/syllabus/CSPC103-IKM-SYL-1stSemAY2026-2027.docx');
+    const buffer = fs.readFileSync(filePath);
+    const file = new File([buffer], 'CSPC103-IKM-SYL-1stSemAY2026-2027.docx', {
+      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    });
+
+    const result = await scanSyllabusDocument(file);
+    expect(result.success).toBe(true);
+    expect(result.detectedCourseTitle).toBe('Introduction to Knowledge Management');
+    expect(result.syllabus.courseInfo.title).toBe('Introduction to Knowledge Management');
+    expect(result.syllabus.courseInfo.description).toMatch(/knowledge management/i);
+    expect(result.syllabus.courseInfo.description).not.toMatch(/software engineering 2/i);
+
+    // Dynamic Course Outcomes
+    expect(result.syllabus.courseOutcomes.length).toBe(6);
+    expect(result.syllabus.courseOutcomes[0]?.statement).toMatch(/knowledge management/i);
+    expect(result.syllabus.courseOutcomes[0]?.statement).not.toMatch(/software project proposals/i);
+
+    // Dynamic Learning Plan
+    expect(result.syllabus.learningPlan.length).toBeGreaterThan(4);
+    expect(result.syllabus.learningPlan.some(w => w.topics.some(t => /knowledge management/i.test(t)))).toBe(true);
+
+    // Dynamic Classroom Policies
+    expect(result.syllabus.classroomPolicies.length).toBeGreaterThan(3);
+    expect(result.syllabus.classroomPolicies.some(p => /student code of discipline/i.test(p))).toBe(true);
+
+    // Dynamic References
+    expect(result.syllabus.references.length).toBeGreaterThan(3);
+    expect(result.syllabus.references.some(r => /dalkir/i.test(r.citation))).toBe(true);
+
+    // Dynamic Signatories
+    expect(result.syllabus.signatories.recommendingApproval.name).toMatch(/NEMA ROSE/i);
+    expect(result.syllabus.signatories.approved.name).toMatch(/CHARLIE/i);
+
+    // Dynamic Faculty Schedule
+    expect(result.detectedFacultyNames).toContain('Floribeth P. Cuison');
+    expect(result.syllabus.facultyMembers[0]?.name).toBe('Floribeth P. Cuison');
+    expect(result.syllabus.facultyMembers[0]?.sections[0]?.schedule).toMatch(/01:30 PM/i);
+    expect(result.syllabus.facultyMembers[0]?.sections[0]?.room).toMatch(/LR\s*203/i);
+  }, 15000);
+
+  test('dynamically extracts syllabus sections from CMSC131 PDF sample', async () => {
+    const { extractPdfText } = await import('./quizExtract');
+    const { scanSyllabusDocument } = await import('./syllabusParser');
+    const filePath = path.resolve(__dirname, '../../../../file-samples/syllabus/CMSC131_Course_Orientation.pdf');
+    const buffer = fs.readFileSync(filePath);
+    const file = new File([buffer], 'CMSC131_Course_Orientation.pdf', {
+      type: 'application/pdf',
+    });
+
+    const result = await scanSyllabusDocument(file);
+
+    expect(result.success).toBe(true);
+    expect(result.detectedCourseCode).toMatch(/CSPC\s*-\s*112/i);
+    expect(result.detectedCourseTitle).toMatch(/Software Engineering 2/i);
+    expect(result.detectedFacultyNames).toContain('Ezekiel O. Bacungan');
+    expect(result.syllabus.facultyMembers[0]?.name).toBe('Ezekiel O. Bacungan');
+    expect(result.syllabus.facultyMembers[0]?.sections[0]?.schedule).toMatch(/08:00-09:00 MF/i);
+    expect(result.syllabus.facultyMembers[0]?.sections[0]?.room).toMatch(/LR114/i);
+  }, 15000);
 });

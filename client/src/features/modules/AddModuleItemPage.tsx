@@ -935,6 +935,11 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
   const handleSave = async (addAnother: boolean = false) => {
     if (upload.isUploading || isSaving) return;
 
+    if (!isEditing && course && !course.syllabus) {
+      showAlert('A syllabus must be uploaded before creating items.', 'Syllabus Required');
+      return;
+    }
+
     if (isEditing) {
       setIsSaving(true);
       try {

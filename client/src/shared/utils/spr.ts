@@ -145,16 +145,30 @@ export function autoScoreFraction(args: {
   return Math.min(Math.max(fraction, 0), 1);
 }
 
-export function resolveExamScore(courseId: string, term: 'midterm' | 'final' | TermId, studentId: string, db: { exams?: Exam[]; submissions: Submission[] }): { score: number | null; perfect: number } {
-  // Task 7: accept TermId. Stored rows read legacy 'final' as 'finals'
-  // (normalizeExam on load), so compare normalized on both sides; a legacy
-  // 'final' lookup still matches either stored shape.
+export function resolveExamScore(
+  courseId: string,
+  term: 'midterm' | 'final' | TermId,
+  studentId: string,
+  db: { exams?: Exam[]; submissions: Submission[] }
+): { score: number | null; perfect: number } {
+  // Accept TermId. Normalized comparison supports both digital and manual/physical exam grades.
   const want = normalizeTermId(term);
-  const exam = (db.exams ?? []).find(e => e.courseId === courseId && e.published && normalizeTermId(e.term) === want);
-  if (!exam) return { score: null, perfect: 100 };
-  const pts = exam.questions.reduce((s, q) => s + (q.points ?? 0), 0);
-  const perfect = Math.max(1, pts);
-  const cands = db.submissions.filter(s => s.studentId === studentId && s.activityKey === `asg-exam-${exam.id}` && s.status === 'graded' && typeof s.grade === 'number');
+  const exam = (db.exams ?? []).find(e => e.courseId === courseId && normalizeTermId(e.term) === want);
+  const pts = exam?.questions?.reduce((s, q) => s + (q.points ?? 0), 0);
+  const perfect = pts && pts > 0 ? pts : 100;
+  const examId = exam?.id;
+  const cands = db.submissions.filter(s =>
+    s.studentId === studentId &&
+    (
+      (examId && (s.examId === examId || s.activityKey === `asg-exam-${examId}`)) ||
+      s.examId === `exam-${courseId}-${want}` ||
+      s.activityKey === `asg-exam-exam-${courseId}-${want}` ||
+      s.activityKey === `asg-exam-${courseId}-${want}`
+    ) &&
+    s.status === 'graded' &&
+    typeof s.grade === 'number' &&
+    !Number.isNaN(s.grade)
+  );
   if (!cands.length) return { score: null, perfect };
   cands.sort((a, b) => String(b.gradedAt ?? b.submittedAt ?? '') > String(a.gradedAt ?? a.submittedAt ?? '') ? 1 : -1);
   return { score: Math.min(Math.max(cands[0].grade as number, 0), perfect), perfect };

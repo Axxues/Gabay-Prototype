@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLMS } from '../../../shared/context/LMSContext';
-import type { College, Department, SchoolYear, User, AcademicSemester } from '../../../shared/types/lms';
+import type { College, Department, SchoolYear, User, AcademicSemester, LeadershipRoleType } from '../../../shared/types/lms';
+import { LeadershipTransferModal } from './LeadershipTransferModal';
 import { ACADEMIC_SEMESTERS, formatSemesterLabel, normalizeAcademicSemester } from '../../../shared/utils/academicSemester';
 import { DialogFrame } from '../../../shared/components/common/DialogFrame';
 import { UserAvatar } from '../../../shared/components/common/UserAvatar';
@@ -15,6 +16,7 @@ import {
   AlertCircle,
   Trash2,
   Calendar,
+  ArrowRightLeft,
 } from 'lucide-react';
 import { isDeanRole, isChairRole } from '../../../shared/utils/roles';
 import { generateUuid } from '../../../shared/utils/cryptoToken';
@@ -22,6 +24,12 @@ import { generateUuid } from '../../../shared/utils/cryptoToken';
 export const AcademicStructureTab: React.FC = () => {
   const navigate = useNavigate();
   const [expandedColleges, setExpandedColleges] = useState<Record<string, boolean>>({});
+  const [transferTarget, setTransferTarget] = useState<{
+    leader?: User;
+    roleType: LeadershipRoleType;
+    unitId: string;
+    unitName: string;
+  } | null>(null);
 
   const toggleCollegeCollapse = (collegeId: string) => {
     setExpandedColleges(prev => ({
@@ -819,6 +827,24 @@ export const AcademicStructureTab: React.FC = () => {
                             {dean.name}
                           </div>
                         </div>
+                        {canManageDeans && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setTransferTarget({
+                                leader: dean,
+                                roleType: 'dean',
+                                unitId: college.id,
+                                unitName: college.name,
+                              });
+                            }}
+                            className="p-1.5 hover:bg-muted text-muted-foreground hover:text-primary rounded-lg transition-colors cursor-pointer mr-1"
+                            title="Transfer Dean Leadership"
+                          >
+                            <ArrowRightLeft className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </>
                     ) : (
                       <>
@@ -933,6 +959,24 @@ export const AcademicStructureTab: React.FC = () => {
                                     </span>
                                     <span className="font-bold text-foreground">{chair.name}</span>
                                   </div>
+                                  {canAppointChairs && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setTransferTarget({
+                                          leader: chair,
+                                          roleType: 'chairperson',
+                                          unitId: dept.id,
+                                          unitName: dept.name,
+                                        });
+                                      }}
+                                      className="p-1 hover:bg-muted text-muted-foreground hover:text-primary rounded-lg transition-colors cursor-pointer ml-1"
+                                      title="Transfer Chairperson Leadership"
+                                    >
+                                      <ArrowRightLeft className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
                                 </div>
                               ) : (
                                 <div className="flex items-center space-x-2 bg-amber-500/10 px-3 py-1.5 rounded-xl border border-amber-500/20">
@@ -1707,6 +1751,17 @@ export const AcademicStructureTab: React.FC = () => {
             </div>
           </div>
         </DialogFrame>
+      )}
+
+      {transferTarget && (
+        <LeadershipTransferModal
+          isOpen={Boolean(transferTarget)}
+          onClose={() => setTransferTarget(null)}
+          leader={transferTarget.leader}
+          forcedRoleType={transferTarget.roleType}
+          forcedUnitId={transferTarget.unitId}
+          forcedUnitName={transferTarget.unitName}
+        />
       )}
     </div>
   );

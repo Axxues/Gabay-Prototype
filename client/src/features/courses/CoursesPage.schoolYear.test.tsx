@@ -26,6 +26,7 @@ let mockCoursesState = [
     section: '1-A',
     schoolYear: '2025-2026',
     published: true,
+    syllabus: { courseInfo: { title: 'Intro to Computer Science' } } as any,
   },
   {
     id: 'c-past',

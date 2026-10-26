@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useLMS } from '../../shared/context/LMSContext';
 import { formatIdNumber, isValidIdNumber, EMPLOYEE_ID_EXAMPLE } from '../../shared/utils/idNumber';
 import { isValidInstitutionalEmail } from '../../shared/utils/institutionalEmail';
 import { CustomDropdown, type DropdownOption } from '../../shared/components/common/CustomDropdown';
-import { sendLeadershipCodeEmail } from '../../shared/api/emailApi';
+import { DialogFrame } from '../../shared/components/common/DialogFrame';
 import {
   ArrowLeft,
   Building,
@@ -17,9 +17,7 @@ import {
   ShieldCheck,
   FolderTree,
   UserCheck,
-  KeyRound,
   RefreshCw,
-  Send,
   Info,
 } from 'lucide-react';
 
@@ -63,9 +61,6 @@ export const CreateLeadershipAccountPage: React.FC<CreateLeadershipAccountPagePr
     showAlert,
   } = useLMS();
 
-  // Workflow Step: 'form' -> 'verify'
-  const [step, setStep] = useState<'form' | 'verify'>('form');
-
   // Form Fields
   const [selectedRole, setSelectedRole] = useState<LeadershipRole>('dean');
   const [selectedCollegeId, setSelectedCollegeId] = useState<string>('');
@@ -84,18 +79,7 @@ export const CreateLeadershipAccountPage: React.FC<CreateLeadershipAccountPagePr
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Verification Step State
-  const [verificationCode, setVerificationCode] = useState<string>('');
-  const [codeExpiresAt, setCodeExpiresAt] = useState<number>(0);
-  const [digitInputs, setDigitInputs] = useState<string[]>(['', '', '', '', '', '']);
-  const [codeError, setCodeError] = useState<string>('');
-  const [resendCooldown, setResendCooldown] = useState<number>(0);
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [isResending, setIsResending] = useState(false);
-  const [dispatchedNotice, setDispatchedNotice] = useState<string>('');
-
-  const digitInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
 
   // Pre-fill from query params (e.g. when coming from "Appoint" button in AcademicStructureTab)
   useEffect(() => {
@@ -120,15 +104,6 @@ export const CreateLeadershipAccountPage: React.FC<CreateLeadershipAccountPagePr
       }
     }
   }, [searchParams, departments]);
-
-  // Handle countdown timer for resend code
-  useEffect(() => {
-    if (resendCooldown <= 0) return;
-    const timer = setInterval(() => {
-      setResendCooldown(prev => (prev > 0 ? prev - 1 : 0));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [resendCooldown]);
 
   // Filter unassigned units
   // Colleges with no active Dean
@@ -275,8 +250,8 @@ export const CreateLeadershipAccountPage: React.FC<CreateLeadershipAccountPagePr
     }
   };
 
-  // Step 1: Submit Form & Generate / Send 6-Digit Code
-  const handleInitiateAppointment = async (e: React.FormEvent) => {
+  // Form Submission: Validate & Open Confirmation Modal
+  const handleOpenConfirmModal = (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
 
@@ -303,169 +278,13 @@ export const CreateLeadershipAccountPage: React.FC<CreateLeadershipAccountPagePr
       return;
     }
 
+    setIsConfirmModalOpen(true);
+  };
+
+  // Modal Confirm: Directly provision user and assign leadership without email verification
+  const handleConfirmCreate = async () => {
     setIsSubmitting(true);
-    try {
-      // Generate 6-digit random code
-      const generatedCode = Math.floor(100000 + Math.random() * 900000).toString();
-      const expires = Date.now() + 15 * 60 * 1000; // 15 minutes
-
-      setVerificationCode(generatedCode);
-      setCodeExpiresAt(expires);
-
-      const targetCollege = colleges.find(c => c.id === selectedCollegeId);
-      const targetDept = departments.find(d => d.id === selectedDepartmentId);
-      const unitName =
-        selectedRole === 'dean'
-          ? targetCollege?.name || 'College'
-          : targetDept?.name || 'Department';
-
-      const candidateName = [firstName.trim(), middleName.trim(), lastName.trim()]
-        .filter(Boolean)
-        .join(' ');
-
-      // Dispatch 6-digit code to incoming leader's institutional email
-      const dispatchResult = await sendLeadershipCodeEmail({
-        email: email.trim(),
-        recipientName: candidateName,
-        code: generatedCode,
-        roleType: selectedRole,
-        unitName,
-      });
-
-      setResendCooldown(60);
-      setDigitInputs(['', '', '', '', '', '']);
-      setCodeError('');
-      setDispatchedNotice(
-        dispatchResult.simulated
-          ? 'Verification code generated (simulated offline mode).'
-          : 'Verification code dispatched to institutional email.'
-      );
-      setStep('verify');
-
-      // Auto-focus first digit on transition
-      setTimeout(() => {
-        digitInputRefs.current[0]?.focus();
-      }, 100);
-    } catch {
-      setFormError('An unexpected error occurred while generating verification code.');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // Step 2: Resend 6-Digit Code
-  const handleResendCode = async () => {
-    if (resendCooldown > 0 || isResending) return;
-    setIsResending(true);
-    setCodeError('');
-    try {
-      const newCode = Math.floor(100000 + Math.random() * 900000).toString();
-      const expires = Date.now() + 15 * 60 * 1000;
-      setVerificationCode(newCode);
-      setCodeExpiresAt(expires);
-
-      const targetCollege = colleges.find(c => c.id === selectedCollegeId);
-      const targetDept = departments.find(d => d.id === selectedDepartmentId);
-      const unitName =
-        selectedRole === 'dean'
-          ? targetCollege?.name || 'College'
-          : targetDept?.name || 'Department';
-
-      const candidateName = [firstName.trim(), middleName.trim(), lastName.trim()]
-        .filter(Boolean)
-        .join(' ');
-
-      await sendLeadershipCodeEmail({
-        email: email.trim(),
-        recipientName: candidateName,
-        code: newCode,
-        roleType: selectedRole,
-        unitName,
-      });
-
-      setResendCooldown(60);
-      setDigitInputs(['', '', '', '', '', '']);
-      setDispatchedNotice('A fresh 6-digit verification code has been dispatched.');
-      setTimeout(() => {
-        digitInputRefs.current[0]?.focus();
-      }, 50);
-    } catch {
-      setCodeError('Failed to resend verification code. Please try again.');
-    } finally {
-      setIsResending(false);
-    }
-  };
-
-  // Handle 6-Digit Input navigation & pasting
-  const handleDigitChange = (index: number, val: string) => {
-    setCodeError('');
-    const clean = val.replace(/\D/g, '');
-
-    // Pasting multiple digits
-    if (clean.length > 1) {
-      const pasted = clean.slice(0, 6).split('');
-      const next = [...digitInputs];
-      for (let i = 0; i < 6; i++) {
-        next[i] = pasted[i] || '';
-      }
-      setDigitInputs(next);
-      const focusIndex = Math.min(pasted.length, 5);
-      digitInputRefs.current[focusIndex]?.focus();
-      return;
-    }
-
-    const next = [...digitInputs];
-    next[index] = clean;
-    setDigitInputs(next);
-
-    // Auto-advance
-    if (clean && index < 5) {
-      digitInputRefs.current[index + 1]?.focus();
-    }
-  };
-
-  const handleDigitKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Backspace' && !digitInputs[index] && index > 0) {
-      digitInputRefs.current[index - 1]?.focus();
-    }
-  };
-
-  const handleDigitPaste = (e: React.ClipboardEvent) => {
-    e.preventDefault();
-    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
-    if (!pasted) return;
-    const digits = pasted.split('');
-    const next = [...digitInputs];
-    for (let i = 0; i < 6; i++) {
-      next[i] = digits[i] || '';
-    }
-    setDigitInputs(next);
-    const focusIndex = Math.min(digits.length, 5);
-    digitInputRefs.current[focusIndex]?.focus();
-  };
-
-  // Step 2: Final Verification & Provisioning
-  const handleVerifyAndFinalize = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCodeError('');
-
-    const enteredCode = digitInputs.join('');
-    if (enteredCode.length !== 6) {
-      setCodeError('Please enter all 6 digits of the verification code.');
-      return;
-    }
-
-    if (Date.now() > codeExpiresAt) {
-      setCodeError('Verification code has expired. Please request a new code.');
-      return;
-    }
-
-    if (enteredCode !== verificationCode) {
-      setCodeError('Invalid verification code. Please check the code received by the incoming leader.');
-      return;
-    }
-
-    setIsVerifying(true);
+    setFormError('');
     try {
       const cleanEmail = email.trim();
       const cleanId = idNumber.trim();
@@ -508,15 +327,17 @@ export const CreateLeadershipAccountPage: React.FC<CreateLeadershipAccountPagePr
 
       showAlert({
         title: 'Leadership Account Created',
-        message: `${roleTitle} ${computedFullName} has been verified and appointed to ${unitName}.`,
+        message: `${roleTitle} ${computedFullName} has been appointed to ${unitName}.`,
         type: 'success',
       });
 
+      setIsConfirmModalOpen(false);
       handleBackToAccounts();
     } catch (err: any) {
-      setCodeError(err?.message || 'Failed to finalize leadership appointment. Please try again.');
+      setFormError(err?.message || 'Failed to finalize leadership appointment. Please try again.');
+      setIsConfirmModalOpen(false);
     } finally {
-      setIsVerifying(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -552,25 +373,24 @@ export const CreateLeadershipAccountPage: React.FC<CreateLeadershipAccountPagePr
                 <span>Create Leadership Account</span>
               </h1>
               <p className="text-xs sm:text-sm text-muted-foreground mt-1">
-                Provision a new Dean or Chairperson account for an unassigned academic unit with 6-digit institutional email verification.
+                Provision a new Dean or Chairperson account for an unassigned academic unit.
               </p>
             </div>
           </div>
         </div>
       </div>
 
-      {/* STEP 1: FORM DETAILS */}
-      {step === 'form' && (
-        <div className="rounded-2xl border border-border bg-card p-6 sm:p-8 space-y-6 shadow-xs animate-scale-in">
-          {/* Form Banner Error */}
-          {formError && (
-            <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-xl flex items-start space-x-2 text-xs text-destructive animate-fade-in">
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              <span>{formError}</span>
-            </div>
-          )}
+      {/* FORM DETAILS */}
+      <div className="rounded-2xl border border-border bg-card p-6 sm:p-8 space-y-6 shadow-xs animate-scale-in">
+        {/* Form Banner Error */}
+        {formError && (
+          <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-xl flex items-start space-x-2 text-xs text-destructive animate-fade-in">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+            <span>{formError}</span>
+          </div>
+        )}
 
-          <form onSubmit={handleInitiateAppointment} noValidate className="space-y-5">
+        <form onSubmit={handleOpenConfirmModal} noValidate className="space-y-5">
             {/* 1. Role Selection Pills */}
             <div className="space-y-1.5">
               <label className="text-[12px] font-semibold text-muted-foreground block">
@@ -989,178 +809,90 @@ export const CreateLeadershipAccountPage: React.FC<CreateLeadershipAccountPagePr
                 {isSubmitting ? (
                   <>
                     <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Sending Code...</span>
+                    <span>Creating Account...</span>
                   </>
                 ) : (
                   <>
-                    <Send className="w-4 h-4" />
-                    <span>Send Verification Code</span>
+                    <ShieldCheck className="w-4 h-4" />
+                    <span>Create Leadership Account</span>
                   </>
                 )}
               </button>
             </div>
           </form>
         </div>
-      )}
 
-      {/* STEP 2: VERIFICATION CODE ENTRY */}
-      {step === 'verify' && (
-        <div className="rounded-2xl border border-border bg-card p-6 sm:p-8 space-y-6 shadow-xs animate-scale-in">
-          {/* Header */}
-          <div className="text-center space-y-1.5 pb-2 border-b border-border/60">
-            <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto border border-primary/20">
-              <KeyRound className="w-6 h-6" />
-            </div>
-            <h2 className="text-lg font-bold text-foreground">
-              Verify Leadership Appointment
-            </h2>
-            <p className="text-xs text-muted-foreground">
-              A 6-digit verification code has been dispatched to the incoming leader's institutional email.
-            </p>
-          </div>
-
-          {/* Recipient Overview Box */}
-          <div className="p-4 bg-muted/50 border border-border rounded-xl space-y-2 text-xs">
-            <div className="flex items-center justify-between">
-              <span className="font-semibold text-muted-foreground">Appointed Leader:</span>
-              <span className="font-bold text-foreground">
-                {[firstName, middleName, lastName].filter(Boolean).join(' ')}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="font-semibold text-muted-foreground">Position & Unit:</span>
-              <span className="font-bold text-primary">
-                {selectedRole === 'dean'
-                  ? `College Dean • ${targetCollegeName}`
-                  : `Chairperson • ${targetProgramName}`}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="font-semibold text-muted-foreground">Institutional Email:</span>
-              <span className="font-mono text-foreground font-medium">{email}</span>
-            </div>
-          </div>
-
-          {/* Instructions Box */}
-          <div className="p-3 bg-primary/10 border border-primary/20 rounded-xl text-xs text-primary flex items-start space-x-2">
-            <Info className="w-4 h-4 shrink-0 mt-0.5" />
-            <div>
-              <strong>Administrator Verification Step:</strong> Obtain the 6-digit verification code directly from the incoming {selectedRole === 'dean' ? 'Dean' : 'Chairperson'} and enter it below to confirm their identity and finalize this appointment.
-            </div>
-          </div>
-
-          {/* Dev Helper Hint */}
-          {verificationCode && (
-            <div
-              data-testid="dev-verification-code"
-              className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-[11px] text-emerald-700 dark:text-emerald-300 flex items-center justify-between"
-            >
-              <span>[Demo / Dev Mode] Generated 6-Digit Code:</span>
-              <span className="font-mono font-bold tracking-widest text-xs px-2 py-0.5 bg-emerald-500/20 rounded-md">
-                {verificationCode}
-              </span>
-            </div>
-          )}
-
-          {/* Verification Code Error */}
-          {codeError && (
-            <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-xl flex items-start space-x-2 text-xs text-destructive animate-fade-in">
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              <span>{codeError}</span>
-            </div>
-          )}
-
-          {dispatchedNotice && !codeError && (
-            <div className="p-2.5 bg-muted/60 border border-border rounded-xl text-xs text-muted-foreground text-center">
-              {dispatchedNotice}
-            </div>
-          )}
-
-          {/* 6 Digit Input Boxes */}
-          <form onSubmit={handleVerifyAndFinalize} className="space-y-6">
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-center block text-foreground">
-                Enter 6-Digit Verification Code
-              </label>
-              <div
-                className="flex items-center justify-center gap-2 sm:gap-3"
-                onPaste={handleDigitPaste}
-              >
-                {digitInputs.map((val, idx) => (
-                  <input
-                    key={idx}
-                    ref={el => {
-                      digitInputRefs.current[idx] = el;
-                    }}
-                    type="text"
-                    inputMode="numeric"
-                    maxLength={1}
-                    value={val}
-                    onChange={e => handleDigitChange(idx, e.target.value)}
-                    onKeyDown={e => handleDigitKeyDown(idx, e)}
-                    aria-label={`Digit ${idx + 1}`}
-                    className="w-11 h-13 sm:w-13 sm:h-14 text-center text-xl sm:text-2xl font-mono font-extrabold bg-background border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/30 focus:outline-hidden transition-all shadow-xs"
-                    disabled={isVerifying}
-                  />
-                ))}
-              </div>
-            </div>
-
-            {/* Resend Cooldown */}
-            <div className="text-center">
+      {/* CONFIRMATION MODAL */}
+      {isConfirmModalOpen && (
+        <DialogFrame
+          title="Confirm Leadership Appointment"
+          subtitle="Please review the leadership details before finalizing this appointment."
+          onClose={() => !isSubmitting && setIsConfirmModalOpen(false)}
+          footer={
+            <>
               <button
                 type="button"
-                onClick={handleResendCode}
-                disabled={resendCooldown > 0 || isResending}
-                className="text-xs text-primary font-semibold hover:underline disabled:text-muted-foreground disabled:no-underline cursor-pointer inline-flex items-center space-x-1"
+                onClick={() => setIsConfirmModalOpen(false)}
+                disabled={isSubmitting}
+                className="px-4 py-2.5 text-xs font-semibold text-muted-foreground hover:text-foreground bg-muted/60 hover:bg-muted border border-border rounded-xl transition-all cursor-pointer disabled:opacity-50"
               >
-                <RefreshCw
-                  className={`w-3.5 h-3.5 mr-1 ${isResending ? 'animate-spin' : ''}`}
-                />
-                <span>
-                  {resendCooldown > 0
-                    ? `Resend code in ${resendCooldown}s`
-                    : isResending
-                    ? 'Resending...'
-                    : 'Resend Verification Code'}
-                </span>
+                Cancel
               </button>
-            </div>
-
-            {/* Actions */}
-            <div className="pt-4 flex items-center justify-between border-t border-border">
               <button
                 type="button"
-                onClick={() => {
-                  setStep('form');
-                  setCodeError('');
-                }}
-                disabled={isVerifying}
-                className="px-4 py-2.5 text-xs font-semibold text-muted-foreground hover:text-foreground bg-muted/60 hover:bg-muted border border-border rounded-xl transition-all cursor-pointer"
+                onClick={handleConfirmCreate}
+                disabled={isSubmitting}
+                className="px-5 py-2.5 bg-primary text-primary-foreground font-bold rounded-xl text-xs hover:bg-primary/90 transition-all shadow-xs cursor-pointer flex items-center space-x-2 disabled:opacity-50"
               >
-                Back to Details
-              </button>
-
-              <button
-                type="submit"
-                disabled={isVerifying || digitInputs.join('').length !== 6}
-                className="px-6 py-2.5 bg-primary text-primary-foreground font-bold rounded-xl text-xs hover:bg-primary/90 transition-all shadow-xs cursor-pointer flex items-center space-x-2 disabled:opacity-50"
-              >
-                {isVerifying ? (
+                {isSubmitting ? (
                   <>
                     <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Verifying & Appointing...</span>
+                    <span>Creating...</span>
                   </>
                 ) : (
                   <>
                     <CheckCircle2 className="w-4 h-4" />
-                    <span>Verify & Appoint Leader</span>
+                    <span>Confirm & Create Account</span>
                   </>
                 )}
               </button>
+            </>
+          }
+        >
+          <div className="space-y-4 text-xs font-sans">
+            <div className="p-4 bg-muted/50 border border-border rounded-xl space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-muted-foreground">Appointed Leader:</span>
+                <span className="font-bold text-foreground">
+                  {[firstName.trim(), middleName.trim(), lastName.trim()].filter(Boolean).join(' ')}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-muted-foreground">Position & Unit:</span>
+                <span className="font-bold text-primary">
+                  {selectedRole === 'dean'
+                    ? `College Dean • ${targetCollegeName}`
+                    : `Department Chairperson • ${targetProgramName}`}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-muted-foreground">Institutional Email:</span>
+                <span className="font-mono text-foreground font-medium">{email.trim()}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-muted-foreground">Employee ID:</span>
+                <span className="font-mono text-foreground font-medium">{idNumber.trim()}</span>
+              </div>
             </div>
-          </form>
-        </div>
+
+            <div className="p-3 bg-primary/10 border border-primary/20 rounded-xl text-xs text-primary flex items-start space-x-2">
+              <Info className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>
+                This will immediately provision the account with active administrative credentials and assign them as the official {selectedRole === 'dean' ? 'Dean' : 'Chairperson'}.
+              </span>
+            </div>
+          </div>
+        </DialogFrame>
       )}
     </div>
   );

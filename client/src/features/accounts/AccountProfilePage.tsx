@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useLMS } from '../../shared/context/LMSContext';
 import type { User, College, Department } from '../../shared/types/lms';
@@ -32,7 +32,16 @@ export const AccountProfilePage: React.FC<AccountProfilePageProps> = ({
   onNavigateTab,
 }) => {
   const navigate = useNavigate();
-  const { colleges, departments, db, activeUser } = useLMS();
+  const { colleges, departments, db, activeUser, leadershipTenures = [] } = useLMS();
+
+  const userTenures = useMemo(() => {
+    const cleanUserName = (user.name || '').trim().toLowerCase();
+    return (leadershipTenures || []).filter(
+      t =>
+        t.leaderId === user.id ||
+        (cleanUserName && t.leaderName && t.leaderName.trim().toLowerCase() === cleanUserName)
+    );
+  }, [leadershipTenures, user.id, user.name]);
   const [activeTab, setActiveTab] = useState<AccountProfileTab>('overview');
 
   const roleLabel = getDisplayRoleLabel(user, user.role);
@@ -523,6 +532,60 @@ export const AccountProfilePage: React.FC<AccountProfilePageProps> = ({
                   ))}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Institutional Governance & Leadership Service History */}
+          {userTenures.length > 0 && (
+            <div className="bg-card border border-border rounded-2xl p-5 shadow-none space-y-4">
+              <div className="flex items-center space-x-2 text-xs font-bold text-foreground uppercase tracking-wider border-b border-border/60 pb-3">
+                <Award className="w-4 h-4 text-primary" />
+                <span>Institutional Governance & Leadership Service History</span>
+              </div>
+
+              <div className="space-y-3">
+                {userTenures.map((tenure) => (
+                  <div
+                    key={tenure.id}
+                    className="p-3.5 bg-muted/30 border border-border rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center space-x-2">
+                        <span className="font-bold text-sm text-foreground">
+                          {tenure.role === 'admin'
+                            ? 'University Administrator'
+                            : tenure.role === 'dean'
+                            ? `Dean, ${tenure.unitName}`
+                            : `Chairperson, ${tenure.unitName}`}
+                        </span>
+                        {tenure.status === 'active' ? (
+                          <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                            Current Incumbent
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-muted text-muted-foreground border border-border">
+                            Archived Service
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Term:{' '}
+                        {new Date(tenure.startDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}{' '}
+                        –{' '}
+                        {tenure.endDate
+                          ? new Date(tenure.endDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+                          : 'Present'}
+                        {tenure.appointedBy && ` • Appointed by ${tenure.appointedBy}`}
+                      </div>
+                      {tenure.transitionNotes && (
+                        <div className="text-[11px] text-muted-foreground italic">
+                          "{tenure.transitionNotes}"
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>

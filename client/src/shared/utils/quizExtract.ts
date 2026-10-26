@@ -8,16 +8,30 @@ function significantChars(text: string): number {
 }
 
 export async function extractPdfText(file: File): Promise<ExtractedQuizText> {
-  const [pdfjsLib, { default: workerSrc }] = await Promise.all([
-    import('pdfjs-dist'),
-    import('pdfjs-dist/build/pdf.worker.min.mjs?url'),
-  ]);
-  pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
+  const pdfjsLib = await import('pdfjs-dist');
+  try {
+    const workerModule = await import('pdfjs-dist/build/pdf.worker.min.mjs?url');
+    if (typeof workerModule?.default === 'string') {
+      let src = workerModule.default;
+      const isNode = typeof globalThis !== 'undefined' && 'process' in globalThis && Boolean((globalThis as any).process?.versions?.node);
+      if (isNode) {
+        if (src.startsWith('/@fs/')) {
+          src = src.slice(5);
+        }
+        if (/^[A-Za-z]:/.test(src)) {
+          src = 'file:///' + src.replace(/\\/g, '/');
+        }
+      }
+      pdfjsLib.GlobalWorkerOptions.workerSrc = src;
+    }
+  } catch {
+    // In environments where worker cannot be loaded, pdfjs-dist uses fake worker
+  }
 
   const buffer = await file.arrayBuffer();
   let pdf;
   try {
-    pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+    pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
   } catch (err: any) {
     if (err?.name === 'PasswordException') {
       throw new Error('This PDF is password-protected. Please remove the password and try again.');

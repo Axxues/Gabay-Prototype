@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   isLoading: false,
   isSyncing: false,
   setGradesReleased: vi.fn(),
+  upsertManualExamGrade: vi.fn(),
 }));
 
 vi.mock('../../../../shared/context/LMSContext', () => ({
@@ -18,6 +19,7 @@ vi.mock('../../../../shared/context/LMSContext', () => ({
     isLoading: mocks.isLoading,
     isSyncing: mocks.isSyncing,
     setGradesReleased: mocks.setGradesReleased,
+    upsertManualExamGrade: mocks.upsertManualExamGrade,
   }),
 }));
 
@@ -161,5 +163,34 @@ describe('FacultyGradebook grade release', () => {
     render(<FacultyGradebook courseId="c1" />);
     fireEvent.click(screen.getByTestId('grades-release-finals'));
     expect(mocks.setGradesReleased).toHaveBeenCalledWith('c1', 'finals', true);
+  });
+});
+
+
+describe('FacultyGradebook manual exam editing', () => {
+  beforeEach(() => {
+    const db = baseDb();
+    db.exams = []; // No digital exams! Physical exams only.
+    db.users = [
+      { id: 'u-stud-1', role: 'student', name: 'Student One', email: 'stud1@gmail.com', studentId: '2021-SLUC-0001', enrolledCourseIds: ['c1'] },
+    ];
+    mocks.db = db;
+    mocks.upsertManualExamGrade.mockClear();
+    localStorage.setItem('gabay-gradebook-collapsed-c1', JSON.stringify([]));
+  });
+
+  test('exam columns header displays / 100 even when no digital exams exist', () => {
+    render(<FacultyGradebook courseId="c1" />);
+    expect(screen.getAllByText('/ 100').length).toBeGreaterThan(0);
+  });
+
+  test('renders editable inputs for physical exam scores and saves on change', async () => {
+    render(<FacultyGradebook courseId="c1" />);
+    const inputs = screen.getAllByTitle(/Manual MT exam score/i);
+    expect(inputs.length).toBeGreaterThan(0);
+    const input = inputs[0];
+    fireEvent.change(input, { target: { value: '85' } });
+    fireEvent.blur(input);
+    expect(mocks.upsertManualExamGrade).toHaveBeenCalledWith('c1', 'midterm', 'u-stud-1', 85);
   });
 });

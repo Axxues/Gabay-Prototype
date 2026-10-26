@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useLMS } from '../../shared/context/LMSContext';
 import { isProfileComplete } from '../../shared/utils/profileCompletion';
+import { loadQuickLoginAccounts, type QuickLoginAccount } from './quickLogin';
 import {
   Lock,
   Mail,
@@ -26,6 +27,7 @@ export const LoginPage: React.FC = () => {
   const [fieldErrors, setFieldErrors] = useState<LoginFieldErrors>({});
   const [isLoading, setIsLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
+  const quickLoginAccounts = loadQuickLoginAccounts();
 
   /** Input-caused problems only. Anything else stays in the top banner. */
   const validateField = (field: LoginField, value: string): string | undefined => {
@@ -94,21 +96,26 @@ export const LoginPage: React.FC = () => {
     }
   };
 
-  const handleQuickLogin = (email: string, pw = 'gabay2026') => {
-    setIdentifier(email);
-    setPassword(pw);
+  const handleQuickLogin = async (account: QuickLoginAccount) => {
+    setIdentifier(account.email);
+    setPassword(account.password);
     setErrorMessage('');
     setFieldErrors({});
     setIsLoading(true);
-    setTimeout(async () => {
-      const res = await login(email, pw);
-      setIsLoading(false);
-      if (res?.success) {
-        const loggedUser = res.user || currentUser;
-        const targetRoute = isProfileComplete(loggedUser) ? '/dashboard' : '/profile';
-        navigate(targetRoute, { replace: true });
+    try {
+      const res = await login(account.email, account.password);
+      if (!res?.success) {
+        setErrorMessage(res?.message || 'Quick login failed. Please sign in manually.');
+        return;
       }
-    }, 200);
+      const loggedUser = res.user || currentUser;
+      const targetRoute = isProfileComplete(loggedUser) ? '/dashboard' : '/profile';
+      navigate(targetRoute, { replace: true });
+    } catch {
+      setErrorMessage('Quick login failed. Please sign in manually.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -289,56 +296,27 @@ export const LoginPage: React.FC = () => {
           </Link>
         </div>
 
-        {/* Clean Demo Accounts */}
-        <div className="pt-3 border-t border-border space-y-2">
-          <span className="text-[12px] font-semibold text-muted-foreground block text-center font-sans">
-            Quick demo login
-          </span>
-          <div className="grid grid-cols-3 gap-2">
-            <button
-              type="button"
-              onClick={() => handleQuickLogin('jayveegenetareyes@gmail.com', 'qwerty12345')}
-              className="py-1.5 px-2 bg-muted/50 hover:bg-primary/10 hover:border-primary/30 border border-border rounded-lg text-xs font-semibold text-foreground transition-all text-center cursor-pointer"
-            >
-              Admin
-            </button>
-            <button
-              type="button"
-              onClick={() => handleQuickLogin('dean1@dmmmsu.edu.ph', 'gabay2026')}
-              className="py-1.5 px-2 bg-muted/50 hover:bg-primary/10 hover:border-primary/30 border border-border rounded-lg text-xs font-semibold text-foreground transition-all text-center cursor-pointer"
-            >
-              Dean
-            </button>
-            <button
-              type="button"
-              onClick={() => handleQuickLogin('chair1@dmmmsu.edu.ph', 'gabay2026')}
-              className="py-1.5 px-2 bg-muted/50 hover:bg-primary/10 hover:border-primary/30 border border-border rounded-lg text-xs font-semibold text-foreground transition-all text-center cursor-pointer"
-            >
-              Chairperson
-            </button>
-            <button
-              type="button"
-              onClick={() => handleQuickLogin('faculty1@dmmmsu.edu.ph', 'gabay2026')}
-              className="py-1.5 px-2 bg-muted/50 hover:bg-primary/10 hover:border-primary/30 border border-border rounded-lg text-xs font-semibold text-foreground transition-all text-center cursor-pointer"
-            >
-              Faculty 1
-            </button>
-            <button
-              type="button"
-              onClick={() => handleQuickLogin('staff1@dmmmsu.edu.ph', 'gabay2026')}
-              className="py-1.5 px-2 bg-muted/50 hover:bg-primary/10 hover:border-primary/30 border border-border rounded-lg text-xs font-semibold text-foreground transition-all text-center cursor-pointer"
-            >
-              Staff 1
-            </button>
-            <button
-              type="button"
-              onClick={() => handleQuickLogin('student1@dmmmsu.edu.ph', 'gabay2026')}
-              className="py-1.5 px-2 bg-muted/50 hover:bg-primary/10 hover:border-primary/30 border border-border rounded-lg text-xs font-semibold text-foreground transition-all text-center cursor-pointer"
-            >
-              Student 1
-            </button>
+        {/* Local-only quick login. Accounts come from ignored client/.env.local. */}
+        {quickLoginAccounts.length > 0 && (
+          <div className="pt-3 border-t border-border space-y-2">
+            <span className="text-[12px] font-semibold text-muted-foreground block text-center font-sans">
+              Quick demo login
+            </span>
+            <div className="grid grid-cols-3 gap-2">
+              {quickLoginAccounts.map(account => (
+                <button
+                  key={`${account.email}-${account.label}`}
+                  type="button"
+                  onClick={() => void handleQuickLogin(account)}
+                  disabled={isLoading}
+                  className="py-1.5 px-2 bg-muted/50 hover:bg-primary/10 hover:border-primary/30 border border-border rounded-lg text-xs font-semibold text-foreground transition-all text-center cursor-pointer disabled:opacity-50"
+                >
+                  {account.label}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

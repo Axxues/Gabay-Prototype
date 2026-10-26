@@ -48,7 +48,7 @@ describe('AssessmentsOverviewView', () => {
     expect(screen.getByText('Capstone Project')).toBeDefined();
     expect(screen.getByText('Oral Presentation')).toBeDefined();
     expect(screen.getByText('Pop Quiz 1')).toBeDefined();
-    expect(screen.getByText('Midterm Exam')).toBeDefined();
+    expect(screen.queryByText('Midterm Exam')).toBeNull();
 
     // Filter by Assignments pill
     const assignmentsFilter = screen.getByRole('button', { name: /^Assignments/i });

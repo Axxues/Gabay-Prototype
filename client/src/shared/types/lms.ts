@@ -173,6 +173,8 @@ export interface Course {
   departmentId?: string;
   collegeId?: string;
   programId?: string;
+  schedule?: string;
+  room?: string;
 }
 
 export const Course = {} as unknown as Course;
@@ -624,6 +626,54 @@ export interface SPRConfig { courseId: string; prelimColumns?: SPRColumn[]; midt
 export type SPRCellMap = Record<string, Record<string, number | null>>;
 export interface SPRWeights { csWeight: number; examWeight: number; mtWeight: number; ftWeight: number; formulaLabel: string; parseError?: boolean }
 
+export type LeadershipRoleType = 'admin' | 'dean' | 'chairperson';
+export type TenureStatus = 'active' | 'completed' | 'transferred';
+
+export interface LeadershipTenure {
+  id: string;
+  role: LeadershipRoleType;
+  unitId: string; // 'system' for institutional admin, collegeId for dean, departmentId for chairperson
+  unitName: string;
+  unitType: 'system' | 'college' | 'department';
+  leaderId: string;
+  leaderName: string;
+  leaderEmail?: string;
+  leaderAvatar?: string;
+  startDate: string; // ISO string
+  endDate?: string | null; // ISO string or null if currently active
+  status: TenureStatus;
+  appointedBy?: string; // User ID or name of administrator
+  transitionNotes?: string;
+}
+
+export type GovernanceAuditEventType =
+  | 'leadership_transfer'
+  | 'leadership_appointment'
+  | 'course_created'
+  | 'syllabus_approved'
+  | 'student_enrolled'
+  | 'academic_rollover'
+  | 'policy_change';
+
+export interface GovernanceAuditLog {
+  id: string;
+  timestamp: string; // ISO string
+  eventType: GovernanceAuditEventType;
+  title: string;
+  description: string;
+  actorId: string;
+  actorName: string;
+  actorRole?: string;
+  unitId?: string; // collegeId, departmentId, or 'system'
+  unitType?: 'system' | 'college' | 'department';
+  targetId?: string;
+  targetType?: 'user' | 'course' | 'syllabus' | 'college' | 'department' | 'school_year';
+  metadata?: Record<string, any>;
+}
+
+export const LeadershipTenure = {} as unknown as LeadershipTenure;
+export const GovernanceAuditLog = {} as unknown as GovernanceAuditLog;
+
 export interface LMSDatabase {
   users: User[];
   courses: Course[];
@@ -648,4 +698,6 @@ export interface LMSDatabase {
   notifications?: Notification[];
   courseSections?: CourseSection[];
   enrollmentRequests?: EnrollmentRequest[];
+  leadershipTenures?: LeadershipTenure[];
+  governanceAuditLogs?: GovernanceAuditLog[];
 }

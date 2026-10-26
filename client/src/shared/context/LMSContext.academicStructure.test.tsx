@@ -336,11 +336,11 @@ describe('LMSContext Academic Structure & In-Place Leadership Appointments', () 
     expect(ctx!.colleges.find(c => c.id === 'col-target')?.deanId).toBe('u-chair-to-dean');
     // dept-source chairpersonId must now be vacated (undefined)
     expect(ctx!.departments.find(d => d.id === 'dept-source')?.chairpersonId).toBeUndefined();
-    // Incumbent dean stepped down to faculty
-    expect(ctx!.db.users.find(u => u.id === 'u-incumbent-dean')?.role).toBe('faculty');
+    // Incumbent dean account never stepped down to base faculty
+    expect(ctx!.db.users.find(u => u.id === 'u-incumbent-dean')?.role).toBe('admin');
   });
 
-  test('replacing existing dean via addCollege steps predecessor down to faculty', async () => {
+  test('replacing existing dean via addCollege preserves predecessor admin role and archives tenure', async () => {
     render(
       <LMSProvider>
         <ContextProbe />
@@ -373,13 +373,14 @@ describe('LMSContext Academic Structure & In-Place Leadership Appointments', () 
     });
 
     expect(ctx!.colleges.find(c => c.id === 'col-replaced')?.deanId).toBe('u-dean-new');
-    expect(ctx!.db.users.find(u => u.id === 'u-dean-old')?.role).toBe('faculty');
+    expect(ctx!.db.users.find(u => u.id === 'u-dean-old')?.role).toBe('admin');
     expect(ctx!.db.users.find(u => u.id === 'u-dean-old')?.adminSubrole).toBeUndefined();
     expect(ctx!.db.users.find(u => u.id === 'u-dean-new')?.role).toBe('admin');
     expect(ctx!.db.users.find(u => u.id === 'u-dean-new')?.adminSubrole).toBe('dean');
+    expect(ctx!.leadershipTenures.some(t => t.unitId === 'col-replaced' && t.leaderId === 'u-dean-new' && t.status === 'active')).toBe(true);
   });
 
-  test('replacing existing chair via addDepartment steps predecessor down to faculty', async () => {
+  test('replacing existing chair via addDepartment preserves predecessor admin role and archives tenure', async () => {
     render(
       <LMSProvider>
         <ContextProbe />
@@ -412,10 +413,11 @@ describe('LMSContext Academic Structure & In-Place Leadership Appointments', () 
     });
 
     expect(ctx!.departments.find(d => d.id === 'dept-replaced')?.chairpersonId).toBe('u-chair-new');
-    expect(ctx!.db.users.find(u => u.id === 'u-chair-old')?.role).toBe('faculty');
+    expect(ctx!.db.users.find(u => u.id === 'u-chair-old')?.role).toBe('admin');
     expect(ctx!.db.users.find(u => u.id === 'u-chair-old')?.adminSubrole).toBeUndefined();
     expect(ctx!.db.users.find(u => u.id === 'u-chair-new')?.role).toBe('admin');
     expect(ctx!.db.users.find(u => u.id === 'u-chair-new')?.adminSubrole).toBe('chairperson');
+    expect(ctx!.leadershipTenures.some(t => t.unitId === 'dept-replaced' && t.leaderId === 'u-chair-new' && t.status === 'active')).toBe(true);
   });
 
   test('omitting initial leader or passing "none" does not promote anyone and does not set deanId/chairpersonId', async () => {

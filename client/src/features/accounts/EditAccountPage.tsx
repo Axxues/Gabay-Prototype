@@ -15,6 +15,7 @@ import {
   UserCheck,
   GraduationCap,
   ShieldCheck,
+  ShieldAlert,
   CheckCircle2
 } from 'lucide-react';
 
@@ -43,7 +44,17 @@ const parseInitialName = (u: User) => {
 };
 
 export const EditAccountPage: React.FC<EditAccountPageProps> = ({ user, onNavigateTab }) => {
-  const { updateUser, showAlert, programs, departments } = useLMS();
+  const { updateUser, showAlert, programs, departments, colleges } = useLMS();
+
+  const isLeadershipSeat = useMemo(() => {
+    return (
+      user.adminSubrole === 'dean' ||
+      user.adminSubrole === 'chairperson' ||
+      user.adminSubrole === 'chancellor' ||
+      (colleges || []).some(c => c.deanId === user.id) ||
+      (departments || []).some(d => d.chairpersonId === user.id)
+    );
+  }, [user, colleges, departments]);
 
   const initialNames = parseInitialName(user);
   const [formFirstName, setFormFirstName] = useState(initialNames.firstName);
@@ -130,7 +141,8 @@ export const EditAccountPage: React.FC<EditAccountPageProps> = ({ user, onNaviga
         lastName: cleanLastName,
         name: computedName,
         email: cleanEmail,
-        role: formRole,
+        role: isLeadershipSeat ? 'admin' : formRole,
+        adminSubrole: isLeadershipSeat ? (user.adminSubrole || 'chancellor') : undefined,
         department: formDepartment,
         program: formDepartment,
         studentId: cleanIdNumber,
@@ -309,13 +321,29 @@ export const EditAccountPage: React.FC<EditAccountPageProps> = ({ user, onNaviga
                 2. Role & program selection
               </span>
             </div>
+            {isLeadershipSeat && (
+              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-700 dark:text-amber-300 space-y-1">
+                <div className="font-bold flex items-center space-x-1.5">
+                  <ShieldAlert className="w-3.5 h-3.5" />
+                  <span>Institutional Leadership Office Seat</span>
+                </div>
+                <p>
+                  This account is an official leadership seat ({user.adminSubrole === 'dean' ? 'Dean' : user.adminSubrole === 'chairperson' ? 'Program Chairperson' : 'Administrator'}).
+                  Under university policy, leadership accounts never step down to faculty or student.
+                  To reassign this office seat, use Leadership Authority Transfer in Academic Governance.
+                </p>
+              </div>
+            )}
             <div>
               <label className="block text-[12px] font-semibold text-muted-foreground mb-1.5">
                 Account role *
               </label>
               <CustomDropdown
-                value={formRole}
-                onChange={val => setFormRole(val as UserRole)}
+                value={isLeadershipSeat ? 'admin' : formRole}
+                onChange={val => {
+                  if (!isLeadershipSeat) setFormRole(val as UserRole);
+                }}
+                disabled={isLeadershipSeat}
                 options={roleOptions}
                 placeholder="Select Account Role"
               />

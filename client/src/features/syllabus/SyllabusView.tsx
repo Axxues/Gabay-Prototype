@@ -573,9 +573,9 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
       return [{
         name: currentCourse?.instructorName || activeUser.name || 'Faculty Instructor',
         sections: [
-          { section: currentCourse?.section || 'BSCS 4-1', schedule: '08:00-09:30 MF / 11:00-01:30 W', room: 'LR114 / CLR205' }
+          { section: currentCourse?.section || '', schedule: currentCourse?.schedule || 'TBA', room: currentCourse?.room || 'TBA' }
         ],
-        consultation: 'MTWTHF 02:00PM - 03:00PM'
+        consultation: 'TBA'
       }];
     }
 
@@ -615,15 +615,20 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
       chosenFaculty.name.toLowerCase().includes(f.name.toLowerCase())
     );
 
+    const fallbackSched = scanResult.syllabus.facultyMembers?.[0];
     const boundFacultySchedule: FacultySchedule = existingFacultySchedule ? {
       ...existingFacultySchedule,
       name: chosenFaculty.name
     } : {
       name: chosenFaculty.name,
       sections: [
-        { section: currentCourse.section || 'BSCS 4-1', schedule: '08:00-09:30 MF / 11:00-01:30 W', room: 'LR114 / CLR205' }
+        {
+          section: currentCourse.section || fallbackSched?.sections?.[0]?.section || '',
+          schedule: currentCourse.schedule || fallbackSched?.sections?.[0]?.schedule || 'TBA',
+          room: currentCourse.room || fallbackSched?.sections?.[0]?.room || 'TBA'
+        }
       ],
-      consultation: 'MTWTHF 02:00PM - 03:00PM'
+      consultation: fallbackSched?.consultation || 'TBA'
     };
 
     const boundSyllabus: OfficialSyllabusData = {
@@ -804,39 +809,37 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
   };
 
   const handleDownloadSyllabus = () => {
-    const doc = data?.sourceDocument || {
-      fileName: 'Checked-CSPC-112-Software-Engineering-Course-Syllabus.pdf',
-      fileDataUrl: '/Checked-CSPC-112-Software-Engineering-Course-Syllabus.pdf'
-    };
+    const doc = data?.sourceDocument;
+    if (doc?.fileDataUrl) {
+      const fileName = doc.fileName || `${currentCourse?.code || 'Course'}_Syllabus.${doc.fileType || 'pdf'}`;
+      const link = document.createElement('a');
+      link.href = doc.fileDataUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
 
-    const fileUrl = doc.fileDataUrl || '/Checked-CSPC-112-Software-Engineering-Course-Syllabus.pdf';
-    const fileName = doc.fileName || 'Checked-CSPC-112-Software-Engineering-Course-Syllabus.pdf';
-
-    const link = document.createElement('a');
-    link.href = fileUrl;
-    link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+      showAlert({
+        title: 'Downloading Syllabus',
+        message: `Downloading "${fileName}" to your device.`,
+        type: 'info'
+      });
+      return;
+    }
 
     showAlert({
-      title: 'Downloading Syllabus',
-      message: `Downloading "${fileName}" to your device.`,
-      type: 'info'
+      title: 'No Source File Available',
+      message: 'No uploaded syllabus document file is currently available for download.',
+      type: 'warning'
     });
   };
 
   const handlePrint = () => {
-    const doc = data?.sourceDocument || {
-      fileName: 'Checked-CSPC-112-Software-Engineering-Course-Syllabus.pdf',
-      fileDataUrl: '/Checked-CSPC-112-Software-Engineering-Course-Syllabus.pdf',
-      fileType: 'pdf'
-    };
+    const doc = data?.sourceDocument;
+    const fileUrl = doc?.fileDataUrl;
 
-    const fileUrl = doc.fileDataUrl || '/Checked-CSPC-112-Software-Engineering-Course-Syllabus.pdf';
-
-    // If PDF, print directly via iframe
-    if (doc.fileType === 'pdf' || fileUrl.includes('.pdf') || fileUrl.startsWith('data:application/pdf')) {
+    // If PDF source file exists, print directly via iframe
+    if (fileUrl && (doc?.fileType === 'pdf' || fileUrl.includes('.pdf') || fileUrl.startsWith('data:application/pdf'))) {
       const iframe = document.createElement('iframe');
       iframe.style.position = 'fixed';
       iframe.style.right = '0';
@@ -863,13 +866,8 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
         }, 300);
       };
     } else {
-      // For DOCX or other formats, open in a new tab for printing
-      const printWin = window.open(fileUrl, '_blank');
-      if (printWin) {
-        printWin.focus();
-      } else {
-        window.print();
-      }
+      // Print the rendered HTML syllabus view using the browser's print dialog
+      window.print();
     }
   };
 

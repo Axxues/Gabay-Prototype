@@ -172,6 +172,10 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
   const [isSavingModule, setIsSavingModule] = useState(false);
 
   const executeCreateModule = async (targetCourseIds: string[]) => {
+    if (course && !course.syllabus) {
+      showAlert('A syllabus must be uploaded before creating modules.', 'Syllabus Required');
+      return;
+    }
     setIsCreatingModule(true);
     try {
       const trimmed = newModuleTitle.trim();
@@ -404,6 +408,10 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
             <button
               type="button"
               onClick={() => {
+                if (course && !course.syllabus) {
+                  showAlert('A syllabus must be uploaded before creating modules.', 'Syllabus Required');
+                  return;
+                }
                 setIsAddModuleOpen(prev => !prev);
                 if (isAddModuleOpen) {
                   setNewModuleTitle('');

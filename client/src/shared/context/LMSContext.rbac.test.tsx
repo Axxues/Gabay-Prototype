@@ -535,8 +535,8 @@ describe('LMSContext RBAC: Registration Staging, Verification Queue & Leadership
     expect(deanTransferRes.success).toBe(true);
 
     const updatedPredecessorDean = ctx!.db.users.find(u => u.id === 'u-dean-1');
-    expect(updatedPredecessorDean?.role).toBe('faculty');
-    expect(updatedPredecessorDean?.adminSubrole).toBeUndefined();
+    expect(updatedPredecessorDean?.role).toBe('admin');
+    expect(updatedPredecessorDean?.adminSubrole).toBe('dean');
 
     const updatedSuccessorDean = ctx!.db.users.find(u => u.id === 'u-fac-succ');
     expect(updatedSuccessorDean?.role).toBe('admin');
@@ -578,8 +578,8 @@ describe('LMSContext RBAC: Registration Staging, Verification Queue & Leadership
     expect(chairTransferRes.success).toBe(true);
 
     const updatedPredecessorChair = ctx!.db.users.find(u => u.id === 'u-chair-1');
-    expect(updatedPredecessorChair?.role).toBe('faculty');
-    expect(updatedPredecessorChair?.adminSubrole).toBeUndefined();
+    expect(updatedPredecessorChair?.role).toBe('admin');
+    expect(updatedPredecessorChair?.adminSubrole).toBe('chairperson');
 
     const updatedSuccessorChair = ctx!.db.users.find(u => u.id === 'u-chair-succ');
     expect(updatedSuccessorChair?.role).toBe('admin');

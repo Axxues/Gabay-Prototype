@@ -63,4 +63,21 @@ describe('StudentGradebook release gating', () => {
     render(<StudentGradebook courseId="c1" />);
     expect(screen.getByText(/calculated final course rating/i)).toBeInTheDocument();
   });
+
+  test('calculates official term grade using physical exam score when no digital exam exists in db.exams', () => {
+    mocks.gradesReleased = { midterm: true, finals: false };
+    const db = baseDb();
+    db.exams = []; // Physical exam only - no digital exams!
+    db.activities = [
+      { id: 'a1', courseId: 'c1', format: 'classic', pointsPossible: 100, published: true, term: 'midterm' },
+    ];
+    db.submissions = [
+      { id: 's1', activityKey: 'a1', courseId: 'c1', studentId: 'u-stu-1', grade: 100, status: 'graded' },
+      { id: 's-exam', examId: 'exam-c1-midterm', activityKey: 'asg-exam-exam-c1-midterm', courseId: 'c1', studentId: 'u-stu-1', grade: 80, status: 'graded' },
+    ];
+    mocks.db = db;
+    render(<StudentGradebook courseId="c1" />);
+    // 60% of 100 (CS) + 40% of 80 (Exam) = 92%
+    expect(screen.getByText('92%')).toBeInTheDocument();
+  });
 });
