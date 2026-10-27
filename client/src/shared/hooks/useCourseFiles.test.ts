@@ -313,3 +313,144 @@ describe('useCourseFiles real Activities root', () => {
     expect(result.current.sourceCounts.activities).toBeGreaterThan(0);
   });
 });
+
+describe('useCourseFiles area-specific auto-foldering', () => {
+  beforeEach(() => {
+    mocks.db.courseFolders = [];
+    mocks.db.courseFiles = [];
+    mocks.db.announcements = [];
+    mocks.db.modules = [];
+    mocks.db.activities = [];
+    mocks.db.courses = [{ id: 'c1', code: 'CSPC 112', title: 'Data Structures' }];
+  });
+
+  test('announcement attachments resolve into the announcements folder', () => {
+    mocks.db.announcements = [
+      {
+        id: 'ann-1',
+        courseId: 'c1',
+        title: 'Welcome Announcement',
+        content: 'Check the attached doc',
+        attachments: [{ name: 'welcome_guide.pdf', size: '500 KB', url: '/uploads/welcome.pdf' }],
+      },
+    ];
+
+    const { result } = renderHook(() => useCourseFiles('c1'));
+    const entry = result.current.allFiles.find(f => f.name === 'welcome_guide.pdf');
+    expect(entry).toBeDefined();
+    expect(entry?.folderId).toBe('vf-announcements');
+    expect(entry?.source).toBe('announcements');
+    expect(result.current.virtualFolders.some(f => f.id === 'vf-announcements' && f.name === 'Announcements')).toBe(true);
+  });
+
+  test('uploaded course file attached to announcement resolves into announcements folder even if sourceArea is undefined', () => {
+    mocks.db.courseFiles = [
+      {
+        id: 'cf-quest-1',
+        courseId: 'c1',
+        folderId: null,
+        name: 'Questionnaire.pdf',
+        url: 'https://gabay.zyberlab.com/assets/quest-1.pdf',
+      },
+    ];
+    mocks.db.announcements = [
+      {
+        id: 'ann-2',
+        courseId: 'c1',
+        title: 'Exam Guidelines',
+        attachments: [
+          { name: 'Questionnaire.pdf', size: '611 KB', url: 'https://gabay.zyberlab.com/assets/quest-1.pdf' },
+        ],
+      },
+    ];
+
+    const { result } = renderHook(() => useCourseFiles('c1'));
+    const entry = result.current.allFiles.find(f => f.name === 'Questionnaire.pdf');
+    expect(entry).toBeDefined();
+    expect(entry?.folderId).toBe('vf-announcements');
+    expect(entry?.source).toBe('announcements');
+    expect(entry?.sourceLabel).toBe('Announcement: Exam Guidelines');
+    expect(result.current.sourceCounts.announcements).toBe(1);
+    expect(result.current.sourceCounts.uploads).toBe(0);
+    expect(result.current.virtualFolders.some(f => f.id === 'vf-announcements' && f.name === 'Announcements')).toBe(true);
+  });
+
+  test('syllabus upload and course orientation PDF resolve into the syllabus folder', () => {
+    mocks.db.courseFiles = [
+      {
+        id: 'file-syl-1',
+        courseId: 'c1',
+        folderId: null,
+        name: 'CMSC131_Course_Orientation.pdf',
+        sourceArea: 'syllabus',
+      },
+    ];
+
+    const { result } = renderHook(() => useCourseFiles('c1'));
+    const entry = result.current.allFiles.find(f => f.name === 'CMSC131_Course_Orientation.pdf');
+    expect(entry).toBeDefined();
+    expect(entry?.folderId).toBe('vf-syllabus');
+    expect(entry?.source).toBe('syllabus');
+    expect(entry?.sourceLabel).toBe('Syllabus');
+    expect(entry?.formattedSize).not.toBe('0 B');
+    expect(entry?.formattedSize).toBe('1.0 MB');
+    expect(result.current.virtualFolders.some(f => f.id === 'vf-syllabus' && f.name === 'Syllabus')).toBe(true);
+  });
+
+  test('module uploaded assets resolve into the modules folder or module subfolder', () => {
+    mocks.db.modules = [
+      {
+        id: 'mod-x',
+        courseId: 'c1',
+        title: 'Module 1 - Introduction',
+        items: [
+          { id: 'item-1', title: 'Lecture 1 Slides', fileName: 'lecture1_slides.pdf', fileUrl: '/uploads/l1.pdf' },
+        ],
+      },
+    ];
+
+    const { result } = renderHook(() => useCourseFiles('c1'));
+    const entry = result.current.allFiles.find(f => f.name === 'lecture1_slides.pdf');
+    expect(entry).toBeDefined();
+    expect(entry?.folderId).toBe('vf-modules');
+    expect(entry?.source).toBe('modules');
+    expect(result.current.virtualFolders.some(f => f.id === 'vf-modules' && f.name === 'Modules')).toBe(true);
+  });
+
+  test('does not duplicate announcement files uploaded to courseFiles and attached to announcements', () => {
+    mocks.db.courseFiles = [
+      {
+        id: 'cfile-1',
+        courseId: 'c1',
+        name: 'Compliance-Matrix.docx',
+        formattedSize: '413.9 KB',
+        uploadedByName: 'User',
+        updatedAt: '2026-10-27T00:00:00.000Z',
+        sourceArea: 'announcements',
+      },
+    ];
+    mocks.db.announcements = [
+      {
+        id: 'ann-1',
+        courseId: 'c1',
+        title: 'Test Announcement 2',
+        authorName: 'Raymund Dilan',
+        createdAt: '2025-01-01T00:00:00.000Z',
+        attachments: [
+          {
+            name: 'Compliance-Matrix.docx',
+            size: '413.9 KB',
+            url: '/public/uploads/Compliance-Matrix.docx',
+          },
+        ],
+      },
+    ];
+
+    const { result } = renderHook(() => useCourseFiles('c1'));
+    const matches = result.current.allFiles.filter(f => f.name === 'Compliance-Matrix.docx');
+    expect(matches).toHaveLength(1);
+    expect(matches[0].id).toBe('cfile-1');
+    expect(matches[0].uploadedByName).toBe('User');
+    expect(result.current.sourceCounts.announcements).toBe(1);
+  });
+});

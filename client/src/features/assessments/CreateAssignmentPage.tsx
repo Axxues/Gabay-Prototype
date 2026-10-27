@@ -1,305 +1,458 @@
 import React, { useState, useMemo } from 'react';
 import { useLMS } from '../../shared/context/LMSContext';
+import type { TermId } from '../../shared/types/lms';
+import {
+  ArrowLeft,
+  FileText,
+  Check,
+  FileCheck2,
+  Loader2
+} from 'lucide-react';
+import {
+  ActivityFormFields,
+  buildActivityPayload,
+  emptyActivityFormValue,
+  validateActivityForm,
+  type ActivityFormValue
+} from './components/forms/ActivityFormFields';
+import {
+  QuestionSetFields,
+  emptyQuestionSetValue,
+  questionSetTotals,
+  validateQuestionSet,
+  buildActivityPayload as buildQuestionSetPayload,
+  type QuestionSetValue
+} from './components/forms/QuestionSetFields';
+import { uploadFileToPublic } from '../../shared/utils/fileUploader';
 import { findMatchingSiblingCourses } from '../../shared/utils/crossSectionSync';
 import { CrossSectionPromptModal } from '../../shared/components/common/CrossSectionPromptModal';
-import type { TermId, RubricCriterion } from '../../shared/types/lms';
-import { ArrowLeft, FileText, Check, Plus, Trash2 } from 'lucide-react';
-import { TermFilterSelect } from '../../shared/components/common/TermSelect';
 
 interface CreateAssignmentPageProps {
   courseId: string;
   onBack: () => void;
-  onCreated: (id: string) => void;
+  onCreated: (newAssignmentId: string) => void;
 }
 
 export const CreateAssignmentPage: React.FC<CreateAssignmentPageProps> = ({
   courseId,
   onBack,
-  onCreated,
+  onCreated
 }) => {
-  const { db, activeUser, createActivity, showAlert, effectiveTermsForCourse } = useLMS();
+  const { db, currentUser, activeUser, createActivity, showAlert, effectiveTermsForCourse, uploadCourseFile } = useLMS();
   const course = db.courses.find(c => c.id === courseId);
+  const user = currentUser || activeUser;
 
-  const effectiveTerms: TermId[] =
+  const siblingCourses = useMemo(() => {
+    if (!course) return [];
+    return findMatchingSiblingCourses(course, db.courses, user?.id);
+  }, [course, db.courses, user?.id]);
+
+  const [showCrossSectionModal, setShowCrossSectionModal] = useState(false);
+  const [pendingAction, setPendingAction] = useState<{ kind: 'classic'; publish: boolean } | { kind: 'question_set' } | null>(null);
+
+  const [assignmentType, setAssignmentType] = useState<'classic' | 'question_set'>('classic');
+  const [form, setForm] = useState<ActivityFormValue>(() => emptyActivityFormValue());
+
+  const assignmentTerms: TermId[] =
     typeof effectiveTermsForCourse === 'function'
       ? effectiveTermsForCourse(courseId)
       : ['prelim', 'midterm', 'finals'];
 
-  const [title, setTitle] = useState('');
-  const [instructions, setInstructions] = useState('');
-  const [term, setTerm] = useState<TermId>(effectiveTerms[0] || 'midterm');
-  const [pointsPossible, setPointsPossible] = useState(50);
-  const [dueDate, setDueDate] = useState('');
-  const [rubrics, setRubrics] = useState<RubricCriterion[]>([]);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isCrossSectionModalOpen, setIsCrossSectionModalOpen] = useState(false);
-  const [pendingPublished, setPendingPublished] = useState(true);
+  const [builder, setBuilder] = useState<QuestionSetValue>(() => ({
+    ...emptyQuestionSetValue(),
+    term: assignmentTerms[0] ?? 'midterm'
+  }));
 
-  const siblingCourses = useMemo(() => {
-    return course ? findMatchingSiblingCourses(course, db.courses || [], activeUser?.id) : [];
-  }, [course, db.courses, activeUser?.id]);
+  const [savingAction, setSavingAction] = useState<'publish' | 'draft' | null>(null);
 
-  const handleAddCriterion = () => {
-    setRubrics(prev => [
-      ...prev,
-      {
-        id: `rubric-${Date.now()}`,
-        title: 'Content Quality',
-        description: 'Depth of analysis and thoroughness',
-        points: 10,
-        ratings: [
-          { points: 10, description: 'Excellent' },
-          { points: 5, description: 'Adequate' },
-        ],
-      },
-    ]);
-  };
-
-  const handleRemoveCriterion = (id: string) => {
-    setRubrics(prev => prev.filter(r => r.id !== id));
-  };
-
-  const executeSave = async (targetCourseIds: string[], published: boolean) => {
-    setIsSaving(true);
+  const executeSaveClassic = async (targetCourseIds: string[], publish: boolean) => {
+    setSavingAction(publish ? 'publish' : 'draft');
     try {
-      let firstCreatedId = 'new';
-      for (const targetId of targetCourseIds) {
-        const payload: any = {
-          courseId: targetId,
-          title: title.trim(),
-          instructions: instructions.trim(),
-          term,
-          pointsPossible: Number(pointsPossible) || 0,
-          dueDate: dueDate ? new Date(dueDate).toISOString() : new Date().toISOString(),
-          published,
-          format: 'classic',
-          assessmentType: 'assignment',
-          submissionTypes: ['online_text', 'file'],
-          rubric: rubrics,
+      let formToSave = form;
+      if (form.attachedFile?.rawFile) {
+        let url = '';
+        let name = form.attachedFile.name;
+        let size = form.attachedFile.size;
+        try {
+          const saved = await uploadCourseFile({
+            courseId,
+            name: form.attachedFile.name,
+            rawFile: form.attachedFile.rawFile,
+            size: form.attachedFile.rawFile.size,
+            formattedSize: size,
+            area: 'assignments',
+            visibility: 'published',
+            silent: true
+          });
+          url = saved.fileUrl || saved.url || '';
+          name = saved.name || name;
+          if (saved.formattedSize && saved.formattedSize !== '0 B') {
+            size = saved.formattedSize;
+          }
+          if (targetCourseIds.length > 1) {
+            for (const siblingId of targetCourseIds) {
+              if (siblingId !== courseId) {
+                try {
+                  await uploadCourseFile({
+                    courseId: siblingId,
+                    name: saved.name || form.attachedFile.name,
+                    fileUrl: saved.fileUrl || saved.url,
+                    url: saved.url || saved.fileUrl,
+                    formattedSize: size,
+                    type: saved.type || 'document',
+                    area: 'assignments',
+                    visibility: 'published',
+                    silent: true
+                  });
+                } catch {}
+              }
+            }
+          }
+        } catch {
+          url = '';
+        }
+        if (!url || url.startsWith('data:')) {
+          const viaVite = await uploadFileToPublic(form.attachedFile.rawFile);
+          if (!viaVite.url.startsWith('data:')) {
+            url = viaVite.url;
+            name = viaVite.name;
+            size = viaVite.size;
+          }
+        }
+        formToSave = {
+          ...form,
+          attachedFile: { name, size, url }
         };
+      }
 
+      let firstCreatedId = '';
+      for (let i = 0; i < targetCourseIds.length; i++) {
+        const targetId = targetCourseIds[i];
+        const basePayload = buildActivityPayload(targetId, formToSave, publish);
+        const payload = {
+          ...basePayload,
+          assessmentType: 'assignment' as const,
+          category: 'Assignments',
+        };
         const created = await createActivity(payload);
-        if (targetId === courseId && created?.id) {
+        if (i === 0) {
           firstCreatedId = created.id;
         }
       }
 
       showAlert({
-        title: published ? 'Assignment Published' : 'Draft Saved',
-        message: targetCourseIds.length > 1
-          ? `"${title.trim()}" published across ${targetCourseIds.length} sections successfully.`
-          : `"${title.trim()}" has been created successfully.`,
-        type: 'success',
+        title: publish ? 'Assignment Published' : 'Assignment Draft Saved',
+        message: `"${form.title.trim()}" has been created successfully for ${course?.code || 'this course'}.` +
+          (targetCourseIds.length > 1 ? ` (Replicated to ${targetCourseIds.length} sections)` : ''),
+        type: 'success'
       });
-      onCreated(firstCreatedId);
-    } catch {
-      // Handled in context
+
+      if (firstCreatedId) {
+        onCreated(firstCreatedId);
+      }
     } finally {
-      setIsSaving(false);
-      setIsCrossSectionModalOpen(false);
+      setSavingAction(null);
     }
   };
 
-  const handleSave = async (published: boolean) => {
-    if (!title.trim()) {
-      showAlert('Please enter an assignment title.');
-      return;
-    }
-    if (!instructions.trim()) {
-      showAlert('Please enter assignment instructions.');
+  const handleSaveClassic = async (publish: boolean) => {
+    if (savingAction) return;
+    const validationError = validateActivityForm(form, 'assignment');
+    if (validationError) {
+      showAlert({
+        title: validationError.title,
+        message: validationError.message,
+        type: 'warning'
+      });
       return;
     }
 
     if (siblingCourses.length > 0) {
-      setPendingPublished(published);
-      setIsCrossSectionModalOpen(true);
+      setPendingAction({ kind: 'classic', publish });
+      setShowCrossSectionModal(true);
       return;
     }
 
-    await executeSave([courseId], published);
+    await executeSaveClassic([courseId], publish);
+  };
+
+  const executeSaveQuestionSet = async (targetCourseIds: string[]) => {
+    const { totalPoints, gradableCount } = questionSetTotals(builder);
+
+    setSavingAction('publish');
+    try {
+      let firstCreatedId = '';
+      for (let i = 0; i < targetCourseIds.length; i++) {
+        const targetId = targetCourseIds[i];
+        const basePayload = buildQuestionSetPayload(targetId, builder);
+        const payload = {
+          ...basePayload,
+          assessmentType: 'assignment' as const,
+          category: 'Assignments',
+        };
+        const created = await createActivity(payload);
+        if (i === 0) {
+          firstCreatedId = created.id;
+        }
+      }
+
+      showAlert({
+        title: 'Assignment Published',
+        message: `"${builder.title.trim()}" created with ${gradableCount} question(s), totaling ${totalPoints} pts.` +
+          (targetCourseIds.length > 1 ? ` (Replicated to ${targetCourseIds.length} sections)` : ''),
+        type: 'success'
+      });
+
+      if (firstCreatedId) {
+        onCreated(firstCreatedId);
+      }
+    } finally {
+      setSavingAction(null);
+    }
+  };
+
+  const handleSaveQuestionSet = async () => {
+    if (savingAction) return;
+    const error = validateQuestionSet(builder);
+    if (error) {
+      showAlert({
+        title: error.title,
+        message: error.message,
+        type: 'warning'
+      });
+      return;
+    }
+
+    if (siblingCourses.length > 0) {
+      setPendingAction({ kind: 'question_set' });
+      setShowCrossSectionModal(true);
+      return;
+    }
+
+    await executeSaveQuestionSet([courseId]);
   };
 
   return (
-    <div className="space-y-6 max-w-3xl animate-fade-in">
-      <button
-        type="button"
-        onClick={onBack}
-        className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground hover:text-foreground cursor-pointer"
-      >
-        <ArrowLeft className="h-3.5 w-3.5" />
-        <span>Cancel & Back</span>
-      </button>
-
-      <div className="rounded-2xl border border-border bg-card p-6 space-y-5">
-        <div className="flex items-center gap-3 pb-4 border-b border-border">
-          <div className="rounded-xl border border-border bg-amber-500/10 p-2.5 text-amber-600 dark:text-amber-400">
-            <FileText className="h-5 w-5" />
-          </div>
-          <div>
-            <h1 className="text-lg font-extrabold">Create Assignment</h1>
-            <p className="text-xs text-muted-foreground">
-              Define homework, problem sets, or written essays for {course?.code || 'this course'}.
-            </p>
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          <div>
-            <label className="block text-xs font-bold mb-1.5">Assignment Title *</label>
-            <input
-              type="text"
-              placeholder="e.g. Assignment 1: Distributed Systems Analysis"
-              value={title}
-              onChange={e => setTitle(e.target.value)}
-              className="w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
-            />
+    <div className="space-y-8 animate-fade-in max-w-4xl mx-auto pt-4 sm:pt-6 pb-20 px-1 font-sans">
+      {/* Top Breadcrumb & Navigation */}
+      <div className="pb-6 border-b border-border/70">
+        <div className="space-y-3">
+          <div className="flex items-center space-x-2 text-xs text-muted-foreground font-sans">
+            <button
+              type="button"
+              onClick={onBack}
+              className="hover:text-primary transition-colors cursor-pointer flex items-center space-x-1.5 font-medium group"
+            >
+              <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform" />
+              <span>Assignments</span>
+            </button>
+            <span className="text-muted-foreground/40">/</span>
+            <span className="text-foreground font-semibold truncate max-w-[240px]">
+              {course?.code || 'Course'}
+            </span>
+            <span className="text-muted-foreground/40">/</span>
+            <span className="text-muted-foreground font-semibold px-2.5 py-0.5 rounded-full bg-muted border border-border text-[11px]">
+              New assignment
+            </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-xs font-bold mb-1.5">Grading Term</label>
-              <TermFilterSelect
-                terms={effectiveTerms}
-                value={term}
-                onChange={v => setTerm(v as TermId)}
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold mb-1.5">Points Possible</label>
-              <input
-                type="number"
-                min={1}
-                value={pointsPossible}
-                onChange={e => setPointsPossible(Number(e.target.value))}
-                className="w-full rounded-xl border border-border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold mb-1.5">Due Date</label>
-              <input
-                type="datetime-local"
-                value={dueDate}
-                onChange={e => setDueDate(e.target.value)}
-                className="w-full rounded-xl border border-border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold mb-1.5">Instructions & Prompt *</label>
-            <textarea
-              rows={5}
-              placeholder="Enter assignment instructions, guidelines, and submission requirements..."
-              value={instructions}
-              onChange={e => setInstructions(e.target.value)}
-              className="w-full rounded-xl border border-border bg-background p-3.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
-            />
-          </div>
-
-          {/* Rubrics Builder */}
-          <div className="space-y-3 pt-3 border-t border-border">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-xs font-bold">Grading Rubric</h3>
-                <p className="text-[11px] text-muted-foreground">Add criteria to evaluate submissions in SpeedGrader</p>
-              </div>
-              <button
-                type="button"
-                onClick={handleAddCriterion}
-                className="flex items-center gap-1 text-xs font-bold text-primary hover:underline cursor-pointer"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                <span>Add Criterion</span>
-              </button>
-            </div>
-
-            {rubrics.map(r => (
-              <div key={r.id} className="rounded-xl border border-border p-3 space-y-2 bg-accent/20">
-                <div className="flex items-center justify-between gap-2">
-                  <input
-                    type="text"
-                    value={r.title}
-                    onChange={e =>
-                      setRubrics(prev => prev.map(item => (item.id === r.id ? { ...item, title: e.target.value } : item)))
-                    }
-                    className="font-bold text-xs bg-transparent border-b border-border/60 focus:outline-none w-1/2"
-                  />
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      value={r.points}
-                      onChange={e =>
-                        setRubrics(prev =>
-                          prev.map(item => (item.id === r.id ? { ...item, points: Number(e.target.value) } : item))
-                        )
-                      }
-                      className="w-16 rounded border border-border bg-background px-2 py-0.5 text-xs text-right"
-                    />
-                    <span className="text-xs text-muted-foreground">pts</span>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveCriterion(r.id)}
-                      className="text-destructive hover:bg-destructive/10 p-1 rounded cursor-pointer"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-1">
+            <div className="space-y-1">
+              <h1 className="text-[22px] font-extrabold tracking-tight text-foreground flex items-center space-x-3">
+                <div className="w-9 h-9 rounded-xl bg-muted text-muted-foreground flex items-center justify-center shrink-0">
+                  <FileText className="w-4 h-4" />
                 </div>
-                <input
-                  type="text"
-                  placeholder="Criterion description..."
-                  value={r.description}
-                  onChange={e =>
-                    setRubrics(prev =>
-                      prev.map(item => (item.id === r.id ? { ...item, description: e.target.value } : item))
-                    )
-                  }
-                  className="w-full text-[11px] text-muted-foreground bg-transparent border-b border-border/40 focus:outline-none"
-                />
-              </div>
-            ))}
-          </div>
-        </div>
+                <span>Create Assignment</span>
+              </h1>
+              <p className="text-[13px] text-muted-foreground pl-0.5">
+                Define homework milestones, problem sets, or written essays for {course?.code || 'this course'}.
+              </p>
+            </div>
 
-        {/* Action Buttons */}
-        <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-border">
-          <button
-            type="button"
-            disabled={isSaving}
-            onClick={() => handleSave(false)}
-            className="rounded-xl border border-border bg-card px-4 py-2 text-xs font-bold hover:bg-accent cursor-pointer disabled:opacity-50"
-          >
-            Save as Draft
-          </button>
-          <button
-            type="button"
-            disabled={isSaving}
-            onClick={() => handleSave(true)}
-            className="flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-xs font-bold text-primary-foreground shadow-sm hover:opacity-95 cursor-pointer disabled:opacity-50"
-          >
-            <Check className="h-3.5 w-3.5" />
-            <span>Publish Assignment</span>
-          </button>
+            {/* Quick action buttons on top (classic mode only) */}
+            {assignmentType === 'classic' && (
+              <div className="flex items-center space-x-2.5 shrink-0 self-end sm:self-auto">
+                <button
+                  type="button"
+                  onClick={onBack}
+                  className="px-4 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSaveClassic(false)}
+                  disabled={savingAction !== null}
+                  className="px-4 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-all cursor-pointer disabled:opacity-60 disabled:cursor-wait flex items-center space-x-1.5"
+                >
+                  {savingAction === 'draft' && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  <span>{savingAction === 'draft' ? 'Saving…' : 'Save draft'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSaveClassic(true)}
+                  disabled={savingAction !== null}
+                  className="px-4 py-2 text-xs font-semibold text-primary-foreground bg-primary hover:bg-primary/90 rounded-xl transition-all shadow-primary-sm cursor-pointer active:scale-98 flex items-center space-x-1.5 disabled:opacity-60 disabled:cursor-wait"
+                >
+                  {savingAction === 'publish'
+                    ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    : <Check className="w-3.5 h-3.5" />}
+                  <span>{savingAction === 'publish' ? 'Publishing…' : 'Publish'}</span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
+      {/* Assignment type chooser: Classic vs Question Set */}
+      <div className="p-1 w-full bg-muted/60 border border-border rounded-2xl grid grid-cols-2 gap-1">
+        <button
+          type="button"
+          onClick={() => setAssignmentType('classic')}
+          className={`p-3 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center justify-center space-x-2 ${
+            assignmentType === 'classic'
+              ? 'bg-primary/[0.04] text-foreground border border-primary/30 ring-1 ring-primary/15'
+              : 'text-muted-foreground border border-border/70 hover:bg-muted/40'
+          }`}
+        >
+          <FileText className="w-4 h-4 text-muted-foreground" />
+          <span>Classic assignment</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setAssignmentType('question_set')}
+          className={`p-3 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center justify-center space-x-2 ${
+            assignmentType === 'question_set'
+              ? 'bg-primary/[0.04] text-foreground border border-primary/30 ring-1 ring-primary/15'
+              : 'text-muted-foreground border border-border/70 hover:bg-muted/40'
+          }`}
+        >
+          <FileCheck2 className="w-4 h-4 text-muted-foreground" />
+          <span>New question set</span>
+        </button>
+      </div>
+      <p className="text-[11px] text-muted-foreground font-medium -mt-4">
+        {assignmentType === 'classic'
+          ? 'File upload / text entry assignment with rubric and deadlines.'
+          : 'Quiz-style question set (Multiple Choice, Identification, True/False, Essay) auto-scored on submit.'}
+      </p>
+
+      {assignmentType === 'question_set' ? (
+        <form
+          onSubmit={e => {
+            e.preventDefault();
+            handleSaveQuestionSet();
+          }}
+          className="space-y-6 text-xs"
+        >
+          <QuestionSetFields value={builder} onChange={setBuilder} courseId={courseId} />
+
+          {/* Bottom Submission Bar */}
+          <div className="pt-4 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-border/70">
+            <button
+              type="button"
+              onClick={onBack}
+              className="px-5 py-2.5 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-all cursor-pointer w-full sm:w-auto"
+            >
+              Discard & return to assignments
+            </button>
+
+            <div className="flex items-center space-x-3 w-full sm:w-auto">
+              <button
+                type="submit"
+                disabled={savingAction !== null}
+                className="flex-1 sm:flex-initial px-6 py-2.5 text-xs font-semibold text-primary-foreground bg-primary hover:bg-primary/90 rounded-xl transition-all shadow-primary-sm cursor-pointer active:scale-98 flex items-center justify-center space-x-2 disabled:opacity-60 disabled:cursor-wait"
+              >
+                {savingAction === 'publish'
+                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                  : <Check className="w-4 h-4" />}
+                <span>{savingAction === 'publish' ? 'Publishing…' : 'Publish Assignment'}</span>
+              </button>
+            </div>
+          </div>
+        </form>
+      ) : (
+        <form
+          onSubmit={e => {
+            e.preventDefault();
+            handleSaveClassic(true);
+          }}
+          className="space-y-6 text-xs"
+        >
+          <ActivityFormFields
+            courseId={courseId}
+            value={form}
+            onChange={setForm}
+            titlePlaceholder="e.g. Assignment 1: Distributed Systems Analysis"
+            instructionsPlaceholder="Enter assignment instructions, guidelines, and submission requirements..."
+            titleLabel="Assignment title"
+            sectionTitle="Assignment information"
+          />
+
+          {/* Bottom Submission Bar */}
+          <div className="pt-4 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-border/70">
+            <button
+              type="button"
+              onClick={onBack}
+              className="px-5 py-2.5 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-all cursor-pointer w-full sm:w-auto"
+            >
+              Discard & return to assignments
+            </button>
+
+            <div className="flex items-center space-x-3 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={() => handleSaveClassic(false)}
+                disabled={savingAction !== null}
+                className="flex-1 sm:flex-initial px-5 py-2.5 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-all cursor-pointer active:scale-98 disabled:opacity-60 disabled:cursor-wait flex items-center justify-center space-x-2"
+              >
+                {savingAction === 'draft' && <Loader2 className="w-4 h-4 animate-spin" />}
+                <span>{savingAction === 'draft' ? 'Saving…' : 'Save as unpublished draft'}</span>
+              </button>
+              <button
+                type="submit"
+                disabled={savingAction !== null}
+                className="flex-1 sm:flex-initial px-6 py-2.5 text-xs font-semibold text-primary-foreground bg-primary hover:bg-primary/90 rounded-xl transition-all shadow-primary-sm cursor-pointer active:scale-98 flex items-center justify-center space-x-2 disabled:opacity-60 disabled:cursor-wait"
+              >
+                {savingAction === 'publish'
+                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                  : <Check className="w-4 h-4" />}
+                <span>{savingAction === 'publish' ? 'Publishing…' : 'Publish Assignment'}</span>
+              </button>
+            </div>
+          </div>
+        </form>
+      )}
+
       <CrossSectionPromptModal
-        isOpen={isCrossSectionModalOpen}
-        onClose={() => setIsCrossSectionModalOpen(false)}
+        isOpen={showCrossSectionModal}
+        onClose={() => {
+          setShowCrossSectionModal(false);
+          setPendingAction(null);
+        }}
         itemType="assessment"
-        itemTitle={title.trim() || 'Assignment'}
+        itemTitle={form.title.trim() || builder.title.trim() || 'Assignment'}
         siblingCourses={siblingCourses}
         onConfirm={async (selectedIds) => {
-          setIsCrossSectionModalOpen(false);
-          await executeSave([courseId, ...selectedIds], pendingPublished);
+          setShowCrossSectionModal(false);
+          const targets = [courseId, ...selectedIds];
+          if (pendingAction?.kind === 'classic') {
+            await executeSaveClassic(targets, pendingAction.publish);
+          } else if (pendingAction?.kind === 'question_set') {
+            await executeSaveQuestionSet(targets);
+          }
         }}
         onSkipToCurrentOnly={async () => {
-          setIsCrossSectionModalOpen(false);
-          await executeSave([courseId], pendingPublished);
+          setShowCrossSectionModal(false);
+          const targets = [courseId];
+          if (pendingAction?.kind === 'classic') {
+            await executeSaveClassic(targets, pendingAction.publish);
+          } else if (pendingAction?.kind === 'question_set') {
+            await executeSaveQuestionSet(targets);
+          }
         }}
-        isSubmitting={isSaving}
+        isSubmitting={savingAction !== null}
       />
     </div>
   );

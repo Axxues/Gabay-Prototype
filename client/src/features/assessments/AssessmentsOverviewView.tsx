@@ -30,7 +30,7 @@ type CategoryFilter = 'all' | 'activities' | 'quizzes' | 'assignments' | 'projec
 
 interface UnifiedAssessmentItem {
   id: string;
-  category: 'activity' | 'quiz' | 'assignment' | 'project' | 'presentation' | 'exam';
+  category: 'activity' | 'quiz' | 'assignment' | 'project' | 'presentation';
   categoryLabel: string;
   title: string;
   term: TermId;
@@ -196,11 +196,9 @@ export const AssessmentsOverviewView: React.FC<AssessmentsOverviewViewProps> = (
           s.studentId === activeUser.id &&
           (s.activityId === item.id ||
             s.quizId === item.id ||
-            s.examId === item.id ||
             s.activityKey === item.id ||
             s.activityKey === `asg-activity-${item.id}` ||
-            s.activityKey === `asg-quiz-${item.id}` ||
-            s.activityKey === `asg-exam-${item.id}`)
+            s.activityKey === `asg-quiz-${item.id}`)
       );
       if (sub) {
         if (sub.status === 'graded') {
@@ -232,11 +230,9 @@ export const AssessmentsOverviewView: React.FC<AssessmentsOverviewViewProps> = (
         s.courseId === courseId &&
         (s.activityId === item.id ||
           s.quizId === item.id ||
-          s.examId === item.id ||
           s.activityKey === item.id ||
           s.activityKey === `asg-activity-${item.id}` ||
-          s.activityKey === `asg-quiz-${item.id}` ||
-          s.activityKey === `asg-exam-${item.id}`)
+          s.activityKey === `asg-quiz-${item.id}`)
     );
     const toGrade = subs.filter(s => s.status === 'submitted').length;
     return (
@@ -258,8 +254,6 @@ export const AssessmentsOverviewView: React.FC<AssessmentsOverviewViewProps> = (
         return <Briefcase className="h-4 w-4 text-emerald-500" />;
       case 'presentation':
         return <Presentation className="h-4 w-4 text-rose-500" />;
-      case 'exam':
-        return <Award className="h-4 w-4 text-indigo-500" />;
       default:
         return <ClipboardList className="h-4 w-4 text-primary" />;
     }

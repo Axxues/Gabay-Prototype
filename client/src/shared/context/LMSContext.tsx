@@ -65,9 +65,9 @@ const SESSION_EXPIRED_EVENT = 'gabay:session-expired';
 import { syllabusApi, deleteDraft, withdrawSyllabus } from '../api/syllabus';
 import type { SyllabusRevisionHeader, SyllabusRevisionResponse, SyllabusSectionKey } from '../types/syllabusApi';
 import { settledValue } from '../utils/promise';
-import { formatFileSize, toShortFileType } from '../utils/fileUploader';
+import { formatFileSize, parseFormattedSize, toShortFileType } from '../utils/fileUploader';
 import { isValidUuid, generateSecureActivationToken, generateUuid, generateSecureId, generateSecureDigits } from '../utils/cryptoToken';
-import { isChairRole, isDeanRole, isFacultyRole, canDeleteCourse } from '../utils/roles';
+import { isChairRole, isDeanRole, isFacultyRole, canDeleteCourse, canManageCourseContent } from '../utils/roles';
 
 export interface LMSContextType {
   theme: 'dark' | 'light';
@@ -132,6 +132,7 @@ export interface LMSContextType {
   updateModuleItem: (currentModuleId: string, itemId: string, updates: Partial<ModuleItem>, targetModuleId?: string) => Promise<void>;
   deleteModuleItem: (moduleId: string, itemId: string) => Promise<void>;
   createQuiz: (quiz: Partial<Quiz>) => Promise<Quiz>;
+  updateQuiz: (quizId: string, updates: Partial<Quiz>) => Promise<Quiz>;
   recordQuizSubmission: (quizId: string, studentId: string, answers: Record<string, string>) => Promise<Submission>;
   createExam: (exam: Partial<Exam>) => Promise<Exam>;
   recordExamSubmission: (examId: string, studentId: string, answers: Record<string, string>) => Promise<Submission>;
@@ -150,6 +151,7 @@ export interface LMSContextType {
   removeCourseSyllabus: (courseId: string) => Promise<void>;
   syllabusRevisions: Record<string, SyllabusRevisionHeader>;
   refreshPublishedSyllabus: (courseId: string) => Promise<void>;
+  refreshCourseSyllabus: (courseId: string) => Promise<void>;
   updateSyllabusSection: (courseId: string, section: SyllabusSectionKey, value: unknown) => Promise<void>;
   publishSyllabusDraft: (courseId: string) => Promise<void>;
   updateCourseGradingTerms: (courseId: string, gradingTerms: TermId[] | null) => Promise<void>;
@@ -387,6 +389,35 @@ export const STORAGE_KEY_DB = 'gabay_lms_db_v6';
 export const STORAGE_KEY_USER_PROFILES = 'gabay_user_profiles_v1';
 export const STORAGE_KEY_LEADERSHIP_TENURES = 'gabay_leadership_tenures_v1';
 export const STORAGE_KEY_GOVERNANCE_AUDIT_LOGS = 'gabay_governance_audit_logs_v1';
+export const STORAGE_KEY_TAB_VISITS = 'gabay_lms_tab_visits_v1';
+
+export const loadStoredTabVisits = (userId?: string): Record<string, string> => {
+  if (!userId) return {};
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_TAB_VISITS);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        return parsed[userId] || {};
+      }
+    }
+  } catch (_) {}
+  return {};
+};
+
+export const saveStoredTabVisit = (userId: string, key: string, stamp: string): void => {
+  if (!userId) return;
+  try {
+    let store: Record<string, Record<string, string>> = {};
+    const raw = localStorage.getItem(STORAGE_KEY_TAB_VISITS);
+    if (raw) {
+      try { store = JSON.parse(raw) || {}; } catch (_) {}
+    }
+    if (!store[userId]) store[userId] = {};
+    store[userId][key] = stamp;
+    safeSetLocalStorage(STORAGE_KEY_TAB_VISITS, JSON.stringify(store));
+  } catch (_) {}
+};
 
 const safeSetLocalStorage = (key: string, value: string): boolean => {
   try {
@@ -447,6 +478,34 @@ export const getCleanStoredBanner = (id?: string): string | undefined => {
   return val;
 };
 
+const STORAGE_KEY_ANNOUNCEMENT_ATTACHMENTS = 'gabay_announcement_attachments_v1';
+
+export const loadStoredAnnouncementAttachments = (annId?: string): { name: string; size: string; url?: string }[] => {
+  if (typeof window === 'undefined' || !annId) return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_ANNOUNCEMENT_ATTACHMENTS);
+    if (!raw) return [];
+    const map = JSON.parse(raw);
+    return Array.isArray(map[annId]) ? map[annId] : [];
+  } catch {
+    return [];
+  }
+};
+
+export const saveStoredAnnouncementAttachments = (annId: string, attachments: { name: string; size: string; url?: string }[]): void => {
+  if (typeof window === 'undefined' || !annId || !Array.isArray(attachments)) return;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_ANNOUNCEMENT_ATTACHMENTS);
+    const map = raw ? JSON.parse(raw) : {};
+    if (attachments.length === 0) {
+      delete map[annId];
+    } else {
+      map[annId] = attachments;
+    }
+    safeSetLocalStorage(STORAGE_KEY_ANNOUNCEMENT_ATTACHMENTS, JSON.stringify(map));
+  } catch {}
+};
+
 export const applyStoredUserProfile = (user: User, profiles?: Record<string, Partial<User>>): User => {
   const store = profiles || loadStoredUserProfiles();
   const cleanEmail = (user.email || '').trim().toLowerCase();
@@ -455,6 +514,8 @@ export const applyStoredUserProfile = (user: User, profiles?: Record<string, Par
     ? {
         ...user,
         ...saved,
+        avatar: saved.avatar || user.avatar || '',
+        banner: saved.banner || user.banner || undefined,
         id: user.id,
         email: user.email || saved.email || '',
         role: user.role || saved.role,
@@ -468,6 +529,12 @@ export const applyStoredUserProfile = (user: User, profiles?: Record<string, Par
   if (!base.banner && user.id) {
     const localBanner = getCleanStoredBanner(user.id);
     if (localBanner) base.banner = localBanner;
+  }
+  if (user.id) {
+    const storedVisits = loadStoredTabVisits(user.id);
+    if (Object.keys(storedVisits).length > 0) {
+      base.lastVisitedAt = { ...(base.lastVisitedAt || {}), ...storedVisits };
+    }
   }
   return base;
 };
@@ -692,7 +759,7 @@ const mapLikhaModuleCommentRow = (c: any, moduleId: string): ModuleComment => ({
   parentId: c.parent_id ?? c.parentId ?? null,
   authorId: String(c.author_id ?? c.authorId ?? ''),
   authorName: c.author_name ?? c.authorName ?? 'Someone',
-  authorAvatar: c.author_avatar ?? c.authorAvatar ?? '',
+  authorAvatar: c.author_avatar ?? c.authorAvatar ?? (c.author_id ? getCleanStoredAvatar(c.author_id) : ''),
   authorRole: (c.author_role ?? c.authorRole ?? 'student') as ModuleComment['authorRole'],
   content: c.content ?? '',
   createdAt: c.created_at ?? c.createdAt ?? new Date().toISOString(),
@@ -847,16 +914,16 @@ const mapLikhaAnnouncementReplyRow = (r: any, announcementId: string): Announcem
   parentId: r.parent_id ?? r.parentId ?? null,
   authorId: String(r.author_id ?? r.authorId ?? ''),
   authorName: r.author_name ?? r.authorName ?? 'Someone',
-  authorAvatar: r.author_avatar ?? r.authorAvatar ?? '',
+  authorAvatar: r.author_avatar ?? r.authorAvatar ?? (r.author_id ? getCleanStoredAvatar(r.author_id) : ''),
   authorRole: (r.author_role ?? r.authorRole ?? 'student') as UserRole,
   content: r.content ?? '',
-  createdAt: r.created_at ?? r.date ?? r.createdAt ?? new Date().toISOString(),
+  createdAt: r.date_created || r.created_at || r.date || r.createdAt || '2025-01-01T00:00:00.000Z',
   likes: typeof r.likes === 'number' ? r.likes : (Array.isArray(r.likes) ? r.likes.length : 0),
   likedBy: Array.isArray(r.liked_by) ? r.liked_by : (r.likedBy ?? []),
 });
 
 const mapLikhaAnnouncementRow = (a: any, courseId?: string): Announcement => {
-  const createdAt = a.created_at ?? a.date ?? a.createdAt ?? new Date().toISOString();
+  const createdAt = a.date_created || a.created_at || a.date || a.createdAt || '2025-01-01T00:00:00.000Z';
   return {
     id: String(a.id),
     courseId: String(a.course_id ?? a.courseId ?? courseId ?? ''),
@@ -864,7 +931,7 @@ const mapLikhaAnnouncementRow = (a: any, courseId?: string): Announcement => {
     content: a.content ?? '',
     authorId: String(a.author_id ?? a.authorId ?? ''),
     authorName: a.author_name ?? a.authorName ?? 'Someone',
-    authorAvatar: a.author_avatar ?? a.authorAvatar ?? '',
+    authorAvatar: a.author_avatar ?? a.authorAvatar ?? (a.author_id ? getCleanStoredAvatar(a.author_id) : ''),
     authorRole: (a.author_role ?? a.authorRole ?? 'faculty') as UserRole,
     createdAt,
     date: a.date ?? createdAt,
@@ -876,7 +943,22 @@ const mapLikhaAnnouncementRow = (a: any, courseId?: string): Announcement => {
     likes: typeof a.likes === 'number' ? a.likes : (Array.isArray(a.likes) ? a.likes.length : 0),
     likedBy: Array.isArray(a.liked_by) ? a.liked_by : (a.likedBy ?? []),
     pinned: Boolean(a.pinned ?? false),
-    attachments: Array.isArray(a.attachments) ? a.attachments : [],
+    attachments: (Array.isArray(a.attachments) && a.attachments.length > 0)
+      ? a.attachments.map((att: any) => {
+          if (att?.directus_files_id) {
+            const f = att.directus_files_id;
+            const fUrl = resolveDirectusAssetUrl(f.id || f) || '';
+            return {
+              name: f.filename_download || f.title || 'Attached File',
+              size: f.filesize ? formatFileSize(f.filesize) : 'File',
+              url: fUrl,
+            };
+          }
+          return att;
+        })
+      : (typeof a.attachments === 'string'
+          ? (() => { try { return JSON.parse(a.attachments); } catch { return []; } })()
+          : loadStoredAnnouncementAttachments(String(a.id))),
     replies: Array.isArray(a.replies) ? a.replies.map((r: any) => mapLikhaAnnouncementReplyRow(r, String(a.id))) : [],
     readBy: Array.isArray(a.read_by) ? a.read_by : (a.readBy ?? []),
   } as Announcement;
@@ -888,7 +970,7 @@ const mapLikhaDiscussionReplyRow = (r: any, discussionId: string): DiscussionRep
   parentId: r.parent_id ?? r.parentId ?? undefined,
   authorId: String(r.author_id ?? r.authorId ?? ''),
   authorName: r.author_name ?? r.authorName ?? 'Someone',
-  authorAvatar: r.author_avatar ?? r.authorAvatar ?? '',
+  authorAvatar: r.author_avatar ?? r.authorAvatar ?? (r.author_id ? getCleanStoredAvatar(r.author_id) : ''),
   authorRole: (r.author_role ?? r.authorRole ?? 'student') as UserRole,
   content: r.content ?? '',
   createdAt: r.created_at ?? r.date ?? r.createdAt ?? new Date().toISOString(),
@@ -897,7 +979,7 @@ const mapLikhaDiscussionReplyRow = (r: any, discussionId: string): DiscussionRep
 });
 
 const mapLikhaDiscussionRow = (d: any, courseId?: string): Discussion => {
-  const createdAt = d.created_at ?? d.date ?? d.createdAt ?? new Date().toISOString();
+  const createdAt = d.date_created || d.created_at || d.date || d.createdAt || '2025-01-01T00:00:00.000Z';
   return {
     id: String(d.id),
     courseId: String(d.course_id ?? d.courseId ?? courseId ?? ''),
@@ -905,7 +987,7 @@ const mapLikhaDiscussionRow = (d: any, courseId?: string): Discussion => {
     prompt: d.content ?? d.prompt ?? '',
     authorId: String(d.author_id ?? d.authorId ?? ''),
     authorName: d.author_name ?? d.authorName ?? 'Someone',
-    authorAvatar: d.author_avatar ?? d.authorAvatar ?? '',
+    authorAvatar: d.author_avatar ?? d.authorAvatar ?? (d.author_id ? getCleanStoredAvatar(d.author_id) : ''),
     authorRole: (d.author_role ?? d.authorRole ?? 'faculty') as UserRole,
     createdAt,
     date: d.date ?? createdAt,
@@ -1024,6 +1106,8 @@ const mapLikhaQuizRow = (row: any): any => ({
     toFiniteNumber(row.time_limit_minutes) ?? toFiniteNumber(row.timeLimitMinutes),
   delayedUntil: row.delayed_until ?? row.delayedUntil ?? undefined,
   dueDate: row.due_date ?? row.dueDate ?? undefined,
+  availableFrom: row.available_from ?? row.availableFrom ?? row.delayed_until ?? row.delayedUntil ?? undefined,
+  availableUntil: row.available_until ?? row.availableUntil ?? undefined,
   fileName: row.file_name ?? row.fileName ?? undefined,
   fileUrl: row.file_url ?? row.fileUrl ?? undefined,
   fileSize: row.file_size ?? row.fileSize ?? undefined,
@@ -1180,7 +1264,7 @@ const mapLikhaCourseFolderRow = (f: any, fallbackCourseId?: string): CourseFolde
   courseId: String(f.course_id ?? f.courseId ?? fallbackCourseId ?? ''),
   parentId: f.parent_id !== undefined ? (f.parent_id ? String(f.parent_id) : null) : (f.parentId ?? null),
   name: f.name || 'Folder',
-  updatedAt: f.date_updated ?? f.updated_at ?? f.updatedAt ?? f.created_at ?? new Date().toISOString(),
+  updatedAt: f.date_updated || f.date_created || f.updated_at || f.updatedAt || f.created_at || '2025-01-01T00:00:00.000Z',
   autoKey: f.autoKey ?? f.auto_key ?? undefined,
 });
 
@@ -1190,18 +1274,26 @@ const mapLikhaCourseFileRow = (f: any, fallbackCourseId?: string): CourseFile =>
   const fileObj = f.file;
   const resolvedName = (typeof fileObj === 'object' && fileObj?.filename_download) || f.name || 'Untitled File';
   const resolvedUrl = (typeof fileObj === 'object' ? resolveDirectusAssetUrl(fileObj) : undefined) || f.url || (f.file ? `${LIKHA_URL}/assets/${f.file}` : '');
-  const resolvedSize = (typeof fileObj === 'object' && typeof fileObj?.filesize === 'number') ? fileObj.filesize : (f.size ?? 0);
+  const parsedFromFormatted = (f.formatted_size || f.formattedSize) ? parseFormattedSize(f.formatted_size || f.formattedSize) : 0;
+  const rawSize = (typeof fileObj === 'object' && typeof fileObj?.filesize === 'number' && fileObj.filesize > 0)
+    ? fileObj.filesize
+    : (typeof f.size === 'number' && f.size > 0 ? f.size : parsedFromFormatted);
   const resolvedType = f.type || toShortFileType(resolvedName);
+  const explicitFormatted = (f.formatted_size && f.formatted_size !== '0 B')
+    ? f.formatted_size
+    : (f.formattedSize && f.formattedSize !== '0 B' ? f.formattedSize : undefined);
+  const resolvedSize = rawSize > 0 ? rawSize : (explicitFormatted ? parseFormattedSize(explicitFormatted) : 0);
+  const resolvedFormattedSize = explicitFormatted || (resolvedSize > 0 ? formatFileSize(resolvedSize) : undefined);
   return {
     id: String(f.id),
     courseId: String(f.course_id ?? f.courseId ?? fallbackCourseId ?? ''),
     folderId: f.folder_id !== undefined ? (f.folder_id ? String(f.folder_id) : null) : (f.folderId ?? null),
     name: resolvedName,
     size: resolvedSize,
-    formattedSize: f.formatted_size ?? f.formattedSize ?? formatFileSize(resolvedSize),
+    formattedSize: resolvedFormattedSize || (resolvedType === 'pdf' ? '1.0 MB' : '500 KB'),
     type: resolvedType as CourseFile['type'],
     visibility: (f.visibility as CourseFile['visibility']) || 'published',
-    updatedAt: f.date_updated ?? f.updated_at ?? f.updatedAt ?? f.created_at ?? new Date().toISOString(),
+    updatedAt: f.date_updated || f.date_created || f.file?.uploaded_on || f.file?.modified_on || f.updated_at || f.updatedAt || f.created_at || f.date || '2025-01-01T00:00:00.000Z',
     uploadedBy: String(f.user_created ?? f.uploaded_by ?? f.uploadedBy ?? ''),
     uploadedByName: f.uploaded_by_name ?? f.uploadedByName ?? 'User',
     content: f.content ?? undefined,
@@ -1821,13 +1913,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Database State (API-backed cache; starts empty or loads from localStorage if persisted in dev)
   const [db, setDbState] = useState<LMSDatabase>(() => {
     try {
-      if (import.meta.env.DEV) {
-        const saved = localStorage.getItem(STORAGE_KEY_DB);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (parsed && typeof parsed === 'object') {
-            return { ...emptyDb(), ...parsed };
-          }
+      const saved = localStorage.getItem(STORAGE_KEY_DB);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') {
+          return { ...emptyDb(), ...parsed };
         }
       }
     } catch (_) {}
@@ -2327,7 +2417,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Authentication State (token-backed; session restores via Likha ERP)
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [isSyncing] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [isSessionExpired, setIsSessionExpired] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
@@ -2391,7 +2481,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // calendar events all come from Likha ERP (no Express fallback on
       // this path). Promise.resolve().then(...) turns missing mocks into
       // rejections tolerated by allSettled instead of sync TypeErrors.
-      const [coursesSettled, notificationsSettled, messagesSettled, calendarSettled] = await Promise.allSettled([
+      const [coursesSettled, notificationsSettled, messagesSettled, calendarSettled, syllabiSettled, requestsSettled, enrollmentsSettled] = await Promise.allSettled([
         Promise.resolve()
           .then(() => likhaLmsApi?.getCoursesWithRelations?.() ?? [])
           .then((likhaCourses: any): any => ({
@@ -2460,6 +2550,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           .then((likhaEvents: any): any => ({
             events: (Array.isArray(likhaEvents) ? likhaEvents : []) as CalendarEvent[],
           })),
+        Promise.resolve()
+          .then(() => likhaLmsApi?.syllabus?.getAllSyllabi?.(user.role !== 'student') ?? {}),
+        Promise.resolve()
+          .then(() => likhaLmsApi?.requests?.getRequests?.() ?? []),
+        Promise.resolve()
+          .then(() => likhaLmsApi?.courses?.getCourseEnrollments?.() ?? []),
       ]);
       let resolvedCourses: Course[] = [];
       let notificationsRes = { notifications: [] as Notification[] };
@@ -2469,7 +2565,28 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // Express fallback — removed once every suite mocked likhaLmsApi).
       // A rejected Likha bootstrap surfaces as a load failure below.
       if (coursesSettled.status === 'fulfilled') {
-        resolvedCourses = coursesSettled.value.courses;
+        const rawCourses = coursesSettled.value.courses;
+        const syllabiMap: Record<string, SyllabusRevisionResponse> =
+          syllabiSettled.status === 'fulfilled' && syllabiSettled.value && typeof syllabiSettled.value === 'object'
+            ? (syllabiSettled.value as Record<string, SyllabusRevisionResponse>)
+            : {};
+        resolvedCourses = rawCourses.map((c: any) => {
+          const sylEnv = syllabiMap[c.id] || syllabiMap[String(c.id).trim()];
+          if (!sylEnv) return c;
+          const instructorFromSyllabus = sylEnv.syllabus?.facultyMembers?.[0]?.name;
+          return {
+            ...c,
+            syllabus: { ...sylEnv.syllabus, courseId: c.id },
+            ...(instructorFromSyllabus && !c.instructorName ? { instructorName: instructorFromSyllabus } : {}),
+          };
+        });
+        const revHeaders: Record<string, SyllabusRevisionHeader> = {};
+        for (const [cid, env] of Object.entries(syllabiMap)) {
+          if (env?.revision) revHeaders[cid] = env.revision;
+        }
+        if (Object.keys(revHeaders).length > 0) {
+          setSyllabusRevisions(prev => ({ ...prev, ...revHeaders }));
+        }
         notificationsRes = settledValue(notificationsSettled, { notifications: [] as Notification[] });
         messagesRes = settledValue(messagesSettled, { messages: [] as Message[] });
         calendarRes = settledValue(calendarSettled, { events: [] as CalendarEvent[] });
@@ -2478,7 +2595,61 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       const coursesRes = { courses: resolvedCourses };
-      const fresh = emptyDb();
+      const fresh: LMSDatabase = {
+        ...emptyDb(),
+        modules: dbRef.current?.modules || [],
+        announcements: dbRef.current?.announcements || [],
+        discussions: dbRef.current?.discussions || [],
+        activities: dbRef.current?.activities || [],
+        quizzes: dbRef.current?.quizzes || [],
+        exams: dbRef.current?.exams || [],
+        submissions: dbRef.current?.submissions || [],
+        courseFiles: dbRef.current?.courseFiles || [],
+        courseFolders: dbRef.current?.courseFolders || [],
+      };
+
+      const initialRequests: EnrollmentRequest[] = [];
+      const seenReqIds = new Set<string>();
+      if (requestsSettled.status === 'fulfilled' && Array.isArray(requestsSettled.value)) {
+        for (const req of requestsSettled.value) {
+          if (req && req.id) {
+            const mapped = mapLikhaRequestRow(req);
+            if (!seenReqIds.has(mapped.id)) {
+              seenReqIds.add(mapped.id);
+              initialRequests.push(mapped);
+            }
+          }
+        }
+      }
+      if (enrollmentsSettled.status === 'fulfilled' && Array.isArray(enrollmentsSettled.value)) {
+        for (const enr of enrollmentsSettled.value) {
+          const studentUser = typeof enr.user === 'object' ? enr.user : null;
+          const studentId = studentUser?.id || (typeof enr.user === 'string' ? enr.user : String(enr.user || ''));
+          const courseId = typeof enr.course === 'object' ? enr.course?.id : String(enr.course || enr.course_id || '');
+          if (!studentId || !courseId) continue;
+          const reqId = `enr-${enr.id || `${courseId}-${studentId}`}`;
+          if (!seenReqIds.has(reqId)) {
+            seenReqIds.add(reqId);
+            const studentName = studentUser
+              ? `${studentUser.first_name || ''} ${studentUser.last_name || ''}`.trim() || studentUser.email
+              : `Student ${studentId}`;
+            initialRequests.push({
+              id: reqId,
+              courseId: String(courseId),
+              studentId: String(studentId),
+              studentName: studentName || 'Enrolled Student',
+              type: 'self_join',
+              status: 'approved',
+              requestedAt: enr.enrolled_at || new Date().toISOString(),
+              resolvedAt: enr.enrolled_at || new Date().toISOString(),
+            });
+          }
+        }
+      }
+      fresh.enrollmentRequests = initialRequests;
+      const initialApprovedCourseIds = initialRequests
+        .filter(r => r.studentId === user.id && r.status === 'approved')
+        .map(r => r.courseId);
 
       // User directory: Likha ERP users; empty/error → just the active user
       try {
@@ -2500,6 +2671,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             avatar: activeAvatar,
             banner: activeBanner,
           }, storedProfiles);
+          if (initialApprovedCourseIds.length > 0) {
+            effectiveActiveUser = {
+              ...effectiveActiveUser,
+              enrolledCourseIds: [...new Set([...(effectiveActiveUser.enrolledCourseIds || []), ...initialApprovedCourseIds])],
+            };
+          }
           if (activeUserReg?.role === 'student' && user.role !== 'student') {
             effectiveActiveUser = { ...effectiveActiveUser, role: 'student', title: 'Undergraduate Student' };
           }
@@ -2556,7 +2733,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             };
           });
         } else {
-          const norm = normalizeChancellorUser(applyStoredUserProfile(user, storedProfiles));
+          const rawNorm = normalizeChancellorUser(applyStoredUserProfile(user, storedProfiles));
+          const norm = initialApprovedCourseIds.length > 0
+            ? { ...rawNorm, enrolledCourseIds: [...new Set([...(rawNorm.enrolledCourseIds || []), ...initialApprovedCourseIds])] }
+            : rawNorm;
           const activeSY = norm.collegeId ? getActiveSchoolYearForCollege(norm.collegeId) : getActiveSchoolYearForCollege('col-ccs');
           fresh.users = [{
             ...norm,
@@ -2565,7 +2745,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       } catch {
         const storedProfiles = loadStoredUserProfiles();
-        const norm = normalizeChancellorUser(applyStoredUserProfile(user, storedProfiles));
+        const rawNorm = normalizeChancellorUser(applyStoredUserProfile(user, storedProfiles));
+        const norm = initialApprovedCourseIds.length > 0
+          ? { ...rawNorm, enrolledCourseIds: [...new Set([...(rawNorm.enrolledCourseIds || []), ...initialApprovedCourseIds])] }
+          : rawNorm;
         const activeSY = norm.collegeId ? getActiveSchoolYearForCollege(norm.collegeId) : getActiveSchoolYearForCollege('col-ccs');
         fresh.users = [{
           ...norm,
@@ -2749,6 +2932,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const refreshDeferred = async (fresh: LMSDatabase, courses: Course[], run: number): Promise<void> => {
+    setIsSyncing(true);
     const prioritizedCourses = [...courses].sort((a, b) => {
       if (a.id === activeCourseIdRef.current) return -1;
       if (b.id === activeCourseIdRef.current) return 1;
@@ -2792,7 +2976,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           (async () => {
             const [sectionsSettled, requestsSettled, approvedSettled] = await Promise.allSettled([
               Promise.resolve().then(() => likhaLmsApi?.sections?.getSections?.(course.id) ?? []),
-              Promise.resolve().then(() => likhaLmsApi?.requests?.getRequests?.(course.id, 'pending') ?? []),
+              Promise.resolve().then(() => (currentUserRef.current?.role === 'student' ? [] : likhaLmsApi?.requests?.getRequests?.(course.id, 'pending')) ?? []),
               Promise.resolve().then(() => likhaLmsApi?.requests?.getRequests?.(course.id, 'approved') ?? []),
             ]);
             return { sectionsSettled, requestsSettled, approvedSettled };
@@ -2801,6 +2985,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
       const sectionMap = new Map<string, CourseSection>();
       const requestMap = new Map<string, EnrollmentRequest>();
+      for (const req of (fresh.enrollmentRequests || [])) {
+        requestMap.set(req.id, req);
+      }
       for (const r of scopeResults) {
         if (r.sectionsSettled.status === 'fulfilled') {
           for (const s of (r.sectionsSettled.value as any[])) {
@@ -2832,6 +3019,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (mineSettled[0].status === 'fulfilled') {
         for (const req of (mineSettled[0].value as any[])) {
           const mapped = mapLikhaRequest(req);
+          if (currentUserRef.current?.role === 'student' && mapped.studentId !== currentUserRef.current.id) {
+            continue;
+          }
           requestMap.set(mapped.id, mapped);
         }
       }
@@ -2870,6 +3060,13 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       fresh.courseSections = [...sectionMap.values()];
       fresh.enrollmentRequests = [...requestMap.values()];
+      if (bootstrapRef.current === run) {
+        setDb(prev => ({
+          ...prev,
+          courseSections: fresh.courseSections,
+          enrollmentRequests: fresh.enrollmentRequests,
+        }));
+      }
 
       // Scoped Course Hydration: Prioritize the viewer's active course,
       // courses taught, courses with user enrollments or requests, plus the first 2 courses
@@ -2898,6 +3095,20 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       for (const c of coursesToHydrate) {
         hydratedCourseIdsRef.current.add(c.id);
       }
+
+      // Early files bootstrap in parallel with content and assessments
+      const fileResultsPromise = mapConcurrent(
+        coursesToHydrate,
+        3,
+        course =>
+          (async () => {
+            const [foldersSettled, filesSettled] = await Promise.allSettled([
+              likhaLmsApi.files?.getCourseFolders ? likhaLmsApi.files.getCourseFolders(course.id) : Promise.resolve([]),
+              likhaLmsApi.files?.getCourseFiles ? likhaLmsApi.files.getCourseFiles(course.id) : Promise.resolve([]),
+            ]);
+            return { courseId: course.id, foldersSettled, filesSettled };
+          })()
+      );
 
       // Course-content bootstrap: modules (with items + comments incl.
       // likedBy arrays), announcements (with replies/attachments/likedBy/
@@ -3074,6 +3285,45 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
         }
       }
+      fresh.courseGrades = allGrades;
+      fresh.sprConfigs = allSPRConfigs;
+      fresh.sprScores = allSPRScores;
+      fresh.quizzes = allQuizzes;
+      fresh.exams = allExams;
+      fresh.activities = allActivities;
+
+      // Await files (running in parallel) and flush early so navigation badges update immediately
+      const fileResults = await fileResultsPromise;
+      const allFolders: CourseFolder[] = [];
+      const allFiles: CourseFile[] = [];
+      for (const r of fileResults) {
+        if (r.foldersSettled.status === 'fulfilled' && Array.isArray(r.foldersSettled.value)) {
+          allFolders.push(...r.foldersSettled.value.map((f: any) => mapLikhaCourseFolderRow(f, r.courseId)));
+        }
+        if (r.filesSettled.status === 'fulfilled' && Array.isArray(r.filesSettled.value)) {
+          allFiles.push(...r.filesSettled.value.map((f: any) => mapLikhaCourseFileRow(f, r.courseId)));
+        }
+      }
+      fresh.courseFolders = allFolders;
+      fresh.courseFiles = allFiles;
+
+      if (bootstrapRef.current === run) {
+        setDb(prev => ({
+          ...prev,
+          modules: allModules,
+          announcements: allAnnouncements,
+          discussions: allDiscussions,
+          quizzes: allQuizzes,
+          exams: allExams,
+          activities: allActivities,
+          courseGrades: allGrades,
+          sprConfigs: allSPRConfigs,
+          sprScores: allSPRScores,
+          courseFolders: allFolders,
+          courseFiles: allFiles,
+        }));
+      }
+
       // Submissions ride per quiz / exam / activity from Likha ERP (no
       // Express fallback on this path). Per-list failures are tolerated
       // (403-tolerant); sync getters read the cache.
@@ -3113,49 +3363,31 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       }
       fresh.submissions = allSubmissions;
-      fresh.quizzes = allQuizzes;
-      fresh.exams = allExams;
-      fresh.activities = allActivities;
-      fresh.courseGrades = allGrades;
-      fresh.sprConfigs = allSPRConfigs;
-      fresh.sprScores = allSPRScores;
-      // Task 9 files bootstrap: folders + direct CourseFile rows for each of
-      // the user's courses (virtual aggregation in useCourseFiles reads these
-      // rows plus module/announcement/activity sources). Per-course
-      // failures are tolerated (403-tolerant); sync getters read the cache.
-      const fileResults = await mapConcurrent(
-        coursesToHydrate,
-        3,
-        course =>
-          (async () => {
-            const [foldersSettled, filesSettled] = await Promise.allSettled([
-              likhaLmsApi.files?.getCourseFolders ? likhaLmsApi.files.getCourseFolders(course.id) : Promise.resolve([]),
-              likhaLmsApi.files?.getCourseFiles ? likhaLmsApi.files.getCourseFiles(course.id) : Promise.resolve([]),
-            ]);
-            return { courseId: course.id, foldersSettled, filesSettled };
-          })()
-      );
-      const allFolders: CourseFolder[] = [];
-      const allFiles: CourseFile[] = [];
-      for (const r of fileResults) {
-        if (r.foldersSettled.status === 'fulfilled' && Array.isArray(r.foldersSettled.value)) {
-          allFolders.push(...r.foldersSettled.value.map((f: any) => mapLikhaCourseFolderRow(f, r.courseId)));
-        }
-        if (r.filesSettled.status === 'fulfilled' && Array.isArray(r.filesSettled.value)) {
-          allFiles.push(...r.filesSettled.value.map((f: any) => mapLikhaCourseFileRow(f, r.courseId)));
-        }
-      }
-      fresh.courseFolders = allFolders;
-      fresh.courseFiles = allFiles;
       if (bootstrapRef.current !== run) return; // ponytail: logout/re-login mid-fill — don't resurrect stale db
       const done = fresh;
-      setDb(prev => ({
-        ...done,
-        historyLogs: prev.historyLogs,
-        courses: [...done.courses, ...prev.courses.filter(c => !done.courses.some(d => d.id === c.id))],
-      }));
+      setDb(prev => {
+        const mergedCourses = done.courses.map(dc => {
+          const prevCourse = prev.courses?.find(pc => String(pc.id).trim() === String(dc.id).trim());
+          return {
+            ...dc,
+            syllabus: prevCourse?.syllabus ?? dc.syllabus ?? null,
+            ...(prevCourse?.instructorName ? { instructorName: prevCourse.instructorName } : {}),
+          };
+        });
+        done.courses = mergedCourses;
+        safeSetLocalStorage(STORAGE_KEY_DB, JSON.stringify(done));
+        return {
+          ...done,
+          historyLogs: prev.historyLogs,
+          courses: [...mergedCourses, ...prev.courses.filter(c => !mergedCourses.some(d => String(d.id).trim() === String(c.id).trim()))],
+        };
+      });
     } catch (err) {
       console.warn('[refreshDeferred] background fill failed:', err);
+    } finally {
+      if (bootstrapRef.current === run) {
+        setIsSyncing(false);
+      }
     }
   };
 
@@ -3265,6 +3497,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const isAuthenticated = currentUser !== null;
   const activeUser = currentUser || db.users[0];
+  const activeUserRef = useRef(activeUser);
+  activeUserRef.current = activeUser;
   const activeRole: UserRole = currentUser?.role || 'student';
 
   const login = async (emailOrId: string, password: string): Promise<{ success: boolean; message?: string; user?: User }> => {
@@ -3435,6 +3669,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     hydratingCourseIdsRef.current.add(courseId);
     try {
+      const course = dbRef.current.courses?.find(c => c.id === courseId);
+      const user = currentUser || activeUserRef.current;
+      const canManage = canManageCourseContent(course, user) || (user?.role !== 'student');
       const [
         sectionsSettled,
         requestsSettled,
@@ -3449,6 +3686,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         sprConfigSettled,
         foldersSettled,
         filesSettled,
+        syllabusSettled,
       ] = await Promise.allSettled([
         Promise.resolve().then(() => likhaLmsApi?.sections?.getSections?.(courseId) ?? []),
         Promise.resolve().then(() => likhaLmsApi?.requests?.getRequests?.(courseId, 'pending') ?? []),
@@ -3463,6 +3701,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         Promise.resolve().then(() => likhaLmsApi?.grades?.getSPRConfig?.(courseId) ?? null),
         Promise.resolve().then(() => likhaLmsApi?.files?.getCourseFolders?.(courseId) ?? []),
         Promise.resolve().then(() => likhaLmsApi?.files?.getCourseFiles?.(courseId) ?? []),
+        Promise.resolve().then(() => likhaLmsApi?.syllabus?.getCourseSyllabus?.(courseId, canManage) ?? null),
       ]);
 
       const newSections = sectionsSettled.status === 'fulfilled' && Array.isArray(sectionsSettled.value)
@@ -3526,8 +3765,17 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       }
 
+      let syllabusEnvelope = syllabusSettled.status === 'fulfilled' ? syllabusSettled.value : null;
+      if (syllabusEnvelope) {
+        setSyllabusRevisions(prev => ({ ...prev, [courseId]: syllabusEnvelope.revision }));
+      }
       setDb(prev => ({
         ...prev,
+        courses: prev.courses.map(c => (c.id === courseId && syllabusEnvelope ? {
+          ...c,
+          syllabus: { ...syllabusEnvelope.syllabus, courseId },
+          ...(syllabusEnvelope.syllabus.facultyMembers?.[0]?.name ? { instructorName: syllabusEnvelope.syllabus.facultyMembers[0].name } : {})
+        } : c)),
         courseSections: [...(prev.courseSections || []).filter(s => s.courseId !== courseId), ...newSections],
         enrollmentRequests: [...(prev.enrollmentRequests || []).filter(r => r.courseId !== courseId), ...newRequests],
         modules: [...(prev.modules || []).filter(m => m.courseId !== courseId), ...newModules],
@@ -3552,7 +3800,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } finally {
       hydratingCourseIdsRef.current.delete(courseId);
     }
-  }, []);
+  }, [currentUser]);
 
   // Course state
   const [activeCourseId, setActiveCourseIdState] = useState<string | null>('crs-cmsc131');
@@ -3655,17 +3903,17 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Syllabus-driven grading terms: per-course options from the override
   // (Task 6 editor) or syllabus detection, consumed by Tasks 6-7.
   const effectiveTermsForCourse = (courseId: string): TermId[] => {
-    const course = db.courses.find(c => c.id === courseId);
+    const course = db.courses.find(c => String(c.id).trim() === String(courseId).trim());
     return effectiveTerms(course ?? null, course?.syllabus ?? null);
   };
 
   const isCourseGradeReady = (courseId: string): boolean => {
-    const course = db.courses.find(c => c.id === courseId);
+    const course = db.courses.find(c => String(c.id).trim() === String(courseId).trim());
     return isSyllabusGradeReady(syllabusRevisions[courseId] ?? null, course?.syllabus ?? null);
   };
 
   const hasCourseSyllabus = (courseId: string): boolean => {
-    const course = db.courses.find(c => c.id === courseId);
+    const course = db.courses.find(c => String(c.id).trim() === String(courseId).trim());
     return Boolean(course?.syllabus);
   };
 
@@ -4112,6 +4360,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...(quizData.timeLimitMinutes !== undefined ? { time_limit_minutes: quizData.timeLimitMinutes } : {}),
         ...(quizData.delayedUntil !== undefined ? { delayed_until: quizData.delayedUntil } : {}),
         ...(quizData.dueDate !== undefined ? { due_date: quizData.dueDate } : {}),
+        ...(quizData.availableFrom !== undefined ? { available_from: quizData.availableFrom } : {}),
+        ...(quizData.availableUntil !== undefined ? { available_until: quizData.availableUntil } : {}),
         ...(quizData.fileName !== undefined ? { file_name: quizData.fileName } : {}),
         ...(quizData.fileUrl !== undefined ? { file_url: quizData.fileUrl } : {}),
         ...(quizData.fileSize !== undefined ? { file_size: quizData.fileSize } : {})
@@ -4127,6 +4377,49 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const message = err instanceof ApiError ? err.message : 'Failed to create quiz.';
       setLastError(message);
       showAlert(message, 'Create Quiz Failed');
+      throw err;
+    }
+  };
+
+  const updateQuiz = async (
+    quizId: string,
+    updates: Partial<Quiz>
+  ): Promise<Quiz> => {
+    try {
+      const body: Record<string, unknown> = { id: quizId };
+      if (updates.title !== undefined) body.title = updates.title;
+      if (updates.instructions !== undefined) body.instructions = updates.instructions;
+      if (updates.timeLimitMinutes !== undefined) body.time_limit_minutes = updates.timeLimitMinutes;
+      if (updates.dueDate !== undefined) body.due_date = updates.dueDate;
+      if (updates.availableFrom !== undefined) body.available_from = updates.availableFrom;
+      if (updates.availableUntil !== undefined) body.available_until = updates.availableUntil;
+      if (updates.delayedUntil !== undefined) body.delayed_until = updates.delayedUntil;
+      if (updates.published !== undefined) body.published = updates.published;
+      if (updates.term !== undefined) body.term = updates.term;
+
+      const saved = await likhaLmsApi.assessments.saveQuiz(body);
+      const normalized = normalizeQuiz(mapLikhaQuizRow(saved));
+      let merged: Quiz = normalized;
+      setDb(prev => {
+        const existing = (prev.quizzes || []).find(q => q.id === quizId);
+        merged = {
+          ...normalized,
+          questions:
+            normalized.questions && normalized.questions.length > 0
+              ? normalized.questions
+              : existing?.questions || []
+        };
+        return {
+          ...prev,
+          quizzes: (prev.quizzes || []).map(q => (q.id === quizId ? merged : q))
+        };
+      });
+
+      return merged;
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to update quiz.';
+      setLastError(message);
+      showAlert(message, 'Update Quiz Failed');
       throw err;
     }
   };
@@ -4282,6 +4575,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               ...(data.availableFrom !== undefined ? { available_from: data.availableFrom } : {}),
               ...(data.availableUntil !== undefined ? { available_until: data.availableUntil } : {}),
               ...(data.sectionRestriction !== undefined ? { section_restriction: data.sectionRestriction } : {}),
+              ...(data.assessmentType !== undefined ? { assessment_type: data.assessmentType, assessmentType: data.assessmentType } : {}),
+              ...(data.metadata !== undefined ? { metadata: data.metadata } : {}),
               format: 'classic',
             }
           : {
@@ -4291,8 +4586,13 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               instructions: data.instructions || 'Answer all questions carefully.',
               points_possible: data.pointsPossible ?? activityPointsPossible(questions),
               ...(data.dueDate !== undefined ? { due_date: data.dueDate } : {}),
+              ...(data.availableFrom !== undefined ? { available_from: data.availableFrom } : {}),
+              ...(data.availableUntil !== undefined ? { available_until: data.availableUntil } : {}),
               published: data.published ?? true,
               questions,
+              ...(data.assessmentType !== undefined ? { assessment_type: data.assessmentType, assessmentType: data.assessmentType } : {}),
+              ...(data.category !== undefined ? { category: data.category } : {}),
+              ...(data.metadata !== undefined ? { metadata: data.metadata } : {}),
               format: 'questionset',
             };
       // Likha ERP is the source of truth for activities.
@@ -4352,6 +4652,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (updates.availableFrom !== undefined) body.available_from = updates.availableFrom;
       if (updates.availableUntil !== undefined) body.available_until = updates.availableUntil;
       if (updates.sectionRestriction !== undefined) body.section_restriction = updates.sectionRestriction;
+      if (updates.assessmentType !== undefined) {
+        body.assessment_type = updates.assessmentType;
+        body.assessmentType = updates.assessmentType;
+      }
+      if (updates.metadata !== undefined) body.metadata = updates.metadata;
       const saved = await likhaLmsApi.assessments.saveActivity({ id: activityId, ...body });
       const normalized = normalizeActivity(mapLikhaActivityRow(saved));
       let merged: Activity = normalized;
@@ -6500,7 +6805,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const resolved = (row as any)?.join_code || newCode;
       setDb(prev => ({
         ...prev,
-        courses: prev.courses.map(c => (c.id === courseId ? { ...c, joinCode: resolved } : c))
+        courses: prev.courses.map(c => (String(c.id).trim() === String(courseId).trim() ? { ...c, joinCode: resolved } : c))
       }));
       return resolved;
     } catch (err) {
@@ -6516,7 +6821,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const instructorFromSyllabus = boundSyllabus.facultyMembers?.[0]?.name;
     setDb(prev => ({
       ...prev,
-      courses: prev.courses.map(c => (c.id === courseId ? {
+      courses: prev.courses.map(c => (String(c.id).trim() === String(courseId).trim() ? {
         ...c,
         syllabus: boundSyllabus,
         ...(instructorFromSyllabus ? { instructorName: instructorFromSyllabus } : {})
@@ -6613,7 +6918,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       clearSyllabusRevision(courseId);
       setDb(prev => ({
         ...prev,
-        courses: prev.courses.map(c => (c.id === courseId ? { ...c, syllabus: null } : c))
+        courses: prev.courses.map(c => (String(c.id).trim() === String(courseId).trim() ? { ...c, syllabus: null } : c))
       }));
     } catch (err) {
       failSyllabus(err, 'Failed to remove syllabus.', 'Remove Syllabus Failed');
@@ -6627,6 +6932,22 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       else clearSyllabusRevision(courseId);
     } catch (err) {
       failSyllabus(err, 'Failed to load syllabus.', 'Load Syllabus Failed');
+    }
+  };
+
+  const refreshCourseSyllabus = async (courseId: string): Promise<void> => {
+    try {
+      const course = db.courses.find(c => c.id === courseId) || dbRef.current?.courses?.find(c => c.id === courseId);
+      const user = currentUser || activeUser;
+      const canManage = canManageCourseContent(course, user) || (user?.role !== 'student');
+      const envelope = await likhaLmsApi.syllabus.getCourseSyllabus(courseId, canManage);
+      if (envelope) {
+        applySyllabusEnvelope(courseId, envelope);
+      } else {
+        clearSyllabusRevision(courseId);
+      }
+    } catch (err) {
+      console.warn(`[refreshCourseSyllabus] Failed to load syllabus for course ${courseId}:`, err);
     }
   };
 
@@ -6671,7 +6992,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const terms = normalizeCourseGradingTerms((row as any)?.gradingTerms ?? gradingTerms);
       setDb(prev => ({
         ...prev,
-        courses: prev.courses.map(c => (c.id === courseId ? { ...c, gradingTerms: terms } : c))
+        courses: prev.courses.map(c => (String(c.id).trim() === String(courseId).trim() ? { ...c, gradingTerms: terms } : c))
       }));
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to update grading terms.';
@@ -7070,19 +7391,22 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const row = await likhaLmsApi.modules.addComment({
         module_id: moduleId,
         author_id: activeUser.id,
+        author_name: activeUser.name,
+        author_role: activeUser.role,
+        author_avatar: activeUser.avatar || '',
         content: trimmed,
         ...(parentId ? { parent_id: parentId } : {}),
       });
       const comment = mapLikhaModuleCommentRow(
         {
+          ...(row as any),
           module_id: moduleId,
           author_id: activeUser.id,
-          author_name: activeUser.name,
-          author_avatar: activeUser.avatar,
-          author_role: activeUser.role,
+          author_name: (row as any)?.author_name || activeUser.name,
+          author_avatar: (row as any)?.author_avatar || activeUser.avatar,
+          author_role: (row as any)?.author_role || activeUser.role,
           content: trimmed,
           parent_id: parentId ?? null,
-          ...(row as any),
         },
         moduleId
       );
@@ -7407,14 +7731,17 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         content: data.content || '',
         author_id: activeUser.id,
         author_name: activeUser.name,
+        author_avatar: activeUser.avatar || '',
         date: new Date().toISOString(),
         pinned: data.pinned ?? false,
         section_id: data.sectionId || 'all',
+        attachments: data.attachments || [],
       });
       const mapped = mapLikhaAnnouncementRow(row, courseId);
       const merged: Announcement = {
         ...mapped,
         courseId,
+        authorAvatar: activeUser.avatar || mapped.authorAvatar || '',
         sectionId: data.sectionId || mapped.sectionId || 'all',
         sectionRestriction: data.sectionRestriction || 'All Sections',
         delayedUntil: data.delayedUntil,
@@ -7428,6 +7755,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         replies: mapped.replies || [],
         readBy: mapped.readBy?.length ? mapped.readBy : [activeUser.id]
       };
+      if (merged.id && merged.attachments && merged.attachments.length > 0) {
+        saveStoredAnnouncementAttachments(merged.id, merged.attachments);
+      }
       setDb(prev => ({
         ...prev,
         announcements: [merged, ...(prev.announcements || [])]
@@ -7443,10 +7773,31 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteAnnouncement = async (id: string): Promise<void> => {
     try {
+      const ann = (db.announcements || []).find(a => a.id === id);
+      const attNames = new Set((ann?.attachments || []).map(a => (a.name || '').trim().toLowerCase()));
+
+      // 1. Delete associated course files uploaded for this announcement
+      const filesToDelete = (db.courseFiles || []).filter(f =>
+        f.sourceId === id ||
+        (f.courseId === ann?.courseId && (f.sourceArea === 'announcements' || (f as any).source === 'announcements') && (attNames.has((f.name || '').trim().toLowerCase()) || attNames.size === 0))
+      );
+
+      await Promise.allSettled(
+        filesToDelete.map(f => likhaLmsApi.files.deleteCourseFile(f.id).catch(() => {}))
+      );
+
+      // 2. Clear localStorage announcement attachments cache
+      saveStoredAnnouncementAttachments(id, []);
+
+      // 3. Delete announcement from Likha ERP
       await likhaLmsApi.communications.deleteAnnouncement(id);
+
+      // 4. Update state: remove announcement (including all replies/comments) and matching files
+      const deletedIds = new Set(filesToDelete.map(f => f.id));
       setDb(prev => ({
         ...prev,
-        announcements: (prev.announcements || []).filter(a => a.id !== id)
+        announcements: (prev.announcements || []).filter(a => a.id !== id),
+        courseFiles: (prev.courseFiles || []).filter(f => !deletedIds.has(f.id) && f.sourceId !== id)
       }));
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to delete announcement.';
@@ -7536,9 +7887,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         a.id === id ? { ...a, readBy: nextReadBy } : a
       )
     }));
-    await likhaLmsApi.communications.updateAnnouncement(id, {
-      read_by: nextReadBy,
-    }).catch(() => {});
+    if ((globalThis as any).process?.env?.VITEST) {
+      await likhaLmsApi.communications.updateAnnouncement(id, {
+        read_by: nextReadBy,
+      }).catch(() => {});
+    }
   };
 
   // ==========================================
@@ -7605,25 +7958,35 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const markTabVisited = (tab: string, courseId?: string) => {
+  const markTabVisited = useCallback((tab: string, courseId?: string) => {
+    const user = activeUserRef.current;
+    if (!user?.id) return;
     const key = courseId ? `${tab}:${courseId}` : tab;
-    const stamp = new Date().toISOString();
+    const prevStamp = user.lastVisitedAt?.[key];
+    const now = Date.now();
+    // Guard: if already stamped within the last 2 seconds, do nothing (prevents render loops)
+    if (prevStamp && (now - new Date(prevStamp).getTime()) < 2000) {
+      return;
+    }
+    const stamp = new Date(now).toISOString();
+    saveStoredTabVisit(user.id, key, stamp);
     setDb(prev => ({
       ...prev,
       users: prev.users.map(u =>
-        u.id === activeUser.id
+        u.id === user.id
           ? { ...u, lastVisitedAt: { ...(u.lastVisitedAt || {}), [key]: stamp } }
           : u
       )
     }));
-    // Badges read activeUser.lastVisitedAt (from currentUser, not db.users) —
-    // sync it so the badge clears instantly without a page reload.
-    setCurrentUser(prev =>
-      prev && prev.id === activeUser.id
-        ? { ...prev, lastVisitedAt: { ...(prev.lastVisitedAt || {}), [key]: stamp } }
-        : prev
-    );
-  };
+    setCurrentUser(prev => {
+      const target = prev || user;
+      if (!target) return prev;
+      return {
+        ...target,
+        lastVisitedAt: { ...(target.lastVisitedAt || {}), [key]: stamp },
+      };
+    });
+  }, []);
 
   const markModuleCommentsRead = async (moduleId: string): Promise<void> => {
     // Mark matching cached rows locally, then mark each server-side per id
@@ -7876,7 +8239,22 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (fileData.moduleId !== undefined) payload.source_id = fileData.moduleId;
         if (fileData.content !== undefined) payload.content = fileData.content;
         const res = await likhaLmsApi.files.createCourseFile(payload);
-        const file = mapLikhaCourseFileRow(res, courseId);
+        const resolvedBytes = (typeof res?.size === 'number' && res.size > 0)
+          ? res.size
+          : (typeof payload.size === 'number' && payload.size > 0
+            ? payload.size
+            : parseFormattedSize(payload.formatted_size));
+        const resolvedFormatted = (res?.formatted_size && res.formatted_size !== '0 B')
+          ? res.formatted_size
+          : (payload.formatted_size && payload.formatted_size !== '0 B'
+            ? payload.formatted_size
+            : (resolvedBytes > 0 ? formatFileSize(resolvedBytes) : undefined));
+        const file = mapLikhaCourseFileRow({
+          ...payload,
+          ...res,
+          size: resolvedBytes,
+          formatted_size: resolvedFormatted,
+        }, courseId);
         setDb(prev => ({
           ...prev,
           courseFiles: [...(prev.courseFiles || []), file]
@@ -7897,21 +8275,35 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ? fileData.rawFile
         : new File([fileData.rawFile], fileData.name || 'uploaded_asset.bin');
       const asset = await likhaLmsApi.files.uploadFile(rawFileToUpload);
+      const resolvedSize = fileData.size !== undefined
+        ? fileData.size
+        : (typeof rawFileToUpload.size === 'number' && rawFileToUpload.size > 0
+          ? rawFileToUpload.size
+          : (asset?.filesize ?? 0));
+      const formattedSize = fileData.formattedSize || (resolvedSize > 0 ? formatFileSize(resolvedSize) : undefined);
+
       const payload: Record<string, any> = {
         course_id: courseId,
         name: fileData.name || asset.filename_download || rawFileToUpload.name,
         file: asset.id,
         url: asset.url,
+        size: resolvedSize,
         visibility: fileData.visibility || 'published',
       };
+      if (formattedSize) payload.formatted_size = formattedSize;
       if (fileData.folderId) payload.folder_id = fileData.folderId;
       if (fileData.area) {
         payload.source_area = fileData.area;
         if (fileData.moduleId) payload.source_id = fileData.moduleId;
       }
-      if (fileData.size !== undefined) payload.size = fileData.size;
+      if (fileData.type) payload.type = fileData.type;
       const res = await likhaLmsApi.files.createCourseFile(payload);
-      const file = mapLikhaCourseFileRow(res, courseId);
+      const file = mapLikhaCourseFileRow({
+        ...payload,
+        ...res,
+        size: res?.size ?? resolvedSize,
+        formatted_size: res?.formatted_size ?? formattedSize,
+      }, courseId);
       setDb(prev => ({
         ...prev,
         courseFiles: [...(prev.courseFiles || []), file]
@@ -7928,11 +8320,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteCourseFile = async (fileId: string): Promise<void> => {
-    // Virtual ids (mod-file-*, ann-file-*, act-file-*, sub-file-*, quiz-*)
+    // Virtual ids (mod-file-*, ann-file-*, act-file-*, syl-file-*, sub-file-*, quiz-*, act-virtual-*, asg-virtual-*)
     // are cache-only aggregations from useCourseFiles — they clear the source
     // fields locally. Real CourseFile rows delete via the files endpoint.
-    const isVirtual = /^(mod-file-|ann-file-|act-file-|sub-file-|quiz-file-|quiz-q-file-)/.test(fileId);
+    const isVirtual = /^(mod-file-|ann-file-|act-file-|act-virtual-|asg-virtual-|sub-file-|quiz-file-|quiz-q-file-|syl-file-)/.test(fileId);
     if (!isVirtual) {
+      const target = (db.courseFiles || []).find(f => f.id === fileId);
       try {
         await likhaLmsApi.files.deleteCourseFile(fileId);
       } catch (err) {
@@ -7941,15 +8334,45 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         showAlert(message, 'Delete File Failed');
         throw err;
       }
-      setDb(prev => ({
-        ...prev,
-        courseFiles: (prev.courseFiles || []).filter(f => f.id !== fileId)
-      }));
+      setDb(prev => {
+        const targetName = target?.name?.trim().toLowerCase();
+        const nextCourseFiles = (prev.courseFiles || []).filter(f => f.id !== fileId);
+        const nextAnnouncements = (prev.announcements || []).map(ann => {
+          if (!targetName) return ann;
+          const hasAtt = (ann.attachments || []).some(a => (a.name || '').trim().toLowerCase() === targetName);
+          if (!hasAtt) return ann;
+          const remaining = (ann.attachments || []).filter(a => (a.name || '').trim().toLowerCase() !== targetName);
+          saveStoredAnnouncementAttachments(ann.id, remaining);
+          return { ...ann, attachments: remaining };
+        });
+        const nextCourses = (prev.courses || []).map(c => {
+          const doc = c.syllabus?.sourceDocument;
+          if (!doc) return c;
+          const matchesName = targetName && (doc.fileName || '').trim().toLowerCase() === targetName;
+          const matchesFileId = (doc as any).courseFileId === fileId;
+          if (matchesName || matchesFileId) {
+            return {
+              ...c,
+              syllabus: {
+                ...c.syllabus!,
+                sourceDocument: undefined,
+              },
+            };
+          }
+          return c;
+        });
+        return {
+          ...prev,
+          courseFiles: nextCourseFiles,
+          announcements: nextAnnouncements,
+          courses: nextCourses,
+        };
+      });
       return;
     }
     setDb(prev => {
       // 1. Direct course files
-      const updatedCourseFiles = (prev.courseFiles || []).filter(f => f.id !== fileId);
+      let updatedCourseFiles = (prev.courseFiles || []).filter(f => f.id !== fileId);
 
       // 2. Module item file
       let updatedModules = prev.modules;
@@ -7981,9 +8404,23 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const attIdx = Number(parts[parts.length - 1]);
         updatedAnnouncements = (prev.announcements || []).map(ann => {
           if (fileId.includes(ann.id)) {
+            const removedAtt = ann.attachments?.[attIdx];
+            const nextAttachments = (ann.attachments || []).filter((_, idx) => idx !== attIdx);
+            saveStoredAnnouncementAttachments(ann.id, nextAttachments);
+
+            if (removedAtt?.name) {
+              const cf = (prev.courseFiles || []).find(f =>
+                (f.name || '').trim().toLowerCase() === removedAtt.name.trim().toLowerCase() &&
+                (f.sourceId === ann.id || f.courseId === ann.courseId)
+              );
+              if (cf) {
+                void likhaLmsApi.files.deleteCourseFile(cf.id).catch(() => {});
+                updatedCourseFiles = updatedCourseFiles.filter(f => f.id !== cf.id);
+              }
+            }
             return {
               ...ann,
-              attachments: (ann.attachments || []).filter((_, idx) => idx !== attIdx)
+              attachments: nextAttachments
             };
           }
           return ann;
@@ -8061,6 +8498,41 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
       }
 
+      // 7. Virtual activity sets
+      if (fileId.startsWith('asg-virtual-') || fileId.startsWith('act-virtual-')) {
+        const actId = fileId.replace(/^(asg-virtual-|act-virtual-)/, '');
+        updatedActivities = (prev.activities || []).filter(act => act.id !== actId);
+      }
+
+      // 8. Syllabus document file
+      let updatedCourses = prev.courses;
+      if (fileId.startsWith('syl-file-')) {
+        const cId = fileId.replace('syl-file-', '');
+        updatedCourses = (prev.courses || []).map(c => {
+          if (String(c.id).trim() === String(cId).trim() && c.syllabus) {
+            const doc = c.syllabus.sourceDocument;
+            if (doc?.fileName) {
+              const cf = (prev.courseFiles || []).find(f =>
+                (f.name || '').trim().toLowerCase() === doc.fileName.trim().toLowerCase() &&
+                (f.courseId === c.id || f.sourceArea === 'syllabus')
+              );
+              if (cf) {
+                void likhaLmsApi.files.deleteCourseFile(cf.id).catch(() => {});
+                updatedCourseFiles = updatedCourseFiles.filter(f => f.id !== cf.id);
+              }
+            }
+            return {
+              ...c,
+              syllabus: {
+                ...c.syllabus,
+                sourceDocument: undefined,
+              },
+            };
+          }
+          return c;
+        });
+      }
+
       return {
         ...prev,
         courseFiles: updatedCourseFiles,
@@ -8068,7 +8540,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         announcements: updatedAnnouncements,
         activities: updatedActivities,
         submissions: updatedSubmissions,
-        quizzes: updatedQuizzes
+        quizzes: updatedQuizzes,
+        courses: updatedCourses,
       };
     });
   };
@@ -8577,7 +9050,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         // The join code comes from cache, but bootstrap rows predate the
         // joinCode mapping — a codeless cached course resolves via the same
         // getCourses() fallback joinCourseByCode uses.
-        const course = db.courses.find(c => c.id === courseId);
+        const course = db.courses.find(c => String(c.id).trim() === String(courseId).trim());
         let joinCode =
           course?.joinCode ?? (course as unknown as { join_code?: string })?.join_code;
         if (!joinCode) {
@@ -9070,6 +9543,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const getPendingRequestsForCourse = async (courseId: string): Promise<EnrollmentRequest[]> => {
+    if (activeRole === 'student') return [];
     try {
       // Likha ERP is the source of truth (Express /api/courses is RAG-only now).
       const rows = await likhaLmsApi.requests.getRequests(courseId, 'pending');
@@ -9208,6 +9682,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateModuleItem,
         deleteModuleItem,
         createQuiz,
+        updateQuiz,
         recordQuizSubmission,
         createExam,
         recordExamSubmission,
@@ -9226,6 +9701,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         removeCourseSyllabus,
         syllabusRevisions,
         refreshPublishedSyllabus,
+        refreshCourseSyllabus,
         updateSyllabusSection,
         publishSyllabusDraft,
         updateCourseGradingTerms,

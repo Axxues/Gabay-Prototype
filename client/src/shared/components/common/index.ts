@@ -20,3 +20,4 @@ export { UploadProgress } from './UploadProgress';
 export { UserAvatar } from './UserAvatar';
 export { SessionExpiredModal, type SessionExpiredModalProps } from './SessionExpiredModal';
 export { UserProfileModal } from './UserProfileModal';
+export { PdfViewer, type PdfViewerProps } from './PdfViewer';

@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { useLMS } from '../../shared/context/LMSContext';
+import { useLMS, getCleanStoredAvatar } from '../../shared/context/LMSContext';
 import { getDisplayRoleLabel, canManageCourseContent } from '../../shared/utils/roles';
 import { findMatchingSiblingCourses } from '../../shared/utils/crossSectionSync';
 import { CrossSectionPromptModal } from '../../shared/components/common/CrossSectionPromptModal';
@@ -26,25 +26,34 @@ import {
   Heart,
   Trash2,
   Pencil,
-  Check
+  Check,
+  Briefcase,
+  Presentation
 } from 'lucide-react';
 import { ModalPortal } from '../../shared/components/common/ModalPortal';
 import { groupRepliesByRoot } from '../../shared/utils/threadReplies';
 import { PageHeader } from '../../shared/components/common/PageHeader';
 import { UserAvatar } from '../../shared/components/common/UserAvatar';
 import { EmptyState } from '../../shared/components/common/EmptyState';
+import { PdfViewer } from '../../shared/components/common/PdfViewer';
 import { AddModuleItemPage } from './AddModuleItemPage';
 
 interface ModulesViewProps {
   courseId: string;
   onSelectActivity: (activityId: string) => void;
   onSelectQuiz: (quizId: string) => void;
+  onSelectAssignment?: (assignmentId: string) => void;
+  onSelectProject?: (projectId: string) => void;
+  onSelectPresentation?: (presentationId: string) => void;
 }
 
 export const ModulesView: React.FC<ModulesViewProps> = ({
   courseId,
   onSelectActivity,
-  onSelectQuiz
+  onSelectQuiz,
+  onSelectAssignment,
+  onSelectProject,
+  onSelectPresentation
 }) => {
   const {
     activeUser,
@@ -61,9 +70,18 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
     editModuleComment,
     deleteModuleComment,
     toggleLikeModuleComment,
-    markModuleCommentsRead
+    markModuleCommentsRead,
+    markTabVisited,
+    markAllNotificationsRead
   // Sibling-WIP refresh flag: read when the provider supplies it.
   } = useLMS() as ReturnType<typeof useLMS> & { isSyncing?: boolean };
+
+  React.useEffect(() => {
+    if (courseId) {
+      markTabVisited?.('modules', courseId);
+      markAllNotificationsRead?.('module_comment_reply');
+    }
+  }, [courseId]);
 
   // Modules sorted with latest at the top (memoized)
   const sortedModules = useMemo(() => {
@@ -86,6 +104,31 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
   // Second-layer reply composer state per module (reply target id + draft text)
   const [replyToIds, setReplyToIds] = useState<Record<string, string | null>>({});
   const [replyTexts, setReplyTexts] = useState<Record<string, string>>({});
+
+  const resolveAuthorAvatar = (authorId?: string, fallbackAvatar?: string): string => {
+    if (authorId && authorId === activeUser.id && activeUser.avatar) {
+      return activeUser.avatar;
+    }
+    if (authorId) {
+      const u = (db.users || []).find(user => user.id === authorId);
+      if (u?.avatar) return u.avatar;
+      const stored = getCleanStoredAvatar(authorId);
+      if (stored) return stored;
+    }
+    return fallbackAvatar || '';
+  };
+
+  const resolveAuthorName = (authorId?: string, fallbackName?: string): string => {
+    if (authorId && authorId === activeUser.id && activeUser.name) {
+      return activeUser.name;
+    }
+    if (authorId) {
+      const u = (db.users || []).find(user => user.id === authorId);
+      if (u?.name) return u.name;
+    }
+    if (fallbackName && fallbackName !== 'Someone') return fallbackName;
+    return 'Someone';
+  };
 
   // Pending flags for slow comment posts — show loading + block double-submit
   const [postingCommentIds, setPostingCommentIds] = useState<Record<string, boolean>>({});
@@ -313,9 +356,15 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
       case 'file':
         return <File className="w-4 h-4 text-muted-foreground" />;
       case 'activity':
-        return <FileCheck2 className="w-4 h-4 text-muted-foreground" />;
+        return <FileCheck2 className="w-4 h-4 text-sky-500" />;
       case 'quiz':
-        return <HelpCircle className="w-4 h-4 text-muted-foreground" />;
+        return <HelpCircle className="w-4 h-4 text-purple-500" />;
+      case 'assignment':
+        return <FileText className="w-4 h-4 text-amber-500" />;
+      case 'project':
+        return <Briefcase className="w-4 h-4 text-emerald-500" />;
+      case 'presentation':
+        return <Presentation className="w-4 h-4 text-rose-500" />;
       case 'external_url':
         return <Globe className="w-4 h-4 text-muted-foreground" />;
       default:
@@ -327,6 +376,16 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
     switch (type) {
       case 'external_url':
         return 'link';
+      case 'activity':
+        return 'activity';
+      case 'quiz':
+        return 'quiz';
+      case 'assignment':
+        return 'assignment';
+      case 'project':
+        return 'project';
+      case 'presentation':
+        return 'presentation';
       default:
         return type;
     }
@@ -436,6 +495,7 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
             <label className="text-xs font-bold font-sans text-foreground flex items-center gap-1.5">
               <Plus className="w-3.5 h-3.5 text-primary" />
               <span>Module Title</span>
+              <span className="text-red-500">*</span>
             </label>
             <button
               type="button"
@@ -650,7 +710,9 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                       ) : (
                         [...mod.items].slice().reverse().map(item => {
                           const isItemExpanded = expandedItems[item.id] ?? false;
-                          const isNavigable = (item.type === 'activity' && Boolean(item.activityId)) || (item.type === 'quiz' && Boolean(item.quizId));
+                          const isNavigable =
+                            ((item.type === 'activity' || item.type === 'assignment' || item.type === 'project' || item.type === 'presentation') && Boolean(item.activityId)) ||
+                            (item.type === 'quiz' && Boolean(item.quizId));
                           return (
                           <div
                             key={item.id}
@@ -661,6 +723,12 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                               onClick={() => {
                                 if (item.type === 'activity' && item.activityId) {
                                   onSelectActivity(item.activityId);
+                                } else if (item.type === 'assignment' && item.activityId) {
+                                  (onSelectAssignment || onSelectActivity)(item.activityId);
+                                } else if (item.type === 'project' && item.activityId) {
+                                  (onSelectProject || onSelectActivity)(item.activityId);
+                                } else if (item.type === 'presentation' && item.activityId) {
+                                  (onSelectPresentation || onSelectActivity)(item.activityId);
                                 } else if (item.type === 'quiz' && item.quizId) {
                                   onSelectQuiz(item.quizId);
                                 } else {
@@ -868,12 +936,12 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                                       <div className="flex items-center justify-between">
                                         <div className="flex items-center space-x-2 flex-wrap gap-y-1">
                                           <UserAvatar
-                                            name={c.authorName}
-                                            src={c.authorAvatar}
+                                            name={resolveAuthorName(c.authorId, c.authorName)}
+                                            src={resolveAuthorAvatar(c.authorId, c.authorAvatar)}
                                             className="w-6 h-6 rounded-full object-cover border border-border shrink-0"
                                           />
                                           <span className="text-xs font-bold text-foreground font-sans">
-                                            {c.authorName}
+                                            {resolveAuthorName(c.authorId, c.authorName)}
                                           </span>
                                           {(() => {
                                             const authorUser = (db.users || []).find(u => u.id === c.authorId);
@@ -1051,12 +1119,12 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                                             <div className="flex items-center justify-between">
                                               <div className="flex items-center space-x-2 flex-wrap gap-y-1">
                                                 <UserAvatar
-                                                  name={child.authorName}
-                                                  src={child.authorAvatar}
+                                                  name={resolveAuthorName(child.authorId, child.authorName)}
+                                                  src={resolveAuthorAvatar(child.authorId, child.authorAvatar)}
                                                   className="w-5 h-5 rounded-full object-cover border border-border shrink-0"
                                                 />
                                                 <span className="text-xs font-bold text-foreground font-sans">
-                                                  {child.authorName}
+                                                  {resolveAuthorName(child.authorId, child.authorName)}
                                                 </span>
                                                 <span className="text-[11px] text-muted-foreground font-sans">
                                                   · {child.createdAt.includes('T') ? new Date(child.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : child.createdAt}
@@ -1337,10 +1405,10 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                 {/* PDF Preview */}
                 {previewItem.fileUrl &&
                   (previewItem.fileUrl.startsWith('data:application/pdf') || previewItem.fileUrl.includes('.pdf') || (previewItem.fileName && /\.pdf$/i.test(previewItem.fileName))) && (
-                    <iframe
-                      src={previewItem.fileUrl}
-                      className="w-full flex-1 min-h-[500px] rounded-xl border border-border bg-white"
-                      title={previewItem.title}
+                    <PdfViewer
+                      url={previewItem.fileUrl}
+                      title={previewItem.title || previewItem.fileName || 'PDF Document'}
+                      className="w-full flex-1 min-h-[500px]"
                     />
                   )}
 

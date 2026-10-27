@@ -211,7 +211,7 @@ export interface EnrollmentRequest {
 export interface ModuleItem {
   id: string;
   title: string;
-  type: 'page' | 'activity' | 'quiz' | 'file' | 'external_url';
+  type: 'page' | 'activity' | 'quiz' | 'file' | 'external_url' | 'assignment' | 'project' | 'presentation';
   published: boolean;
   required: boolean;
   completionCondition?: 'view' | 'submit' | 'min_score';
@@ -389,6 +389,8 @@ export interface Quiz {
   published: boolean;
   delayedUntil?: string; // scheduled release date/time
   dueDate?: string;
+  availableFrom?: string;
+  availableUntil?: string;
   questions: QuizQuestion[];
   fileName?: string;
   fileUrl?: string;

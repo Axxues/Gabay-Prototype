@@ -6,6 +6,7 @@ import React from 'react';
 const mocks = vi.hoisted(() => ({
   createActivity: vi.fn(),
   showAlert: vi.fn(),
+  uploadCourseFile: vi.fn(),
 }));
 
 vi.mock('../../shared/context/LMSContext', () => ({
@@ -13,6 +14,7 @@ vi.mock('../../shared/context/LMSContext', () => ({
     db: { courses: [{ id: 'c1', code: 'CS 101' }] },
     createActivity: mocks.createActivity,
     showAlert: mocks.showAlert,
+    uploadCourseFile: mocks.uploadCourseFile,
   }),
 }));
 
@@ -73,6 +75,53 @@ describe('CreateActivityPage publish loading', () => {
     resolveSave({ id: 'a1' });
     await waitFor(() => {
       expect(mocks.createActivity).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  test('stages attached file locally and only uploads when activity is published', async () => {
+    mocks.createActivity.mockResolvedValueOnce({ id: 'a1' });
+    mocks.uploadCourseFile.mockResolvedValueOnce({
+      id: 'f1',
+      name: 'lab1.pdf',
+      formattedSize: '15.0 KB',
+      fileUrl: '/uploads/lab1.pdf'
+    });
+
+    const { container } = renderPage();
+    fillRequiredTitle();
+
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    expect(fileInput).toBeTruthy();
+
+    const fakeFile = new File(['dummy lab content'], 'lab1.pdf', { type: 'application/pdf' });
+    fireEvent.change(fileInput, { target: { files: [fakeFile] } });
+
+    // File is staged in UI, but uploadCourseFile should NOT be called yet
+    expect(screen.getByText('lab1.pdf')).toBeInTheDocument();
+    expect(screen.getByText(/Attached/i)).toBeInTheDocument();
+    expect(mocks.uploadCourseFile).not.toHaveBeenCalled();
+
+    // Now publish the activity
+    const publish = screen.getByRole('button', { name: 'Publish activity' });
+    fireEvent.click(publish);
+
+    await waitFor(() => {
+      expect(mocks.uploadCourseFile).toHaveBeenCalledTimes(1);
+      expect(mocks.uploadCourseFile).toHaveBeenCalledWith(
+        expect.objectContaining({
+          courseId: 'c1',
+          name: 'lab1.pdf',
+          rawFile: fakeFile,
+          area: 'activities'
+        })
+      );
+      expect(mocks.createActivity).toHaveBeenCalledWith(
+        expect.objectContaining({
+          courseId: 'c1',
+          fileName: 'lab1.pdf',
+          fileUrl: '/uploads/lab1.pdf'
+        })
+      );
     });
   });
 });

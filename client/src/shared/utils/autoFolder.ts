@@ -40,17 +40,34 @@ export function dedupeFileName(name: string, existingNames: string[]): string {
 }
 
 export function resolveFiledSourceLabel(
-  file: { sourceArea?: string; sourceId?: string },
-  announcements: { id: string; title: string }[],
-  modules: { title: string; items: { id: string }[] }[]
+  file: { sourceArea?: string; sourceId?: string; name?: string; url?: string; fileUrl?: string },
+  announcements: { id: string; title: string; attachments?: { name: string; url?: string }[] }[],
+  modules: { id?: string; title: string; items?: { id: string; fileName?: string; fileUrl?: string }[] }[]
 ): string {
-  if (file.sourceArea === 'announcements') {
-    const ann = announcements.find(a => a.id === file.sourceId);
-    return ann ? `Announcement: ${ann.title}` : 'Source deleted';
+  const fileUrl = file.url || file.fileUrl;
+  const annByAttachment = announcements.find(a =>
+    (file.sourceId && a.id === file.sourceId) ||
+    (a.attachments || []).some(att => (file.name && att.name === file.name) || (fileUrl && att.url === fileUrl))
+  );
+  if (file.sourceArea === 'announcements' || (!file.sourceArea && annByAttachment)) {
+    if (file.sourceId) {
+      const ann = announcements.find(a => a.id === file.sourceId);
+      if (ann) return `Announcement: ${ann.title}`;
+    }
+    if (annByAttachment) return `Announcement: ${annByAttachment.title}`;
+    return file.sourceId ? 'Source deleted' : 'Announcements';
   }
-  if (file.sourceArea === 'modules') {
-    const mod = modules.find(m => (m.items || []).some(i => i.id === file.sourceId));
-    return mod ? `Module: ${mod.title}` : 'Source deleted';
+  const modByItem = modules.find(m =>
+    (file.sourceId && ((m.items || []).some(i => i.id === file.sourceId) || m.id === file.sourceId)) ||
+    (m.items || []).some(i => (file.name && (i as any).fileName === file.name) || (fileUrl && (i as any).fileUrl === fileUrl))
+  );
+  if (file.sourceArea === 'modules' || (!file.sourceArea && modByItem)) {
+    if (file.sourceId) {
+      const mod = modules.find(m => (m.items || []).some(i => i.id === file.sourceId) || m.id === file.sourceId);
+      if (mod) return `Module: ${mod.title}`;
+    }
+    if (modByItem) return `Module: ${modByItem.title}`;
+    return file.sourceId ? 'Source deleted' : 'Modules';
   }
   if (file.sourceArea === 'syllabus') return 'Syllabus';
   if (file.sourceArea === 'activities') return 'Activities';

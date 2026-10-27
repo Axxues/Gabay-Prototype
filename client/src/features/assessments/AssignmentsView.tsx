@@ -19,6 +19,7 @@ import {
 import { PageHeader } from '../../shared/components/common/PageHeader';
 import { EmptyState } from '../../shared/components/common/EmptyState';
 import { CreateAssignmentPage } from './CreateAssignmentPage';
+import { ActivityRunnerView } from './ActivityRunnerView';
 import { canManageCourseContent } from '../../shared/utils/roles';
 
 interface AssignmentsViewProps {
@@ -264,6 +265,17 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
           </div>
         )}
       </div>
+    );
+  }
+
+  if (selectedAssignment && selectedAssignment.format !== 'classic') {
+    return (
+      <ActivityRunnerView
+        courseId={courseId}
+        activityId={selectedAssignment.id}
+        onSelectActivity={onSelectAssignment}
+        onBackToModules={onBackToModules}
+      />
     );
   }
 

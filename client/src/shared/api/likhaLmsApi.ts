@@ -18,6 +18,7 @@ export interface LikhaUploadedFile {
   id: string;
   filename_download: string;
   url: string;
+  filesize?: number;
 }
 
 import { generateUuid } from '../utils/cryptoToken';
@@ -88,6 +89,22 @@ function isTokenExpired(token: string | null): boolean {
   }
 }
 
+export async function getValidToken(): Promise<string | null> {
+  let token = getToken();
+  if (!token) return null;
+  if (isTokenExpired(token)) {
+    const refreshToken = getRefreshToken();
+    if (refreshToken) {
+      token = await refreshAccessToken();
+    } else {
+      clearToken();
+      notifySessionExpired();
+      token = null;
+    }
+  }
+  return token;
+}
+
 // Hardcoded superadmin credentials and client-side elevation have been removed per AGENTS.md.
 // All operations authenticate strictly with the active user's session JWT.
 const getLikhaServiceToken = async (): Promise<string | null> => null;
@@ -120,12 +137,6 @@ export const UUID_ITEM_COLLECTIONS = new Set([
   'course_sections',
   'sections',
   'enrollment_requests',
-  'syllabus_signatories',
-  'syllabus_references',
-  'syllabus_policies',
-  'syllabus_rubrics',
-  'syllabus_learning_plans',
-  'syllabus_course_maps',
   'spr_cells',
   'spr_configs',
   'course_grades',
@@ -140,8 +151,11 @@ async function rawLikhaFetch<T = any>(
   options: RequestInit = {},
   allowRetry = true
 ): Promise<T> {
-  const url = path.startsWith('http') ? path : `${LIKHA_URL}${path.startsWith('/') ? path : `/${path}`}`;
-  const token = getToken();
+  const normalizedPath = path.includes('?')
+    ? path.split('?')[0] + '?' + path.slice(path.indexOf('?') + 1).replace(/\[/g, '%5B').replace(/\]/g, '%5D')
+    : path;
+  const url = normalizedPath.startsWith('http') ? normalizedPath : `${LIKHA_URL}${normalizedPath.startsWith('/') ? normalizedPath : `/${normalizedPath}`}`;
+  let token = await getValidToken();
   const headers = new Headers(options.headers || {});
   if (!headers.has('Content-Type') && !(options.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json');
@@ -240,8 +254,9 @@ async function likhaRequest<T = any>(
   }
 
   if (method === 'GET') {
-    const token = getToken() || 'anon';
-    const cacheKey = `${token}:${path}`;
+    const validToken = await getValidToken();
+    const tokenKey = validToken || 'anon';
+    const cacheKey = `${tokenKey}:${path}`;
     const ttl = getPathTtl(path);
     return likhaCache.getOrFetch<T>(cacheKey, () => rawLikhaFetch<T>(path, effectiveOptions, allowRetry), ttl);
   }
@@ -250,6 +265,10 @@ async function likhaRequest<T = any>(
   const result = await rawLikhaFetch<T>(path, effectiveOptions, allowRetry);
   const resourceBase = path.split('?')[0];
   likhaCache.invalidate(resourceBase);
+  const colMatch = resourceBase.match(/^\/items\/([a-zA-Z0-9_-]+)/);
+  if (colMatch) {
+    likhaCache.invalidate(`/items/${colMatch[1]}`);
+  }
   if (resourceBase.startsWith('/users')) {
     likhaCache.invalidate('/users');
   }
@@ -402,7 +421,9 @@ export const likhaLmsApi = {
         body: JSON.stringify({ email, password, mode: 'json' }),
       });
       if (!res.ok) {
-        throw new Error(`Likha authentication failed: ${res.status}`);
+        const err = new Error(`Likha authentication failed: ${res.status}`);
+        (err as any).status = res.status;
+        throw err;
       }
       const json = await res.json();
       const token = json.data?.access_token;
@@ -420,6 +441,8 @@ export const likhaLmsApi = {
     },
 
     async getMe(): Promise<any> {
+      const token = await getValidToken();
+      if (!token) return null;
       const me = await likhaRequest('/users/me?fields=*,role.*');
       if (me?.role) indexRole(me.role);
       return me;
@@ -1075,15 +1098,28 @@ export const likhaLmsApi = {
   // =========================================================================
   communications: {
     async getAnnouncements(courseId: string): Promise<any[]> {
-      return likhaRequest(`/items/announcements?filter[course_id][_eq]=${encodeURIComponent(courseId)}&sort=-created_at`);
+      return likhaRequest(`/items/announcements?filter[course_id][_eq]=${encodeURIComponent(courseId)}&fields=*,attachments.directus_files_id.*&sort=-created_at`).catch(() =>
+        likhaRequest(`/items/announcements?filter[course_id][_eq]=${encodeURIComponent(courseId)}&sort=-created_at`)
+      );
     },
 
     async createAnnouncement(data: any): Promise<any> {
       const payload = { id: data.id || generateUuid(), ...data };
-      return likhaRequest('/items/announcements', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      });
+      try {
+        return await likhaRequest('/items/announcements', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+      } catch (err: any) {
+        if (payload.attachments) {
+          const { attachments, ...stripped } = payload;
+          return await likhaRequest('/items/announcements', {
+            method: 'POST',
+            body: JSON.stringify(stripped),
+          });
+        }
+        throw err;
+      }
     },
 
     async updateAnnouncement(id: string, patch: any): Promise<any> {
@@ -1288,10 +1324,21 @@ export const likhaLmsApi = {
 
     async deleteCourseFile(id: string): Promise<void> {
       const item = await likhaRequest<any>(`/items/course_files/${encodeURIComponent(id)}?fields=*,file.*`).catch(() => null);
+      if (!item) {
+        // Record does not exist in Likha course_files; nothing to delete on backend
+        return;
+      }
       const fileAssetId = item?.file?.id || (typeof item?.file === 'string' ? item.file : null);
-      await likhaRequest(`/items/course_files/${encodeURIComponent(id)}`, {
-        method: 'DELETE',
-      });
+      try {
+        await likhaRequest(`/items/course_files/${encodeURIComponent(id)}`, {
+          method: 'DELETE',
+        });
+      } catch (err: any) {
+        if (err?.message && /not exist/i.test(err.message)) {
+          return;
+        }
+        throw err;
+      }
       if (fileAssetId) {
         await likhaRequest(`/files/${encodeURIComponent(fileAssetId)}`, {
           method: 'DELETE',
@@ -1356,6 +1403,58 @@ export const likhaLmsApi = {
       );
       if (!items || items.length === 0) return null;
       return mapLikhaSyllabusRow(items[0], courseId);
+    },
+
+    async getDraft(courseId: string): Promise<SyllabusRevisionResponse | null> {
+      const items = await likhaRequest<any[]>(
+        `/items/syllabi?filter[course_id][_eq]=${encodeURIComponent(courseId)}&filter[status][_eq]=draft&sort=-version&limit=1`
+      ).catch(() => []);
+      if (!items || items.length === 0) return null;
+      return mapLikhaSyllabusRow(items[0], courseId);
+    },
+
+    async getCourseSyllabus(courseId: string, canManage = true): Promise<SyllabusRevisionResponse | null> {
+      const items = await likhaRequest<any[]>(
+        `/items/syllabi?filter[course_id][_eq]=${encodeURIComponent(courseId)}&sort=-version&limit=10`
+      ).catch(() => []);
+      if (!items || items.length === 0) return null;
+      if (canManage) {
+        // Faculty/instructor/creator: active draft takes precedence, otherwise latest published
+        const draft = items.find((i: any) => i.status === 'draft');
+        if (draft) return mapLikhaSyllabusRow(draft, courseId);
+        const pub = items.find((i: any) => i.status === 'published');
+        if (pub) return mapLikhaSyllabusRow(pub, courseId);
+        return mapLikhaSyllabusRow(items[0], courseId);
+      } else {
+        // Students: only see published revisions
+        const pub = items.find((i: any) => i.status === 'published');
+        if (!pub) return null;
+        return mapLikhaSyllabusRow(pub, courseId);
+      }
+    },
+
+    async getAllSyllabi(canManage = true): Promise<Record<string, SyllabusRevisionResponse>> {
+      const query = canManage
+        ? '/items/syllabi?sort=-version&limit=250'
+        : '/items/syllabi?filter[status][_eq]=published&sort=-version&limit=250';
+      const items = await likhaRequest<any[]>(query).catch(() => []);
+      const byCourse: Record<string, SyllabusRevisionResponse> = {};
+      if (Array.isArray(items)) {
+        for (const item of items) {
+          const cid = String(item.course_id || '').trim();
+          if (!cid) continue;
+          if (canManage) {
+            if (!byCourse[cid] || (byCourse[cid].revision.status !== 'draft' && item.status === 'draft')) {
+              byCourse[cid] = mapLikhaSyllabusRow(item, cid);
+            }
+          } else {
+            if (item.status === 'published' && !byCourse[cid]) {
+              byCourse[cid] = mapLikhaSyllabusRow(item, cid);
+            }
+          }
+        }
+      }
+      return byCourse;
     },
 
     async listRevisions(courseId: string): Promise<SyllabusRevisionHeader[]> {
@@ -1515,11 +1614,7 @@ export const likhaLmsApi = {
   },
 
   async uploadFile(file: File): Promise<LikhaUploadedFile> {
-    let token = getToken();
-    const refreshToken = getRefreshToken();
-    if (refreshToken && isTokenExpired(token)) {
-      token = await refreshAccessToken();
-    }
+    let token = await getValidToken();
 
     const formData = new FormData();
     formData.append('file', file);
@@ -1536,7 +1631,7 @@ export const likhaLmsApi = {
     }
 
     if (res.status === 403 || res.status === 401) {
-      if (res.status === 401 && refreshToken) {
+      if (res.status === 401 && getRefreshToken()) {
         const refreshed = await refreshAccessToken();
         if (refreshed) {
           const retryFormData = new FormData();
@@ -1558,6 +1653,7 @@ export const likhaLmsApi = {
       id: fileData.id,
       filename_download: fileData.filename_download || file.name,
       url: `https://gabay.zyberlab.com/assets/${fileData.id}`,
+      filesize: typeof fileData?.filesize === 'number' ? fileData.filesize : (file.size ?? 0),
     };
   },
 
@@ -1709,6 +1805,8 @@ export const likhaLmsApi = {
       }).catch(() => {});
     },
   },
+
+  getValidToken,
 
   academicStructure: {
     async getColleges(): Promise<any[]> {

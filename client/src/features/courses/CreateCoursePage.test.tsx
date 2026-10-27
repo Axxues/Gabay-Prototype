@@ -14,6 +14,12 @@ const createCourseMock = vi.fn().mockImplementation(async (data: any) => ({
   code: data.code,
   section: data.section,
 }));
+const uploadFileToPublicMock = vi.fn().mockResolvedValue({
+  name: 'custom_banner.png',
+  size: '1.2 MB',
+  url: '/uploads/custom_banner.png',
+  isImage: true,
+});
 
 vi.mock('../../shared/context/LMSContext', () => ({
   useLMS: () => ({
@@ -26,12 +32,9 @@ vi.mock('../../shared/context/LMSContext', () => ({
 }));
 
 vi.mock('../../shared/utils/fileUploader', () => ({
-  uploadFileToPublic: vi.fn().mockResolvedValue({
-    name: 'custom_banner.png',
-    size: '1.2 MB',
-    url: '/uploads/custom_banner.png',
-    isImage: true,
-  }),
+  uploadFileToPublic: (...args: any[]) => (uploadFileToPublicMock as any)(...args),
+  isImageFile: () => true,
+  formatFileSize: (b: number) => `${(b / 1024).toFixed(1)} KB`,
 }));
 
 import { CreateCoursePage } from './CreateCoursePage';
@@ -153,7 +156,7 @@ describe('CreateCoursePage', () => {
     }));
   });
 
-  test('switching to Upload File tab and uploading an image displays the image preview banner and metadata', async () => {
+  test('switching to Upload File tab stages image locally and only uploads when course is created', async () => {
     const { fireEvent, act, waitFor } = await import('@testing-library/react');
 
     render(
@@ -180,16 +183,16 @@ describe('CreateCoursePage', () => {
       fireEvent.change(fileInput, { target: { files: [fakeFile] } });
     });
 
-    // Preview should now be shown after simulated upload completes
+    // Preview should now be shown locally
     await waitFor(() => {
       expect(screen.getByAltText('Uploaded course cover')).toBeInTheDocument();
     });
 
-    const previewImg = screen.getByAltText('Uploaded course cover') as HTMLImageElement;
-    expect(previewImg.src).toContain('/uploads/custom_banner.png');
+    // File is staged: uploadFileToPublic should NOT be called yet!
+    expect(uploadFileToPublicMock).not.toHaveBeenCalled();
 
-    // Filename and success indicator should be visible
-    expect(screen.getByText('custom_banner.png')).toBeInTheDocument();
+    // Filename and indicator should be visible
+    expect(screen.getByText('banner.png')).toBeInTheDocument();
     expect(screen.getByText(/uploaded & ready/i)).toBeInTheDocument();
 
     // Clicking remove clears the image and returns to dropzone
@@ -199,6 +202,42 @@ describe('CreateCoursePage', () => {
 
     expect(screen.getByText(/click to browse or drag & drop/i)).toBeInTheDocument();
     expect(screen.queryByAltText('Uploaded course cover')).not.toBeInTheDocument();
+
+    // Stage file again and submit course creation to verify upload is deferred until submit
+    await act(async () => {
+      fireEvent.change(fileInput, { target: { files: [fakeFile] } });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByAltText('Uploaded course cover')).toBeInTheDocument();
+    });
+
+    // Not uploaded yet
+    expect(uploadFileToPublicMock).not.toHaveBeenCalled();
+
+    // Fill required course inputs
+    fireEvent.change(screen.getByPlaceholderText(/CMSC 180/i), { target: { value: 'CMSC 101' } });
+    fireEvent.change(screen.getByPlaceholderText(/4-E/i), { target: { value: '1-A' } });
+    fireEvent.change(screen.getByPlaceholderText(/Artificial Intelligence/i), { target: { value: 'Intro to CS' } });
+
+    // Submit course creation
+    const submitBtn = screen.getByRole('button', { name: /create course shell/i });
+    await act(async () => {
+      fireEvent.click(submitBtn);
+    });
+
+    // Now upload should have occurred upon saving
+    await waitFor(() => {
+      expect(uploadFileToPublicMock).toHaveBeenCalledTimes(1);
+      expect(uploadFileToPublicMock).toHaveBeenCalledWith(fakeFile);
+      expect(createCourseMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          code: 'CMSC 101',
+          section: '1-A',
+          image: '/uploads/custom_banner.png'
+        })
+      );
+    });
   });
 });
 

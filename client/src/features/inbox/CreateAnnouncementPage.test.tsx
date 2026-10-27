@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
-import { describe, expect, test, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import '@testing-library/jest-dom/vitest';
+import { describe, expect, test, vi, beforeEach, afterEach } from 'vitest';
+import { fireEvent, render, screen, waitFor, cleanup } from '@testing-library/react';
 import React from 'react';
 
 const mocks = vi.hoisted(() => ({
   createAnnouncement: vi.fn(),
   showAlert: vi.fn(),
+  uploadCourseFile: vi.fn(),
   mockCourses: [
     {
       id: 'c1',
@@ -34,8 +36,21 @@ vi.mock('../../shared/context/LMSContext', () => ({
     activeUser: { id: 'inst-1', name: 'Dr. Santos', role: 'faculty' },
     createAnnouncement: mocks.createAnnouncement,
     showAlert: mocks.showAlert,
+    uploadCourseFile: mocks.uploadCourseFile,
   }),
 }));
+
+vi.mock('../../shared/utils/fileUploader', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../shared/utils/fileUploader')>();
+  return {
+    ...actual,
+    uploadFileToPublic: vi.fn(async (file: File) => ({
+      name: file.name,
+      size: `${file.size} B`,
+      url: `/uploads/${file.name}`,
+    })),
+  };
+});
 
 import { CreateAnnouncementPage } from './CreateAnnouncementPage';
 
@@ -57,6 +72,10 @@ function fillRequiredFields() {
 describe('CreateAnnouncementPage cross-section sync', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    cleanup();
   });
 
   test('prompts with CrossSectionPromptModal when sibling section exists and replicates to selected', async () => {
@@ -99,6 +118,93 @@ describe('CreateAnnouncementPage cross-section sync', () => {
       expect(mocks.createAnnouncement).toHaveBeenCalledTimes(1);
       expect(mocks.createAnnouncement).toHaveBeenCalledWith(
         expect.objectContaining({ courseId: 'c1', title: 'Midterm schedule' })
+      );
+    });
+  });
+
+  test('allows uploading multiple files and submitting them as attachments', async () => {
+    mocks.createAnnouncement.mockResolvedValue({ id: 'an1' });
+    const { container } = renderPage('c1');
+    fillRequiredFields();
+
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    expect(fileInput).toHaveAttribute('multiple');
+
+    const file1 = new File(['content1'], 'handout1.pdf', { type: 'application/pdf' });
+    const file2 = new File(['content2'], 'handout2.docx', { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+
+    fireEvent.change(fileInput, { target: { files: [file1, file2] } });
+
+    expect(await screen.findByText('handout1.pdf')).toBeInTheDocument();
+    expect(await screen.findByText('handout2.docx')).toBeInTheDocument();
+    expect(screen.getByText(/Attach file \/ handout \(2\)/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Publish announcement' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Publish to Current Section Only/i }));
+
+    await waitFor(() => {
+      expect(mocks.createAnnouncement).toHaveBeenCalledWith(
+        expect.objectContaining({
+          attachments: [
+            expect.objectContaining({ name: 'handout1.pdf' }),
+            expect.objectContaining({ name: 'handout2.docx' }),
+          ],
+        })
+      );
+    });
+  });
+
+  test('stages files locally and only uploads to Likha ERP when the post is published', async () => {
+    mocks.createAnnouncement.mockResolvedValue({ id: 'an1' });
+    mocks.uploadCourseFile.mockImplementation(async (params: any) => ({
+      id: 'file-101',
+      name: params.name,
+      fileUrl: `https://gabay.zyberlab.com/assets/${params.name}`,
+      size: params.size,
+      formattedSize: params.formattedSize || '15 KB',
+    }));
+
+    const { container } = renderPage('c1');
+    fillRequiredFields();
+
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+
+    const content = new Uint8Array(15360); // 15 KB
+    const file = new File([content], 'Questionnaire.pdf', { type: 'application/pdf' });
+
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    // Staged in UI immediately without uploading
+    expect(await screen.findByText('Questionnaire.pdf')).toBeInTheDocument();
+    expect(screen.getByText('15 KB')).toBeInTheDocument();
+    expect(screen.queryByText('0 B')).not.toBeInTheDocument();
+
+    // Verify Likha ERP was NOT called yet while drafting
+    expect(mocks.uploadCourseFile).not.toHaveBeenCalled();
+
+    // Now publish the announcement
+    fireEvent.click(screen.getByRole('button', { name: 'Publish announcement' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Publish to Current Section Only/i }));
+
+    // Verify Likha ERP upload was executed when post was saved
+    await waitFor(() => {
+      expect(mocks.uploadCourseFile).toHaveBeenCalledWith(
+        expect.objectContaining({
+          courseId: 'c1',
+          name: 'Questionnaire.pdf',
+          size: 15360,
+          formattedSize: '15 KB',
+        })
+      );
+      expect(mocks.createAnnouncement).toHaveBeenCalledWith(
+        expect.objectContaining({
+          attachments: [
+            expect.objectContaining({
+              name: 'Questionnaire.pdf',
+              size: '15 KB',
+            }),
+          ],
+        })
       );
     });
   });

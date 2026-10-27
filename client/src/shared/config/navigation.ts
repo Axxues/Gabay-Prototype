@@ -38,10 +38,9 @@ export const ASSESSMENT_SUB_ITEMS: { id: string; label: string; icon: NavIcon }[
   { id: 'assignments', label: 'Assignments', icon: 'assignments' },
   { id: 'projects', label: 'Projects', icon: 'projects' },
   { id: 'presentations', label: 'Presentations', icon: 'presentations' },
-  { id: 'exams', label: 'Exams', icon: 'exams' },
 ];
 
-export const ASSESSMENT_TAB_IDS = ['assessments', 'activities', 'quizzes', 'assignments', 'projects', 'presentations', 'exams'] as const;
+export const ASSESSMENT_TAB_IDS = ['assessments', 'activities', 'quizzes', 'assignments', 'projects', 'presentations'] as const;
 export function isAssessmentTab(tab: string): boolean {
   return (ASSESSMENT_TAB_IDS as readonly string[]).includes(tab);
 }

@@ -115,4 +115,29 @@ describe('markTabVisited syncs the active session user', () => {
     );
     expect(expressCalls).toEqual([]);
   });
+
+  test('persists tab visits to localStorage across sessions/refreshes', async () => {
+    render(
+      <LMSProvider>
+        <Probe />
+      </LMSProvider>
+    );
+
+    await act(async () => {
+      await doLogin!();
+    });
+
+    act(() => {
+      doVisit!('people', 'c1');
+    });
+
+    await waitFor(() => {
+      expect(latestVisits?.['people:c1']).toBeDefined();
+    });
+
+    const raw = localStorage.getItem('gabay_lms_tab_visits_v1');
+    expect(raw).toBeTruthy();
+    const parsed = JSON.parse(raw!);
+    expect(parsed?.['u1']?.['people:c1']).toBeDefined();
+  });
 });

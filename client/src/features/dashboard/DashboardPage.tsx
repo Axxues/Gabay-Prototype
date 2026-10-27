@@ -11,7 +11,6 @@ import { CustomDropdown } from '../../shared/components/common/CustomDropdown';
 import {
   BookOpen,
   Clock,
-  Award,
   ArrowRight,
   Megaphone,
   Folder,
@@ -35,6 +34,7 @@ import { courseMatchesProgram } from '../../shared/utils/courseScoping';
 import { useProcessing } from '../../shared/hooks/useProcessing';
 import { useModalAnimate } from '../../shared/hooks/useModalAnimate';
 import { normalizeAcademicSemester } from '../../shared/utils/academicSemester';
+import type { AcademicSemester } from '../../shared/types/lms';
 
 const SEMESTER_FILTERS = [
   { value: 'all', label: 'All Semesters' },
@@ -65,6 +65,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     colleges,
     departments,
     isLoading,
+    isSyncing,
     getPendingRequestsForStudent,
     studentApproveInvitation,
     studentDeclineInvitation,
@@ -75,7 +76,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     schoolYears,
     getSchoolYearsByCollege,
     getActiveSchoolYearForCollege,
-    getBaselineSchoolYear
+    getBaselineSchoolYear,
+    baselineSemester,
+    getActiveSemesterForCollege,
   } = useLMS();
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
   const [copiedCodeCourseId, setCopiedCodeCourseId] = useState<string | null>(null);
@@ -376,7 +379,30 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     return counts;
   }, [availablePrograms, baseMonitoredCoursesInYear, db.users]);
 
-  const [selectedSemester, setSelectedSemester] = useState<string>('all');
+  const collegeSemester = useMemo<AcademicSemester>(() => {
+    return (userCollegeId && typeof getActiveSemesterForCollege === 'function' ? getActiveSemesterForCollege(userCollegeId) : undefined) || 'First';
+  }, [getActiveSemesterForCollege, userCollegeId]);
+
+  const universitySemester = useMemo<AcademicSemester>(() => {
+    return baselineSemester || 'First';
+  }, [baselineSemester]);
+
+  const defaultSemester = useMemo<string>(() => {
+    if (isAdmin) {
+      return universitySemester;
+    }
+    return collegeSemester;
+  }, [isAdmin, universitySemester, collegeSemester]);
+
+  const [selectedSemester, setSelectedSemester] = useState<string>(() => defaultSemester);
+
+  const prevDefaultSemesterRef = useRef(defaultSemester);
+  useEffect(() => {
+    if (prevDefaultSemesterRef.current !== defaultSemester) {
+      prevDefaultSemesterRef.current = defaultSemester;
+      setSelectedSemester(defaultSemester);
+    }
+  }, [defaultSemester]);
 
   // Filter courses by selected school year and selected program tab
   const programFilteredCourses = useMemo(() => {
@@ -939,12 +965,25 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 {SEMESTER_FILTERS.map((sem) => {
                   const isSelected = selectedSemester === sem.value;
                   const count = semesterCourseCounts[sem.value] ?? 0;
+                  const isCollegeSem = sem.value === collegeSemester;
+                  const isUnivSem = sem.value === universitySemester;
+                  const isBoth = isCollegeSem && isUnivSem;
+
                   return (
                     <button
                       key={sem.value}
                       type="button"
                       onClick={() => setSelectedSemester(sem.value)}
                       data-testid={`semester-tab-${sem.value}`}
+                      title={
+                        isBoth
+                          ? `${sem.label} (Current Semester)`
+                          : isCollegeSem
+                          ? `${sem.label} (College Semester)`
+                          : isUnivSem
+                          ? `${sem.label} (University Semester)`
+                          : sem.label
+                      }
                       className={`px-3 py-1.5 text-xs font-bold rounded-xl border transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
                         isSelected
                           ? 'bg-foreground text-background border-foreground shadow-2xs'
@@ -961,6 +1000,45 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                       >
                         {count}
                       </span>
+                      {isBoth ? (
+                        <span
+                          data-testid="semester-current-badge"
+                          className={`text-[9px] px-1.5 py-0.2 rounded font-semibold border ${
+                            isSelected
+                              ? 'bg-background/20 text-background border-transparent'
+                              : 'bg-muted text-muted-foreground border-border'
+                          }`}
+                        >
+                          Current
+                        </span>
+                      ) : (
+                        <>
+                          {isCollegeSem && (
+                            <span
+                              data-testid="semester-college-badge"
+                              className={`text-[9px] px-1.5 py-0.2 rounded font-semibold border ${
+                                isSelected
+                                  ? 'bg-background/20 text-background border-transparent'
+                                  : 'bg-primary/10 text-primary border-primary/20'
+                              }`}
+                            >
+                              College Sem
+                            </span>
+                          )}
+                          {isUnivSem && (
+                            <span
+                              data-testid="semester-university-badge"
+                              className={`text-[9px] px-1.5 py-0.2 rounded font-semibold border ${
+                                isSelected
+                                  ? 'bg-background/20 text-background border-transparent'
+                                  : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
+                              }`}
+                            >
+                              University Sem
+                            </span>
+                          )}
+                        </>
+                      )}
                     </button>
                   );
                 })}
@@ -969,7 +1047,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           )}
 
           {/* Empty State or Course Cards Grid */}
-          {isLoading && filteredCourses.length === 0 ? (
+          {(isLoading ? filteredCourses.length === 0 : (isSyncing && baseMonitoredCourses.length === 0)) ? (
             <div data-testid="dashboard-courses-loading" className={`grid gap-5 ${hasRightSidebar ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1 md:grid-cols-2 lg:grid-cols-3"}`} aria-hidden="true">
               {Array.from({ length: 4 }).map((_, i) => (
                 <div key={`dashboard-courses-skeleton-${i}`} className="bg-card text-card-foreground border border-border rounded-2xl overflow-hidden flex flex-col justify-between animate-pulse">
@@ -1012,6 +1090,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               title={
                 baseMonitoredCourses.length === 0
                   ? "No enrolled courses"
+                  : baseMonitoredCoursesInYear.length === 0
+                  ? "No courses in this academic year"
                   : selectedSemester !== 'all'
                   ? `No courses for ${selectedSemester} Semester`
                   : "No courses in this academic year"
@@ -1023,6 +1103,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                       : (isDean || isChair || isAdmin)
                       ? 'No courses are currently available under your monitoring jurisdiction.'
                       : 'No course shells assigned to your account.')
+                  : baseMonitoredCoursesInYear.length === 0
+                  ? `You do not have any courses for AY ${selectedSchoolYear || currentActiveSchoolYear}. Select another academic year from above.`
                   : selectedSemester !== 'all'
                   ? `You do not have any courses for ${selectedSemester} Semester in AY ${selectedSchoolYear || currentActiveSchoolYear}. Select another semester or academic year.`
                   : `You do not have any courses for AY ${selectedSchoolYear || currentActiveSchoolYear}. Select another academic year from above.`
@@ -1364,29 +1446,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                       </div>
                     );
                   })}
-                </div>
-              </div>
-
-              {/* Feedback Alerts Card */}
-              <div className="bg-card border border-border rounded-2xl p-5 space-y-4">
-                <div className="flex items-center justify-between border-b border-border/70 pb-3">
-                  <h3 className="font-bold text-sm text-foreground flex items-center space-x-2">
-                    <Award className="w-4 h-4 text-muted-foreground" />
-                    <span>Recent feedback</span>
-                  </h3>
-                </div>
-
-                <div className="p-4 bg-muted/50 border border-border rounded-xl space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-bold text-emerald-800 dark:text-emerald-300">Lab 1: Full-Stack SPA</span>
-                    <span className="font-sans font-extrabold text-emerald-700 dark:text-emerald-400 text-sm">96/100</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground italic leading-relaxed">
-                    "Great work on the lab activity! Code is clean and well structured."
-                  </p>
-                  <div className="text-[10px] font-sans text-muted-foreground pt-1 border-t border-emerald-500/20">
-                    Graded by {db.users.find(u => isFacultyRole(u, u.role))?.name || (isFacultyRole(activeUser, activeRole) ? activeUser.name : 'Faculty Instructor')}
-                  </div>
                 </div>
               </div>
             </>

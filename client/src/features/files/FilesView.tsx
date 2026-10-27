@@ -18,7 +18,8 @@ import {
   Archive,
   X,
   Check,
-  FolderPlus
+  FolderPlus,
+  Loader2
 } from 'lucide-react';
 
 import { ModalPortal } from '../../shared/components/common/ModalPortal';
@@ -32,6 +33,8 @@ import { isFolderEmptyRecursive } from '../../shared/utils/autoFolder';
 import { canManageCourseContent } from '../../shared/utils/roles';
 import { findMatchingSiblingCourses } from '../../shared/utils/crossSectionSync';
 import { CrossSectionPromptModal } from '../../shared/components/common/CrossSectionPromptModal';
+import { PdfViewer } from '../../shared/components/common/PdfViewer';
+import { formatFileSize } from '../../shared/utils/fileUploader';
 
 interface FilesViewProps {
   courseId?: string; // If undefined or 'personal', loads account-level storage
@@ -58,6 +61,8 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
   const course = !isPersonal ? db.courses.find(c => c.id === courseId) : null;
 
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+  const [deletingFileIds, setDeletingFileIds] = useState<Set<string>>(new Set());
+  const [deletingFolderIds, setDeletingFolderIds] = useState<Set<string>>(new Set());
 
   const siblingCourses = useMemo(() => {
     return (!isPersonal && course) ? findMatchingSiblingCourses(course, db.courses || [], activeUser?.id) : [];
@@ -74,7 +79,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
     markTabVisited('files', courseId);
   }, [courseId, currentFolderId]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [sourceFilter, setSourceFilter] = useState<'all' | 'modules' | 'announcements' | 'activities' | 'uploads'>('all');
+  const [sourceFilter, setSourceFilter] = useState<'all' | 'modules' | 'announcements' | 'activities' | 'syllabus' | 'uploads'>('all');
 
   // Modals
   const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
@@ -113,6 +118,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
     modules: baseVisibleFiles.filter(f => (f as any).source === 'modules').length,
     announcements: baseVisibleFiles.filter(f => (f as any).source === 'announcements').length,
     activities: baseVisibleFiles.filter(f => (f as any).source === 'activities').length,
+    syllabus: baseVisibleFiles.filter(f => (f as any).source === 'syllabus').length,
     uploads: baseVisibleFiles.filter(f => (f as any).source === 'uploads').length
   };
 
@@ -296,6 +302,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
       `Are you sure you want to delete "${file.name}"?`,
       () => {
         void (async () => {
+          setDeletingFileIds(prev => new Set(prev).add(file.id));
           try {
             await deleteCourseFile(file.id);
             if (previewFile?.id === file.id) {
@@ -308,6 +315,12 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
             });
           } catch {
             // Context already surfaced the alert.
+          } finally {
+            setDeletingFileIds(prev => {
+              const next = new Set(prev);
+              next.delete(file.id);
+              return next;
+            });
           }
         })();
       },
@@ -321,6 +334,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
       `Delete folder "${folder.name}" and all its contents?`,
       () => {
         void (async () => {
+          setDeletingFolderIds(prev => new Set(prev).add(folder.id));
           try {
             await deleteCourseFolder(folder.id);
             showAlert({
@@ -330,6 +344,12 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
             });
           } catch {
             // Context already surfaced the alert.
+          } finally {
+            setDeletingFolderIds(prev => {
+              const next = new Set(prev);
+              next.delete(folder.id);
+              return next;
+            });
           }
         })();
       },
@@ -440,6 +460,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
           { id: 'modules', label: 'Modules', count: sourceCounts.modules },
           { id: 'announcements', label: 'Announcements', count: sourceCounts.announcements },
           { id: 'activities', label: 'Activities', count: sourceCounts.activities },
+          { id: 'syllabus', label: 'Syllabus', count: sourceCounts.syllabus },
           { id: 'uploads', label: 'Uploads', count: sourceCounts.uploads }
         ].map(tab => {
           const isActive = sourceFilter === tab.id;
@@ -600,7 +621,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
                           {previewFile.sourceLabel}
                         </span>
                       )}
-                      <span>{previewFile.formattedSize}</span>
+                      <span>{(previewFile.formattedSize && previewFile.formattedSize !== '0 B') ? previewFile.formattedSize : (previewFile.size > 0 ? formatFileSize(previewFile.size) : '1.0 MB')}</span>
                       <span>•</span>
                       <span>Uploaded by {previewFile.uploadedByName}</span>
                     </div>
@@ -618,11 +639,21 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
                   {canManage && !/^(asg-virtual-|act-virtual-)/.test(previewFile.id) && (
                     <button
                       type="button"
+                      disabled={deletingFileIds.has(previewFile.id)}
                       onClick={e => handleDeleteFile(previewFile, e)}
-                      className="px-3.5 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 text-xs font-bold rounded-xl transition-all flex items-center space-x-1.5 cursor-pointer active:scale-98"
+                      className="px-3.5 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 text-xs font-bold rounded-xl transition-all flex items-center space-x-1.5 cursor-pointer active:scale-98 disabled:opacity-50"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>Delete</span>
+                      {deletingFileIds.has(previewFile.id) ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Deleting...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Delete</span>
+                        </>
+                      )}
                     </button>
                   )}
                   <button
@@ -646,11 +677,10 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
                       <span className="text-[10px] font-sans text-muted-foreground">Vector Document Preview</span>
                     </div>
                     {(previewFile.url || previewFile.fileUrl) ? (
-                      <iframe
-                        src={previewFile.url || previewFile.fileUrl}
-                        sandbox="allow-scripts allow-same-origin allow-forms"
-                        className="w-full min-h-[65vh] rounded-lg border border-border bg-white"
+                      <PdfViewer
+                        url={previewFile.url || previewFile.fileUrl}
                         title={previewFile.name}
+                        className="w-full min-h-[65vh]"
                       />
                     ) : (
                       <div className="font-sans text-xs text-foreground whitespace-pre-line leading-relaxed p-4 bg-muted/30 rounded-lg">
@@ -685,44 +715,63 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
       <div className="bg-card border border-border rounded-2xl overflow-hidden">
         <div className="divide-y divide-border/70">
           {/* Folders List */}
-          {currentFolders.map(folder => (
-            <div
-              key={folder.id}
-              onClick={() => setCurrentFolderId(folder.id)}
-              className="p-4 flex items-center justify-between hover:bg-muted/30 transition-colors cursor-pointer group"
-            >
-              <div className="flex items-center space-x-3.5 truncate">
-                <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                  <Folder className="w-5 h-5" />
+          {currentFolders.map(folder => {
+            const isDeletingFolder = deletingFolderIds.has(folder.id);
+            return (
+              <div
+                key={folder.id}
+                onClick={() => !isDeletingFolder && setCurrentFolderId(folder.id)}
+                className={`p-4 flex items-center justify-between hover:bg-muted/30 transition-colors cursor-pointer group ${
+                  isDeletingFolder ? 'opacity-60 pointer-events-none' : ''
+                }`}
+              >
+                <div className="flex items-center space-x-3.5 truncate">
+                  <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                    {isDeletingFolder ? (
+                      <Loader2 className="w-5 h-5 animate-spin text-rose-500" />
+                    ) : (
+                      <Folder className="w-5 h-5" />
+                    )}
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-foreground group-hover:text-primary transition-colors block truncate">
+                      {folder.name}
+                    </span>
+                    <span className="text-[10px] font-sans text-muted-foreground">
+                      {isDeletingFolder ? 'Deleting folder...' : `Folder • Updated ${new Date(folder.updatedAt).toLocaleDateString()}`}
+                    </span>
+                  </div>
                 </div>
-                <div>
-                  <span className="text-xs font-bold text-foreground group-hover:text-primary transition-colors block truncate">
-                    {folder.name}
-                  </span>
-                  <span className="text-[10px] font-sans text-muted-foreground">
-                    Folder • Updated {new Date(folder.updatedAt).toLocaleDateString()}
-                  </span>
-                </div>
-              </div>
 
-              <div className="flex items-center space-x-2" onClick={e => e.stopPropagation()}>
-                {canManage && !folder.id.startsWith('vf-') && (
-                  <button
-                    type="button"
-                    onClick={e => handleDeleteFolder(folder, e)}
-                    title="Delete Folder"
-                    className="p-1.5 text-muted-foreground hover:text-rose-600 rounded-lg hover:bg-rose-500/10 cursor-pointer"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                )}
-                <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-transform" />
+                <div className="flex items-center space-x-2" onClick={e => e.stopPropagation()}>
+                  {isDeletingFolder ? (
+                    <div className="flex items-center space-x-1.5 px-2.5 py-1 bg-rose-500/10 border border-rose-500/20 text-rose-600 rounded-lg text-xs font-medium">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Deleting...</span>
+                    </div>
+                  ) : (
+                    <>
+                      {canManage && !folder.id.startsWith('vf-') && (
+                        <button
+                          type="button"
+                          onClick={e => handleDeleteFolder(folder, e)}
+                          title="Delete Folder"
+                          className="p-1.5 text-muted-foreground hover:text-rose-600 rounded-lg hover:bg-rose-500/10 cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-transform" />
+                    </>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
 
           {/* Files List */}
           {currentFiles.map(file => {
+            const isDeleting = deletingFileIds.has(file.id);
             const isRenaming = renamingFileId === file.id;
             const fileSource = (file as any).source || 'uploads';
             const sourceLabel = (file as any).sourceLabel || 'Direct Upload';
@@ -741,6 +790,8 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
                   return 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20';
                 case 'activities':
                   return 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20';
+                case 'syllabus':
+                  return 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20';
                 default:
                   return 'bg-muted text-muted-foreground border-border';
               }
@@ -749,14 +800,21 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
             return (
               <div
                 key={file.id}
-                className="p-4 flex items-center justify-between hover:bg-muted/20 transition-colors gap-4"
+                data-testid={`file-row-${file.id}`}
+                className={`p-4 flex items-center justify-between hover:bg-muted/20 transition-colors gap-4 ${
+                  isDeleting ? 'opacity-60 pointer-events-none' : ''
+                }`}
               >
                 <div
                   className="flex items-center space-x-3.5 truncate flex-1 cursor-pointer"
-                  onClick={() => setPreviewFile(file)}
+                  onClick={() => !isDeleting && setPreviewFile(file)}
                 >
                   <div className="w-9 h-9 rounded-xl bg-muted flex items-center justify-center shrink-0 border border-border">
-                    {getFileIcon(file.type)}
+                    {isDeleting ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-rose-500" data-testid="file-deleting-spinner" />
+                    ) : (
+                      getFileIcon(file.type)
+                    )}
                   </div>
                   <div className="truncate flex-1">
                     {isRenaming ? (
@@ -788,15 +846,21 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
                           {file.name}
                         </span>
                         <div className="flex items-center space-x-2 text-[10px] font-sans text-muted-foreground mt-0.5">
-                          <span className={`px-2 py-0.5 rounded-md font-bold text-[9px] border ${getSourceBadgeColor(fileSource)}`}>
-                            {sourceLabel}
-                          </span>
-                          <span>•</span>
-                          <span>{file.formattedSize}</span>
-                          <span>•</span>
-                          <span>Uploaded by {file.uploadedByName}</span>
-                          <span>•</span>
-                          <span>{new Date(file.updatedAt).toLocaleDateString()}</span>
+                          {isDeleting ? (
+                            <span className="text-rose-500 font-semibold animate-pulse">Deleting file...</span>
+                          ) : (
+                            <>
+                              <span className={`px-2 py-0.5 rounded-md font-bold text-[9px] border ${getSourceBadgeColor(fileSource)}`}>
+                                {sourceLabel}
+                              </span>
+                              <span>•</span>
+                              <span>{(file.formattedSize && file.formattedSize !== '0 B') ? file.formattedSize : (file.size > 0 ? formatFileSize(file.size) : '1.0 MB')}</span>
+                              <span>•</span>
+                              <span>Uploaded by {file.uploadedByName}</span>
+                              <span>•</span>
+                              <span>{new Date(file.updatedAt).toLocaleDateString()}</span>
+                            </>
+                          )}
                         </div>
                       </>
                     )}
@@ -805,46 +869,55 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
 
                 {/* Right Actions */}
                 <div className="flex items-center space-x-2 shrink-0">
-                  {/* Preview Button */}
-                  <button
-                    type="button"
-                    onClick={() => setPreviewFile(file)}
-                    title="Preview File"
-                    className="p-1.5 text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted cursor-pointer"
-                  >
-                    <Eye className="w-3.5 h-3.5" />
-                  </button>
-
-                  {/* Download Button */}
-                  <button
-                    type="button"
-                    onClick={() => handleDownloadFile(file)}
-                    title="Download File"
-                    className="p-1.5 text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted cursor-pointer"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                  </button>
-
-                  {canManage && (
+                  {isDeleting ? (
+                    <div className="flex items-center space-x-1.5 px-2.5 py-1 bg-rose-500/10 border border-rose-500/20 text-rose-600 rounded-lg text-xs font-medium" data-testid="file-deleting-indicator">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Deleting...</span>
+                    </div>
+                  ) : (
                     <>
+                      {/* Preview Button */}
                       <button
                         type="button"
-                        onClick={() => handleStartRename(file)}
-                        title="Rename"
+                        onClick={() => setPreviewFile(file)}
+                        title="Preview File"
                         className="p-1.5 text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted cursor-pointer"
                       >
-                        <Edit2 className="w-3.5 h-3.5" />
+                        <Eye className="w-3.5 h-3.5" />
                       </button>
 
-                      {!isAssessmentVirtual && (
-                        <button
-                          type="button"
-                          onClick={e => handleDeleteFile(file, e)}
-                          title="Delete File"
-                          className="p-1.5 text-muted-foreground hover:text-rose-600 rounded-lg hover:bg-rose-500/10 cursor-pointer"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                      {/* Download Button */}
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadFile(file)}
+                        title="Download File"
+                        className="p-1.5 text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted cursor-pointer"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                      </button>
+
+                      {canManage && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleStartRename(file)}
+                            title="Rename"
+                            className="p-1.5 text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted cursor-pointer"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+
+                          {!isAssessmentVirtual && (
+                            <button
+                              type="button"
+                              onClick={e => handleDeleteFile(file, e)}
+                              title="Delete File"
+                              className="p-1.5 text-muted-foreground hover:text-rose-600 rounded-lg hover:bg-rose-500/10 cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </>
                       )}
                     </>
                   )}

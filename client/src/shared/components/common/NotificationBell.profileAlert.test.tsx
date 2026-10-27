@@ -253,5 +253,138 @@ describe('NotificationBell Profile Incomplete Card', () => {
     fireEvent.click(screen.getByTitle('Notifications'));
     expect(screen.getByText('Profile Information Required')).toBeInTheDocument();
   });
+
+  it('shows badge when student has pending invitations under Needs your action', () => {
+    mockLMS.activeUser = {
+      id: 'student-1',
+      role: 'student',
+      firstName: 'Juana',
+      lastName: 'Cruz',
+      name: 'Juana Cruz',
+      birthday: '2004-01-01',
+      permanentAddress: 'Brgy 1, City',
+      presentAddress: 'Brgy 1, City',
+      sameAsPermanentAddress: true,
+      contactNumber: '09123456789',
+      hasGuardianOnly: false,
+      motherName: { firstName: 'Juana', lastName: 'Cruz' },
+      fatherName: { firstName: 'Juan', lastName: 'Cruz' },
+      parentContactNumber: '09991112222',
+      yearLevel: 2,
+    };
+    mockLMS.activeRole = 'student';
+    mockLMS.getPendingRequestsForStudent = vi.fn(() => [
+      {
+        id: 'req-1',
+        courseId: 'c1',
+        studentId: 'student-1',
+        status: 'pending',
+        type: 'faculty_enroll',
+        requestedAt: '2026-10-27',
+      },
+    ]);
+    mockLMS.getUnreadNotificationCount = vi.fn(() => 0);
+
+    render(
+      <MemoryRouter>
+        <NotificationBell />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText('1')).toBeInTheDocument();
+  });
+
+  it('combines unread notifications and pending action items in badge count', () => {
+    mockLMS.activeUser = {
+      id: 'student-1',
+      role: 'student',
+      firstName: 'Juana',
+      lastName: 'Cruz',
+      name: 'Juana Cruz',
+      birthday: '2004-01-01',
+      permanentAddress: 'Brgy 1, City',
+      presentAddress: 'Brgy 1, City',
+      sameAsPermanentAddress: true,
+      contactNumber: '09123456789',
+      hasGuardianOnly: false,
+      motherName: { firstName: 'Juana', lastName: 'Cruz' },
+      fatherName: { firstName: 'Juan', lastName: 'Cruz' },
+      parentContactNumber: '09991112222',
+      yearLevel: 2,
+    };
+    mockLMS.activeRole = 'student';
+    mockLMS.getPendingRequestsForStudent = vi.fn(() => [
+      {
+        id: 'req-1',
+        courseId: 'c1',
+        studentId: 'student-1',
+        status: 'pending',
+        type: 'faculty_enroll',
+        requestedAt: '2026-10-27',
+      },
+    ]);
+    mockLMS.getUnreadNotificationCount = vi.fn(() => 2);
+
+    render(
+      <MemoryRouter>
+        <NotificationBell />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText('3')).toBeInTheDocument();
+  });
+
+  it('displays resolved student name from db.users when staff views an enrollment request whose studentName is a UUID', () => {
+    mockLMS.activeUser = {
+      id: 'fac-1',
+      role: 'faculty',
+      firstName: 'Prof',
+      lastName: 'Smith',
+      name: 'Prof. Smith',
+      birthday: '1980-01-01',
+      address: 'Campus',
+      contactNumber: '09123456789',
+      yearsOfTeaching: 5,
+      educationalBackground: [{ id: 'deg-1', degreeLevel: 'masters', school: 'DMMMSU', yearGraduated: 2015, specialization: 'CS' }],
+    };
+    mockLMS.activeRole = 'faculty';
+    mockLMS.db = {
+      courses: [{ id: 'c1', code: 'CSPC 112', title: 'Software Engineering 2' }],
+      courseSections: [],
+      users: [
+        {
+          id: 'cf220235-9d33-40fa-8692-f018e614138e',
+          firstName: 'Juan',
+          lastName: 'Dela Cruz',
+          name: 'Juan Dela Cruz',
+        },
+      ],
+      enrollmentRequests: [
+        {
+          id: 'req-uuid',
+          courseId: 'c1',
+          studentId: 'cf220235-9d33-40fa-8692-f018e614138e',
+          studentName: 'cf220235-9d33-40fa-8692-f018e614138e',
+          type: 'faculty_enroll',
+          status: 'pending',
+          requestedAt: '2026-10-27',
+        },
+      ],
+    };
+    mockLMS.getUnreadNotificationCount = vi.fn(() => 0);
+
+    render(
+      <MemoryRouter>
+        <NotificationBell />
+      </MemoryRouter>
+    );
+
+    // Open bell dropdown
+    fireEvent.click(screen.getByTitle('Notifications'));
+
+    // Should display the real student name instead of UUID
+    expect(screen.getByText(/Juan Dela Cruz/)).toBeInTheDocument();
+    expect(screen.queryByText(/cf220235-9d33-40fa-8692-f018e614138e/)).not.toBeInTheDocument();
+  });
 });
 

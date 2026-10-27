@@ -101,4 +101,42 @@ describe('LoginPage field errors', () => {
     expect(identifier).not.toHaveAttribute('aria-invalid');
     expect(password).not.toHaveAttribute('aria-invalid');
   });
+
+  it('displays technical issues message when server returns a 502 error', async () => {
+    mockLogin.mockResolvedValueOnce({
+      success: false,
+      message: 'Likha authentication failed: 502',
+    });
+
+    renderPage();
+    const identifier = screen.getByPlaceholderText('name@dmmmsu.edu.ph');
+    const password = screen.getByPlaceholderText('••••••••');
+
+    fireEvent.change(identifier, { target: { value: 'student1@dmmmsu.edu.ph' } });
+    fireEvent.change(password, { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+
+    expect(
+      await screen.findByText('The system is currently experiencing technical issues. Please try again later.')
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Invalid email or password')).not.toBeInTheDocument();
+  });
+
+  it('displays technical issues message when login throws a 502 error', async () => {
+    const error502: any = new Error('Bad Gateway 502');
+    error502.status = 502;
+    mockLogin.mockRejectedValueOnce(error502);
+
+    renderPage();
+    const identifier = screen.getByPlaceholderText('name@dmmmsu.edu.ph');
+    const password = screen.getByPlaceholderText('••••••••');
+
+    fireEvent.change(identifier, { target: { value: 'student1@dmmmsu.edu.ph' } });
+    fireEvent.change(password, { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+
+    expect(
+      await screen.findByText('The system is currently experiencing technical issues. Please try again later.')
+    ).toBeInTheDocument();
+  });
 });

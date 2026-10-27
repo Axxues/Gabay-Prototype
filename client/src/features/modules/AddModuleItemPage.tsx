@@ -19,9 +19,11 @@ import {
   ChevronDown,
   FileCheck2,
   HelpCircle,
-  Globe,
+
   BookOpen,
-  FolderOpen
+  FolderOpen,
+  Briefcase,
+  Presentation
 } from 'lucide-react';
 
 import { uploadFileToPublic, formatFileSize, FILE_UPLOAD_MAX_BYTES, toShortFileType, isFileTooLarge } from '../../shared/utils/fileUploader';
@@ -48,6 +50,18 @@ import {
   validateQuestionSet,
   type ActivityQuestionDraft,
   type QuestionSetValue,
+  ProjectFormFields,
+  emptyProjectFormValue,
+  projectToForm,
+  validateProjectForm,
+  buildProjectPayload,
+  type ProjectFormValue,
+  PresentationFormFields,
+  emptyPresentationFormValue,
+  presentationToForm,
+  validatePresentationForm,
+  buildPresentationPayload,
+  type PresentationFormValue,
 } from '../assessments';
 
 interface AddModuleItemPageProps {
@@ -56,6 +70,9 @@ interface AddModuleItemPageProps {
   editingItem?: ModuleItem;
   onBack: () => void;
 }
+
+const isActivityAssessmentType = (type?: string): type is 'activity' | 'assignment' | 'project' | 'presentation' =>
+  type === 'activity' || type === 'assignment' || type === 'project' || type === 'presentation';
 
 const RESOURCE_TYPES: Array<{
   type: ModuleItem['type'];
@@ -86,7 +103,7 @@ const RESOURCE_TYPES: Array<{
     },
     {
       type: 'activity',
-      label: 'Activity milestone',
+      label: 'Activity',
       badge: 'Activity',
       description: 'Graded student submission with deadline, instructions & rubric',
       icon: FileCheck2,
@@ -95,19 +112,37 @@ const RESOURCE_TYPES: Array<{
     },
     {
       type: 'quiz',
-      label: 'Assessment quiz',
-      badge: 'Assessment',
-      description: 'Timed assessment, exam, or knowledge evaluation milestone',
+      label: 'Quiz',
+      badge: 'Quiz',
+      description: 'Timed assessment, knowledge check, or evaluation questions',
       icon: HelpCircle,
       iconBg: 'bg-muted text-muted-foreground',
       badgeColor: 'bg-muted text-muted-foreground border-border'
     },
     {
-      type: 'external_url',
-      label: 'External reference link',
-      badge: 'Web link',
-      description: 'Online repository, scientific publication, or digital tool',
-      icon: Globe,
+      type: 'assignment',
+      label: 'Assignment',
+      badge: 'Assignment',
+      description: 'Graded homework, problem set, essay, or case study',
+      icon: FileText,
+      iconBg: 'bg-muted text-muted-foreground',
+      badgeColor: 'bg-muted text-muted-foreground border-border'
+    },
+    {
+      type: 'project',
+      label: 'Project',
+      badge: 'Project',
+      description: 'Capstone deliverable, term milestone, or group repository',
+      icon: Briefcase,
+      iconBg: 'bg-muted text-muted-foreground',
+      badgeColor: 'bg-muted text-muted-foreground border-border'
+    },
+    {
+      type: 'presentation',
+      label: 'Presentation',
+      badge: 'Presentation',
+      description: 'Oral report, recorded defense, or slide presentation',
+      icon: Presentation,
       iconBg: 'bg-muted text-muted-foreground',
       badgeColor: 'bg-muted text-muted-foreground border-border'
     }
@@ -161,6 +196,8 @@ const activityToQuestionSet = (
   title: a.title || fallbackTitle,
   instructions: a.instructions || fallbackContent,
   dueDate: toLocalDateTimeInput(a.dueDate) || emptyQuestionSetValue().dueDate,
+  availableFrom: toLocalDateTimeInput(a.availableFrom),
+  availableUntil: toLocalDateTimeInput(a.availableUntil),
   term: normalizeTermId(a.term) ?? 'midterm',
   items: (a.questions || []).map((qq, idx) => {
     const opts = [...(qq.options || [])];
@@ -192,6 +229,9 @@ const quizToBuilder = (
   title: q.title || fallbackTitle,
   instructions: q.instructions || fallbackContent,
   timeLimitMinutes: q.timeLimitMinutes ?? 30,
+  dueDate: toLocalDateTimeInput(q.dueDate) || emptyQuizBuilderValue().dueDate,
+  availableFrom: toLocalDateTimeInput(q.availableFrom || q.delayedUntil),
+  availableUntil: toLocalDateTimeInput(q.availableUntil),
   delayPosting: Boolean(q.delayedUntil),
   delayedDate: toLocalDateTimeInput(q.delayedUntil) || emptyQuizBuilderValue().delayedDate,
   term: normalizeTermId(q.term) ?? 'midterm',
@@ -237,15 +277,7 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
     uploadCourseFile,
     showAlert,
     effectiveTermsForCourse
-  // updateQuiz rides along as sibling-WIP: the context does not provide it
-  // yet (quiz header editing), so it is typed here to keep this page
-  // compiling until the quiz surface lands it.
-  } = useLMS() as ReturnType<typeof useLMS> & {
-    updateQuiz: (
-      quizId: string,
-      updates: Omit<Partial<Quiz>, 'delayedUntil'> & { delayedUntil?: string | null }
-    ) => Promise<Quiz>;
-  };
+} = useLMS();
   const isEditing = Boolean(editingItem);
 
   const course = db.courses.find(c => c.id === courseId);
@@ -275,13 +307,13 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
   // Classic activities link via activityId; question-set activities via the
   // synthetic `asg-activity-<id>` convention (same as submissions/badges).
   const linkedClassicActivity =
-    editingItem?.type === 'activity' &&
+    isActivityAssessmentType(editingItem?.type) &&
     editingItem.activityId &&
     !linkedActivityIdOf(editingItem.activityId)
       ? (db.activities || []).find(a => a.id === editingItem.activityId)
       : undefined;
   const linkedActivityId =
-    editingItem?.type === 'activity'
+    (editingItem?.type === 'activity' || editingItem?.type === 'assignment')
       ? linkedActivityIdOf(editingItem.activityId)
       : undefined;
   const linkedActivity = linkedActivityId
@@ -292,32 +324,71 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
       ? db.quizzes.find(q => q.id === editingItem.quizId)
       : undefined;
 
-  // Assessment forms — the SAME inputs as the Activities / Quizzes pages,
+  // Assessment forms — the SAME inputs as the Activities / Assignments / Projects / Presentations / Quizzes pages,
   // prefilled from the linked record when editing.
   const [activityForm, setActivityForm] = useState<ActivityFormValue>(() =>
-    linkedClassicActivity
+    linkedClassicActivity && editingItem?.type === 'activity'
       ? classicActivityToForm(linkedClassicActivity, editingItem?.title || '', editingItem?.content || '')
       : {
           ...emptyActivityFormValue(),
           title: editingItem?.type === 'activity' ? editingItem.title || '' : '',
-          instructions: editingItem?.type === 'activity' ? editingItem.content || '' : ''
+          instructions: (editingItem?.type === 'activity' && editingItem.content) ? editingItem.content : emptyActivityFormValue().instructions
         }
   );
+  const [activityMode, setActivityMode] = useState<'classic' | 'question_set'>(() =>
+    editingItem?.type === 'activity' && linkedActivityId ? 'question_set' : 'classic'
+  );
+  const [questionSet, setQuestionSet] = useState<QuestionSetValue>(() =>
+    linkedActivity && editingItem?.type === 'activity'
+      ? activityToQuestionSet(linkedActivity, editingItem?.title || '', editingItem?.content || '')
+      : { ...emptyQuestionSetValue(), term: defaultAssessmentTerm }
+  );
+
+  // Assignment states: supports Classic Assignment (ActivityFormFields) or New Question Set (QuestionSetFields)
+  const [assignmentMode, setAssignmentMode] = useState<'classic' | 'question_set'>(() =>
+    editingItem?.type === 'assignment' && linkedActivityId ? 'question_set' : 'classic'
+  );
+  const [assignmentForm, setAssignmentForm] = useState<ActivityFormValue>(() =>
+    linkedClassicActivity && editingItem?.type === 'assignment'
+      ? classicActivityToForm(linkedClassicActivity, editingItem?.title || '', editingItem?.content || '')
+      : {
+          ...emptyActivityFormValue(),
+          title: editingItem?.type === 'assignment' ? editingItem.title || '' : '',
+          instructions: (editingItem?.type === 'assignment' && editingItem.content) ? editingItem.content : emptyActivityFormValue().instructions
+        }
+  );
+  const [assignmentQuestionSet, setAssignmentQuestionSet] = useState<QuestionSetValue>(() =>
+    linkedActivity && editingItem?.type === 'assignment'
+      ? activityToQuestionSet(linkedActivity, editingItem?.title || '', editingItem?.content || '')
+      : { ...emptyQuestionSetValue(), term: defaultAssessmentTerm }
+  );
+
+  // Project state: Section 1 Details, Section 2 Collaboration/Repo, Section 3 Rubric
+  const [projectForm, setProjectForm] = useState<ProjectFormValue>(() =>
+    linkedClassicActivity && editingItem?.type === 'project'
+      ? projectToForm(linkedClassicActivity, editingItem?.title || '', editingItem?.content || '')
+      : {
+          ...emptyProjectFormValue(defaultAssessmentTerm),
+          title: editingItem?.type === 'project' ? editingItem.title || '' : '',
+          instructions: (editingItem?.type === 'project' && editingItem.content) ? editingItem.content : emptyProjectFormValue(defaultAssessmentTerm).instructions
+        }
+  );
+
+  // Presentation state: Section 1 Details, Section 2 Delivery/Slides, Section 3 Rubric
+  const [presentationForm, setPresentationForm] = useState<PresentationFormValue>(() =>
+    linkedClassicActivity && editingItem?.type === 'presentation'
+      ? presentationToForm(linkedClassicActivity, editingItem?.title || '', editingItem?.content || '')
+      : {
+          ...emptyPresentationFormValue(defaultAssessmentTerm),
+          title: editingItem?.type === 'presentation' ? editingItem.title || '' : '',
+          instructions: (editingItem?.type === 'presentation' && editingItem.content) ? editingItem.content : emptyPresentationFormValue(defaultAssessmentTerm).instructions
+        }
+  );
+
   const [quizBuilder, setQuizBuilder] = useState<QuizBuilderValue>(() =>
     linkedQuiz
       ? quizToBuilder(linkedQuiz, editingItem?.title || '', editingItem?.content || '')
       : { ...emptyQuizBuilderValue(), term: defaultAssessmentTerm }
-  );
-
-  // Classic vs question-set mode for Activity items — same chooser as the
-  // Activities page. Editing a question-set-linked item opens in that mode.
-  const [activityMode, setActivityMode] = useState<'classic' | 'question_set'>(() =>
-    linkedActivityId ? 'question_set' : 'classic'
-  );
-  const [questionSet, setQuestionSet] = useState<QuestionSetValue>(() =>
-    linkedActivity
-      ? activityToQuestionSet(linkedActivity, editingItem?.title || '', editingItem?.content || '')
-      : { ...emptyQuestionSetValue(), term: defaultAssessmentTerm }
   );
 
   // Custom Dropdown Open States
@@ -346,6 +417,7 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
   const [attachedFileSize, setAttachedFileSize] = useState(editingItem?.fileSize || '');
   const [attachedFileType, setAttachedFileType] = useState(editingItem?.fileType || '');
   const [attachedFileUrl, setAttachedFileUrl] = useState(editingItem?.fileUrl || '');
+  const [stagedRawFile, setStagedRawFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const upload = useSimulatedUpload();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -356,7 +428,7 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
   const selectedModule = courseModules.find(m => m.id === targetModuleId);
   const currentResourceType = RESOURCE_TYPES.find(r => r.type === itemType) || RESOURCE_TYPES[0];
 
-  const handleProcessFile = async (file: globalThis.File) => {
+  const handleProcessFile = (file: globalThis.File) => {
     if (isFileTooLarge(file.size)) {
       showAlert({
         title: 'File Too Large',
@@ -366,67 +438,15 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
       return;
     }
 
-    if (upload.isUploading) return;
-    upload.start(file.name);
-    try {
-      // Backend first so the file lands in Modules/<ModuleName>/ (area:
-      // modules + moduleId/moduleTitle); the Vite dev middleware is the
-      // offline fallback (unfiled).
-      // Data URLs longer than ~900 chars can never be saved: the
-      // ModuleItem.fileUrl column is NVarChar(1024), so embedding them made
-      // the items POST fail with 500.
-      let url = '';
-      let name = file.name;
-      try {
-        const saved = await uploadCourseFile({
-          courseId,
-          name: file.name,
-          rawFile: file,
-          area: 'modules',
-          moduleId: targetModuleId || moduleId,
-          moduleTitle: selectedModule?.title || courseModules.find(m => m.id === (targetModuleId || moduleId))?.title,
-          visibility: 'published',
-          silent: true
-        });
-        url = saved.fileUrl || saved.url || '';
-        name = saved.name || file.name;
-      } catch {
-        url = '';
-      }
-      if (!url || url.startsWith('data:')) {
-        const viaVite = await uploadFileToPublic(file);
-        if (!viaVite.url.startsWith('data:')) {
-          url = viaVite.url;
-          name = viaVite.name;
-        }
-      }
-      if (!url) {
-        // Never embed a data URL: ModuleItem.fileUrl is NVarChar(1024) and
-        // Activity.fileUrl is NVarChar(1024) — embedding always 400/500s.
-        // The file was already validated against the 25MB server cap above,
-        // so a missing URL means the upload service itself failed.
-        showAlert({
-          title: 'Upload Service Unavailable',
-          message: 'The file could not be stored on the server (upload service unreachable). Please ensure the backend is running and try again.',
-          type: 'error'
-        });
-        upload.fail();
-        return;
-      }
-      setAttachedFileUrl(url);
-      setAttachedFileName(name);
-      setAttachedFileSize(formatFileSize(file.size));
-      setAttachedFileType(toShortFileType(name));
+    setStagedRawFile(file);
+    setAttachedFileName(file.name);
+    setAttachedFileSize(formatFileSize(file.size));
+    setAttachedFileType(toShortFileType(file.name));
+    setAttachedFileUrl('');
 
-      // Auto-populate title if empty
-      if (!title.trim()) {
-        const nameWithoutExt = file.name.replace(/\.[^/.]+$/, '');
-        setTitle(nameWithoutExt);
-      }
-      upload.complete();
-    } catch (err) {
-      console.error('Failed to upload module item file:', err);
-      upload.fail();
+    if (!title.trim()) {
+      const stem = file.name.replace(/\.[^/.]+$/, '');
+      if (stem) setTitle(stem);
     }
   };
 
@@ -449,6 +469,7 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
   };
 
   const handleRemoveAttachment = () => {
+    setStagedRawFile(null);
     setAttachedFileName('');
     setAttachedFileSize('');
     setAttachedFileType('');
@@ -496,7 +517,9 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
         await updateActivity(linkedActivity.id, {
           title: questionSet.title.trim(),
           instructions: questionSet.instructions.trim() || 'Answer all questions carefully.',
-          dueDate: questionSet.dueDate ? new Date(questionSet.dueDate).toISOString() : undefined
+          dueDate: questionSet.dueDate ? new Date(questionSet.dueDate).toISOString() : undefined,
+          availableFrom: questionSet.availableFrom ? new Date(questionSet.availableFrom).toISOString() : undefined,
+          availableUntil: questionSet.availableUntil ? new Date(questionSet.availableUntil).toISOString() : undefined
         });
         await updateModuleItem(
           moduleId,
@@ -593,91 +616,244 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
     }
   };
 
-  // Assessment save: creates/updates the REAL classic activity row, then links it.
+  // Assessment save for editing: creates or updates the real assessment row, then links it to the module item.
   const handleSaveActivity = async (addAnother: boolean = false) => {
-    if (activityMode === 'question_set') {
-      await handleSaveQuestionSet(addAnother);
-      return;
-    }
-    const err = validateActivityForm(activityForm);
-    if (err) {
-      showAlert({ title: err.title, message: err.message, type: 'warning' });
-      return;
-    }
-
-    const savedTitle = activityForm.title.trim();
-    const savedContent =
-      activityForm.instructions.trim() || 'Unit resource instructions aligned with syllabus requirements.';
-    const fileFields = {
-      fileName: activityForm.attachedFile?.name || undefined,
-      fileSize: activityForm.attachedFile?.size || undefined,
-      fileUrl: activityForm.attachedFile?.url || undefined
-    };
-
-    if (isEditing && editingItem) {
-      try {
-        let activityId = linkedClassicActivity?.id;
-        if (linkedClassicActivity) {
-          const payload = buildClassicActivityPayload(courseId, activityForm, linkedClassicActivity.published);
-          const { courseId: _courseId, ...updates } = payload;
-          await updateActivity(linkedClassicActivity.id, updates);
-        } else {
-          // Legacy item without a linked row — create the row now and link it.
-          const created = await createActivity(
-            buildClassicActivityPayload(courseId, activityForm, editingItem.published)
-          );
-          activityId = created.id;
-        }
-        await updateModuleItem(
-          moduleId,
-          editingItem.id,
-          { title: savedTitle, type: 'activity', content: savedContent, activityId, ...fileFields },
-          targetModuleId
-        );
-        showAlert({
-          title: 'Module Item Updated',
-          message: `"${savedTitle}" has been updated successfully.`,
-          type: 'success'
-        });
-        onBack();
-      } catch {
-        // Context already surfaced the failure alert.
+    if (itemType === 'activity') {
+      if (activityMode === 'question_set') {
+        await handleSaveQuestionSet(addAnother);
+        return;
       }
-      return;
-    }
+      const err = validateActivityForm(activityForm, 'activity');
+      if (err) {
+        showAlert({ title: err.title, message: err.message, type: 'warning' });
+        return;
+      }
 
-    try {
-      const created = await createActivity(buildClassicActivityPayload(courseId, activityForm, true));
-      await addModuleItem(targetModuleId, {
-        title: savedTitle,
-        type: 'activity',
-        content: savedContent,
-        published: true,
-        required: false,
-        completionCondition: 'submit',
-        activityId: created.id,
-        ...fileFields
-      });
-    } catch {
-      // Context already surfaced the failure alert.
-      return;
-    }
+      const savedTitle = activityForm.title.trim();
+      const savedContent =
+        activityForm.instructions.trim() || 'Unit resource instructions aligned with syllabus requirements.';
+      const fileFields = {
+        fileName: activityForm.attachedFile?.name || undefined,
+        fileSize: activityForm.attachedFile?.size || undefined,
+        fileUrl: activityForm.attachedFile?.url || undefined
+      };
 
-    if (addAnother) {
-      showAlert({
-        title: 'Item Added to Module',
-        message: `"${savedTitle}" has been added. You can add another item now.`,
-        type: 'success'
-      });
-      setActivityForm(emptyActivityFormValue());
-      setQuestionSet({ ...emptyQuestionSetValue(), term: defaultAssessmentTerm });
-    } else {
-      showAlert({
-        title: 'Item Added to Module',
-        message: `"${savedTitle}" has been added to ${selectedModule?.title || 'the module'}.`,
-        type: 'success'
-      });
-      onBack();
+      if (isEditing && editingItem) {
+        try {
+          let activityId = linkedClassicActivity?.id;
+          if (linkedClassicActivity) {
+            const payload = buildClassicActivityPayload(courseId, activityForm, linkedClassicActivity.published);
+            const { courseId: _courseId, ...updates } = payload;
+            await updateActivity(linkedClassicActivity.id, { ...updates, assessmentType: 'activity', category: 'Activities' });
+          } else {
+            const created = await createActivity({
+              ...buildClassicActivityPayload(courseId, activityForm, editingItem.published),
+              assessmentType: 'activity',
+              category: 'Activities'
+            });
+            activityId = created.id;
+          }
+          await updateModuleItem(
+            moduleId,
+            editingItem.id,
+            { title: savedTitle, type: 'activity', content: savedContent, activityId, ...fileFields },
+            targetModuleId
+          );
+          showAlert({
+            title: 'Module Item Updated',
+            message: `"${savedTitle}" has been updated successfully.`,
+            type: 'success'
+          });
+          onBack();
+        } catch {}
+        return;
+      }
+    } else if (itemType === 'assignment') {
+      if (assignmentMode === 'question_set') {
+        if (!assignmentQuestionSet.title.trim()) {
+          showAlert({ title: 'Title required', message: 'Give this assignment a title.', type: 'warning' });
+          return;
+        }
+        if (isEditing && editingItem && linkedActivity) {
+          try {
+            await updateActivity(linkedActivity.id, {
+              title: assignmentQuestionSet.title.trim(),
+              instructions: assignmentQuestionSet.instructions.trim() || 'Answer all questions carefully.',
+              dueDate: assignmentQuestionSet.dueDate ? new Date(assignmentQuestionSet.dueDate).toISOString() : undefined,
+              availableFrom: assignmentQuestionSet.availableFrom ? new Date(assignmentQuestionSet.availableFrom).toISOString() : undefined,
+              availableUntil: assignmentQuestionSet.availableUntil ? new Date(assignmentQuestionSet.availableUntil).toISOString() : undefined
+            });
+            await updateModuleItem(
+              moduleId,
+              editingItem.id,
+              {
+                title: assignmentQuestionSet.title.trim(),
+                type: 'assignment',
+                content: assignmentQuestionSet.instructions.trim() || 'Unit resource instructions aligned with syllabus requirements.',
+                activityId: questionSetLinkOf(linkedActivity.id)
+              },
+              targetModuleId
+            );
+            showAlert({
+              title: 'Module Item Updated',
+              message: `"${assignmentQuestionSet.title.trim()}" has been updated successfully.`,
+              type: 'success'
+            });
+            onBack();
+          } catch {}
+          return;
+        }
+
+        const err = validateQuestionSet(assignmentQuestionSet);
+        if (err) {
+          showAlert({ title: err.title, message: err.message, type: 'warning' });
+          return;
+        }
+
+        if (isEditing && editingItem) {
+          try {
+            const created = await createActivity({
+              ...buildActivityPayload(courseId, assignmentQuestionSet),
+              assessmentType: 'assignment',
+              category: 'Assignments'
+            });
+            await updateModuleItem(
+              moduleId,
+              editingItem.id,
+              {
+                title: assignmentQuestionSet.title.trim(),
+                type: 'assignment',
+                content: assignmentQuestionSet.instructions.trim() || 'Unit resource instructions aligned with syllabus requirements.',
+                activityId: questionSetLinkOf(created.id)
+              },
+              targetModuleId
+            );
+            showAlert({
+              title: 'Module Item Updated',
+              message: `"${assignmentQuestionSet.title.trim()}" has been updated successfully.`,
+              type: 'success'
+            });
+            onBack();
+          } catch {}
+          return;
+        }
+      } else {
+        const err = validateActivityForm(assignmentForm, 'assignment');
+        if (err) {
+          showAlert({ title: err.title, message: err.message, type: 'warning' });
+          return;
+        }
+
+        const savedTitle = assignmentForm.title.trim();
+        const savedContent =
+          assignmentForm.instructions.trim() || 'Unit resource instructions aligned with syllabus requirements.';
+        const fileFields = {
+          fileName: assignmentForm.attachedFile?.name || undefined,
+          fileSize: assignmentForm.attachedFile?.size || undefined,
+          fileUrl: assignmentForm.attachedFile?.url || undefined
+        };
+
+        if (isEditing && editingItem) {
+          try {
+            let activityId = linkedClassicActivity?.id;
+            if (linkedClassicActivity) {
+              const payload = buildClassicActivityPayload(courseId, assignmentForm, linkedClassicActivity.published);
+              const { courseId: _courseId, ...updates } = payload;
+              await updateActivity(linkedClassicActivity.id, { ...updates, assessmentType: 'assignment', category: 'Assignments' });
+            } else {
+              const created = await createActivity({
+                ...buildClassicActivityPayload(courseId, assignmentForm, editingItem.published),
+                assessmentType: 'assignment',
+                category: 'Assignments'
+              });
+              activityId = created.id;
+            }
+            await updateModuleItem(
+              moduleId,
+              editingItem.id,
+              { title: savedTitle, type: 'assignment', content: savedContent, activityId, ...fileFields },
+              targetModuleId
+            );
+            showAlert({
+              title: 'Module Item Updated',
+              message: `"${savedTitle}" has been updated successfully.`,
+              type: 'success'
+            });
+            onBack();
+          } catch {}
+          return;
+        }
+      }
+    } else if (itemType === 'project') {
+      const err = validateProjectForm(projectForm);
+      if (err) {
+        showAlert({ title: err.title, message: err.message, type: 'warning' });
+        return;
+      }
+      const savedTitle = projectForm.title.trim();
+      const savedContent = projectForm.instructions.trim() || 'Unit resource instructions aligned with syllabus requirements.';
+
+      if (isEditing && editingItem) {
+        try {
+          let activityId = linkedClassicActivity?.id;
+          if (linkedClassicActivity) {
+            const payload = buildProjectPayload(courseId, projectForm, linkedClassicActivity.published);
+            const { courseId: _courseId, ...updates } = payload;
+            await updateActivity(linkedClassicActivity.id, updates);
+          } else {
+            const created = await createActivity(buildProjectPayload(courseId, projectForm, editingItem.published));
+            activityId = created.id;
+          }
+          await updateModuleItem(
+            moduleId,
+            editingItem.id,
+            { title: savedTitle, type: 'project', content: savedContent, activityId },
+            targetModuleId
+          );
+          showAlert({
+            title: 'Module Item Updated',
+            message: `"${savedTitle}" has been updated successfully.`,
+            type: 'success'
+          });
+          onBack();
+        } catch {}
+        return;
+      }
+    } else if (itemType === 'presentation') {
+      const err = validatePresentationForm(presentationForm);
+      if (err) {
+        showAlert({ title: err.title, message: err.message, type: 'warning' });
+        return;
+      }
+      const savedTitle = presentationForm.title.trim();
+      const savedContent = presentationForm.instructions.trim() || 'Unit resource instructions aligned with syllabus requirements.';
+
+      if (isEditing && editingItem) {
+        try {
+          let activityId = linkedClassicActivity?.id;
+          if (linkedClassicActivity) {
+            const payload = buildPresentationPayload(courseId, presentationForm, linkedClassicActivity.published);
+            const { courseId: _courseId, ...updates } = payload;
+            await updateActivity(linkedClassicActivity.id, updates);
+          } else {
+            const created = await createActivity(buildPresentationPayload(courseId, presentationForm, editingItem.published));
+            activityId = created.id;
+          }
+          await updateModuleItem(
+            moduleId,
+            editingItem.id,
+            { title: savedTitle, type: 'presentation', content: savedContent, activityId },
+            targetModuleId
+          );
+          showAlert({
+            title: 'Module Item Updated',
+            message: `"${savedTitle}" has been updated successfully.`,
+            type: 'success'
+          });
+          onBack();
+        } catch {}
+        return;
+      }
     }
   };
 
@@ -708,10 +884,13 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
           instructions:
             quizBuilder.instructions.trim() || 'Answer all questions carefully within the allotted time limit.',
           timeLimitMinutes: Number(quizBuilder.timeLimitMinutes) || 30,
+          dueDate: quizBuilder.dueDate ? new Date(quizBuilder.dueDate).toISOString() : undefined,
+          availableFrom: quizBuilder.availableFrom ? new Date(quizBuilder.availableFrom).toISOString() : undefined,
+          availableUntil: quizBuilder.availableUntil ? new Date(quizBuilder.availableUntil).toISOString() : undefined,
           delayedUntil:
             quizBuilder.delayPosting && quizBuilder.delayedDate
               ? new Date(quizBuilder.delayedDate).toISOString()
-              : null
+              : (quizBuilder.availableFrom ? new Date(quizBuilder.availableFrom).toISOString() : undefined)
         });
         await updateModuleItem(
           moduleId,
@@ -817,6 +996,15 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
     if (itemType === 'activity') {
       return activityMode === 'question_set' ? questionSet.title.trim() : activityForm.title.trim();
     }
+    if (itemType === 'assignment') {
+      return assignmentMode === 'question_set' ? assignmentQuestionSet.title.trim() : assignmentForm.title.trim();
+    }
+    if (itemType === 'project') {
+      return projectForm.title.trim();
+    }
+    if (itemType === 'presentation') {
+      return presentationForm.title.trim();
+    }
     if (itemType === 'quiz') {
       return quizBuilder.title.trim();
     }
@@ -829,6 +1017,50 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
     const savedItemTitle = getPendingItemTitle();
 
     try {
+      let resolvedUrl = attachedFileUrl;
+      let resolvedName = attachedFileName;
+      let resolvedSize = attachedFileSize;
+      let resolvedType = attachedFileType;
+
+      if (stagedRawFile) {
+        try {
+          const saved = await uploadCourseFile({
+            courseId,
+            name: stagedRawFile.name,
+            rawFile: stagedRawFile,
+            area: 'modules',
+            moduleId: targetModuleId || moduleId,
+            moduleTitle: selectedModule?.title || courseModules.find(m => m.id === (targetModuleId || moduleId))?.title,
+            visibility: 'published',
+            silent: true
+          });
+          resolvedUrl = saved.fileUrl || saved.url || '';
+          resolvedName = saved.name || stagedRawFile.name;
+          if (saved.formattedSize && saved.formattedSize !== '0 B') {
+            resolvedSize = saved.formattedSize;
+          }
+        } catch {
+          resolvedUrl = '';
+        }
+        if (!resolvedUrl || resolvedUrl.startsWith('data:')) {
+          const viaVite = await uploadFileToPublic(stagedRawFile);
+          if (!viaVite.url.startsWith('data:')) {
+            resolvedUrl = viaVite.url;
+            resolvedName = viaVite.name;
+            resolvedSize = viaVite.size;
+          }
+        }
+        if (!resolvedUrl || resolvedUrl.startsWith('data:')) {
+          showAlert({
+            title: 'Upload Service Unavailable',
+            message: 'The file could not be stored on the server (upload service unreachable). Please ensure the backend is running and try again.',
+            type: 'error'
+          });
+          setIsSaving(false);
+          return;
+        }
+      }
+
       for (const targetId of targetCourseIds) {
         const destModId = await resolveTargetModuleId(targetId, parentTitle);
 
@@ -845,7 +1077,11 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
               activityId: questionSetLinkOf(created.id)
             });
           } else {
-            const created = await createActivity(buildClassicActivityPayload(targetId, activityForm, true));
+            const created = await createActivity({
+              ...buildClassicActivityPayload(targetId, activityForm, true),
+              assessmentType: 'activity',
+              category: 'Activities'
+            });
             const fileFields = {
               fileName: activityForm.attachedFile?.name || undefined,
               fileSize: activityForm.attachedFile?.size || undefined,
@@ -862,6 +1098,66 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
               ...fileFields
             });
           }
+        } else if (itemType === 'assignment') {
+          if (assignmentMode === 'question_set') {
+            const created = await createActivity({
+              ...buildActivityPayload(targetId, assignmentQuestionSet),
+              assessmentType: 'assignment',
+              category: 'Assignments'
+            });
+            await addModuleItem(destModId, {
+              title: savedItemTitle,
+              type: 'assignment',
+              content: assignmentQuestionSet.instructions.trim() || 'Unit resource instructions aligned with syllabus requirements.',
+              published: true,
+              required: false,
+              completionCondition: 'submit',
+              activityId: questionSetLinkOf(created.id)
+            });
+          } else {
+            const created = await createActivity({
+              ...buildClassicActivityPayload(targetId, assignmentForm, true),
+              assessmentType: 'assignment',
+              category: 'Assignments'
+            });
+            const fileFields = {
+              fileName: assignmentForm.attachedFile?.name || undefined,
+              fileSize: assignmentForm.attachedFile?.size || undefined,
+              fileUrl: assignmentForm.attachedFile?.url || undefined
+            };
+            await addModuleItem(destModId, {
+              title: savedItemTitle,
+              type: 'assignment',
+              content: assignmentForm.instructions.trim() || 'Unit resource instructions aligned with syllabus requirements.',
+              published: true,
+              required: false,
+              completionCondition: 'submit',
+              activityId: created.id,
+              ...fileFields
+            });
+          }
+        } else if (itemType === 'project') {
+          const created = await createActivity(buildProjectPayload(targetId, projectForm, true));
+          await addModuleItem(destModId, {
+            title: savedItemTitle,
+            type: 'project',
+            content: projectForm.instructions.trim() || 'Unit resource instructions aligned with syllabus requirements.',
+            published: true,
+            required: false,
+            completionCondition: 'submit',
+            activityId: created.id
+          });
+        } else if (itemType === 'presentation') {
+          const created = await createActivity(buildPresentationPayload(targetId, presentationForm, true));
+          await addModuleItem(destModId, {
+            title: savedItemTitle,
+            type: 'presentation',
+            content: presentationForm.instructions.trim() || 'Unit resource instructions aligned with syllabus requirements.',
+            published: true,
+            required: false,
+            completionCondition: 'submit',
+            activityId: created.id
+          });
         } else if (itemType === 'quiz') {
           const created = await createQuiz(buildQuizPayload(targetId, quizBuilder, true));
           await addModuleItem(destModId, {
@@ -881,10 +1177,10 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
             published: true,
             required: false,
             completionCondition: 'view',
-            fileName: attachedFileName || undefined,
-            fileSize: attachedFileSize || undefined,
-            fileType: attachedFileType || undefined,
-            fileUrl: attachedFileUrl || undefined
+            fileName: resolvedName || undefined,
+            fileSize: resolvedSize || undefined,
+            fileType: resolvedType || undefined,
+            fileUrl: resolvedUrl || undefined
           });
         }
       }
@@ -903,6 +1199,16 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
           } else {
             setActivityForm({ ...emptyActivityFormValue(), term: defaultAssessmentTerm });
           }
+        } else if (itemType === 'assignment') {
+          if (assignmentMode === 'question_set') {
+            setAssignmentQuestionSet({ ...emptyQuestionSetValue(), term: defaultAssessmentTerm });
+          } else {
+            setAssignmentForm({ ...emptyActivityFormValue(), term: defaultAssessmentTerm });
+          }
+        } else if (itemType === 'project') {
+          setProjectForm(emptyProjectFormValue(defaultAssessmentTerm));
+        } else if (itemType === 'presentation') {
+          setPresentationForm(emptyPresentationFormValue(defaultAssessmentTerm));
         } else if (itemType === 'quiz') {
           setQuizBuilder({ ...emptyQuizBuilderValue(), term: defaultAssessmentTerm });
         } else {
@@ -939,7 +1245,7 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
     if (isEditing) {
       setIsSaving(true);
       try {
-        if (itemType === 'activity') {
+        if (isActivityAssessmentType(itemType)) {
           await handleSaveActivity(addAnother);
           return;
         }
@@ -993,11 +1299,37 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
           return;
         }
       } else {
-        const err = validateActivityForm(activityForm);
+        const err = validateActivityForm(activityForm, 'activity');
         if (err) {
           showAlert({ title: err.title, message: err.message, type: 'warning' });
           return;
         }
+      }
+    } else if (itemType === 'assignment') {
+      if (assignmentMode === 'question_set') {
+        const err = validateQuestionSet(assignmentQuestionSet);
+        if (err) {
+          showAlert({ title: err.title, message: err.message, type: 'warning' });
+          return;
+        }
+      } else {
+        const err = validateActivityForm(assignmentForm, 'assignment');
+        if (err) {
+          showAlert({ title: err.title, message: err.message, type: 'warning' });
+          return;
+        }
+      }
+    } else if (itemType === 'project') {
+      const err = validateProjectForm(projectForm);
+      if (err) {
+        showAlert({ title: err.title, message: err.message, type: 'warning' });
+        return;
+      }
+    } else if (itemType === 'presentation') {
+      const err = validatePresentationForm(presentationForm);
+      if (err) {
+        showAlert({ title: err.title, message: err.message, type: 'warning' });
+        return;
       }
     } else if (itemType === 'quiz') {
       const err = validateQuizBuilder(quizBuilder);
@@ -1274,7 +1606,7 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
 
             {/* Generic title/content — replaced by the Activities / Quizzes
                 inputs below when an assessment resource type is selected. */}
-            {(itemType !== 'activity' && itemType !== 'quiz') && (
+            {(!isActivityAssessmentType(itemType) && itemType !== 'quiz') && (
               <>
                 <div>
                   <label className="block text-[12px] font-semibold text-muted-foreground mb-1.5">
@@ -1306,8 +1638,7 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
             )}
           </div>
 
-          {/* Assessment sections — the SAME inputs as the Activities page:
-              Classic activity form or New Question Set builder. */}
+          {/* Activity sections — Classic activity or New Question Set */}
           {itemType === 'activity' && (
             <div className="space-y-4">
               <div>
@@ -1361,6 +1692,86 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
             </div>
           )}
 
+          {/* Assignment sections — Classic assignment or New Question Set */}
+          {itemType === 'assignment' && (
+            <div className="space-y-4">
+              <div>
+                <div className="p-1 w-full bg-muted/60 border border-border rounded-2xl grid grid-cols-2 gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setAssignmentMode('classic')}
+                    className={`p-3 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center justify-center space-x-2 ${
+                      assignmentMode === 'classic'
+                        ? 'bg-primary/[0.04] text-foreground border border-primary/30 ring-1 ring-primary/15'
+                        : 'text-muted-foreground border border-border/70 hover:bg-muted/40'
+                    }`}
+                  >
+                    <FileCheck2 className="w-4 h-4 text-muted-foreground" />
+                    <span>Classic assignment</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAssignmentMode('question_set')}
+                    className={`p-3 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center justify-center space-x-2 ${
+                      assignmentMode === 'question_set'
+                        ? 'bg-primary/[0.04] text-foreground border border-primary/30 ring-1 ring-primary/15'
+                        : 'text-muted-foreground border border-border/70 hover:bg-muted/40'
+                    }`}
+                  >
+                    <FileText className="w-4 h-4 text-muted-foreground" />
+                    <span>New question set</span>
+                  </button>
+                </div>
+                <p className="text-[11px] text-muted-foreground font-medium mt-1.5">
+                  {assignmentMode === 'classic'
+                    ? 'File upload / text entry assignment with rubric and deadlines.'
+                    : 'Quiz-style question set (Multiple Choice, Identification, True/False, Essay) auto-scored on submit.'}
+                </p>
+              </div>
+
+              {assignmentMode === 'classic' ? (
+                <ActivityFormFields
+                  courseId={courseId}
+                  value={assignmentForm}
+                  onChange={setAssignmentForm}
+                  titlePlaceholder="e.g. Assignment 1: Problem Set on Heuristic Search"
+                  instructionsPlaceholder="Provide comprehensive instructions, context, deliverables, and expectations for this assignment..."
+                  titleLabel="Assignment title"
+                  sectionTitle="Assignment information"
+                />
+              ) : (
+                <QuestionSetFields
+                  value={assignmentQuestionSet}
+                  onChange={setAssignmentQuestionSet}
+                  questionsEditable={!linkedActivity}
+                  courseId={courseId}
+                />
+              )}
+            </div>
+          )}
+
+          {/* Project sections — Details, Collaboration & Format, and Rubric */}
+          {itemType === 'project' && (
+            <div className="space-y-4">
+              <ProjectFormFields
+                courseId={courseId}
+                value={projectForm}
+                onChange={setProjectForm}
+              />
+            </div>
+          )}
+
+          {/* Presentation sections — Details, Delivery & Requirements, and Rubric */}
+          {itemType === 'presentation' && (
+            <div className="space-y-4">
+              <PresentationFormFields
+                courseId={courseId}
+                value={presentationForm}
+                onChange={setPresentationForm}
+              />
+            </div>
+          )}
+
           {/* ... and the SAME builder as the Quizzes page. */}
           {itemType === 'quiz' && (
             <div className="space-y-4">
@@ -1388,7 +1799,7 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
           {/* Section 2: File Attachment (Faculty Can Attach a File) — hidden for
               assessment types (the activity form carries its own handout attach;
               quizzes take no file on this page, same as the Quizzes page). */}
-          {(itemType !== 'activity' && itemType !== 'quiz') && (
+          {(!isActivityAssessmentType(itemType) && itemType !== 'quiz') && (
           <div className="p-6 bg-card border border-border rounded-2xl space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-border/70">
               <div className="flex items-center space-x-2">

@@ -276,6 +276,15 @@ describe('Semester baseline and college semester rollover in LMSContext', () => 
     expect(deanNotifs.some((n: any) => n.type === 'baseline_changed' && n.content.includes('Second'))).toBe(true);
     expect(chairNotifs.some((n: any) => n.type === 'baseline_changed' && n.content.includes('Second'))).toBe(true);
     expect(studentNotifs.some((n: any) => n.type === 'baseline_changed')).toBe(false);
+
+    // Dean rolls over the college semester to Second -> student receives notification
+    await act(async () => {
+      const colRes = await get().setActiveSemesterForCollege('col-ccs', 'Second');
+      expect(colRes.success).toBe(true);
+    });
+
+    const studentNotifsAfter = get().getNotifications('u-stud1');
+    expect(studentNotifsAfter.some((n: any) => n.type === 'baseline_changed' && n.content.includes('Second'))).toBe(true);
   });
 
   test('keeps the baseline semester across a remount', async () => {

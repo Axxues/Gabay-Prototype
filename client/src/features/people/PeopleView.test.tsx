@@ -4,26 +4,35 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 
 const mocks = vi.hoisted(() => ({
+  activeRole: 'faculty',
+  activeUser: { id: 'u-fac-1', name: 'Prof', role: 'faculty' },
   removeStudentFromCourse: vi.fn(),
   showConfirm: vi.fn(),
   showAlert: vi.fn(),
+  mockDb: {
+    courses: [
+      { id: 'c1', code: 'CMSC 131', instructorId: 'u-fac-1' },
+      { id: 'c-dean', code: 'CMSC 199', instructorId: 'u-dean-1' },
+    ],
+    users: [
+      { id: 'u-fac-1', name: 'Prof', email: 'prof@school.edu', role: 'faculty', avatar: '', department: 'CS', title: 'Prof' },
+      { id: 'u-fac-other', name: 'Other Prof', email: 'otherfac@school.edu', role: 'faculty', avatar: '', department: 'CS', title: 'Prof' },
+      { id: 'u-dean-1', name: 'Dean Eleanor', email: 'dean@school.edu', role: 'admin', adminSubrole: 'dean', avatar: '', department: 'CS', title: 'College Dean' },
+      { id: 'u-stu-1', name: 'Stu One', email: 'stu@school.edu', role: 'student', avatar: '', department: 'CS', title: '', studentId: '2021-00001', enrolledCourseIds: ['c1'] },
+      { id: 'u-stu-other', name: 'Stu Other Course', email: 'otherstu@school.edu', role: 'student', avatar: '', department: 'CS', title: '', studentId: '2021-00002', enrolledCourseIds: ['c2'] },
+      { id: 'u-stu-pending', name: 'Stu Pending', email: 'stupending@school.edu', role: 'student', avatar: '', department: 'CS', title: '', studentId: '2021-00003', enrolledCourseIds: [] },
+    ],
+    enrollmentRequests: [
+      { id: 'req-1', courseId: 'c1', studentId: 'u-stu-1', studentName: 'Stu One', type: 'self_join', status: 'approved', requestedAt: new Date().toISOString() },
+    ],
+  },
 }));
 
 vi.mock('../../shared/context/LMSContext', () => ({
   useLMS: () => ({
-    db: {
-      courses: [{ id: 'c1', code: 'CMSC 131', instructorId: 'u-fac-1' }],
-      users: [
-        { id: 'u-fac-1', name: 'Prof', email: 'prof@school.edu', role: 'faculty', avatar: '', department: 'CS', title: 'Prof' },
-        { id: 'u-dean-1', name: 'Dean Eleanor', email: 'dean@school.edu', role: 'admin', adminSubrole: 'dean', avatar: '', department: 'CS', title: 'College Dean' },
-        { id: 'u-stu-1', name: 'Stu One', email: 'stu@school.edu', role: 'student', avatar: '', department: 'CS', title: '', studentId: '2021-00001', enrolledCourseIds: ['c1'] },
-      ],
-      enrollmentRequests: [
-        { id: 'req-1', courseId: 'c1', studentId: 'u-stu-1', studentName: 'Stu One', type: 'self_join', status: 'approved', requestedAt: new Date().toISOString() },
-      ],
-    },
-    activeRole: 'faculty',
-    activeUser: { id: 'u-fac-1', name: 'Prof', role: 'faculty' },
+    db: mocks.mockDb,
+    activeRole: mocks.activeRole,
+    activeUser: mocks.activeUser,
     isLoading: false,
     enrollStudentsInCourse: vi.fn(),
     regenerateCourseJoinCode: vi.fn(),
@@ -62,8 +71,84 @@ describe('PeopleView remove student', () => {
     expect(mocks.removeStudentFromCourse).toHaveBeenCalledWith('c1', 'u-stu-1');
   });
 
-  test('renders Dean role badge for admin(dean) instead of generic Admin', () => {
+  test('only shows the assigned instructor and enrolled students, excluding uninvolved users', () => {
     renderPage();
+    expect(screen.getByText('Prof')).toBeInTheDocument();
+    expect(screen.getByText('Stu One')).toBeInTheDocument();
+    expect(screen.queryByText('Dean Eleanor')).not.toBeInTheDocument();
+    expect(screen.queryByText('Other Prof')).not.toBeInTheDocument();
+    expect(screen.queryByText('Stu Other Course')).not.toBeInTheDocument();
+  });
+
+  test('filters roster by Faculty and Students tabs correctly', () => {
+    renderPage();
+    // Default "All": both instructor and student are shown
+    expect(screen.getByText('Prof')).toBeInTheDocument();
+    expect(screen.getByText('Stu One')).toBeInTheDocument();
+
+    // Switch to Faculty filter
+    fireEvent.click(screen.getByRole('button', { name: /^Faculty$/i }));
+    expect(screen.getByText('Prof')).toBeInTheDocument();
+    expect(screen.queryByText('Stu One')).not.toBeInTheDocument();
+
+    // Switch to Students filter
+    fireEvent.click(screen.getByRole('button', { name: /^Students$/i }));
+    expect(screen.getByText('Stu One')).toBeInTheDocument();
+    expect(screen.queryByText('Prof')).not.toBeInTheDocument();
+  });
+
+  test('renders Dean role badge when admin(dean) is the assigned instructor of a course', () => {
+    render(<PeopleView courseId="c-dean" />);
+    expect(screen.getByText('Dean Eleanor')).toBeInTheDocument();
     expect(screen.getByText('Dean')).toBeInTheDocument();
+  });
+
+  test('updates pending tab and badge reactively when db.enrollmentRequests changes without reload', async () => {
+    mocks.mockDb.enrollmentRequests = [
+      { id: 'req-1', courseId: 'c1', studentId: 'u-stu-1', studentName: 'Stu One', type: 'self_join', status: 'approved', requestedAt: new Date().toISOString() },
+      { id: 'req-2', courseId: 'c1', studentId: 'u-stu-pending', studentName: 'Stu Pending', type: 'self_join', status: 'pending', requestedAt: new Date().toISOString() },
+    ];
+
+    const { rerender } = renderPage();
+    expect(screen.getByText('Pending')).toBeInTheDocument();
+    expect(screen.getByText('1')).toBeInTheDocument();
+
+    // Switch to Pending tab to see the pending request
+    fireEvent.click(screen.getByRole('button', { name: /pending/i }));
+    expect(await screen.findByText('Stu Pending')).toBeInTheDocument();
+
+    // Now simulate notification acceptance: req-2 becomes approved
+    mocks.mockDb.enrollmentRequests = [
+      { id: 'req-1', courseId: 'c1', studentId: 'u-stu-1', studentName: 'Stu One', type: 'self_join', status: 'approved', requestedAt: new Date().toISOString() },
+      { id: 'req-2', courseId: 'c1', studentId: 'u-stu-pending', studentName: 'Stu Pending', type: 'self_join', status: 'approved', requestedAt: new Date().toISOString() },
+    ];
+    rerender(<PeopleView courseId="c1" />);
+
+    // Pending count badge is gone and student is no longer in pending tab
+    expect(screen.queryByText('1')).not.toBeInTheDocument();
+    expect(screen.queryByText('Stu Pending')).not.toBeInTheDocument();
+    expect(screen.getByText('No Pending Requests')).toBeInTheDocument();
+  });
+
+  test('students cannot see pending tab toggle, pending badge, or pending requests', () => {
+    mocks.activeRole = 'student';
+    mocks.activeUser = { id: 'u-stu-1', name: 'Stu One', role: 'student' };
+    mocks.mockDb.enrollmentRequests = [
+      { id: 'req-1', courseId: 'c1', studentId: 'u-stu-1', studentName: 'Stu One', type: 'self_join', status: 'approved', requestedAt: new Date().toISOString() },
+      { id: 'req-2', courseId: 'c1', studentId: 'u-stu-pending', studentName: 'Stu Pending', type: 'self_join', status: 'pending', requestedAt: new Date().toISOString() },
+    ];
+
+    renderPage();
+
+    // Roster is visible
+    expect(screen.getByText('Stu One')).toBeInTheDocument();
+
+    // Pending tab toggle & badge must not be visible to students
+    expect(screen.queryByRole('button', { name: /pending/i })).not.toBeInTheDocument();
+    expect(screen.queryByText('Stu Pending')).not.toBeInTheDocument();
+
+    // Reset back to faculty
+    mocks.activeRole = 'faculty';
+    mocks.activeUser = { id: 'u-fac-1', name: 'Prof', role: 'faculty' };
   });
 });

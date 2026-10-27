@@ -1,7 +1,8 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useLMS } from '../../shared/context/LMSContext';
 import { createDefaultSyllabusForCourse, type OfficialSyllabusData, type FacultySchedule } from '../../shared/data/syllabusData';
 import { scanSyllabusDocument, type ScanResult } from '../../shared/utils/syllabusParser';
+import { parseFormattedSize, formatFileSize } from '../../shared/utils/fileUploader';
 import { resolveSPRWeights } from '../../shared/utils/spr';
 import { effectiveTerms, resolveCourseTerms } from '../../shared/utils/gradingTerms';
 import type { TermId } from '../../shared/types/lms';
@@ -136,10 +137,22 @@ export function buildInstructorOptions(
   facultyUsers: Array<{ id: string; name: string; title?: string }>,
   currentCourse?: { instructorId?: string; instructorName?: string } | null,
 ): InstructorOption[] {
-  const scannedNames: string[] = scanResult?.detectedFacultyNames || [];
+  const scannedNames: string[] = (scanResult?.detectedFacultyNames || []).filter(
+    name => !NON_FACULTY_POSITION_PATTERN.test(name)
+  );
   const result: InstructorOption[] = [];
   for (const name of [...new Set(scannedNames)]) {
-    if (NON_FACULTY_POSITION_PATTERN.test(name)) continue;
+    // If the scanned name matches the assigned instructor of the course, prioritize that designation
+    if (currentCourse?.instructorName && matchesPersonName(currentCourse.instructorName, name)) {
+      const match = facultyUsers.find(u => matchesPersonName(u.name, name));
+      result.push({
+        id: match?.id || currentCourse.instructorId || `scanned:${name}`,
+        name: match?.name || currentCourse.instructorName,
+        label: `${match?.name || currentCourse.instructorName} — Assigned Course Instructor`,
+      });
+      continue;
+    }
+
     const match = facultyUsers.find(u => matchesPersonName(u.name, name));
     if (match) {
       result.push({ id: match.id, name: match.name, label: `${match.name} — ${match.title || 'Faculty'}` });
@@ -148,18 +161,14 @@ export function buildInstructorOptions(
     }
   }
 
-  // Also include the assigned course instructor if not already in the options list
-  if (currentCourse?.instructorName) {
-    const alreadyIncluded = result.some(
-      opt => (currentCourse.instructorId && opt.id === currentCourse.instructorId) || matchesPersonName(opt.name, currentCourse.instructorName)
-    );
-    if (!alreadyIncluded) {
-      result.push({
-        id: currentCourse.instructorId || `assigned:${currentCourse.instructorName}`,
-        name: currentCourse.instructorName,
-        label: `${currentCourse.instructorName} — Assigned Course Instructor`
-      });
-    }
+  // Fallback ONLY when no faculty names were detected in the document text at all:
+  // Show registered faculty members so an instructor can be manually selected
+  if (result.length === 0 && facultyUsers.length > 0) {
+    return facultyUsers.map(u => ({
+      id: u.id,
+      name: u.name,
+      label: `${u.name} — ${u.title || 'Faculty'}`,
+    }));
   }
 
   return result;
@@ -214,9 +223,20 @@ const syllabusEditorSectionPayloads = (
 };
 
 export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
-  const { db, activeUser, updateCourseSyllabus, removeCourseSyllabus, showAlert, showConfirm, uploadCourseFile, updateCourseGradingTerms, syllabusRevisions, updateSyllabusSection, publishSyllabusDraft } = useLMS();
-  const currentCourse = db.courses.find(c => c.id === courseId);
+  const { db, activeUser, updateCourseSyllabus, removeCourseSyllabus, showAlert, showConfirm, uploadCourseFile, updateCourseGradingTerms, syllabusRevisions, updateSyllabusSection, publishSyllabusDraft, refreshCourseSyllabus } = useLMS();
+  const currentCourse = db.courses.find(c => String(c.id).trim() === String(courseId).trim());
   const rawData = currentCourse?.syllabus || null;
+
+  const [isFetchingSyllabus, setIsFetchingSyllabus] = useState(false);
+
+  useEffect(() => {
+    if (!rawData && courseId && typeof refreshCourseSyllabus === 'function') {
+      setIsFetchingSyllabus(true);
+      void refreshCourseSyllabus(courseId).finally(() => {
+        setIsFetchingSyllabus(false);
+      });
+    }
+  }, [courseId, rawData, refreshCourseSyllabus]);
   const data = useMemo<OfficialSyllabusData | null>(() => {
     if (!rawData) return null;
     const base = currentCourse ? createDefaultSyllabusForCourse(currentCourse) : null;
@@ -551,14 +571,11 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
       setScanResult(result);
       setScannedFile(file);
 
-      // Auto-detect faculty member from document text
-      const syllabusFacultyNames = [
-        ...(result.detectedFacultyNames || []),
-        ...(result.syllabus?.facultyMembers || []).map(f => f.name),
-        ...(result.syllabus?.signatories?.preparedBy || []).map(p => p.name)
-      ].filter(Boolean);
+      // Auto-detect faculty member from document text: ONLY names actually scanned from the file
+      const scannedNames = (result.detectedFacultyNames || [])
+        .filter(name => Boolean(name) && !NON_FACULTY_POSITION_PATTERN.test(name));
 
-      // Prioritize the Assigned Instructor of the course: if they match a faculty in the syllabus,
+      // Prioritize the Assigned Instructor of the course: ONLY if they match a faculty in the syllabus,
       // automatically set them as the auto-matched instructor.
       const assignedInstructorName = (currentCourse?.instructorName || '').trim();
       const assignedInstructorUser = (db.users || []).find(
@@ -568,7 +585,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
       const effectiveAssignedName = assignedInstructorUser?.name || assignedInstructorName;
 
       const matchedAssignedSyllabusName = effectiveAssignedName
-        ? syllabusFacultyNames.find(sName => matchesPersonName(sName, effectiveAssignedName))
+        ? scannedNames.find(sName => matchesPersonName(sName, effectiveAssignedName))
         : undefined;
 
       if (matchedAssignedSyllabusName) {
@@ -579,21 +596,22 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
         setIsAutoDetected(true);
       } else {
         const otherFoundFaculty = facultyUsers.find(u =>
-          syllabusFacultyNames.some(sName => matchesPersonName(u.name, sName))
+          scannedNames.some(sName => matchesPersonName(u.name, sName))
         );
 
         if (otherFoundFaculty) {
           setSelectedFacultyId(otherFoundFaculty.id);
           setDetectedFacultyName(otherFoundFaculty.name);
           setIsAutoDetected(true);
+        } else if (scannedNames.length > 0) {
+          // If the syllabus has faculty members, select the first scanned faculty member from the syllabus
+          setSelectedFacultyId(`scanned:${scannedNames[0]}`);
+          setDetectedFacultyName(scannedNames[0]);
+          setIsAutoDetected(true);
         } else if (currentCourse?.instructorId && facultyUsers.some(u => u.id === currentCourse.instructorId)) {
-          // Fallback: Default to course creator/instructor if not explicitly found in document text
+          // Fallback only when NO faculty was detected in the document text at all
           setSelectedFacultyId(currentCourse.instructorId);
           setDetectedFacultyName(currentCourse.instructorName || 'Course Instructor');
-          setIsAutoDetected(false);
-        } else if (syllabusFacultyNames.length > 0) {
-          setSelectedFacultyId(`scanned:${syllabusFacultyNames[0]}`);
-          setDetectedFacultyName(syllabusFacultyNames[0]);
           setIsAutoDetected(false);
         } else {
           setSelectedFacultyId(facultyUsers[0]?.id || activeUser.id);
@@ -778,12 +796,20 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
             upload.start(scannedFile?.name ?? scanResult.fileName);
           }
           try {
+            const resolvedBytes = scannedFile?.size
+              || parseFormattedSize(scanResult.fileSize)
+              || 1024 * 1024;
+            const resolvedFormatted = (scanResult.fileSize && scanResult.fileSize !== '0 B')
+              ? scanResult.fileSize
+              : formatFileSize(resolvedBytes);
+
             const uploaded = await uploadCourseFile({
               courseId: targetId,
               area: 'syllabus',
               name: scanResult.fileName,
               rawFile: scannedFile ?? undefined,
-              formattedSize: scanResult.fileSize,
+              size: resolvedBytes,
+              formattedSize: resolvedFormatted,
               type: scanResult.fileType === 'pdf' ? 'pdf' : 'document',
               visibility: 'published',
             });
@@ -1346,10 +1372,10 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                 disabled={upload.isUploading || isApplying}
                 className="w-full py-2.5 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all shadow-primary-sm cursor-pointer flex items-center justify-center space-x-2 disabled:opacity-60 disabled:cursor-wait"
               >
-                {isApplying
+                {(isApplying || upload.isUploading)
                   ? <Loader2 className="w-4 h-4 animate-spin" />
                   : <Check className="w-4 h-4" />}
-                <span>{isApplying ? 'Applying…' : 'Apply syllabus'}</span>
+                <span>{(isApplying || upload.isUploading) ? 'Applying...' : 'Apply syllabus'}</span>
               </button>
               <button
                 type="button"
@@ -1381,6 +1407,24 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
             </details>
           </aside>
         </div>
+
+        {/* Cross-section prompt modal when sibling sections exist */}
+        <CrossSectionPromptModal
+          isOpen={isCrossSectionModalOpen}
+          onClose={() => setIsCrossSectionModalOpen(false)}
+          itemType="syllabus"
+          itemTitle={scanResult?.fileName || 'Official Syllabus'}
+          siblingCourses={siblingCourses}
+          onConfirm={async (selectedIds) => {
+            setIsCrossSectionModalOpen(false);
+            await handleApplySyllabus([courseId, ...selectedIds]);
+          }}
+          onSkipToCurrentOnly={async () => {
+            setIsCrossSectionModalOpen(false);
+            await handleApplySyllabus([courseId]);
+          }}
+          isSubmitting={isApplying || upload.isUploading}
+        />
       </div>
     );
   }
@@ -1393,6 +1437,12 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
         description={currentCourse?.title}
       />
       {!data ? (
+        isFetchingSyllabus ? (
+          <div className="p-12 sm:p-20 bg-card border border-border rounded-2xl shadow-subtle text-center space-y-4 flex flex-col items-center justify-center">
+            <Loader2 className="w-8 h-8 animate-spin text-primary opacity-80" />
+            <p className="text-sm font-medium text-muted-foreground">Loading course syllabus...</p>
+          </div>
+        ) : (
         <div className="p-8 sm:p-14 bg-card border border-border rounded-2xl shadow-subtle text-center space-y-6 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-80 h-80 bg-primary/5 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
 
@@ -1433,6 +1483,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
             </div>
           )}
         </div>
+        )
       ) : (
         <>
           <SyllabusRevisionBar
@@ -2106,7 +2157,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                 <div className="space-y-3">
                   {editBar('programOutcomes')}
                   {draft.programOutcomes.map((po, idx) => (
-                    <div key={po.number} className="flex items-start gap-2">
+                    <div key={`po-edit-${po.number}-${idx}`} className="flex items-start gap-2">
                       <span className="px-2 py-1 rounded bg-primary/10 text-primary font-bold text-[11px] shrink-0 mt-1">PO {po.number}</span>
                       <textarea
                         rows={2}
@@ -2150,9 +2201,9 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                 Upon graduation, successful BSCS graduates will attain the following program outcomes:
               </p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {data.programOutcomes.map(po => (
+                {data.programOutcomes.map((po, idx) => (
                   <div
-                    key={po.number}
+                    key={`po-${po.number}-${idx}`}
                     className="p-3 bg-muted/20 border border-border rounded-xl flex items-start space-x-3 hover:border-primary/40 transition-colors"
                   >
                     <span className="px-2 py-0.5 rounded bg-primary/10 text-primary font-sans font-bold text-[11px] shrink-0 mt-0.5">
@@ -2221,7 +2272,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                 <div className="space-y-3">
                   {editBar('courseOutcomes')}
                   {draft.courseOutcomes.map((co, idx) => (
-                    <div key={co.number} className="flex items-start gap-2">
+                    <div key={`co-edit-${co.number}-${idx}`} className="flex items-start gap-2">
                       <span className="px-2 py-1 rounded bg-primary text-primary-foreground font-bold text-[11px] shrink-0 mt-1">CO {co.number}</span>
                       <textarea rows={2} value={co.statement} onChange={e => {
                         const v = e.target.value;
@@ -2260,9 +2311,9 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                 By the end of this course, students should be able to:
               </p>
               <div className="space-y-2.5">
-                {data.courseOutcomes.map(co => (
+                {data.courseOutcomes.map((co, idx) => (
                   <div
-                    key={co.number}
+                    key={`co-${co.number}-${idx}`}
                     className="p-3 rounded-xl bg-muted/20 border border-border flex items-start space-x-3 hover:bg-muted/40 transition-colors"
                   >
                     <span className="px-2 py-0.5 rounded-full bg-muted text-foreground border border-border font-sans font-semibold text-[11px] shrink-0 mt-0.5">
@@ -3345,7 +3396,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                 <div className="space-y-4">
                   {editBar('curriculumMap')}
                   {draft.courseMap.map((row, rIdx) => (
-                    <div key={row.coNumber} className="p-3 rounded-xl border border-border bg-muted/20 space-y-2">
+                    <div key={`cmap-edit-${row.coNumber}-${rIdx}`} className="p-3 rounded-xl border border-border bg-muted/20 space-y-2">
                       <div>
                         <label className={labelCls}>CO {row.coNumber} statement</label>
                         <textarea rows={2} value={row.coStatement} onChange={e => {
@@ -3424,8 +3475,8 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border font-sans">
-                    {data.courseMap.map(row => (
-                      <tr key={row.coNumber} className="hover:bg-muted/40 transition-colors">
+                    {data.courseMap.map((row, rIdx) => (
+                      <tr key={`cmap-${row.coNumber}-${rIdx}`} className="hover:bg-muted/40 transition-colors">
                         <td className="px-4 py-3 text-foreground font-medium text-xs leading-relaxed">
                           <span className="font-bold text-primary mr-1">CO {row.coNumber}.</span>
                           {row.coStatement}

@@ -38,7 +38,6 @@ const AssignmentsView = React.lazy(() => import('../assessments').then(m => ({ d
 const ProjectsView = React.lazy(() => import('../assessments').then(m => ({ default: m.ProjectsView })));
 const PresentationsView = React.lazy(() => import('../assessments').then(m => ({ default: m.PresentationsView })));
 const QuizzesView = React.lazy(() => import('../assessments').then(m => ({ default: m.QuizzesView })));
-const ExamsView = React.lazy(() => import('../assessments').then(m => ({ default: m.ExamsView })));
 const PeopleView = React.lazy(() => import('../people').then(m => ({ default: m.PeopleView })));
 const AnnouncementsView = React.lazy(() => import('../inbox').then(m => ({ default: m.AnnouncementsView })));
 const FilesView = React.lazy(() => import('../files').then(m => ({ default: m.FilesView })));
@@ -72,7 +71,6 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedPresentationId, setSelectedPresentationId] = useState<string | null>(null);
   const [selectedQuizId, setSelectedQuizId] = useState<string | null>(null);
-  const [selectedExamId, setSelectedExamId] = useState<string | null>(null);
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
 
   // Defense-in-depth: enrollment truth is approved request rows. Fall back
@@ -114,8 +112,14 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
 
   useEffect(() => {
     setSubTab(initialSubTab);
-    if (activeCourse) markTabVisited(initialSubTab, activeCourse.id);
-  }, [initialSubTab]);
+    if (activeCourse) markTabVisited?.(initialSubTab, activeCourse.id);
+  }, [initialSubTab, activeCourse?.id]);
+
+  useEffect(() => {
+    if (activeCourse && subTab) {
+      markTabVisited?.(subTab, activeCourse.id);
+    }
+  }, [subTab, activeCourse?.id]);
 
   useEffect(() => {
     if (activeRole === 'student' && subTab === 'pending-requests') {
@@ -150,7 +154,7 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
       } else if (tab.id === 'modules') {
         badgeCount = getUnreadNotificationCount(activeUser.id, 'module_comment_reply');
       } else if (tab.id === 'announcements') {
-        badgeCount = countUnreadAnnouncements(db.announcements || [], { id: activeUser.id, role: activeRole, sectionId: null }, cid);
+        badgeCount = countUnreadAnnouncements(db.announcements || [], { id: activeUser.id, role: activeRole, sectionId: null }, cid, visits);
       } else if (tab.id === 'assessments') {
         badgeCount = countTotalAssessmentBadge({
           activities: db.activities || [],
@@ -181,11 +185,11 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
           ? countFacultyGradingBadge(db.submissions.filter(s => s.courseId === cid), (db.quizzes || []).filter(q => q.courseId === cid).map(q => `asg-quiz-${q.id}`))
           : (db.quizzes || []).filter(q => q.courseId === cid && q.published && !db.submissions.some(s => s.activityKey === `asg-quiz-${q.id}` && s.studentId === activeUser.id)).length;
       } else if (tab.id === 'files') {
-        badgeCount = countNewFiles(db.courseFiles || [], cid, visits);
+        badgeCount = countNewFiles(db.courseFiles || [], cid, visits, activeUser.id);
       } else if (tab.id === 'grades') {
         badgeCount = activeRole === 'student' ? countNewGrades(db.courseGrades || [], cid, activeUser.id, visits) : 0;
       } else if (tab.id === 'people') {
-        badgeCount = (activeRole === 'faculty' || activeRole === 'admin' || activeRole === 'superadmin') ? countPendingPeople(db.enrollmentRequests || [], cid) : 0;
+        badgeCount = (activeRole === 'faculty' || activeRole === 'admin' || activeRole === 'superadmin') ? countPendingPeople(db.enrollmentRequests || [], cid, visits) : 0;
       } else if (tab.id === 'calendar') {
         badgeCount = countUpcomingCalendar(db.calendarEvents || [], cid, visits);
       }
@@ -280,6 +284,21 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
               setReturnToTab('modules');
               setSubTab('quizzes');
             }}
+            onSelectAssignment={asgId => {
+              setSelectedAssignmentId(asgId);
+              setReturnToTab('modules');
+              setSubTab('assignments');
+            }}
+            onSelectProject={projId => {
+              setSelectedProjectId(projId);
+              setReturnToTab('modules');
+              setSubTab('projects');
+            }}
+            onSelectPresentation={presId => {
+              setSelectedPresentationId(presId);
+              setReturnToTab('modules');
+              setSubTab('presentations');
+            }}
           />
         )}
 
@@ -287,7 +306,7 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
 
         {subTab === 'announcements' && <AnnouncementsView courseId={activeCourse.id} />}
 
-        {(isAssessmentTab(subTab) || subTab === 'exams') && activeCourse && !courseHasSyllabus && (
+        {isAssessmentTab(subTab) && activeCourse && !courseHasSyllabus && (
           <div className="bg-card border border-border rounded-2xl p-8 text-center" data-testid="assessments-syllabus-gate">
             <h3 className="text-sm font-bold text-foreground">Syllabus required for assessments</h3>
             <p className="text-xs text-muted-foreground mt-1">Course assessments and items are derived from the official course syllabus. {(activeRole === 'faculty' || activeRole === 'admin' || activeRole === 'superadmin') ? 'Upload a syllabus to enable creating assessment items.' : 'Waiting for your instructor to upload the syllabus.'}</p>
@@ -306,7 +325,6 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
               if (cat === 'projects') setSelectedProjectId(itemId || null);
               if (cat === 'presentations') setSelectedPresentationId(itemId || null);
               if (cat === 'quizzes') setSelectedQuizId(itemId || null);
-              if (cat === 'exams') setSelectedExamId(itemId || null);
               setSubTab(cat);
             }}
           />
@@ -389,23 +407,6 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
               returnToTab === 'modules'
                 ? () => {
                     setSelectedQuizId(null);
-                    setReturnToTab(null);
-                    setSubTab('modules');
-                  }
-                : undefined
-            }
-          />
-        )}
-
-        {subTab === 'exams' && activeCourse && courseHasSyllabus && (
-          <ExamsView
-            courseId={activeCourse.id}
-            selectedExamId={selectedExamId}
-            onSelectExam={setSelectedExamId}
-            onBackToModules={
-              returnToTab === 'modules'
-                ? () => {
-                    setSelectedExamId(null);
                     setReturnToTab(null);
                     setSubTab('modules');
                   }

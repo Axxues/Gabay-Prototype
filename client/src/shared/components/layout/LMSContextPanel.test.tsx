@@ -21,6 +21,7 @@ let mockLmsState: any = {
   colleges: [],
   departments: [],
   getUnreadNotificationCount: () => 0,
+  markTabVisited: vi.fn(),
 };
 
 vi.mock('../../context/LMSContext', () => ({
@@ -55,7 +56,7 @@ describe('LMSContextPanel Collapsible Assessments', () => {
     expect(screen.getByText('Assignments')).toBeDefined();
     expect(screen.getByText('Projects')).toBeDefined();
     expect(screen.getByText('Presentations')).toBeDefined();
-    expect(screen.getByText('Exams')).toBeDefined();
+    expect(screen.queryByText('Exams')).toBeNull();
 
     // Click Assignments sub-item
     const assignmentsBtn = screen.getByRole('button', { name: /Assignments/i });
@@ -159,6 +160,7 @@ describe('LMSContextPanel Collapsible Assessments', () => {
       colleges: [],
       departments: [],
       getUnreadNotificationCount: () => 0,
+  markTabVisited: vi.fn(),
     };
 
     render(
@@ -205,6 +207,7 @@ describe('LMSContextPanel Collapsible Assessments', () => {
       colleges: [],
       departments: [],
       getUnreadNotificationCount: () => 0,
+  markTabVisited: vi.fn(),
     };
 
     render(

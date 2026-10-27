@@ -1,7 +1,7 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { useLMS, generateCourseJoinCode } from '../../shared/context/LMSContext';
 import { useSimulatedUpload } from '../../shared/hooks/useSimulatedUpload';
-import { uploadFileToPublic } from '../../shared/utils/fileUploader';
+import { uploadFileToPublic, isImageFile } from '../../shared/utils/fileUploader';
 import { UploadProgress } from '../../shared/components/common/UploadProgress';
 import { UserAvatar } from '../../shared/components/common/UserAvatar';
 import { normalizeAssignedSemester } from './utils/chairSheetParser';
@@ -185,6 +185,7 @@ export const EditCoursePage: React.FC<EditCoursePageProps> = ({
   const [courseImage, setCourseImage] = useState<string>(course.image || '');
   const [imageMode, setImageMode] = useState<'presets' | 'upload' | 'url'>('presets');
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
+  const [stagedImageFile, setStagedImageFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const upload = useSimulatedUpload();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -259,11 +260,11 @@ export const EditCoursePage: React.FC<EditCoursePageProps> = ({
 
 
 
-  const processImageFile = async (file: File) => {
-    if (!file.type.startsWith('image/')) {
+  const processImageFile = (file: File) => {
+    if (!isImageFile(file.name, file.type)) {
       showAlert({
-        title: 'Invalid File',
-        message: 'Please upload an image file (PNG, JPG, WEBP, or GIF).',
+        title: 'Invalid File Type',
+        message: 'Please choose an image file (PNG, JPG, WebP, GIF, or SVG).',
         type: 'warning'
       });
       return;
@@ -272,35 +273,26 @@ export const EditCoursePage: React.FC<EditCoursePageProps> = ({
     if (file.size > 10 * 1024 * 1024) {
       showAlert({
         title: 'File Too Large',
-        message: 'Cover images must be under 10MB.',
+        message: 'Please upload an image smaller than 10MB.',
         type: 'warning'
       });
       return;
     }
 
-    if (upload.isUploading) return;
-    upload.start(file.name);
+    if (courseImage && courseImage.startsWith('blob:')) {
+      try { URL.revokeObjectURL(courseImage); } catch {}
+    }
+    setStagedImageFile(file);
+    let previewUrl = '';
     try {
-      const result = await uploadFileToPublic(file);
-      setCourseImage(result.url);
-      setUploadedFileName(result.name);
-      upload.complete();
-      if (result.url.startsWith('data:')) {
-        showAlert({
-          title: 'Stored Without Upload',
-          message: 'The image server was unreachable, so this cover is embedded in the course. Re-upload it later for faster loading.',
-          type: 'warning'
-        });
+      if (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+        previewUrl = URL.createObjectURL(file);
       }
     } catch {
-      upload.fail();
-      showAlert({
-        title: 'Upload Failed',
-        message: 'Could not upload that image. Please try a different file.',
-        type: 'warning'
-      });
-      setUploadedFileName(null);
+      previewUrl = '';
     }
+    setCourseImage(previewUrl);
+    setUploadedFileName(file.name);
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -325,6 +317,12 @@ export const EditCoursePage: React.FC<EditCoursePageProps> = ({
     if (upload.isUploading) {
       upload.reset();
     }
+    if (mode !== 'upload' && courseImage && courseImage.startsWith('blob:')) {
+      try { URL.revokeObjectURL(courseImage); } catch {}
+      setStagedImageFile(null);
+      setUploadedFileName(null);
+      setCourseImage(course.image || '');
+    }
     setImageMode(mode);
   };
 
@@ -342,9 +340,28 @@ export const EditCoursePage: React.FC<EditCoursePageProps> = ({
 
     setIsSubmitting(true);
     try {
+      let resolvedImage = courseImage.trim();
+      if (imageMode === 'upload' && stagedImageFile) {
+        upload.start(stagedImageFile.name);
+        try {
+          const result = await uploadFileToPublic(stagedImageFile);
+          resolvedImage = result.url;
+          upload.complete();
+        } catch {
+          upload.fail();
+          showAlert({
+            title: 'Upload Failed',
+            message: 'Could not upload that image. Please try a different file.',
+            type: 'warning'
+          });
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
       await updateCourse(course.id, {
         color: courseColor,
-        image: courseImage.trim(),
+        image: resolvedImage,
         joinCode: courseJoinCode.trim() || course.joinCode
       });
 
@@ -725,7 +742,11 @@ export const EditCoursePage: React.FC<EditCoursePageProps> = ({
                             <button
                               type="button"
                               onClick={() => {
+                                if (courseImage && courseImage.startsWith('blob:')) {
+                                  try { URL.revokeObjectURL(courseImage); } catch {}
+                                }
                                 setCourseImage('');
+                                setStagedImageFile(null);
                                 setUploadedFileName(null);
                               }}
                               className="px-3 py-1.5 bg-card/90 hover:bg-card text-destructive text-xs font-bold rounded-lg shadow-sm transition-all flex items-center space-x-1.5 cursor-pointer"

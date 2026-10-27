@@ -1,7 +1,7 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { useLMS, generateCourseJoinCode } from '../../shared/context/LMSContext';
 import { useSimulatedUpload } from '../../shared/hooks/useSimulatedUpload';
-import { uploadFileToPublic } from '../../shared/utils/fileUploader';
+import { uploadFileToPublic, isImageFile } from '../../shared/utils/fileUploader';
 import { UploadProgress } from '../../shared/components/common/UploadProgress';
 import { UserAvatar } from '../../shared/components/common/UserAvatar';
 import { getAcademicTermOptions, getDefaultAcademicTerm } from '../../shared/utils/academicTerms';
@@ -120,6 +120,7 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
   const [courseImage, setCourseImage] = useState<string>('');
   const [imageMode, setImageMode] = useState<'presets' | 'upload' | 'url'>('presets');
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
+  const [stagedImageFile, setStagedImageFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const upload = useSimulatedUpload();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -190,11 +191,11 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
     };
   }, [isTermOpen]);
 
-  const processImageFile = async (file: File) => {
-    if (!file.type.startsWith('image/')) {
+  const processImageFile = (file: File) => {
+    if (!isImageFile(file.name, file.type)) {
       showAlert({
         title: 'Invalid File Type',
-        message: 'Please upload an image file (PNG, JPG, WebP, SVG, GIF).',
+        message: 'Please choose an image file (PNG, JPG, WebP, GIF, or SVG).',
         type: 'warning'
       });
       return;
@@ -209,31 +210,20 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
       return;
     }
 
-    if (upload.isUploading) return;
-    upload.start(file.name);
+    if (courseImage && courseImage.startsWith('blob:')) {
+      try { URL.revokeObjectURL(courseImage); } catch {}
+    }
+    setStagedImageFile(file);
+    let previewUrl = '';
     try {
-      // Persist to /uploads and store the URL — never a data URL. A 10MB
-      // photo inlines to ~13MB of base64, which once lived in the Course
-      // row and made every course query (list + all access checks) ~1s.
-      const result = await uploadFileToPublic(file);
-      setCourseImage(result.url);
-      setUploadedFileName(result.name);
-      upload.complete();
-      if (result.url.startsWith('data:')) {
-        showAlert({
-          title: 'Stored Without Upload',
-          message: 'The image server was unreachable, so this cover is embedded in the course. Re-upload it later for faster loading.',
-          type: 'warning'
-        });
+      if (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+        previewUrl = URL.createObjectURL(file);
       }
     } catch {
-      upload.fail();
-      showAlert({
-        title: 'Upload Failed',
-        message: 'Could not upload that image. Please try a different file.',
-        type: 'warning'
-      });
+      previewUrl = '';
     }
+    setCourseImage(previewUrl);
+    setUploadedFileName(file.name);
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -259,6 +249,12 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
     if (upload.isUploading) {
       upload.reset();
     }
+    if (mode !== 'upload' && courseImage && courseImage.startsWith('blob:')) {
+      try { URL.revokeObjectURL(courseImage); } catch {}
+      setStagedImageFile(null);
+      setUploadedFileName(null);
+      setCourseImage('');
+    }
     setImageMode(mode);
   };
 
@@ -276,12 +272,31 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
 
     setIsSubmitting(true);
     try {
+      let resolvedImage = courseImage.trim();
+      if (imageMode === 'upload' && stagedImageFile) {
+        upload.start(stagedImageFile.name);
+        try {
+          const result = await uploadFileToPublic(stagedImageFile);
+          resolvedImage = result.url;
+          upload.complete();
+        } catch {
+          upload.fail();
+          showAlert({
+            title: 'Upload Failed',
+            message: 'Could not upload that image. Please try a different file.',
+            type: 'warning'
+          });
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
       const newCourse = await createCourse({
         code: courseCode.trim().toUpperCase(),
         title: courseTitle.trim(),
         section: courseSection.trim(),
         color: courseColor,
-        image: courseImage.trim(),
+        image: resolvedImage,
         instructorId: activeUser.id,
         instructorName: activeUser.name,
         term: courseTerm,
@@ -376,7 +391,7 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="sm:col-span-1">
                   <label className="block text-[12px] font-semibold text-muted-foreground mb-1.5">
-                    Course code
+                    Course code <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -391,7 +406,7 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
 
                 <div className="sm:col-span-2">
                   <label className="block text-[12px] font-semibold text-muted-foreground mb-1.5">
-                    Section
+                    Section <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -409,7 +424,7 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
 
               <div>
                 <label className="block text-[12px] font-semibold text-muted-foreground mb-1.5">
-                  Course title
+                  Course title <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -423,7 +438,7 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
 
               <div>
                 <label className="block text-[12px] font-semibold text-muted-foreground mb-1.5">
-                  School year <span className="text-destructive">*</span>
+                  School year <span className="text-red-500">*</span>
                 </label>
                 <div ref={schoolYearDropdownRef} className="relative">
                   <button
@@ -840,7 +855,11 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
                             <button
                               type="button"
                               onClick={() => {
+                                if (courseImage && courseImage.startsWith('blob:')) {
+                                  try { URL.revokeObjectURL(courseImage); } catch {}
+                                }
                                 setCourseImage('');
+                                setStagedImageFile(null);
                                 setUploadedFileName(null);
                               }}
                               className="px-3 py-1.5 bg-card/90 hover:bg-card text-destructive text-xs font-bold rounded-lg shadow-sm transition-all flex items-center space-x-1.5 cursor-pointer"

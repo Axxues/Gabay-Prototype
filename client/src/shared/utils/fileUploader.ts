@@ -65,6 +65,22 @@ export const formatFileSize = (bytes: number): string => {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 };
 
+export const parseFormattedSize = (formatted?: string | null): number => {
+  if (!formatted) return 0;
+  const match = formatted.trim().match(/^([\d.]+)\s*([a-zA-Z]+)?$/);
+  if (!match) return 0;
+  const num = parseFloat(match[1]);
+  if (isNaN(num)) return 0;
+  const unit = (match[2] || 'B').toUpperCase();
+  const multipliers: Record<string, number> = {
+    B: 1,
+    KB: 1024,
+    MB: 1024 * 1024,
+    GB: 1024 * 1024 * 1024,
+  };
+  return Math.round(num * (multipliers[unit] || 1));
+};
+
 export const isImageFile = (name: string, type?: string, url?: string): boolean => {
   if (type && type.startsWith('image/')) return true;
   if (url && (url.startsWith('data:image/') || /\.(png|jpg|jpeg|webp|gif|svg|bmp|avif)$/i.test(url))) return true;

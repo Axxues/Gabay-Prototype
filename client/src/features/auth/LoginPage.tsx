@@ -83,14 +83,25 @@ export const LoginPage: React.FC = () => {
     try {
       const res = await login(identifier, password);
       if (!res.success) {
-        setErrorMessage(res.message || 'Invalid credentials. Please try again.');
+        const msg = String(res.message || '');
+        if (msg.includes('502') || /502|Bad Gateway/i.test(msg)) {
+          setErrorMessage('The system is currently experiencing technical issues. Please try again later.');
+        } else {
+          setErrorMessage(res.message || 'Invalid credentials. Please try again.');
+        }
       } else {
         const loggedUser = res.user || currentUser;
         const targetRoute = isProfileComplete(loggedUser) ? '/dashboard' : '/profile';
         navigate(targetRoute, { replace: true });
       }
-    } catch {
-      setErrorMessage('An unexpected error occurred. Please try again.');
+    } catch (err: any) {
+      const msg = String(err?.message || '');
+      const status = Number(err?.status) || 0;
+      if (status === 502 || msg.includes('502') || /502|Bad Gateway/i.test(msg)) {
+        setErrorMessage('The system is currently experiencing technical issues. Please try again later.');
+      } else {
+        setErrorMessage('An unexpected error occurred. Please try again.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -105,14 +116,25 @@ export const LoginPage: React.FC = () => {
     try {
       const res = await login(account.email, account.password);
       if (!res?.success) {
-        setErrorMessage(res?.message || 'Quick login failed. Please sign in manually.');
+        const msg = String(res?.message || '');
+        if (msg.includes('502') || /502|Bad Gateway/i.test(msg)) {
+          setErrorMessage('The system is currently experiencing technical issues. Please try again later.');
+        } else {
+          setErrorMessage(res?.message || 'Quick login failed. Please sign in manually.');
+        }
         return;
       }
       const loggedUser = res.user || currentUser;
       const targetRoute = isProfileComplete(loggedUser) ? '/dashboard' : '/profile';
       navigate(targetRoute, { replace: true });
-    } catch {
-      setErrorMessage('Quick login failed. Please sign in manually.');
+    } catch (err: any) {
+      const msg = String(err?.message || '');
+      const status = Number(err?.status) || 0;
+      if (status === 502 || msg.includes('502') || /502|Bad Gateway/i.test(msg)) {
+        setErrorMessage('The system is currently experiencing technical issues. Please try again later.');
+      } else {
+        setErrorMessage('Quick login failed. Please sign in manually.');
+      }
     } finally {
       setIsLoading(false);
     }

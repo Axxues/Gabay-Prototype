@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useLMS } from '../../../../shared/context/LMSContext';
-import { uploadFileToPublic, formatFileSize, FILE_UPLOAD_MAX_BYTES, isFileTooLarge } from '../../../../shared/utils/fileUploader';
+import { formatFileSize, FILE_UPLOAD_MAX_BYTES, isFileTooLarge } from '../../../../shared/utils/fileUploader';
 import {
   Award,
   Calendar,
@@ -23,6 +23,7 @@ export interface ActivityAttachment {
   name: string;
   size: string;
   url: string;
+  rawFile?: File;
 }
 
 export interface ActivityFormValue {
@@ -73,45 +74,51 @@ export function emptyActivityFormValue(): ActivityFormValue {
   };
 }
 
-export function validateActivityForm(v: ActivityFormValue): { title: string; message: string } | null {
+export function validateRubric(rubric: RubricCriterion[], pointsPossible: number): { title: string; message: string } | null {
+  if (rubric.length === 0) {
+    return { title: 'Rubric Required', message: 'Rubric is enabled but has no criteria. Add at least one criterion or uncheck the rubric option.' };
+  }
+  for (let i = 0; i < rubric.length; i++) {
+    const c = rubric[i];
+    if (!c.title.trim()) {
+      return { title: 'Rubric Criterion Incomplete', message: `Criterion #${i + 1} needs a title.` };
+    }
+    if (!(Number(c.points) > 0)) {
+      return { title: 'Rubric Criterion Incomplete', message: `Criterion "${c.title.trim()}" needs points greater than 0.` };
+    }
+    if (c.ratings.length === 0) {
+      return { title: 'Rubric Rating Required', message: `Criterion "${c.title.trim()}" needs at least one rating level.` };
+    }
+    for (let j = 0; j < c.ratings.length; j++) {
+      const r: RubricRating = c.ratings[j];
+      if (!r.description.trim()) {
+        return { title: 'Rubric Rating Incomplete', message: `Criterion "${c.title.trim()}", rating #${j + 1} needs a label.` };
+      }
+      if (!(Number(r.points) >= 0)) {
+        return { title: 'Rubric Rating Incomplete', message: `Criterion "${c.title.trim()}", rating "${r.description.trim()}" needs points of 0 or more.` };
+      }
+      if (Number(r.points) > Number(c.points)) {
+        return { title: 'Rubric Rating Exceeds Criterion', message: `Rating "${r.description.trim()}" (${r.points} pts) exceeds criterion "${c.title.trim()}" (${c.points} pts).` };
+      }
+    }
+  }
+  const criteriaTotal = rubric.reduce((sum, c) => sum + (Number(c.points) || 0), 0);
+  if (criteriaTotal !== (Number(pointsPossible) || 0)) {
+    return { title: 'Rubric Points Mismatch', message: `Rubric criteria total ${criteriaTotal} pts, but Total points is ${pointsPossible} pts. Adjust them to match before saving.` };
+  }
+  return null;
+}
+
+export function validateActivityForm(v: ActivityFormValue, entityName = 'activity'): { title: string; message: string } | null {
   if (!v.title.trim()) {
-    return { title: 'Missing Title', message: 'Please provide an activity title before saving.' };
+    return { title: 'Missing Title', message: `Please provide an ${entityName} title before saving.` };
   }
   if (!v.allowFileUpload && !v.allowOnlineText) {
     return { title: 'Submission Type Required', message: 'Please select at least one submission type (File Upload or Online Text Entry).' };
   }
   if (v.includeRubric) {
-    if (v.rubric.length === 0) {
-      return { title: 'Rubric Required', message: 'Rubric is enabled but has no criteria. Add at least one criterion or uncheck the rubric option.' };
-    }
-    for (let i = 0; i < v.rubric.length; i++) {
-      const c = v.rubric[i];
-      if (!c.title.trim()) {
-        return { title: 'Rubric Criterion Incomplete', message: `Criterion #${i + 1} needs a title.` };
-      }
-      if (!(Number(c.points) > 0)) {
-        return { title: 'Rubric Criterion Incomplete', message: `Criterion "${c.title.trim()}" needs points greater than 0.` };
-      }
-      if (c.ratings.length === 0) {
-        return { title: 'Rubric Rating Required', message: `Criterion "${c.title.trim()}" needs at least one rating level.` };
-      }
-      for (let j = 0; j < c.ratings.length; j++) {
-        const r: RubricRating = c.ratings[j];
-        if (!r.description.trim()) {
-          return { title: 'Rubric Rating Incomplete', message: `Criterion "${c.title.trim()}", rating #${j + 1} needs a label.` };
-        }
-        if (!(Number(r.points) >= 0)) {
-          return { title: 'Rubric Rating Incomplete', message: `Criterion "${c.title.trim()}", rating "${r.description.trim()}" needs points of 0 or more.` };
-        }
-        if (Number(r.points) > Number(c.points)) {
-          return { title: 'Rubric Rating Exceeds Criterion', message: `Rating "${r.description.trim()}" (${r.points} pts) exceeds criterion "${c.title.trim()}" (${c.points} pts).` };
-        }
-      }
-    }
-    const criteriaTotal = v.rubric.reduce((sum, c) => sum + (Number(c.points) || 0), 0);
-    if (criteriaTotal !== (Number(v.pointsPossible) || 0)) {
-      return { title: 'Rubric Points Mismatch', message: `Rubric criteria total ${criteriaTotal} pts, but Total points is ${v.pointsPossible} pts. Adjust them to match before saving.` };
-    }
+    const rubricError = validateRubric(v.rubric, v.pointsPossible);
+    if (rubricError) return rubricError;
   }
   return null;
 }
@@ -159,14 +166,26 @@ export const ActivityFormFields: React.FC<{
   courseId: string;
   value: ActivityFormValue;
   onChange: (v: ActivityFormValue) => void;
-}> = ({ courseId, value, onChange }) => {
-  const { showAlert, effectiveTermsForCourse, uploadCourseFile } = useLMS();
+  titlePlaceholder?: string;
+  instructionsPlaceholder?: string;
+  titleLabel?: string;
+  sectionTitle?: string;
+}> = ({
+  courseId,
+  value,
+  onChange,
+  titlePlaceholder = 'e.g. Activity 4: SpeedGrader Split-Screen UI Integration',
+  instructionsPlaceholder = 'Detail the step-by-step requirements, input/output test specifications, coding conventions, and rubric criteria for students...',
+  titleLabel = 'Activity title',
+  sectionTitle = 'Activity information',
+}) => {
+  const { showAlert, effectiveTermsForCourse } = useLMS();
   const [isDragging, setIsDragging] = useState(false);
   const upload = useSimulatedUpload();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isFilePickerOpen, setIsFilePickerOpen] = useState(false);
 
-  const handleFileUpload = async (file: File) => {
+  const handleFileUpload = (file: File) => {
     if (isFileTooLarge(file.size)) {
       showAlert({
         title: 'File Too Large',
@@ -175,60 +194,31 @@ export const ActivityFormFields: React.FC<{
       });
       return;
     }
-
-    if (upload.isUploading) return;
-    upload.start(file.name);
+    const name = file.name;
+    const formatted = formatFileSize(file.size);
+    const size = formatted !== '0 B' ? formatted : `${(file.size / 1024).toFixed(1)} KB`;
+    let previewUrl = '';
     try {
-      // Backend first so the file is filed into the Activities folder
-      // (area: activities); the Vite dev middleware is the offline fallback
-      // (unfiled). Never embed a data URL — Activity.fileUrl is
-      // NVarChar(1024), so embedding always 500s on create.
-      let url = '';
-      let name = file.name;
-      let size = formatFileSize(file.size);
-      try {
-        const saved = await uploadCourseFile({
-          courseId,
-          name: file.name,
-          rawFile: file,
-          area: 'activities',
-          visibility: 'published',
-          silent: true
-        });
-        url = saved.fileUrl || saved.url || '';
-        name = saved.name || file.name;
-        size = saved.formattedSize || size;
-      } catch {
-        url = '';
+      if (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+        previewUrl = URL.createObjectURL(file);
       }
-      if (!url || url.startsWith('data:')) {
-        const viaVite = await uploadFileToPublic(file);
-        if (!viaVite.url.startsWith('data:')) {
-          url = viaVite.url;
-          name = viaVite.name;
-          size = viaVite.size;
-        }
-      }
-      if (!url || url.startsWith('data:')) {
-        showAlert({
-          title: 'Upload Service Unavailable',
-          message: 'The file could not be stored on the server (upload service unreachable). Please ensure the backend is running and try again.',
-          type: 'error'
-        });
-        upload.fail();
-        return;
-      }
-      onChange({ ...value, attachedFile: { name, size, url } });
-      upload.complete();
-      showAlert({
-        title: 'File Attached',
-        message: `"${file.name}" has been attached to this activity.`,
-        type: 'success'
-      });
-    } catch (err) {
-      console.error('Failed to attach activity file:', err);
-      upload.fail();
+    } catch {
+      previewUrl = '';
     }
+    onChange({
+      ...value,
+      attachedFile: {
+        name,
+        size,
+        url: previewUrl,
+        rawFile: file
+      }
+    });
+    showAlert({
+      title: 'File Attached',
+      message: `"${file.name}" has been attached to this activity.`,
+      type: 'success'
+    });
   };
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -284,7 +274,7 @@ export const ActivityFormFields: React.FC<{
             1
           </div>
           <div className="min-w-0">
-            <h2 className="text-[14px] font-extrabold tracking-tight text-foreground">Activity information</h2>
+            <h2 className="text-[14px] font-extrabold tracking-tight text-foreground">{sectionTitle}</h2>
             <p className="text-[12px] text-muted-foreground mt-0.5">Title, guidelines, and starter files</p>
           </div>
         </div>
@@ -292,14 +282,14 @@ export const ActivityFormFields: React.FC<{
         <div className="space-y-5">
           <div>
             <label className="block text-[12px] font-semibold text-muted-foreground mb-1.5">
-              Activity title
+              {titleLabel} <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
               required
               value={value.title}
               onChange={e => onChange({ ...value, title: e.target.value })}
-              placeholder="e.g. Activity 4: SpeedGrader Split-Screen UI Integration"
+              placeholder={titlePlaceholder}
               className="w-full px-3.5 py-2 bg-background border border-border rounded-xl text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary/40 text-[13px] outline-none transition-all"
             />
           </div>
@@ -320,7 +310,7 @@ export const ActivityFormFields: React.FC<{
               rows={6}
               value={value.instructions}
               onChange={e => onChange({ ...value, instructions: e.target.value })}
-              placeholder="Detail the step-by-step requirements, input/output test specifications, coding conventions, and rubric criteria for students..."
+              placeholder={instructionsPlaceholder}
               className="w-full p-3.5 bg-background border border-border rounded-xl text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary/40 text-[13px] leading-relaxed outline-none resize-y transition-all"
             />
           </div>
@@ -346,7 +336,7 @@ export const ActivityFormFields: React.FC<{
                   <div className="truncate">
                     <p className="font-semibold text-[12.5px] text-foreground truncate">{value.attachedFile.name}</p>
                     <p className="text-[12px] text-muted-foreground">
-                      {value.attachedFile.size} • Saved to uploads
+                      {value.attachedFile.size} • Attached
                     </p>
                   </div>
                 </div>
@@ -464,7 +454,7 @@ export const ActivityFormFields: React.FC<{
           {/* Submission Methods */}
           <div>
             <label className="block text-[12px] font-semibold text-muted-foreground mb-2">
-              Submission methods
+              Submission methods <span className="text-red-500">*</span>
             </label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <label className={`px-3.5 py-3 rounded-xl border flex items-start gap-3 cursor-pointer transition-all ${
@@ -508,7 +498,7 @@ export const ActivityFormFields: React.FC<{
             <div className="min-w-0">
               <label className="block text-[12px] font-semibold text-muted-foreground mb-1.5 flex items-center gap-1.5">
                 <Clock className="w-3.5 h-3.5 shrink-0" />
-                <span>Due date</span>
+                <span>Due date</span> <span className="text-red-500">*</span>
               </label>
               <input
                 type="datetime-local"
@@ -549,193 +539,21 @@ export const ActivityFormFields: React.FC<{
       </div>
 
       {/* Section 3: Grading Rubric (Optional) */}
-      <div className="p-5 sm:p-6 bg-card border border-border rounded-2xl space-y-5">
-        <div className="flex items-center gap-3 pb-4 border-b border-border/70">
-          <div className="w-6 h-6 rounded-lg bg-muted border border-border text-muted-foreground flex items-center justify-center font-bold text-[11px] tabular-nums">
-            3
-          </div>
-          <div className="min-w-0 flex-1">
-            <h2 className="text-[14px] font-extrabold tracking-tight text-foreground">Grading rubric</h2>
-            <p className="text-[12px] text-muted-foreground mt-0.5">Optional scoring criteria for SpeedGrader</p>
-          </div>
-          {value.includeRubric && value.rubric.length > 0 && (
-            <span className="px-2.5 py-0.5 rounded-md bg-muted text-foreground border border-border font-bold text-[11px] tabular-nums shrink-0">
-              {value.rubric.length} {value.rubric.length === 1 ? 'criterion' : 'criteria'}
-            </span>
-          )}
-        </div>
-
-        <label className={`px-3.5 py-3 rounded-xl border flex items-start gap-3 cursor-pointer transition-all ${
-          value.includeRubric
-            ? 'border-primary/30 bg-primary/[0.04]'
-            : 'border-border/70 hover:border-muted-foreground/30 hover:bg-muted/20'
-        }`}>
-          <input
-            type="checkbox"
-            checked={value.includeRubric}
-            onChange={e => {
-              const checked = e.target.checked;
-              onChange({
-                ...value,
-                includeRubric: checked,
-                rubric: checked
-                  ? (value.rubric.length > 0 ? value.rubric : [blankRubricCriterion()])
-                  : value.rubric
-              });
-            }}
-            className="mt-0.5 w-4 h-4 rounded text-primary focus:ring-primary/20 accent-primary cursor-pointer shrink-0"
-          />
-          <div className="min-w-0">
-            <span className="font-semibold text-[12.5px] text-foreground flex items-center gap-1.5">
-              <Award className="w-3.5 h-3.5 text-muted-foreground" />
-              Include a grading rubric
-            </span>
-            <span className="text-[11.5px] leading-snug text-muted-foreground block mt-0.5">
-              Define your own criteria and rating levels. Leave unchecked for a plain point score with no rubric.
-            </span>
-          </div>
-        </label>
-
-        {value.includeRubric && (
-          <div className="space-y-3">
-            {value.rubric.map((criterion, cIdx) => (
-              <div key={criterion.id} className="p-4 bg-muted/20 border border-border/70 rounded-xl space-y-3">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
-                    Criterion {cIdx + 1}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => onChange({ ...value, rubric: value.rubric.filter((_, i) => i !== cIdx) })}
-                    className="p-1.5 text-muted-foreground hover:text-rose-600 rounded-lg hover:bg-rose-500/10 transition-colors cursor-pointer"
-                    title="Remove criterion"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-[1fr_110px] gap-2.5">
-                  <input
-                    type="text"
-                    value={criterion.title}
-                    onChange={e => onChange({
-                      ...value,
-                      rubric: value.rubric.map((c, i) => (i === cIdx ? { ...c, title: e.target.value } : c))
-                    })}
-                    placeholder="Criterion title (e.g. Code Quality & Technical Execution)"
-                    className="w-full px-3 py-2 bg-background border border-border rounded-xl text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary/40 text-[12.5px] font-semibold outline-none transition-all"
-                  />
-                  <div className="relative">
-                    <input
-                      type="number"
-                      min={1}
-                      value={criterion.points}
-                      onChange={e => onChange({
-                        ...value,
-                        rubric: value.rubric.map((c, i) => (i === cIdx ? { ...c, points: Math.max(0, Number(e.target.value)) } : c))
-                      })}
-                      className="w-full pl-3 pr-9 py-2 bg-background border border-border rounded-xl text-foreground text-[12.5px] font-semibold tabular-nums outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all"
-                    />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground font-medium">
-                      pts
-                    </span>
-                  </div>
-                </div>
-
-                <input
-                  type="text"
-                  value={criterion.description}
-                  onChange={e => onChange({
-                    ...value,
-                    rubric: value.rubric.map((c, i) => (i === cIdx ? { ...c, description: e.target.value } : c))
-                  })}
-                  placeholder="Description (e.g. Follows clean code conventions and documentation)"
-                  className="w-full px-3 py-2 bg-background border border-border rounded-xl text-muted-foreground placeholder:text-muted-foreground/70 focus:ring-2 focus:ring-primary/20 focus:border-primary/40 text-[12px] outline-none transition-all"
-                />
-
-                <div className="space-y-1.5">
-                  <span className="text-[11px] font-semibold text-muted-foreground">Rating levels</span>
-                  {criterion.ratings.map((rating, rIdx) => (
-                    <div key={rIdx} className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        min={0}
-                        value={rating.points}
-                        onChange={e => onChange({
-                          ...value,
-                          rubric: value.rubric.map((c, i) => (
-                            i === cIdx
-                              ? { ...c, ratings: c.ratings.map((r, j) => (j === rIdx ? { ...r, points: Math.max(0, Number(e.target.value)) } : r)) }
-                              : c
-                          ))
-                        })}
-                        className="w-20 shrink-0 px-2.5 py-1.5 bg-background border border-border rounded-lg text-foreground text-[12px] font-semibold tabular-nums outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all"
-                        aria-label={`Criterion ${cIdx + 1} rating ${rIdx + 1} points`}
-                      />
-                      <input
-                        type="text"
-                        value={rating.description}
-                        onChange={e => onChange({
-                          ...value,
-                          rubric: value.rubric.map((c, i) => (
-                            i === cIdx
-                              ? { ...c, ratings: c.ratings.map((r, j) => (j === rIdx ? { ...r, description: e.target.value } : r)) }
-                              : c
-                          ))
-                        })}
-                        placeholder={`Rating label (e.g. ${rIdx === 0 ? 'Exemplary Mastery' : rIdx === 1 ? 'Proficient' : 'Needs Revision'})`}
-                        className="flex-1 min-w-0 px-2.5 py-1.5 bg-background border border-border rounded-lg text-foreground placeholder:text-muted-foreground/70 focus:ring-2 focus:ring-primary/20 focus:border-primary/40 text-[12px] outline-none transition-all"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => onChange({
-                          ...value,
-                          rubric: value.rubric.map((c, i) => (
-                            i === cIdx ? { ...c, ratings: c.ratings.filter((_, j) => j !== rIdx) } : c
-                          ))
-                        })}
-                        className="p-1.5 text-muted-foreground hover:text-rose-600 rounded-lg hover:bg-rose-500/10 transition-colors cursor-pointer shrink-0"
-                        title="Remove rating level"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => onChange({
-                      ...value,
-                      rubric: value.rubric.map((c, i) => (
-                        i === cIdx ? { ...c, ratings: [...c.ratings, { points: 0, description: '' }] } : c
-                      ))
-                    })}
-                    className="px-3 py-1.5 text-[11.5px] font-semibold text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    Add rating level
-                  </button>
-                </div>
-              </div>
-            ))}
-
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2.5">
-              <button
-                type="button"
-                onClick={() => onChange({ ...value, rubric: [...value.rubric, blankRubricCriterion()] })}
-                className="px-4 py-2 text-xs font-bold text-primary hover:bg-primary/10 border border-primary/30 bg-primary/5 rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Add criterion
-              </button>
-              <span className="text-[11.5px] font-semibold tabular-nums text-muted-foreground sm:ml-auto">
-                Criteria total: {value.rubric.reduce((sum, c) => sum + (Number(c.points) || 0), 0)} pts
-                <span className="mx-1">•</span>
-                Activity total: {Number(value.pointsPossible) || 0} pts
-              </span>
-            </div>
-          </div>
-        )}
-      </div>
+      <GradingRubricSection
+        stepNumber={3}
+        includeRubric={value.includeRubric}
+        onToggleIncludeRubric={checked =>
+          onChange({
+            ...value,
+            includeRubric: checked,
+            rubric: checked ? (value.rubric.length > 0 ? value.rubric : [blankRubricCriterion()]) : value.rubric
+          })
+        }
+        rubric={value.rubric}
+        onChangeRubric={nextRubric => onChange({ ...value, rubric: nextRubric })}
+        pointsPossible={Number(value.pointsPossible) || 0}
+        entityLabel="Activity"
+      />
 
       {isFilePickerOpen && (
         <FilePickerModal
@@ -743,6 +561,222 @@ export const ActivityFormFields: React.FC<{
           onClose={() => setIsFilePickerOpen(false)}
           onSelect={handleSelectExistingFile}
         />
+      )}
+    </div>
+  );
+};
+
+export interface GradingRubricSectionProps {
+  stepNumber?: number | string;
+  includeRubric: boolean;
+  onToggleIncludeRubric: (include: boolean) => void;
+  rubric: RubricCriterion[];
+  onChangeRubric: (rubric: RubricCriterion[]) => void;
+  pointsPossible: number;
+  entityLabel?: string;
+}
+
+export const GradingRubricSection: React.FC<GradingRubricSectionProps> = ({
+  stepNumber = 3,
+  includeRubric,
+  onToggleIncludeRubric,
+  rubric,
+  onChangeRubric,
+  pointsPossible,
+  entityLabel = 'Activity'
+}) => {
+  return (
+    <div className="p-5 sm:p-6 bg-card border border-border rounded-2xl space-y-5">
+      <div className="flex items-center gap-3 pb-4 border-b border-border/70">
+        <div className="w-6 h-6 rounded-lg bg-muted border border-border text-muted-foreground flex items-center justify-center font-bold text-[11px] tabular-nums">
+          {stepNumber}
+        </div>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-[14px] font-extrabold tracking-tight text-foreground">Grading rubric</h2>
+          <p className="text-[12px] text-muted-foreground mt-0.5">Optional scoring criteria for SpeedGrader</p>
+        </div>
+        {includeRubric && rubric.length > 0 && (
+          <span className="px-2.5 py-0.5 rounded-md bg-muted text-foreground border border-border font-bold text-[11px] tabular-nums shrink-0">
+            {rubric.length} {rubric.length === 1 ? 'criterion' : 'criteria'}
+          </span>
+        )}
+      </div>
+
+      <label className={`px-3.5 py-3 rounded-xl border flex items-start gap-3 cursor-pointer transition-all ${
+        includeRubric
+          ? 'border-primary/30 bg-primary/[0.04]'
+          : 'border-border/70 hover:border-muted-foreground/30 hover:bg-muted/20'
+      }`}>
+        <input
+          type="checkbox"
+          checked={includeRubric}
+          onChange={e => onToggleIncludeRubric(e.target.checked)}
+          className="mt-0.5 w-4 h-4 rounded text-primary focus:ring-primary/20 accent-primary cursor-pointer shrink-0"
+        />
+        <div className="min-w-0">
+          <span className="font-semibold text-[12.5px] text-foreground flex items-center gap-1.5">
+            <Award className="w-3.5 h-3.5 text-muted-foreground" />
+            Include a grading rubric
+          </span>
+          <span className="text-[11.5px] leading-snug text-muted-foreground block mt-0.5">
+            Define your own criteria and rating levels. Leave unchecked for a plain point score with no rubric.
+          </span>
+        </div>
+      </label>
+
+      {includeRubric && (
+        <div className="space-y-3">
+          {rubric.map((criterion, cIdx) => (
+            <div key={criterion.id} className="p-4 bg-muted/20 border border-border/70 rounded-xl space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
+                  Criterion {cIdx + 1}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onChangeRubric(rubric.filter((_, i) => i !== cIdx))}
+                  className="p-1.5 text-muted-foreground hover:text-rose-600 rounded-lg hover:bg-rose-500/10 transition-colors cursor-pointer"
+                  title="Remove criterion"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-[1fr_110px] gap-2.5">
+                <input
+                  type="text"
+                  value={criterion.title}
+                  onChange={e =>
+                    onChangeRubric(rubric.map((c, i) => (i === cIdx ? { ...c, title: e.target.value } : c)))
+                  }
+                  placeholder="Criterion title (e.g. Code Quality & Technical Execution)"
+                  className="w-full px-3 py-2 bg-background border border-border rounded-xl text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary/40 text-[12.5px] font-semibold outline-none transition-all"
+                />
+                <div className="relative">
+                  <input
+                    type="number"
+                    min={1}
+                    value={criterion.points}
+                    onChange={e =>
+                      onChangeRubric(
+                        rubric.map((c, i) => (i === cIdx ? { ...c, points: Math.max(0, Number(e.target.value)) } : c))
+                      )
+                    }
+                    className="w-full pl-3 pr-9 py-2 bg-background border border-border rounded-xl text-foreground text-[12.5px] font-semibold tabular-nums outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground font-medium">
+                    pts
+                  </span>
+                </div>
+              </div>
+
+              <input
+                type="text"
+                value={criterion.description}
+                onChange={e =>
+                  onChangeRubric(rubric.map((c, i) => (i === cIdx ? { ...c, description: e.target.value } : c)))
+                }
+                placeholder="Description (e.g. Follows clean code conventions and documentation)"
+                className="w-full px-3 py-2 bg-background border border-border rounded-xl text-muted-foreground placeholder:text-muted-foreground/70 focus:ring-2 focus:ring-primary/20 focus:border-primary/40 text-[12px] outline-none transition-all"
+              />
+
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-semibold text-muted-foreground">Rating levels</span>
+                {criterion.ratings.map((rating, rIdx) => (
+                  <div key={rIdx} className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={0}
+                      value={rating.points}
+                      onChange={e =>
+                        onChangeRubric(
+                          rubric.map((c, i) =>
+                            i === cIdx
+                              ? {
+                                  ...c,
+                                  ratings: c.ratings.map((r, j) =>
+                                    j === rIdx ? { ...r, points: Math.max(0, Number(e.target.value)) } : r
+                                  )
+                                }
+                              : c
+                          )
+                        )
+                      }
+                      className="w-20 shrink-0 px-2.5 py-1.5 bg-background border border-border rounded-lg text-foreground text-[12px] font-semibold tabular-nums outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all"
+                      aria-label={`Criterion ${cIdx + 1} rating ${rIdx + 1} points`}
+                    />
+                    <input
+                      type="text"
+                      value={rating.description}
+                      onChange={e =>
+                        onChangeRubric(
+                          rubric.map((c, i) =>
+                            i === cIdx
+                              ? {
+                                  ...c,
+                                  ratings: c.ratings.map((r, j) =>
+                                    j === rIdx ? { ...r, description: e.target.value } : r
+                                  )
+                                }
+                              : c
+                          )
+                        )
+                      }
+                      placeholder={`Rating label (e.g. ${
+                        rIdx === 0 ? 'Exemplary Mastery' : rIdx === 1 ? 'Proficient' : 'Needs Revision'
+                      })`}
+                      className="flex-1 min-w-0 px-2.5 py-1.5 bg-background border border-border rounded-lg text-foreground placeholder:text-muted-foreground/70 focus:ring-2 focus:ring-primary/20 focus:border-primary/40 text-[12px] outline-none transition-all"
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onChangeRubric(
+                          rubric.map((c, i) =>
+                            i === cIdx ? { ...c, ratings: c.ratings.filter((_, j) => j !== rIdx) } : c
+                          )
+                        )
+                      }
+                      className="p-1.5 text-muted-foreground hover:text-rose-600 rounded-lg hover:bg-rose-500/10 transition-colors cursor-pointer shrink-0"
+                      title="Remove rating level"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() =>
+                    onChangeRubric(
+                      rubric.map((c, i) =>
+                        i === cIdx ? { ...c, ratings: [...c.ratings, { points: 0, description: '' }] } : c
+                      )
+                    )
+                  }
+                  className="px-3 py-1.5 text-[11.5px] font-semibold text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Add rating level
+                </button>
+              </div>
+            </div>
+          ))}
+
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2.5">
+            <button
+              type="button"
+              onClick={() => onChangeRubric([...rubric, blankRubricCriterion()])}
+              className="px-4 py-2 text-xs font-bold text-primary hover:bg-primary/10 border border-primary/30 bg-primary/5 rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Add criterion
+            </button>
+            <span className="text-[11.5px] font-semibold tabular-nums text-muted-foreground sm:ml-auto">
+              Criteria total: {rubric.reduce((sum, c) => sum + (Number(c.points) || 0), 0)} pts
+              <span className="mx-1">•</span>
+              {entityLabel} total: {Number(pointsPossible) || 0} pts
+            </span>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -51,6 +51,9 @@ export interface QuizBuilderValue {
   title: string;
   instructions: string;
   timeLimitMinutes: number;
+  dueDate: string;
+  availableFrom: string;
+  availableUntil: string;
   delayPosting: boolean;
   delayedDate: string;
   term?: TermId;
@@ -61,10 +64,15 @@ export function emptyQuizBuilderValue(): QuizBuilderValue {
   const d = new Date();
   d.setDate(d.getDate() + 1);
   d.setHours(9, 0, 0, 0);
+  const due = new Date(Date.now() + 7 * 86400000);
+  due.setHours(23, 59, 0, 0);
   return {
     title: '',
     instructions: '',
     timeLimitMinutes: 30,
+    dueDate: due.toISOString().slice(0, 16),
+    availableFrom: new Date().toISOString().slice(0, 16),
+    availableUntil: '',
     delayPosting: false,
     delayedDate: d.toISOString().slice(0, 16),
     items: [
@@ -209,14 +217,22 @@ export function compileQuizQuestions(v: QuizBuilderValue): QuizQuestion[] {
 }
 
 export function buildQuizPayload(courseId: string, v: QuizBuilderValue, published: boolean): Partial<Quiz> {
+  const isDelayed = Boolean(v.delayPosting);
+  const scheduledDate = isDelayed && v.delayedDate
+    ? new Date(v.delayedDate).toISOString()
+    : (v.availableFrom ? new Date(v.availableFrom).toISOString() : undefined);
+
   return {
     courseId,
     title: v.title.trim(),
     instructions: v.instructions.trim() || 'Answer all questions carefully within the allotted time limit.',
     timeLimitMinutes: Number(v.timeLimitMinutes) || 30,
-    published: v.delayPosting ? false : published,
+    dueDate: v.dueDate ? new Date(v.dueDate).toISOString() : undefined,
+    availableFrom: v.availableFrom ? new Date(v.availableFrom).toISOString() : undefined,
+    availableUntil: v.availableUntil ? new Date(v.availableUntil).toISOString() : undefined,
+    published: isDelayed ? false : published,
     ...(v.term !== undefined ? { term: v.term } : {}),
-    delayedUntil: v.delayPosting && v.delayedDate ? new Date(v.delayedDate).toISOString() : undefined,
+    delayedUntil: scheduledDate,
     questions: compileQuizQuestions(v)
   };
 }
@@ -845,6 +861,54 @@ export const QuizBuilderFields: React.FC<{ value: QuizBuilderValue; onChange: (v
             />
           </div>
 
+          {/* Schedule Deadlines */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-border/80">
+            <div className="min-w-0">
+              <label className="block text-[12px] font-semibold text-muted-foreground mb-1.5 flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 shrink-0" />
+                <span>Due date</span> <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="datetime-local"
+                required
+                value={value.dueDate}
+                onChange={e => onChange({ ...value, dueDate: e.target.value })}
+                className="w-full px-3 py-2 bg-background border border-border rounded-xl text-foreground text-[12.5px] tabular-nums outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 cursor-pointer transition-all"
+              />
+            </div>
+
+            <div className="min-w-0">
+              <label className="block text-[12px] font-semibold text-muted-foreground mb-1.5 flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 shrink-0" />
+                <span>Available from</span>
+              </label>
+              <input
+                type="datetime-local"
+                value={value.availableFrom}
+                onChange={e => onChange({
+                  ...value,
+                  availableFrom: e.target.value,
+                  delayedDate: e.target.value || value.delayedDate
+                })}
+                className="w-full px-3 py-2 bg-background border border-border rounded-xl text-foreground text-[12.5px] tabular-nums outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 cursor-pointer transition-all"
+              />
+            </div>
+
+            <div className="min-w-0">
+              <label className="block text-[12px] font-semibold text-muted-foreground mb-1.5 flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 shrink-0" />
+                <span>Until</span>
+              </label>
+              <input
+                type="datetime-local"
+                value={value.availableUntil}
+                onChange={e => onChange({ ...value, availableUntil: e.target.value })}
+                className="w-full px-3 py-2 bg-background border border-border rounded-xl text-foreground text-[12.5px] tabular-nums outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 cursor-pointer transition-all"
+              />
+            </div>
+          </div>
+
+          {/* Schedule Deadlines */}
           <div className="pt-3 border-t border-border/80 flex flex-wrap items-center justify-between gap-4 text-xs">
             <div className="flex flex-wrap items-center gap-3">
               {/* Time limit */}

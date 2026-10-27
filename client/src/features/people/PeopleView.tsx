@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { useLMS } from '../../shared/context/LMSContext';
-import type { EnrollmentRequest, User } from '../../shared/types/lms';
+import { useLMS, getCleanStoredAvatar } from '../../shared/context/LMSContext';
+import type { User } from '../../shared/types/lms';
 import {
   Shield,
   Search,
@@ -18,50 +18,72 @@ import { AnimatedModal } from '../../shared/components/common/ModalPortal';
 import { PageHeader } from '../../shared/components/common/PageHeader';
 import { UserAvatar } from '../../shared/components/common/UserAvatar';
 import { canPickSection } from '../../shared/utils/sections';
-import { getDisplayRoleLabel } from '../../shared/utils/roles';
+import { getDisplayRoleLabel, isCourseAssignedInstructor } from '../../shared/utils/roles';
+
+const ROLE_FILTERS = [
+  { id: 'all', label: 'All' },
+  { id: 'faculty', label: 'Faculty' },
+  { id: 'student', label: 'Students' },
+] as const;
 
 interface PeopleViewProps {
   courseId: string;
 }
 
 export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
-  const { db, activeRole, activeUser, isLoading, enrollStudentsInCourse, regenerateCourseJoinCode, getPendingRequestsForCourse, approveEnrollmentRequests, rejectEnrollmentRequests, removeStudentFromCourse, showAlert, showConfirm } = useLMS();
+  const { db, activeRole, activeUser, isLoading, enrollStudentsInCourse, regenerateCourseJoinCode, getPendingRequestsForCourse, getApprovedRequestsForCourse, approveEnrollmentRequests, rejectEnrollmentRequests, removeStudentFromCourse, showAlert, showConfirm, markTabVisited } = useLMS();
   const course = db.courses.find(c => c.id === courseId);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [copiedCode, setCopiedCode] = useState(false);
+  const canManageEnrollments = activeRole === 'faculty' || activeRole === 'admin';
   const [activeTab, setActiveTab] = useState<'roster' | 'pending'>('roster');
-  const [pendingRequests, setPendingRequests] = useState<EnrollmentRequest[]>([]);
-  const [pendingLoading, setPendingLoading] = useState(true);
+  const pendingRequests = canManageEnrollments
+    ? (db.enrollmentRequests || []).filter(
+        r => r.courseId === courseId && r.status === 'pending'
+      )
+    : [];
+  const [pendingLoading, setPendingLoading] = useState(canManageEnrollments);
   const pendingCount = pendingRequests.length;
   const { isProcessing, run } = useProcessing();
   const { busy: enrollBusy, run: runEnroll } = useBusyFlag();
 
   const reloadPending = async () => {
+    if (!canManageEnrollments) return;
     setPendingLoading(true);
     try {
-      setPendingRequests(await getPendingRequestsForCourse(courseId));
+      await getPendingRequestsForCourse(courseId);
     } finally {
       setPendingLoading(false);
     }
   };
 
   useEffect(() => {
+    if (courseId) {
+      markTabVisited?.('people', courseId);
+    }
+  }, [courseId]);
+
+  useEffect(() => {
     let cancelled = false;
     (async () => {
-      setPendingLoading(true);
+      if (canManageEnrollments) setPendingLoading(true);
       try {
-        const reqs = await getPendingRequestsForCourse(courseId);
-        if (!cancelled) setPendingRequests(reqs);
+        await Promise.all([
+          canManageEnrollments ? getPendingRequestsForCourse(courseId) : Promise.resolve([]),
+          getApprovedRequestsForCourse?.(courseId),
+        ]);
+      } catch {
+        // Fallback gracefully if hydration fails
       } finally {
-        if (!cancelled) setPendingLoading(false);
+        if (!cancelled && canManageEnrollments) setPendingLoading(false);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [courseId]);
+  }, [courseId, canManageEnrollments]);
 
   // Enroll modal state
   const [isEnrollModalOpen, setIsEnrollModalOpen] = useState(false);
@@ -81,14 +103,47 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
       return false;
     }
   });
-  const instructors = db.users.filter(u => u.role === 'faculty' || u.role === 'admin' || u.id === course?.instructorId);
+  const instructors = db.users.filter(u => {
+    if (isCourseAssignedInstructor(course, u)) return true;
+    if (
+      !course?.instructorId &&
+      course?.instructorName &&
+      course.instructorName !== 'Unassigned Instructor' &&
+      course.instructorName !== 'Unassigned Faculty'
+    ) {
+      return u.name.trim().toLowerCase() === course.instructorName.trim().toLowerCase();
+    }
+    return false;
+  });
 
-  const allPeople = [...instructors, ...students].filter(u => {
+  if (
+    instructors.length === 0 &&
+    (course?.instructorId || (course?.instructorName && course.instructorName !== 'Unassigned Instructor' && course.instructorName !== 'Unassigned Faculty'))
+  ) {
+    instructors.push({
+      id: course.instructorId || 'assigned-instructor',
+      name: course.instructorName || 'Course Instructor',
+      email: '',
+      role: 'faculty',
+      title: 'Course Instructor'
+    } as User);
+  }
+
+  const instructorIds = new Set(instructors.map(i => i.id));
+  const rosterUsers = [...instructors, ...students.filter(s => !instructorIds.has(s.id))];
+
+  const allPeople = rosterUsers.filter(u => {
     const matchesSearch = u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (u.studentId && u.studentId.toLowerCase().includes(searchQuery.toLowerCase()));
 
     if (roleFilter === 'all') return matchesSearch;
+    if (roleFilter === 'faculty') {
+      return matchesSearch && (u.role === 'faculty' || instructorIds.has(u.id));
+    }
+    if (roleFilter === 'student') {
+      return matchesSearch && u.role === 'student';
+    }
     return matchesSearch && u.role === roleFilter;
   });
 
@@ -157,7 +212,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
         title="People"
         description={course?.section ? `Section ${course.section}` : 'Course roster and enrollment requests'}
         actions={
-          (activeRole === 'faculty' || activeRole === 'admin') && (
+          canManageEnrollments && (
             <button
               onClick={() => {
                 setSelectedStudentIds([]);
@@ -206,7 +261,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
               {copiedCode ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
               <span>{copiedCode ? 'Copied' : 'Copy Code'}</span>
             </button>
-            {(activeRole === 'faculty' || activeRole === 'admin') && (
+            {canManageEnrollments && (
               <button
                 type="button"
                 onClick={() => {
@@ -225,27 +280,29 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
       {/* Search & Role Filter Toolbar */}
       <div className="flex flex-col lg:flex-row lg:items-center gap-3">
         {/* Tab Toggle */}
-        <div className="flex p-1 bg-muted rounded-full w-fit">
-          <button
-            onClick={() => setActiveTab('roster')}
-            className={`px-3.5 py-1.5 text-[12px] font-semibold rounded-full cursor-pointer transition-all ${
-              activeTab === 'roster' ? 'bg-card text-foreground shadow-soft' : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            Roster
-          </button>
-          <button
-            onClick={() => setActiveTab('pending')}
-            className={`px-3.5 py-1.5 text-[12px] font-semibold rounded-full cursor-pointer transition-all flex items-center gap-1.5 ${
-              activeTab === 'pending' ? 'bg-card text-foreground shadow-soft' : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            Pending
-            {pendingCount > 0 && (
-              <span className="bg-foreground text-background text-[10px] font-bold tabular-nums px-1.5 py-px rounded-full">{pendingCount}</span>
-            )}
-          </button>
-        </div>
+        {canManageEnrollments && (
+          <div className="flex p-1 bg-muted rounded-full w-fit">
+            <button
+              onClick={() => setActiveTab('roster')}
+              className={`px-3.5 py-1.5 text-[12px] font-semibold rounded-full cursor-pointer transition-all ${
+                activeTab === 'roster' ? 'bg-card text-foreground shadow-soft' : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Roster
+            </button>
+            <button
+              onClick={() => setActiveTab('pending')}
+              className={`px-3.5 py-1.5 text-[12px] font-semibold rounded-full cursor-pointer transition-all flex items-center gap-1.5 ${
+                activeTab === 'pending' ? 'bg-card text-foreground shadow-soft' : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Pending
+              {pendingCount > 0 && (
+                <span className="bg-foreground text-background text-[10px] font-bold tabular-nums px-1.5 py-px rounded-full">{pendingCount}</span>
+              )}
+            </button>
+          </div>
+        )}
 
         <div className="relative w-full lg:w-72 lg:ml-auto">
           <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
@@ -259,23 +316,23 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
         </div>
 
         <div className="flex items-center gap-1 text-[12px] font-semibold">
-          {['all', 'faculty', 'student'].map(r => (
+          {ROLE_FILTERS.map(rf => (
             <button
-              key={r}
-              onClick={() => setRoleFilter(r)}
-              className={`px-3 py-1.5 rounded-full capitalize transition-colors cursor-pointer ${roleFilter === r
+              key={rf.id}
+              onClick={() => setRoleFilter(rf.id)}
+              className={`px-3 py-1.5 rounded-full transition-colors cursor-pointer ${roleFilter === rf.id
                 ? 'bg-foreground text-background'
                 : 'text-muted-foreground hover:text-foreground hover:bg-muted'
                 }`}
             >
-              {r === 'all' ? 'All' : `${r}s`}
+              {rf.label}
             </button>
           ))}
         </div>
       </div>
 
       {/* Roster Tab */}
-      {activeTab === 'roster' && (
+      {(!canManageEnrollments || activeTab === 'roster') && (
         <>
           {/* Roster Table */}
           <div className="bg-card border border-border rounded-2xl overflow-hidden">
@@ -313,8 +370,14 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
                         </td>
                       </tr>
                     ))
+                  ) : allPeople.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-4 py-8 text-center text-xs text-muted-foreground">
+                        {searchQuery ? 'No matching people found.' : 'No students or instructors enrolled.'}
+                      </td>
+                    </tr>
                   ) : (
-                  allPeople.map(u => {
+                    allPeople.map(u => {
                     return (
                       <tr
                         key={u.id}
@@ -323,7 +386,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
                         <td className="px-4 py-3 flex items-center gap-3 font-semibold text-foreground">
                           <UserAvatar
                             name={u.name}
-                            src={u.avatar}
+                            src={u.id === activeUser.id ? (activeUser.avatar || u.avatar) : (u.avatar || getCleanStoredAvatar(u.id))}
                             className="w-8 h-8 rounded-full object-cover border border-border shrink-0"
                           />
                           <div className="min-w-0">
@@ -346,7 +409,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
                               <Shield className="w-3 h-3" />
                               <span>{getDisplayRoleLabel(u)}</span>
                             </span>
-                            {(activeRole === 'faculty' || activeRole === 'admin') && u.role === 'student' && u.id !== activeUser.id && (
+                            {canManageEnrollments && u.role === 'student' && u.id !== activeUser.id && (
                               <button
                                 type="button"
                                 title={`Remove ${u.name} from course`}
@@ -375,7 +438,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
       )}
 
       {/* Pending Requests Tab */}
-      {activeTab === 'pending' && (
+      {canManageEnrollments && activeTab === 'pending' && (
         <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-subtle">
           {pendingLoading ? (
             <div className="divide-y divide-border" aria-hidden="true">
@@ -414,7 +477,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
                     <div className="flex items-center space-x-3">
                       <UserAvatar
                         name={student?.name || 'Student'}
-                        src={student?.avatar}
+                        src={student?.id === activeUser.id ? (activeUser.avatar || student?.avatar) : (student?.avatar || getCleanStoredAvatar(student?.id))}
                         className="w-10 h-10 rounded-full object-cover border border-border shrink-0"
                       />
                       <div>
@@ -562,7 +625,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
                     <div className="relative">
                       <UserAvatar
                         name={student.name}
-                        src={student.avatar}
+                        src={student.id === activeUser.id ? (activeUser.avatar || student.avatar) : (student.avatar || getCleanStoredAvatar(student.id))}
                         className="w-13 h-13 sm:w-14 sm:h-14 rounded-full object-cover border-2 border-border shadow-subtle group-hover:border-primary transition-colors"
                       />
                       <button
@@ -617,7 +680,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
                       <div className="flex items-center space-x-3.5 truncate flex-1 min-w-0">
                         <UserAvatar
                           name={student.name}
-                          src={student.avatar}
+                          src={student.id === activeUser.id ? (activeUser.avatar || student.avatar) : (student.avatar || getCleanStoredAvatar(student.id))}
                           className="w-10 h-10 rounded-full object-cover border border-border shrink-0 shadow-xs"
                         />
                         <div className="truncate">

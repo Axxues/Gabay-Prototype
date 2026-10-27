@@ -91,6 +91,25 @@ describe('badge selectors', () => {
       countNewFiles(files, 'c1', { 'files:c1': '2026-09-12T00:00:00.000Z' })
     ).toBe(1);
   });
+  it('excludes files uploaded by the viewer from new files count', () => {
+    const files = [
+      { id: 'f1', courseId: 'c1', updatedAt: '2026-09-13T10:00:00.000Z', uploadedBy: 'u-viewer' },
+      { id: 'f2', courseId: 'c1', updatedAt: '2026-09-13T10:00:00.000Z', uploadedBy: 'u-other' },
+    ];
+    expect(
+      countNewFiles(files, 'c1', { 'files:c1': '2026-09-12T00:00:00.000Z' }, 'u-viewer')
+    ).toBe(1);
+  });
+  it('clears unread announcements if visited after creation or if viewer is author', () => {
+    const anns = [
+      { id: 'a1', courseId: 'c1', createdAt: '2026-09-10T10:00:00.000Z', readBy: [] },
+      { id: 'a2', courseId: 'c1', createdAt: '2026-09-15T10:00:00.000Z', readBy: [] },
+      { id: 'a3', courseId: 'c1', authorId: 'u-viewer', createdAt: '2026-09-20T10:00:00.000Z', readBy: [] },
+    ];
+    expect(countUnreadAnnouncements(anns, { id: 'u-viewer', role: 'faculty', sectionId: null }, 'c1')).toBe(2);
+    expect(countUnreadAnnouncements(anns, { id: 'u-viewer', role: 'faculty', sectionId: null }, 'c1', { 'announcements:c1': '2026-09-12T00:00:00.000Z' })).toBe(1);
+    expect(countUnreadAnnouncements(anns, { id: 'u-viewer', role: 'faculty', sectionId: null }, 'c1', { 'announcements:c1': '2026-09-16T00:00:00.000Z' })).toBe(0);
+  });
   it('compares timestamps safely', () => {
     expect(isNewerThanVisit('2026-09-13T00:00:00.000Z', undefined)).toBe(true);
     expect(isNewerThanVisit('2026-09-10T00:00:00.000Z', '2026-09-12T00:00:00.000Z')).toBe(false);

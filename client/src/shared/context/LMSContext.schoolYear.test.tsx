@@ -253,6 +253,10 @@ describe('School Year Management & Scoping State in LMSContext', () => {
     expect(activeYear?.year).toBe('2026-2027');
     expect(activeYear?.isActive).toBe(true);
 
+    // Faculty, staff, and students of the rolled-over college receive a notification
+    const studentNotifsAfter = contextValues.getNotifications('u-stud1');
+    expect(studentNotifsAfter.some((n: any) => n.type === 'baseline_changed' && n.content.includes('2026-2027'))).toBe(true);
+
     // Verify independent scoping: rolling over CCS does NOT change other colleges' active school year
     const casActive = contextValues.getActiveSchoolYearForCollege('col-cas');
     expect(casActive?.year).toBe('2025-2026');

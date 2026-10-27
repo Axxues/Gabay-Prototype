@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   createActivity: vi.fn(),
   createQuiz: vi.fn(),
   showAlert: vi.fn(),
+  uploadCourseFile: vi.fn(),
   mockCourses: [
     {
       id: 'c1',
@@ -64,6 +65,7 @@ vi.mock('../../shared/context/LMSContext', () => ({
     createActivity: mocks.createActivity,
     createQuiz: mocks.createQuiz,
     showAlert: mocks.showAlert,
+    uploadCourseFile: mocks.uploadCourseFile,
     effectiveTermsForCourse: () => ['midterm'],
   }),
 }));
@@ -131,5 +133,54 @@ describe('AddModuleItemPage cross-section sync', () => {
     });
 
     mocks.mockModules.push(originalModules[1]);
+  });
+
+  test('stages attached file locally and only uploads when item is saved', async () => {
+    mocks.addModuleItem.mockResolvedValue(undefined);
+    mocks.uploadCourseFile.mockResolvedValue({
+      id: 'f-mod-1',
+      name: 'lecture1.pdf',
+      formattedSize: '12.0 KB',
+      fileUrl: '/uploads/lecture1.pdf'
+    });
+
+    const { container } = renderPage('file' as any);
+
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    expect(fileInput).toBeTruthy();
+
+    const fakeFile = new File(['dummy lecture notes'], 'lecture1.pdf', { type: 'application/pdf' });
+    fireEvent.change(fileInput, { target: { files: [fakeFile] } });
+
+    // Staged in UI, but not uploaded yet
+    expect(screen.getByText('lecture1.pdf')).toBeInTheDocument();
+    expect(mocks.uploadCourseFile).not.toHaveBeenCalled();
+
+    // Submit save
+    fireEvent.click(screen.getByRole('button', { name: /Save & add to module/i }));
+
+    // Replicate across sections modal appears
+    expect(await screen.findByText(/Replicate Module Item Across Sections/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Publish to Selected Sections/i }));
+
+    await waitFor(() => {
+      expect(mocks.uploadCourseFile).toHaveBeenCalledTimes(1);
+      expect(mocks.uploadCourseFile).toHaveBeenCalledWith(
+        expect.objectContaining({
+          courseId: 'c1',
+          name: 'lecture1.pdf',
+          rawFile: fakeFile,
+          area: 'modules'
+        })
+      );
+      expect(mocks.addModuleItem).toHaveBeenCalledWith(
+        'm1',
+        expect.objectContaining({
+          title: 'lecture1',
+          fileName: 'lecture1.pdf',
+          fileUrl: '/uploads/lecture1.pdf'
+        })
+      );
+    });
   });
 });

@@ -33,6 +33,10 @@ export function resolveModuleReplyRecipient(
 interface AnnBadgeLike {
   id: string;
   courseId: string;
+  authorId?: string;
+  createdAt?: string;
+  date?: string;
+  updatedAt?: string;
   sectionId?: string;
   sectionRestriction?: string;
   readBy?: string[];
@@ -41,13 +45,18 @@ interface AnnBadgeLike {
 export function countUnreadAnnouncements(
   announcements: AnnBadgeLike[],
   viewer: { id: string; role: UserRole; sectionId: string | null },
-  courseId: string
+  courseId: string,
+  lastVisitedAt?: Record<string, string>
 ): number {
+  const visit = lastVisitedAt ? lastVisitedAt[`announcements:${courseId}`] : undefined;
   return announcements.filter(a => {
     if (a.courseId !== courseId && a.courseId !== 'all') return false;
+    if (a.authorId && a.authorId === viewer.id) return false;
     const scope = a.sectionId ?? (a.sectionRestriction && a.sectionRestriction !== 'All Sections' ? a.sectionRestriction : 'all');
     if (!isAnnouncementVisibleToViewer({ sectionId: scope }, viewer.sectionId, viewer.role)) return false;
-    return !(a.readBy || []).includes(viewer.id);
+    if ((a.readBy || []).includes(viewer.id)) return false;
+    if (visit && !isNewerThanVisit(a.createdAt || a.date || a.updatedAt || '', visit)) return false;
+    return true;
   }).length;
 }
 
@@ -59,24 +68,41 @@ export function countUnreadMessages(
 }
 
 export function countPendingPeople(
-  requests: Array<{ courseId: string; status: string }>,
-  courseId: string
+  requests: Array<{ courseId: string; status: string; requestedAt?: string }>,
+  courseId: string,
+  lastVisitedAt?: Record<string, string>
 ): number {
-  return requests.filter(r => r.courseId === courseId && r.status === 'pending').length;
+  const visitPeople = lastVisitedAt?.[`people:${courseId}`];
+  const visitPending = lastVisitedAt?.[`pending-requests:${courseId}`];
+  const visit = (visitPeople && visitPending)
+    ? (new Date(visitPeople).getTime() > new Date(visitPending).getTime() ? visitPeople : visitPending)
+    : (visitPeople || visitPending);
+  return requests.filter(
+    r => r.courseId === courseId && r.status === 'pending' && (!visit || isNewerThanVisit(r.requestedAt || '', visit))
+  ).length;
 }
 
 export function isNewerThanVisit(updatedAt: string, lastVisit: string | undefined): boolean {
   if (!lastVisit) return true;
-  return new Date(updatedAt).getTime() > new Date(lastVisit).getTime();
+  const itemTime = new Date(updatedAt).getTime();
+  const visitTime = new Date(lastVisit).getTime();
+  if (isNaN(itemTime)) return false;
+  if (isNaN(visitTime)) return true;
+  return itemTime > visitTime;
 }
 
 export function countNewFiles(
-  files: Array<{ courseId: string; updatedAt: string }>,
+  files: Array<{ courseId: string; updatedAt: string; uploadedBy?: string }>,
   courseId: string,
-  lastVisitedAt: Record<string, string>
+  lastVisitedAt: Record<string, string>,
+  viewerId?: string
 ): number {
-  const visit = lastVisitedAt[`files:${courseId}`];
-  return files.filter(f => f.courseId === courseId && isNewerThanVisit(f.updatedAt, visit)).length;
+  const visit = lastVisitedAt ? lastVisitedAt[`files:${courseId}`] : undefined;
+  return files.filter(f => {
+    if (f.courseId !== courseId) return false;
+    if (viewerId && f.uploadedBy === viewerId) return false;
+    return isNewerThanVisit(f.updatedAt, visit);
+  }).length;
 }
 
 export function countNewGrades(
@@ -165,7 +191,7 @@ export function countTotalAssessmentBadge(params: {
   role: UserRole;
   courseId: string;
 }): number {
-  const { activities = [], quizzes = [], exams = [], submissions = [], userId, role, courseId } = params;
+  const { activities = [], quizzes = [], submissions = [], userId, role, courseId } = params;
   let total = 0;
   for (const cat of ['activity', 'assignment', 'project', 'presentation'] as const) {
     total += countAssessmentCategoryBadge(activities, submissions, cat, userId, role, courseId);
@@ -182,20 +208,6 @@ export function countTotalAssessmentBadge(params: {
     const taken = submissions
       .filter(s => s.courseId === courseId && s.studentId === userId && (s.activityKey ?? '').startsWith('asg-quiz-'))
       .map(s => (s.activityKey ?? '').replace('asg-quiz-', ''));
-    total += countStudentAssessmentBadge(pub, taken);
-  }
-
-  const courseExams = (exams || []).filter(e => e.courseId === courseId);
-  if (role === 'faculty' || role === 'admin') {
-    total += countFacultyGradingBadge(
-      submissions.filter(s => s.courseId === courseId),
-      courseExams.map(e => `asg-exam-${e.id}`)
-    );
-  } else {
-    const pub = courseExams.filter(e => e.published).map(e => e.id);
-    const taken = submissions
-      .filter(s => s.courseId === courseId && s.studentId === userId && (s.activityKey ?? '').startsWith('asg-exam-'))
-      .map(s => (s.activityKey ?? '').replace('asg-exam-', ''));
     total += countStudentAssessmentBadge(pub, taken);
   }
 

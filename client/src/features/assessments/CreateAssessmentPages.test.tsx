@@ -5,7 +5,6 @@ import React from 'react';
 
 const createActivityMock = vi.fn().mockResolvedValue({ id: 'act-new-99' });
 const createQuizMock = vi.fn().mockResolvedValue({ id: 'quiz-new-99' });
-const createExamMock = vi.fn().mockResolvedValue({ id: 'exam-new-99' });
 
 const mockCourses = [
   {
@@ -36,7 +35,6 @@ vi.mock('../../shared/context/LMSContext', () => ({
     currentUser: { id: 'inst-1', name: 'Dr. Santos', role: 'faculty' },
     createActivity: createActivityMock,
     createQuiz: createQuizMock,
-    createExam: createExamMock,
     showAlert: vi.fn(),
     effectiveTermsForCourse: () => ['midterm', 'finals'],
   }),
@@ -46,7 +44,6 @@ import { CreateAssignmentPage } from './CreateAssignmentPage';
 import { CreateProjectPage } from './CreateProjectPage';
 import { CreatePresentationPage } from './CreatePresentationPage';
 import { CreateQuizPage } from './CreateQuizPage';
-import { CreateExamPage } from './CreateExamPage';
 
 describe('CreateAssessmentPages forms', () => {
   beforeEach(() => {
@@ -121,30 +118,126 @@ describe('CreateAssessmentPages forms', () => {
     });
   });
 
-  test('CreateExamPage prompts and replicates exam across selected sections', async () => {
+  test('CreateAssignmentPage allows switching to New question set mode', async () => {
     const onCreated = vi.fn();
-    render(<CreateExamPage courseId="c1" onBack={() => {}} onExamCreated={onCreated} />);
+    render(<CreateAssignmentPage courseId="c1" onBack={() => {}} onCreated={onCreated} />);
 
-    const titleInput = screen.getByPlaceholderText(/Untitled Exam/i);
-    fireEvent.change(titleInput, { target: { value: 'Midterm Exam' } });
+    // Switch to question set
+    fireEvent.click(screen.getByRole('button', { name: /New question set/i }));
 
-    const questionInput = screen.getByPlaceholderText(/Question 1/i);
-    fireEvent.change(questionInput, { target: { value: 'What is Big O notation?' } });
+    expect(screen.getByText(/Quiz-style question set/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Discard & return to assignments/i })).toBeInTheDocument();
+  });
 
-    const publishBtn = screen.getAllByRole('button', { name: /Publish Exam/i })[0];
+  test('CreateProjectPage renders structured design and replicates across sections', async () => {
+    const onCreated = vi.fn();
+    render(<CreateProjectPage courseId="c1" onBack={() => {}} onCreated={onCreated} />);
+
+    expect(screen.getByText('Create Project')).toBeDefined();
+    const titleInput = screen.getByPlaceholderText(/Capstone Phase 1/i);
+    fireEvent.change(titleInput, { target: { value: 'Final Capstone' } });
+
+    const instructionsInput = screen.getByPlaceholderText(/Enter project instructions/i);
+    fireEvent.change(instructionsInput, { target: { value: 'Build a production microservice.' } });
+
+    const publishBtn = screen.getAllByRole('button', { name: /Publish Project/i })[0];
     fireEvent.click(publishBtn);
 
     expect(await screen.findByText(/Replicate Assessment Across Sections/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Publish to Selected Sections/i }));
 
     await waitFor(() => {
-      expect(createExamMock).toHaveBeenCalledTimes(2);
-      expect(createExamMock).toHaveBeenCalledWith(
-        expect.objectContaining({ courseId: 'c1', title: 'Midterm Exam' })
-      );
-      expect(createExamMock).toHaveBeenCalledWith(
-        expect.objectContaining({ courseId: 'c2', title: 'Midterm Exam' })
+      expect(createActivityMock).toHaveBeenCalledTimes(2);
+      expect(createActivityMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          courseId: 'c1',
+          title: 'Final Capstone',
+          assessmentType: 'project',
+          published: true,
+        })
       );
     });
+  });
+
+  test('CreatePresentationPage renders structured design and replicates across sections', async () => {
+    const onCreated = vi.fn();
+    render(<CreatePresentationPage courseId="c1" onBack={() => {}} onCreated={onCreated} />);
+
+    expect(screen.getByText('Create Presentation')).toBeDefined();
+    const titleInput = screen.getByPlaceholderText(/Oral Defense or Group/i);
+    fireEvent.change(titleInput, { target: { value: 'Thesis Defense' } });
+
+    const instructionsInput = screen.getByPlaceholderText(/Enter presentation guidelines/i);
+    fireEvent.change(instructionsInput, { target: { value: 'Present findings within 15 minutes.' } });
+
+    const publishBtn = screen.getAllByRole('button', { name: /Publish Presentation/i })[0];
+    fireEvent.click(publishBtn);
+
+    expect(await screen.findByText(/Replicate Assessment Across Sections/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Publish to Selected Sections/i }));
+
+    await waitFor(() => {
+      expect(createActivityMock).toHaveBeenCalledTimes(2);
+      expect(createActivityMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          courseId: 'c1',
+          title: 'Thesis Defense',
+          assessmentType: 'presentation',
+          published: true,
+        })
+      );
+    });
+  });
+
+  test('CreateProjectPage and CreatePresentationPage support grading rubric toggle and criteria', () => {
+    const { unmount } = render(<CreateProjectPage courseId="c1" onBack={() => {}} onCreated={() => {}} />);
+    const rubricCheckbox = screen.getByRole('checkbox', { name: /Include a grading rubric/i });
+    expect(rubricCheckbox).not.toBeChecked();
+
+    fireEvent.click(rubricCheckbox);
+    expect(rubricCheckbox).toBeChecked();
+    expect(screen.getByText('1 criterion')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/Criterion title \(e\.g\. Code Quality & Technical Execution\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Project total: 100 pts/i)).toBeInTheDocument();
+    unmount();
+
+    render(<CreatePresentationPage courseId="c1" onBack={() => {}} onCreated={() => {}} />);
+    const presRubricCheckbox = screen.getByRole('checkbox', { name: /Include a grading rubric/i });
+    expect(presRubricCheckbox).not.toBeChecked();
+
+    fireEvent.click(presRubricCheckbox);
+    expect(presRubricCheckbox).toBeChecked();
+    expect(screen.getByText('1 criterion')).toBeInTheDocument();
+    expect(screen.getByText(/Presentation total: 100 pts/i)).toBeInTheDocument();
+  });
+
+  test('all assessment forms render Due date, Available from, and Until date fields', () => {
+    // 1. Assignment
+    const { unmount: unmountAsg } = render(<CreateAssignmentPage courseId="c1" onBack={() => {}} onCreated={() => {}} />);
+    expect(screen.getByText(/^Due date/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Available from/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Until/i)).toBeInTheDocument();
+    unmountAsg();
+
+    // 2. Project
+    const { unmount: unmountProj } = render(<CreateProjectPage courseId="c1" onBack={() => {}} onCreated={() => {}} />);
+    expect(screen.getByText(/^Due date/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Available from/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Until/i)).toBeInTheDocument();
+    unmountProj();
+
+    // 3. Presentation
+    const { unmount: unmountPres } = render(<CreatePresentationPage courseId="c1" onBack={() => {}} onCreated={() => {}} />);
+    expect(screen.getByText(/^Due date/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Available from/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Until/i)).toBeInTheDocument();
+    unmountPres();
+
+    // 4. Quiz
+    const { unmount: unmountQuiz } = render(<CreateQuizPage courseId="c1" onBack={() => {}} onQuizCreated={() => {}} />);
+    expect(screen.getByText(/^Due date/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Available from/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Until/i)).toBeInTheDocument();
+    unmountQuiz();
   });
 });

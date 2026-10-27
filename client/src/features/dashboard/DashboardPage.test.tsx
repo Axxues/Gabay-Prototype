@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 import { describe, expect, test, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import React from 'react';
 
 const mocks = vi.hoisted(() => ({
   isLoading: false,
+  isSyncing: false,
   activeRole: 'faculty',
   activeUser: { id: 'u-fac-1', name: 'Faculty', role: 'faculty' } as any,
   pendingRequests: [] as any[],
@@ -39,6 +40,7 @@ vi.mock('../../shared/context/LMSContext', () => ({
     colleges: mocks.colleges,
     departments: mocks.departments,
     isLoading: mocks.isLoading,
+    isSyncing: mocks.isSyncing,
     openSpeedGrader: vi.fn(),
     getPendingRequestsForStudent: () => mocks.pendingRequests,
     studentApproveInvitation: vi.fn(),
@@ -51,6 +53,8 @@ vi.mock('../../shared/context/LMSContext', () => ({
     getBaselineSchoolYear: () => mocks.baselineSchoolYear,
     getActiveSchoolYearForCollege: () => mocks.activeCollegeSchoolYear,
     getSchoolYearsByCollege: () => mocks.collegeSchoolYears || [],
+    baselineSemester: mocks.baselineSemester || 'First',
+    getActiveSemesterForCollege: (colId?: string) => mocks.collegeActiveSemester || 'First',
   }),
   getOrGenerateCourseJoinCode: (c: any) => c?.joinCode || c?.join_code || `${(c?.code || 'GBY').replace(/[^a-zA-Z0-9]/g, '').slice(0, 4).toUpperCase()}-TEST`,
 }));
@@ -66,10 +70,19 @@ function renderPage() {
 describe('DashboardPage refresh loading', () => {
   beforeEach(() => {
     mocks.isLoading = false;
+    mocks.isSyncing = false;
   });
 
   test('shows loading skeleton (not "no courses") while bootstrapping', () => {
     mocks.isLoading = true;
+    renderPage();
+    expect(screen.getByTestId('dashboard-courses-loading')).toBeInTheDocument();
+    expect(screen.queryByText(/no enrolled courses/i)).not.toBeInTheDocument();
+  });
+
+  test('shows loading skeleton (not "no courses") while syncing student courses in the background', () => {
+    mocks.isLoading = false;
+    mocks.isSyncing = true;
     renderPage();
     expect(screen.getByTestId('dashboard-courses-loading')).toBeInTheDocument();
     expect(screen.queryByText(/no enrolled courses/i)).not.toBeInTheDocument();
@@ -269,7 +282,7 @@ describe('DashboardPage admin access', () => {
     renderPage();
 
     // Wheel contains both Current and Baseline badges
-    expect(screen.getByText('Current')).toBeInTheDocument();
+    expect(within(screen.getByTestId('academic-scope-wheel')).getByText('Current')).toBeInTheDocument();
     const baselineBadge = screen.getByTestId('academic-scope-baseline-badge');
     expect(baselineBadge).toBeInTheDocument();
     expect(baselineBadge.textContent).toBe('University A.Y.');
@@ -298,7 +311,7 @@ describe('DashboardPage admin access', () => {
 
     renderPage();
 
-    expect(screen.getByText('Current')).toBeInTheDocument();
+    expect(within(screen.getByTestId('academic-scope-wheel')).getByText('Current')).toBeInTheDocument();
     expect(screen.queryByTestId('academic-scope-baseline-badge')).not.toBeInTheDocument();
   });
 
@@ -457,6 +470,8 @@ describe('DashboardPage semester filter', () => {
     mocks.activeRole = 'faculty';
     mocks.activeUser = { id: 'u-fac-1', name: 'Dr. Faculty', role: 'faculty' } as any;
     mocks.baselineSchoolYear = { year: '2025-2026', isActive: true };
+    mocks.collegeActiveSemester = 'First';
+    mocks.baselineSemester = 'First';
     mocks.db = {
       courses: [
         {
@@ -511,10 +526,70 @@ describe('DashboardPage semester filter', () => {
     expect(screen.getByTestId('semester-tab-Second')).toHaveTextContent('1');
     expect(screen.getByTestId('semester-tab-Mid-Year')).toHaveTextContent('1');
 
-    // Initially displays all 3 courses
+    // For faculty, default navigation is the college semester (First)
+    expect(screen.getByText('Object-Oriented Programming')).toBeInTheDocument();
+    expect(screen.queryByText('Design and Analysis of Algorithms')).not.toBeInTheDocument();
+    expect(screen.queryByText('Practicum')).not.toBeInTheDocument();
+
+    // Clicking All Semesters shows all 3 courses
+    fireEvent.click(screen.getByTestId('semester-tab-all'));
     expect(screen.getByText('Object-Oriented Programming')).toBeInTheDocument();
     expect(screen.getByText('Design and Analysis of Algorithms')).toBeInTheDocument();
     expect(screen.getByText('Practicum')).toBeInTheDocument();
+  });
+
+  test('displays college semester indicator and defaults navigation to college semester for non-admin roles', () => {
+    mocks.activeRole = 'dean';
+    mocks.activeUser = { id: 'u-dean-1', name: 'Dean CCS', role: 'dean', collegeId: 'col-ccs' } as any;
+    mocks.collegeActiveSemester = 'Second';
+    mocks.baselineSemester = 'First';
+
+    renderPage();
+
+    // Second semester has College Sem indicator
+    const collegeBadge = screen.getByTestId('semester-college-badge');
+    expect(collegeBadge).toHaveTextContent('College Sem');
+    expect(screen.getByTestId('semester-tab-Second')).toContainElement(collegeBadge);
+
+    // First semester has University Sem indicator
+    const univBadge = screen.getByTestId('semester-university-badge');
+    expect(univBadge).toHaveTextContent('University Sem');
+    expect(screen.getByTestId('semester-tab-First')).toContainElement(univBadge);
+
+    // Dean default navigation is college semester (Second Semester)
+    expect(screen.getByText('Design and Analysis of Algorithms')).toBeInTheDocument();
+    expect(screen.queryByText('Object-Oriented Programming')).not.toBeInTheDocument();
+  });
+
+  test('displays university semester indicator and defaults navigation to university semester for admin', () => {
+    mocks.activeRole = 'admin';
+    mocks.activeUser = { id: 'u-admin-1', name: 'Admin', role: 'admin' } as any;
+    mocks.baselineSemester = 'First';
+    mocks.collegeActiveSemester = 'Second';
+
+    renderPage();
+
+    // Admin default navigation is university semester (First Semester)
+    expect(screen.getByText('Object-Oriented Programming')).toBeInTheDocument();
+    expect(screen.queryByText('Design and Analysis of Algorithms')).not.toBeInTheDocument();
+  });
+
+  test('displays Current badge and removes separate college/university medals when both semesters are the same', () => {
+    mocks.activeRole = 'faculty';
+    mocks.activeUser = { id: 'u-fac-1', name: 'Dr. Faculty', role: 'faculty' } as any;
+    mocks.collegeActiveSemester = 'First';
+    mocks.baselineSemester = 'First';
+
+    renderPage();
+
+    // First semester has Current badge
+    const currentBadge = screen.getByTestId('semester-current-badge');
+    expect(currentBadge).toHaveTextContent('Current');
+    expect(screen.getByTestId('semester-tab-First')).toContainElement(currentBadge);
+
+    // Neither College Sem nor University Sem badges are displayed
+    expect(screen.queryByTestId('semester-college-badge')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('semester-university-badge')).not.toBeInTheDocument();
   });
 
   test('filters courses by clicking specific semester tab', () => {

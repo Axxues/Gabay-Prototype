@@ -319,6 +319,8 @@ describe('files and folders via Likha (Task 9)', () => {
     );
     expect(fileExpressCalls()).toEqual([]);
     expect(created.id).toBe('file-new');
+    expect(created.size).toBe(11);
+    expect(created.formattedSize).toBe('11 B');
     expect((seenDb.courseFiles || []).some((f: any) => f.id === 'file-new')).toBe(true);
   });
 
@@ -350,5 +352,25 @@ describe('files and folders via Likha (Task 9)', () => {
     expect(updateCourseFileMock).toHaveBeenCalledWith('file-1', { name: 'Week1_Updated.pdf' });
     expect(fileExpressCalls()).toEqual([]);
     expect((seenDb.courseFiles || []).find((f: any) => f.id === 'file-1')?.name).toBe('Week1_Updated.pdf');
+  });
+
+  test('deleteCourseFile with virtual syllabus file clears course sourceDocument without calling Likha files delete', async () => {
+    getCoursesWithRelationsMock.mockResolvedValueOnce([
+      {
+        ...courseRow,
+        syllabus: {
+          sourceDocument: { fileName: 'CMSC180_Syllabus.pdf', fileSize: '1.2 MB' },
+        },
+      },
+    ]);
+    await renderLoggedIn();
+    expect((seenDb.courses || []).find((c: any) => c.id === 'c1')?.syllabus?.sourceDocument).toBeDefined();
+
+    await act(async () => {
+      await ctx.deleteCourseFile('syl-file-c1');
+    });
+
+    expect(deleteCourseFileMock).not.toHaveBeenCalled();
+    expect((seenDb.courses || []).find((c: any) => c.id === 'c1')?.syllabus?.sourceDocument).toBeUndefined();
   });
 });

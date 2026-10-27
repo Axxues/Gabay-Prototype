@@ -23,6 +23,7 @@ import {
   buildActivityPayload as buildQuestionSetPayload,
   type QuestionSetValue
 } from './components/forms/QuestionSetFields';
+import { uploadFileToPublic } from '../../shared/utils/fileUploader';
 import { findMatchingSiblingCourses } from '../../shared/utils/crossSectionSync';
 import { CrossSectionPromptModal } from '../../shared/components/common/CrossSectionPromptModal';
 
@@ -37,7 +38,7 @@ export const CreateActivityPage: React.FC<CreateActivityPageProps> = ({
   onBack,
   onActivityCreated
 }) => {
-  const { db, currentUser, createActivity, showAlert, effectiveTermsForCourse } = useLMS();
+  const { db, currentUser, createActivity, showAlert, effectiveTermsForCourse, uploadCourseFile } = useLMS();
   const course = db.courses.find(c => c.id === courseId);
 
   const siblingCourses = useMemo(() => {
@@ -72,10 +73,67 @@ export const CreateActivityPage: React.FC<CreateActivityPageProps> = ({
   const executeSaveClassic = async (targetCourseIds: string[], publish: boolean) => {
     setSavingAction(publish ? 'publish' : 'draft');
     try {
+      let formToSave = form;
+      if (form.attachedFile?.rawFile) {
+        let url = '';
+        let name = form.attachedFile.name;
+        let size = form.attachedFile.size;
+        try {
+          const saved = await uploadCourseFile({
+            courseId,
+            name: form.attachedFile.name,
+            rawFile: form.attachedFile.rawFile,
+            size: form.attachedFile.rawFile.size,
+            formattedSize: size,
+            area: 'activities',
+            visibility: 'published',
+            silent: true
+          });
+          url = saved.fileUrl || saved.url || '';
+          name = saved.name || name;
+          if (saved.formattedSize && saved.formattedSize !== '0 B') {
+            size = saved.formattedSize;
+          }
+          if (targetCourseIds.length > 1) {
+            for (const siblingId of targetCourseIds) {
+              if (siblingId !== courseId) {
+                try {
+                  await uploadCourseFile({
+                    courseId: siblingId,
+                    name: saved.name || form.attachedFile.name,
+                    fileUrl: saved.fileUrl || saved.url,
+                    url: saved.url || saved.fileUrl,
+                    formattedSize: size,
+                    type: saved.type || 'document',
+                    area: 'activities',
+                    visibility: 'published',
+                    silent: true
+                  });
+                } catch {}
+              }
+            }
+          }
+        } catch {
+          url = '';
+        }
+        if (!url || url.startsWith('data:')) {
+          const viaVite = await uploadFileToPublic(form.attachedFile.rawFile);
+          if (!viaVite.url.startsWith('data:')) {
+            url = viaVite.url;
+            name = viaVite.name;
+            size = viaVite.size;
+          }
+        }
+        formToSave = {
+          ...form,
+          attachedFile: { name, size, url }
+        };
+      }
+
       let firstCreatedId = '';
       for (let i = 0; i < targetCourseIds.length; i++) {
         const targetId = targetCourseIds[i];
-        const payload = buildActivityPayload(targetId, form, publish);
+        const payload = buildActivityPayload(targetId, formToSave, publish);
         const created = await createActivity(payload);
         if (i === 0) {
           firstCreatedId = created.id;

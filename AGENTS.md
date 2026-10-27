@@ -144,3 +144,23 @@ All agents and developers modifying the Likha ERP backend must strictly adhere t
 
 5. **Local Feature State Over Monolithic Expansion:**
    - New feature state, caching, and data operations must be authored as feature-scoped hooks, stores, or query endpoints inside `features/<domain>/`, NEVER added to the global `LMSContext.tsx` monolith.
+
+---
+
+## ⚡ MANDATORY DIRECTIVE: TOKEN EFFICIENCY & MINIMALISM (PONYTAIL MODE)
+
+**ALL AGENTS MUST MINIMIZE CONTEXT CONSUMPTION, OUTPUT TOKENS, AND CODE CHURN.**
+
+1. **The Smallest Complete Change (YAGNI & Ponytail):**
+   - Solve tasks with the smallest working diff. Do NOT introduce new layers, wrappers, abstract classes, defensive boilerplate, or speculative features nobody asked for.
+   - Deletion and reuse beats addition: reuse existing components, utilities, and dependencies instead of writing new ones.
+
+2. **Ultra-Concise Communication:**
+   - Answer directly and plainly. Do NOT re-explain the prompt, summarize what the user already knows, or offer unsolicited lectures.
+   - Summarize edits in 1–3 concise sentences.
+
+3. **Tool & Context Hygiene (Zero Transcript Bloat):**
+   - **Targeted File Reads:** ALWAYS read specific line ranges (`StartLine`, `EndLine`). NEVER dump full 500+ line files into the session transcript unless strictly necessary.
+   - **Targeted Edits:** ALWAYS use `edit_file` for targeted surgical replacements; never overwrite entire files with `write_file` for partial changes.
+   - **Concise Command Output:** Filter console and test outputs (pipe to head/tail, use `--silent`, `--summary`, or `Select-String`) to avoid dumping hundreds of log lines into context history.
+

@@ -10,6 +10,18 @@ export async function getPublished(courseId: string): Promise<SyllabusRevisionRe
   return likhaLmsApi.syllabus.getPublished(courseId);
 }
 
+export async function getDraft(courseId: string): Promise<SyllabusRevisionResponse | null> {
+  return likhaLmsApi.syllabus.getDraft?.(courseId) ?? null;
+}
+
+export async function getCourseSyllabus(courseId: string, canManage = true): Promise<SyllabusRevisionResponse | null> {
+  return likhaLmsApi.syllabus.getCourseSyllabus?.(courseId, canManage) ?? null;
+}
+
+export async function getAllSyllabi(canManage = true): Promise<Record<string, SyllabusRevisionResponse>> {
+  return likhaLmsApi.syllabus.getAllSyllabi?.(canManage) ?? {};
+}
+
 export async function listRevisions(courseId: string): Promise<SyllabusRevisionHeader[]> {
   return likhaLmsApi.syllabus.listRevisions(courseId);
 }
@@ -46,6 +58,8 @@ export async function withdrawSyllabus(courseId: string): Promise<void> {
 
 export const syllabusApi: SyllabusApi = {
   getPublished,
+  getDraft,
+  getCourseSyllabus,
   listRevisions,
   createDraft,
   updateSection,

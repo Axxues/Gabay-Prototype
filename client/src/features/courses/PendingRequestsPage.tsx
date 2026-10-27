@@ -10,7 +10,14 @@ interface PendingRequestsPageProps {
 }
 
 export const PendingRequestsPage: React.FC<PendingRequestsPageProps> = ({ courseId }) => {
-  const { db, isLoading, isSyncing, approveEnrollmentRequests, rejectEnrollmentRequests, showAlert } = useLMS();
+  const { db, isLoading, isSyncing, approveEnrollmentRequests, rejectEnrollmentRequests, showAlert, markTabVisited } = useLMS();
+
+  React.useEffect(() => {
+    if (courseId) {
+      markTabVisited?.('people', courseId);
+      markTabVisited?.('pending-requests', courseId);
+    }
+  }, [courseId]);
   const course = db.courses.find(c => c.id === courseId);
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -24,9 +31,17 @@ export const PendingRequestsPage: React.FC<PendingRequestsPageProps> = ({ course
   const allRequests: EnrollmentRequest[] = (db.enrollmentRequests || []).filter((r: EnrollmentRequest) => r.courseId === courseId);
   const pendingRequests = allRequests.filter((r: EnrollmentRequest) => r.status === 'pending');
 
+  const getStudentDisplayName = (req: EnrollmentRequest): string => {
+    const user = (db.users || []).find(u => u.id === req.studentId);
+    const userName = user?.name || `${user?.firstName || ''} ${user?.lastName || ''}`.trim();
+    const isId = req.studentName === req.studentId || /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(req.studentName || '');
+    return userName || (!isId && req.studentName ? req.studentName : (user?.email || req.studentName || 'Student'));
+  };
+
   const filteredRequests = pendingRequests.filter((r: EnrollmentRequest) => {
     const q = searchQuery.toLowerCase();
-    return r.studentName.toLowerCase().includes(q) || r.type.toLowerCase().includes(q);
+    const name = getStudentDisplayName(r).toLowerCase();
+    return name.includes(q) || r.studentName.toLowerCase().includes(q) || r.type.toLowerCase().includes(q);
   });
 
   const handleToggle = (id: string) => {
@@ -174,7 +189,7 @@ export const PendingRequestsPage: React.FC<PendingRequestsPageProps> = ({ course
                     />
                   </td>
                   <td className="p-3">
-                    <div className="font-semibold text-[14px]">{req.studentName}</div>
+                    <div className="font-semibold text-[14px]">{getStudentDisplayName(req)}</div>
                     <div className="text-[12px] text-muted-foreground">{req.studentId}</div>
                   </td>
                   <td className="p-3">

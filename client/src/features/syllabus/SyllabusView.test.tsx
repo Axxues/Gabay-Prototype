@@ -241,16 +241,33 @@ describe('SyllabusView revision editing', () => {
       expect(matchesPersonName('Floribeth P. Cuison', 'Charlie S. Marzan')).toBe(false);
     });
 
-    test('buildInstructorOptions includes assigned course instructor if not already scanned', () => {
+    test('buildInstructorOptions does NOT include assigned course instructor if not scanned in syllabus', () => {
       const scanResult = {
         detectedFacultyNames: ['Floribeth P. Cuison'],
       } as never;
       const options = buildInstructorOptions(scanResult, [], {
         instructorId: 'usr-fac-assigned',
-        instructorName: 'Assigned Professor',
+        instructorName: 'Reymund Ezekiel Dilan',
       });
-      expect(options.some(o => o.name === 'Assigned Professor')).toBe(true);
+      expect(options.some(o => o.name === 'Reymund Ezekiel Dilan')).toBe(false);
       expect(options.some(o => o.name === 'Floribeth P. Cuison')).toBe(true);
+    });
+
+    test('buildInstructorOptions labels assigned course instructor when scanned in syllabus', () => {
+      const scanResult = {
+        detectedFacultyNames: ['Reymund Ezekiel Dilan'],
+      } as never;
+      const options = buildInstructorOptions(scanResult, [], {
+        instructorId: 'usr-fac-assigned',
+        instructorName: 'Reymund Ezekiel Dilan',
+      });
+      expect(options).toEqual([
+        {
+          id: 'usr-fac-assigned',
+          name: 'Reymund Ezekiel Dilan',
+          label: 'Reymund Ezekiel Dilan — Assigned Course Instructor',
+        },
+      ]);
     });
 
     test('scanned syllabus with course code/title mismatch displays warning tab and auto-matches assigned instructor', async () => {
@@ -288,6 +305,79 @@ describe('SyllabusView revision editing', () => {
       expect(screen.getByText('Information and Knowledge Management')).toBeInTheDocument();
       expect(screen.getByText('Auto-Matched')).toBeInTheDocument();
       expect(screen.getByText('Course Faculty Auto-Detected in Syllabus')).toBeInTheDocument();
+    });
+
+    test('syllabus with non-matching faculty auto-detects scanned faculty and does not scan the course instructor', async () => {
+      mocks.scanSyllabusDocument.mockResolvedValue({
+        success: true,
+        fileName: 'Syllabus.docx',
+        fileSize: '200 KB',
+        fileType: 'docx',
+        detectedCourseCode: 'CMSC 131',
+        detectedCourseTitle: 'Course Title',
+        detectedFacultyNames: ['Floribeth P. Cuison', 'Charlie S. Marzan'],
+        validation: { isSyllabus: true, confidence: 95, reasons: [], isScannedImage: false },
+        stats: { outcomesCount: 3, learningWeeksCount: 18, rubricsCount: 1, referencesCount: 5 },
+        rawTextPreview: 'Preview',
+        syllabus: syllabusDoc(),
+      });
+
+      render(<SyllabusView courseId="c1" />);
+      fireEvent.click(screen.getByRole('button', { name: /upload & scan syllabus/i }));
+
+      const fileInput = document.body.querySelector('input[type="file"]') as HTMLInputElement;
+      const fakeFile = new File(['dummy'], 'Syllabus.docx', {
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      });
+      fireEvent.change(fileInput, { target: { files: [fakeFile] } });
+
+      await waitFor(() => {
+        expect(screen.getAllByText('Floribeth P. Cuison').length).toBeGreaterThanOrEqual(1);
+      });
+
+      // Course faculty auto-detected with the scanned name
+      expect(screen.getByText('Course Faculty Auto-Detected in Syllabus')).toBeInTheDocument();
+      // The course instructor 'Faculty One' is not on the syllabus so they must not be an option
+      expect(screen.queryByText(/Faculty One — Assigned Course Instructor/i)).not.toBeInTheDocument();
+      expect(screen.getByText('Charlie S. Marzan')).toBeInTheDocument();
+    });
+
+    test('clicking apply syllabus calls updateCourseSyllabus and shows success', async () => {
+      mocks.scanSyllabusDocument.mockResolvedValue({
+        success: true,
+        fileName: 'Syllabus.docx',
+        fileSize: '200 KB',
+        fileType: 'docx',
+        detectedCourseCode: 'CMSC 131',
+        detectedCourseTitle: 'Course Title',
+        detectedFacultyNames: ['Floribeth P. Cuison'],
+        validation: { isSyllabus: true, confidence: 95, reasons: [], isScannedImage: false },
+        stats: { outcomesCount: 3, learningWeeksCount: 18, rubricsCount: 1, referencesCount: 5 },
+        rawTextPreview: 'Preview',
+        syllabus: syllabusDoc(),
+      });
+
+      render(<SyllabusView courseId="c1" />);
+      fireEvent.click(screen.getByRole('button', { name: /upload & scan syllabus/i }));
+
+      const fileInput = document.body.querySelector('input[type="file"]') as HTMLInputElement;
+      const fakeFile = new File(['dummy'], 'Syllabus.docx', {
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      });
+      fireEvent.change(fileInput, { target: { files: [fakeFile] } });
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /apply syllabus/i })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /apply syllabus/i }));
+
+      await waitFor(() => {
+        expect(mocks.updateCourseSyllabus).toHaveBeenCalledWith('c1', expect.anything());
+        expect(mocks.showAlert).toHaveBeenCalledWith(
+          expect.objectContaining({ title: 'Syllabus Updated Successfully' })
+        );
+      });
     });
   });
 });

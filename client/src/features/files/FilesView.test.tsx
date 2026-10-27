@@ -1,12 +1,17 @@
 // @vitest-environment jsdom
-import { describe, expect, test, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import '@testing-library/jest-dom/vitest';
+import { describe, expect, test, vi, beforeEach, afterEach } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 const mocks = vi.hoisted(() => ({
   isLoading: false,
   isSyncing: false,
   uploadCourseFile: vi.fn(),
+  deleteCourseFile: vi.fn(),
+  deleteCourseFolder: vi.fn(),
+  showConfirm: vi.fn((_msg: string, onConfirm: () => void) => onConfirm()),
+  showAlert: vi.fn(),
   db: {
     courses: [],
     courseFolders: [],
@@ -28,11 +33,11 @@ vi.mock('../../shared/context/LMSContext', () => ({
     isSyncing: mocks.isSyncing,
     createCourseFolder: vi.fn(),
     uploadCourseFile: mocks.uploadCourseFile,
-    deleteCourseFile: vi.fn(),
-    deleteCourseFolder: vi.fn(),
+    deleteCourseFile: mocks.deleteCourseFile,
+    deleteCourseFolder: mocks.deleteCourseFolder,
     renameCourseFile: vi.fn(),
-    showAlert: vi.fn(),
-    showConfirm: vi.fn(),
+    showAlert: mocks.showAlert,
+    showConfirm: mocks.showConfirm,
     markTabVisited: vi.fn(),
   }),
 }));
@@ -45,8 +50,16 @@ function renderPage() {
 
 describe('FilesView refresh loading', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     mocks.isLoading = false;
     mocks.isSyncing = false;
+    mocks.db.courseFiles = [];
+    mocks.db.courseFolders = [];
+    mocks.db.courses = [];
+  });
+
+  afterEach(() => {
+    cleanup();
   });
 
   test('shows loading skeleton (not empty text) while bootstrapping', () => {
@@ -70,7 +83,15 @@ describe('FilesView refresh loading', () => {
 });
 
 describe('FilesView PDF preview', () => {
-  test('renders the actual PDF in an iframe, not placeholder text', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  test('renders the PDF with a client-side canvas renderer, avoiding bare iframe embedding', async () => {
     mocks.db.courseFiles = [
       {
         id: 'file-pdf-1',
@@ -88,16 +109,80 @@ describe('FilesView PDF preview', () => {
     ];
     renderPage();
     fireEvent.click(screen.getByTitle('Preview File'));
-    const frame = screen.getByTitle('handout.pdf');
-    expect(frame.tagName).toBe('IFRAME');
-    expect(frame).toHaveAttribute('src', '/uploads/c1/handout.pdf');
-    expect(frame).toHaveAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms');
+    
+    // Verifies client-side canvas viewer is used and no bare iframe or plugin embed exists
+    const pdfViewer = screen.getByTestId('pdf-canvas-viewer');
+    expect(pdfViewer).toBeInTheDocument();
+    expect(screen.getByTestId('pdf-canvas')).toBeInTheDocument();
+    expect(document.querySelector('iframe')).toBeNull();
+    expect(document.querySelector('embed')).toBeNull();
+    expect(document.querySelector('object')).toBeNull();
     expect(screen.queryByText(/Built-in PDF Reader/)).not.toBeInTheDocument();
     mocks.db.courseFiles = [];
   });
 });
 
+describe('FilesView file deletion loading indicator', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  test('displays loading spinner and indicator while deleting a file', async () => {
+    let resolveDelete: () => void = () => {};
+    const deletePromise = new Promise<void>(resolve => {
+      resolveDelete = resolve;
+    });
+    mocks.deleteCourseFile.mockImplementation(() => deletePromise);
+    mocks.showConfirm.mockImplementation((_msg: string, onConfirm: () => void) => onConfirm());
+
+    mocks.db.courseFiles = [
+      {
+        id: 'file-del-1',
+        courseId: 'user-u-fac-1',
+        folderId: null,
+        name: 'Questionnaire.pdf',
+        type: 'pdf',
+        formattedSize: '611.2 KB',
+        uploadedByName: 'Faculty',
+        updatedAt: new Date().toISOString(),
+        url: '/uploads/Questionnaire.pdf',
+        visibility: 'published',
+      },
+    ];
+
+    renderPage();
+    expect(screen.getByText('Questionnaire.pdf')).toBeInTheDocument();
+
+    const deleteBtn = screen.getByTitle('Delete File');
+    fireEvent.click(deleteBtn);
+
+    // Indicator should be visible while deletion is in-flight
+    expect(screen.getByTestId('file-deleting-indicator')).toBeInTheDocument();
+    expect(screen.getByTestId('file-deleting-spinner')).toBeInTheDocument();
+    expect(screen.getByText(/Deleting file.../i)).toBeInTheDocument();
+
+    // Settle deletion
+    resolveDelete();
+    await waitFor(() => {
+      expect(mocks.deleteCourseFile).toHaveBeenCalledWith('file-del-1');
+    });
+    mocks.db.courseFiles = [];
+  });
+});
+
 describe('FilesView Cross-Section replication', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
   test('prompts with CrossSectionPromptModal and uploads file to selected sibling courses', async () => {
     mocks.uploadCourseFile.mockResolvedValue({ id: 'f-new' });
     mocks.db.courses = [

@@ -52,7 +52,30 @@ describe('resolveFiledSourceLabel', () => {
       resolveFiledSourceLabel({ sourceArea: 'announcements', sourceId: 'a1' }, [{ id: 'a1', title: 'Week 3 Memo' }], [])
     ).toBe('Announcement: Week 3 Memo');
   });
-  it('tags deleted announcements', () => {
+  it('matches announcement by attachment name when sourceId is missing', () => {
+    expect(
+      resolveFiledSourceLabel(
+        { sourceArea: 'announcements', name: 'Questionnaire.pdf' },
+        [{ id: 'a2', title: 'Midterm schedule', attachments: [{ name: 'Questionnaire.pdf' }] }],
+        []
+      )
+    ).toBe('Announcement: Midterm schedule');
+  });
+  it('matches announcement by attachment name even when sourceArea is missing', () => {
+    expect(
+      resolveFiledSourceLabel(
+        { name: 'Compliance-Matrix.docx', url: 'https://gabay.zyberlab.com/assets/compliance.docx' },
+        [{ id: 'a3', title: 'Audit Notice', attachments: [{ name: 'Compliance-Matrix.docx', url: 'https://gabay.zyberlab.com/assets/compliance.docx' }] }],
+        []
+      )
+    ).toBe('Announcement: Audit Notice');
+  });
+  it('labels as Announcements instead of Source deleted when sourceId is missing and unmatched', () => {
+    expect(
+      resolveFiledSourceLabel({ sourceArea: 'announcements', name: 'Other.pdf' }, [], [])
+    ).toBe('Announcements');
+  });
+  it('tags deleted announcements only when sourceId was explicitly set', () => {
     expect(resolveFiledSourceLabel({ sourceArea: 'announcements', sourceId: 'gone' }, [], [])).toBe('Source deleted');
   });
   it('labels modules via the contained item and tags removed items', () => {

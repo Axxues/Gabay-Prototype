@@ -15,6 +15,7 @@ import {
   PlusCircle,
   CheckCircle2,
   Calendar,
+  Clock,
   CircleDot,
   Type,
   ChevronDown,
@@ -35,6 +36,8 @@ export interface QuestionSetValue {
   title: string;
   instructions: string;
   dueDate: string;
+  availableFrom?: string;
+  availableUntil?: string;
   term?: TermId;
   items: ActivityQuestionDraft[];
 }
@@ -77,6 +80,8 @@ export function emptyQuestionSetValue(): QuestionSetValue {
     title: '',
     instructions: '',
     dueDate: d.toISOString().slice(0, 16),
+    availableFrom: new Date().toISOString().slice(0, 16),
+    availableUntil: '',
     items: [
       {
         id: 'item-initial-1',
@@ -204,6 +209,8 @@ export function buildActivityPayload(courseId: string, v: QuestionSetValue): Par
     instructions: v.instructions.trim() || 'Answer all questions carefully.',
     questions: compileActivityQuestions(v),
     dueDate: v.dueDate ? new Date(v.dueDate).toISOString() : undefined,
+    availableFrom: v.availableFrom ? new Date(v.availableFrom).toISOString() : undefined,
+    availableUntil: v.availableUntil ? new Date(v.availableUntil).toISOString() : undefined,
     ...(v.term !== undefined ? { term: v.term } : {}),
     published: true
   };
@@ -413,18 +420,50 @@ export const QuestionSetFields: React.FC<{ value: QuestionSetValue; onChange: (v
             />
           </div>
 
-          <div className="pt-3 border-t border-border/70 flex flex-wrap items-center justify-between gap-3 text-xs">
-            <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-muted-foreground" />
-              <span className="font-semibold text-muted-foreground">Due</span>
+          {/* Schedule Deadlines */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-border/70">
+            <div className="min-w-0">
+              <label className="block text-[12px] font-semibold text-muted-foreground mb-1.5 flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 shrink-0" />
+                <span>Due date</span> <span className="text-red-500">*</span>
+              </label>
               <input
                 type="datetime-local"
+                required
                 value={value.dueDate}
                 onChange={e => onChange({ ...value, dueDate: e.target.value })}
-                className="px-2.5 py-1.5 bg-muted/50 border border-border rounded-lg text-foreground text-xs font-semibold outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 cursor-pointer"
+                className="w-full px-3 py-2 bg-background border border-border rounded-xl text-foreground text-[12.5px] tabular-nums outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 cursor-pointer transition-all"
               />
             </div>
 
+            <div className="min-w-0">
+              <label className="block text-[12px] font-semibold text-muted-foreground mb-1.5 flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 shrink-0" />
+                <span>Available from</span>
+              </label>
+              <input
+                type="datetime-local"
+                value={value.availableFrom || ''}
+                onChange={e => onChange({ ...value, availableFrom: e.target.value })}
+                className="w-full px-3 py-2 bg-background border border-border rounded-xl text-foreground text-[12.5px] tabular-nums outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 cursor-pointer transition-all"
+              />
+            </div>
+
+            <div className="min-w-0">
+              <label className="block text-[12px] font-semibold text-muted-foreground mb-1.5 flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 shrink-0" />
+                <span>Until</span>
+              </label>
+              <input
+                type="datetime-local"
+                value={value.availableUntil || ''}
+                onChange={e => onChange({ ...value, availableUntil: e.target.value })}
+                className="w-full px-3 py-2 bg-background border border-border rounded-xl text-foreground text-[12.5px] tabular-nums outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 cursor-pointer transition-all"
+              />
+            </div>
+          </div>
+
+          <div className="pt-2 flex flex-wrap items-center justify-between gap-3 text-xs">
             {/* Grading term picker (syllabus-driven options) */}
             <TermSelect terms={terms} value={safeTerm} onChange={t => onChange({ ...value, term: t })} id="activity-term-select" />
 

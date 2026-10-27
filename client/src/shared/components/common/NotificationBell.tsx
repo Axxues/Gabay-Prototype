@@ -22,7 +22,7 @@ const REQUEST_TYPE_LABELS: Record<EnrollmentRequest['type'], string> = {
 const NOTIFICATION_GROUP_LABELS: Record<string, string> = {
   module_comment_reply: 'Module replies',
   announcement_reply: 'Announcement replies',
-  baseline_changed: 'University A.Y. & Semester',
+  baseline_changed: 'Academic Year & Semester',
 };
 
 export const NotificationBell: React.FC<NotificationBellProps> = ({
@@ -62,14 +62,17 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
   }, []);
 
   const hasIncompleteProfile = Boolean(activeUser && !isProfileComplete(activeUser));
-  const unreadCount = getUnreadNotificationCount(activeUser?.id || '') + (hasIncompleteProfile ? 1 : 0);
   const isStaff = activeRole === 'faculty' || activeRole === 'admin' || activeRole === 'superadmin';
 
   const staffPending: EnrollmentRequest[] = isStaff
     ? (db.enrollmentRequests || []).filter((r: EnrollmentRequest) => r.status === 'pending')
     : [];
   const studentPending: EnrollmentRequest[] = !isStaff ? getPendingRequestsForStudent() : [];
-  const notifications = getNotifications(activeUser.id);
+  const notifications = getNotifications(activeUser?.id || '');
+
+  const actionItemsCount = (hasIncompleteProfile ? 1 : 0) + (isStaff ? staffPending.length : studentPending.length);
+  const unreadNotificationCount = getUnreadNotificationCount(activeUser?.id || '');
+  const unreadCount = unreadNotificationCount + actionItemsCount;
 
   const sectionName = (sectionId?: string): string | null => {
     if (!sectionId) return null;
@@ -183,12 +186,16 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
                 staffPending.map(req => {
                   const course = db.courses.find(c => c.id === req.courseId);
                   const targetName = req.type === 'section_switch' ? sectionName(req.targetSectionId) : null;
+                  const user = (db.users || []).find(u => u.id === req.studentId);
+                  const userName = user?.name || `${user?.firstName || ''} ${user?.lastName || ''}`.trim();
+                  const isId = req.studentName === req.studentId || /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(req.studentName || '');
+                  const studentDisplayName = userName || (!isId && req.studentName ? req.studentName : (user?.email || req.studentName || 'Student'));
                   return (
                     <div key={req.id} className="px-3 py-2 rounded-xl hover:bg-accent/60 transition-colors">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <div className="text-xs font-bold text-foreground truncate">
-                            {course?.code ? `${course.code} — ` : ''}{req.studentName}
+                            {course?.code ? `${course.code} — ` : ''}{studentDisplayName}
                           </div>
                           <div className="text-[11px] text-muted-foreground font-sans">
                             {REQUEST_TYPE_LABELS[req.type]}

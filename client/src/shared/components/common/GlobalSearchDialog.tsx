@@ -265,7 +265,7 @@ export const GlobalSearchDialog: React.FC<GlobalSearchDialogProps> = ({
                 {filteredResults.quizzes.length > 0 && (
                   <div>
                     <div className="px-2 py-1 text-[12px] font-semibold text-muted-foreground">
-                      Quizzes & exams
+                      Quizzes
                     </div>
                     <div className="space-y-1 mt-1">
                       {filteredResults.quizzes.map(quiz => (

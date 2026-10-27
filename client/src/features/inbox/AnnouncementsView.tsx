@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useLMS } from '../../shared/context/LMSContext';
+import { useLMS, getCleanStoredAvatar, loadStoredAnnouncementAttachments } from '../../shared/context/LMSContext';
 import { ModalPortal } from '../../shared/components/common/ModalPortal';
 import type { Announcement } from '../../shared/types/lms';
 import {
@@ -24,6 +24,7 @@ import { PageHeader } from '../../shared/components/common/PageHeader';
 import { UserAvatar } from '../../shared/components/common/UserAvatar';
 import { getDisplayRoleLabel, canManageCourseContent } from '../../shared/utils/roles';
 import { EmptyState } from '../../shared/components/common/EmptyState';
+import { PdfViewer } from '../../shared/components/common/PdfViewer';
 import { CreateAnnouncementPage } from './CreateAnnouncementPage';
 
 interface AnnouncementsViewProps {
@@ -42,7 +43,9 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
     toggleLikeAnnouncement,
     addAnnouncementReply,
     markAnnouncementRead,
-    showConfirm
+    markTabVisited,
+    showConfirm,
+    showAlert
   } = useLMS();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -61,6 +64,31 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
   const [isPostingReply, setIsPostingReply] = useState(false);
   const [postingChildIds, setPostingChildIds] = useState<Record<string, boolean>>({});
 
+  const resolveAuthorAvatar = (authorId?: string, fallbackAvatar?: string): string => {
+    if (authorId && authorId === activeUser.id && activeUser.avatar) {
+      return activeUser.avatar;
+    }
+    if (authorId) {
+      const u = (db.users || []).find(user => user.id === authorId);
+      if (u?.avatar) return u.avatar;
+      const stored = getCleanStoredAvatar(authorId);
+      if (stored) return stored;
+    }
+    return fallbackAvatar || '';
+  };
+
+  const resolveAuthorName = (authorId?: string, fallbackName?: string): string => {
+    if (authorId && authorId === activeUser.id && activeUser.name) {
+      return activeUser.name;
+    }
+    if (authorId) {
+      const u = (db.users || []).find(user => user.id === authorId);
+      if (u?.name) return u.name;
+    }
+    if (fallbackName && fallbackName !== 'Someone') return fallbackName;
+    return 'Someone';
+  };
+
   const isImageFileName = (name: string, url?: string): boolean => {
     return isImageFile(name, undefined, url);
   };
@@ -70,6 +98,12 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
     const encodedName = encodeURIComponent(file.name);
     return `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="600" height="340" viewBox="0 0 600 340" fill="none"><rect width="600" height="340" rx="16" fill="%231e293b"/><circle cx="300" cy="130" r="44" fill="%23ec4899" fill-opacity="0.15"/><path d="M280 142l14-14 26 26 12-12 18 18H270l10-18z" fill="%23ec4899"/><circle cx="286" cy="120" r="6" fill="%23f472b6"/><text x="300" y="220" fill="%23f8fafc" font-size="15" font-family="system-ui, sans-serif" font-weight="600" text-anchor="middle">${encodedName}</text><text x="300" y="245" fill="%2394a3b8" font-size="12" font-family="system-ui, sans-serif" text-anchor="middle">Image Attachment</text></svg>`;
   };
+
+  React.useEffect(() => {
+    if (courseId) {
+      markTabVisited?.('announcements', courseId);
+    }
+  }, [courseId]);
 
   const course = (db.courses || []).find(c => c.id === courseId);
 
@@ -246,8 +280,8 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
                 >
                   <div className="flex items-start space-x-3.5">
                     <UserAvatar
-                      name={ann.authorName}
-                      src={ann.authorAvatar}
+                      name={resolveAuthorName(ann.authorId, ann.authorName)}
+                      src={resolveAuthorAvatar(ann.authorId, ann.authorAvatar)}
                       className="w-10 h-10 rounded-full object-cover border border-border shadow-soft shrink-0 mt-0.5"
                     />
                     <div className="space-y-1">
@@ -269,7 +303,7 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
                       </div>
 
                       <div className="flex items-center space-x-2 text-[12px] text-muted-foreground font-sans">
-                        <span className="font-semibold text-foreground">{ann.authorName}</span>
+                        <span className="font-semibold text-foreground">{resolveAuthorName(ann.authorId, ann.authorName)}</span>
                         <span>·</span>
                         <span>
                           {new Date(ann.createdAt).toLocaleDateString('en-US', {
@@ -336,8 +370,17 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
                           onClick={() =>
                             showConfirm(
                               `Are you sure you want to delete "${ann.title}"?`,
-                              () => {
-                                void deleteAnnouncement(ann.id).catch(() => {});
+                              async () => {
+                                try {
+                                  await deleteAnnouncement(ann.id);
+                                  showAlert({
+                                    title: 'Announcement Deleted',
+                                    message: `"${ann.title}" has been successfully deleted.`,
+                                    type: 'success'
+                                  });
+                                } catch {
+                                  // Handled in context
+                                }
                               },
                               'Delete Announcement'
                             )
@@ -372,9 +415,19 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
                       </div>
 
                       {/* Attachments Section */}
-                      {ann.attachments && ann.attachments.length > 0 && (() => {
-                        const imageAttachments = ann.attachments.filter(f => isImageFileName(f.name, f.url));
-                        const fileAttachments = ann.attachments.filter(f => !isImageFileName(f.name, f.url));
+                      {(() => {
+                        const stored = loadStoredAnnouncementAttachments(ann.id);
+                        const courseMatching = (db.courseFiles || [])
+                          .filter(f => (f.sourceArea === 'announcements' || (f as any).source_area === 'announcements' || (f as any).source === 'announcements') && (f.sourceId === ann.id || (f as any).source_id === ann.id))
+                          .map(f => ({ name: f.name, size: f.formattedSize || 'File', url: f.url || f.fileUrl }));
+                        const resolvedAttachments = (ann.attachments && ann.attachments.length > 0)
+                          ? ann.attachments
+                          : (stored.length > 0 ? stored : courseMatching);
+                        if (!resolvedAttachments || resolvedAttachments.length === 0) return null;
+                        const imageAttachments = resolvedAttachments.filter(f => isImageFileName(f.name, f.url));
+                        const fileAttachments = resolvedAttachments.filter(f => !isImageFileName(f.name, f.url));
+
+
 
                         return (
                           <div className="space-y-4 pt-3 border-t border-border">
@@ -502,12 +555,12 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
                                     <div className="flex items-center justify-between">
                                       <div className="flex items-center space-x-2">
                                         <UserAvatar
-                                          name={rep.authorName}
-                                          src={rep.authorAvatar}
+                                          name={resolveAuthorName(rep.authorId, rep.authorName)}
+                                          src={resolveAuthorAvatar(rep.authorId, rep.authorAvatar)}
                                           className="w-6 h-6 rounded-full object-cover border border-border"
                                         />
                                         <span className="text-xs font-bold text-foreground">
-                                          {rep.authorName}
+                                          {resolveAuthorName(rep.authorId, rep.authorName)}
                                         </span>
                                         <span className="px-2 py-0.5 text-[11px] font-sans font-medium rounded-full bg-muted text-muted-foreground border border-border">
                                           {getDisplayRoleLabel((db.users || []).find(u => u.id === rep.authorId), rep.authorRole)}
@@ -543,12 +596,12 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
                                           <div className="flex items-center justify-between">
                                             <div className="flex items-center space-x-2">
                                               <UserAvatar
-                                                name={child.authorName}
-                                                src={child.authorAvatar}
+                                                name={resolveAuthorName(child.authorId, child.authorName)}
+                                                src={resolveAuthorAvatar(child.authorId, child.authorAvatar)}
                                                 className="w-5 h-5 rounded-full object-cover border border-border shrink-0"
                                               />
                                               <span className="text-xs font-bold text-foreground">
-                                                {child.authorName}
+                                                {resolveAuthorName(child.authorId, child.authorName)}
                                               </span>
                                               <span className="px-2 py-0.5 text-[11px] font-sans font-medium rounded-full bg-muted text-muted-foreground border border-border">
                                                 {getDisplayRoleLabel((db.users || []).find(u => u.id === child.authorId), child.authorRole)}
@@ -755,10 +808,10 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
                     />
                   </div>
                 ) : previewingAttachment.url && (previewingAttachment.url.startsWith('data:application/pdf') || previewingAttachment.url.includes('.pdf')) ? (
-                  <iframe
-                    src={previewingAttachment.url}
-                    className="w-full h-full rounded-xl border border-border bg-white"
+                  <PdfViewer
+                    url={previewingAttachment.url}
                     title={previewingAttachment.name}
+                    className="w-full h-full min-h-[500px]"
                   />
                 ) : (
                   <div className="w-full max-w-3xl bg-card border border-border rounded-2xl p-8 text-center space-y-6 shadow-subtle my-auto">

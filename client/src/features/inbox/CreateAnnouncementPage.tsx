@@ -1,6 +1,6 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { useLMS } from '../../shared/context/LMSContext';
-import { uploadFileToPublic, isImageFile } from '../../shared/utils/fileUploader';
+import { uploadFileToPublic, isImageFile, formatFileSize } from '../../shared/utils/fileUploader';
 import { findMatchingSiblingCourses } from '../../shared/utils/crossSectionSync';
 import { CrossSectionPromptModal } from '../../shared/components/common/CrossSectionPromptModal';
 import {
@@ -21,6 +21,14 @@ import { UploadProgress } from '../../shared/components/common/UploadProgress';
 import { useSimulatedUpload } from '../../shared/hooks/useSimulatedUpload';
 import type { AggregatedCourseFile } from '../../shared/hooks/useCourseFiles';
 
+interface AttachedFileItem {
+  name: string;
+  size: string;
+  url?: string;
+  rawFile?: File;
+  previewUrl?: string;
+}
+
 interface CreateAnnouncementPageProps {
   courseId: string;
   onBack: () => void;
@@ -32,7 +40,7 @@ export const CreateAnnouncementPage: React.FC<CreateAnnouncementPageProps> = ({
   onBack,
   onAnnouncementCreated
 }) => {
-  const { db, createAnnouncement, showAlert, activeUser } = useLMS();
+  const { db, createAnnouncement, showAlert, activeUser, uploadCourseFile } = useLMS();
   const course = db.courses.find(c => c.id === courseId);
 
   const [title, setTitle] = useState('');
@@ -42,7 +50,7 @@ export const CreateAnnouncementPage: React.FC<CreateAnnouncementPageProps> = ({
   const [allowComments, setAllowComments] = useState(true);
   const [allowLiking, setAllowLiking] = useState(true);
   const [pinned, setPinned] = useState(false);
-  const [attachedFile, setAttachedFile] = useState<{ name: string; size: string; url?: string } | null>(null);
+  const [attachedFiles, setAttachedFiles] = useState<AttachedFileItem[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const upload = useSimulatedUpload();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -54,53 +62,65 @@ export const CreateAnnouncementPage: React.FC<CreateAnnouncementPageProps> = ({
     return course ? findMatchingSiblingCourses(course, db.courses, activeUser?.id) : [];
   }, [course, db.courses, activeUser?.id]);
 
-  const isImageFileName = (name: string, url?: string): boolean => {
-    return isImageFile(name, undefined, url);
+  const isImageFileName = (name: string, url?: string, rawFile?: File): boolean => {
+    return isImageFile(name, rawFile?.type, url);
   };
 
-  const getImageSrc = (file: { name: string; size?: string; url?: string }) => {
+  const getImageSrc = (file: AttachedFileItem) => {
     if (file.url) return file.url;
+    if (file.previewUrl) return file.previewUrl;
+    if (file.rawFile && isImageFile(file.name, file.rawFile.type)) {
+      return URL.createObjectURL(file.rawFile);
+    }
     const encodedName = encodeURIComponent(file.name);
     return `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="600" height="340" viewBox="0 0 600 340" fill="none"><rect width="600" height="340" rx="16" fill="%231e293b"/><circle cx="300" cy="130" r="44" fill="%23ec4899" fill-opacity="0.15"/><path d="M280 142l14-14 26 26 12-12 18 18H270l10-18z" fill="%23ec4899"/><circle cx="286" cy="120" r="6" fill="%23f472b6"/><text x="300" y="220" fill="%23f8fafc" font-size="15" font-family="system-ui, sans-serif" font-weight="600" text-anchor="middle">${encodedName}</text><text x="300" y="245" fill="%2394a3b8" font-size="12" font-family="system-ui, sans-serif" text-anchor="middle">Image Attachment</text></svg>`;
   };
 
-  const processFile = async (file: File) => {
-    if (upload.isUploading) return;
-    upload.start(file.name);
-    try {
-      const result = await uploadFileToPublic(file);
-      setAttachedFile({
-        name: result.name,
-        size: result.size,
-        url: result.url
-      });
-      upload.complete();
-    } catch (err) {
-      console.error('Failed to upload file:', err);
-      upload.fail();
-    }
+  const processFiles = (files: FileList | File[]) => {
+    if (upload.isUploading || isSubmitting) return;
+    const fileList = Array.from(files);
+    if (fileList.length === 0) return;
+
+    const newItems: AttachedFileItem[] = fileList.map(file => {
+      const formatted = formatFileSize(file.size);
+      const isImg = isImageFile(file.name, file.type);
+      return {
+        name: file.name,
+        size: formatted !== '0 B' ? formatted : `${(file.size / 1024).toFixed(1)} KB`,
+        rawFile: file,
+        previewUrl: isImg ? URL.createObjectURL(file) : undefined
+      };
+    });
+
+    setAttachedFiles(prev => [...prev, ...newItems]);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) void processFile(file);
+    const files = e.target.files;
+    if (files && files.length > 0) processFiles(files);
     e.target.value = '';
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    if (upload.isUploading) return;
-    const file = e.dataTransfer.files?.[0];
-    if (file) processFile(file);
+    if (upload.isUploading || isSubmitting) return;
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) processFiles(files);
   };
 
   const handleSelectExistingFile = (file: AggregatedCourseFile) => {
-    setAttachedFile({
-      name: file.name,
-      size: file.formattedSize || '',
-      url: file.url || file.fileUrl || `/public/uploads/${file.name}`
-    });
+    const displaySize = (file.formattedSize && file.formattedSize !== '0 B')
+      ? file.formattedSize
+      : (file.size && file.size > 0 ? formatFileSize(file.size) : file.formattedSize || '');
+    setAttachedFiles(prev => [
+      ...prev,
+      {
+        name: file.name,
+        size: displaySize,
+        url: file.url || file.fileUrl || `/public/uploads/${file.name}`
+      }
+    ]);
     setIsFilePickerOpen(false);
     showAlert({
       title: 'File Attached',
@@ -110,14 +130,92 @@ export const CreateAnnouncementPage: React.FC<CreateAnnouncementPageProps> = ({
   };
 
   const executePublish = async (targetCourseIds: string[]) => {
-    const attachments = attachedFile
-      ? [{ name: attachedFile.name, size: attachedFile.size, url: attachedFile.url }]
-      : [];
-
     setIsSubmitting(true);
     try {
+      const primaryAnnouncementId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : (`ann-${Date.now()}`);
+      const attachments: { name: string; size: string; url?: string }[] = [];
+
+      for (const file of attachedFiles) {
+        if (!file.rawFile) {
+          attachments.push({
+            name: file.name,
+            size: file.size,
+            url: file.url
+          });
+          continue;
+        }
+
+        // Newly staged file: only upload and save to Likha ERP now that the post is saved
+        upload.start(file.name);
+        let url = '';
+        let size = file.size;
+
+        try {
+          if (uploadCourseFile) {
+            const saved = await uploadCourseFile({
+              courseId,
+              name: file.name,
+              rawFile: file.rawFile,
+              size: file.rawFile.size,
+              formattedSize: file.size,
+              area: 'announcements',
+              moduleId: primaryAnnouncementId,
+              visibility: 'published',
+              silent: true
+            });
+            url = saved.fileUrl || saved.url || '';
+            if (saved.formattedSize && saved.formattedSize !== '0 B') {
+              size = saved.formattedSize;
+            }
+
+            // Link to sibling sections if replicating
+            if (targetCourseIds.length > 1) {
+              const otherCourseIds = targetCourseIds.filter(id => id !== courseId);
+              for (const otherId of otherCourseIds) {
+                try {
+                  await uploadCourseFile({
+                    courseId: otherId,
+                    name: file.name,
+                    fileUrl: url,
+                    url: url,
+                    size: file.rawFile.size,
+                    formattedSize: size,
+                    area: 'announcements',
+                    visibility: 'published',
+                    silent: true
+                  });
+                } catch {
+                  // Non-blocking for sibling section file linking
+                }
+              }
+            }
+          }
+        } catch {
+          url = '';
+        }
+
+        if (!url) {
+          const result = await uploadFileToPublic(file.rawFile);
+          url = result.url;
+          if (result.size && result.size !== '0 B') size = result.size;
+        }
+
+        attachments.push({
+          name: file.name,
+          size,
+          url
+        });
+        upload.complete();
+      }
+
       for (const targetId of targetCourseIds) {
+        const idForTarget = targetId === courseId
+          ? primaryAnnouncementId
+          : ((typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `ann-${Date.now()}-${targetId}`);
         await createAnnouncement({
+          id: idForTarget,
           courseId: targetId,
           title: title.trim(),
           content: content.trim(),
@@ -143,7 +241,12 @@ export const CreateAnnouncementPage: React.FC<CreateAnnouncementPageProps> = ({
 
       onAnnouncementCreated();
     } catch {
-      // Context already surfaced the failure alert.
+      upload.fail();
+      showAlert({
+        title: 'Publish Failed',
+        message: 'Failed to publish announcement. Please try again.',
+        type: 'warning'
+      });
       return;
     } finally {
       setIsSubmitting(false);
@@ -214,7 +317,7 @@ export const CreateAnnouncementPage: React.FC<CreateAnnouncementPageProps> = ({
         <div className="space-y-5">
           <div>
             <label className="block text-[12px] font-semibold text-muted-foreground mb-1.5">
-              Topic title
+              Topic title <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
@@ -228,7 +331,7 @@ export const CreateAnnouncementPage: React.FC<CreateAnnouncementPageProps> = ({
 
           <div>
             <label className="block text-[12px] font-semibold text-muted-foreground mb-1.5">
-              Announcement body
+              Announcement body <span className="text-red-500">*</span>
             </label>
             <textarea
               required
@@ -242,88 +345,89 @@ export const CreateAnnouncementPage: React.FC<CreateAnnouncementPageProps> = ({
 
           <div className="pt-2 border-t border-border/70 space-y-2">
             <label className="block text-[12px] font-semibold text-muted-foreground">
-              Attach file / handout
+              Attach file / handout {attachedFiles.length > 0 && `(${attachedFiles.length})`}
             </label>
 
             <input
               ref={fileInputRef}
               type="file"
+              multiple
               onChange={handleFileChange}
               className="hidden"
             />
 
-            {attachedFile ? (
-              <div className="p-3 bg-muted/40 border border-border rounded-xl flex items-center justify-between">
-                <div className="flex items-center space-x-3 overflow-hidden">
-                  {isImageFileName(attachedFile.name, attachedFile.url) ? (
-                    <div className="w-10 h-10 rounded-lg overflow-hidden border border-border shrink-0 bg-black/10 flex items-center justify-center">
-                      <img
-                        src={getImageSrc(attachedFile)}
-                        alt="preview"
-                        className="w-full h-full object-cover"
-                      />
+            {attachedFiles.length > 0 && (
+              <div className="space-y-2">
+                {attachedFiles.map((file, idx) => (
+                  <div key={idx} className="p-3 bg-muted/40 border border-border rounded-xl flex items-center justify-between">
+                    <div className="flex items-center space-x-3 overflow-hidden">
+                      {isImageFileName(file.name, file.url, file.rawFile) ? (
+                        <div className="w-10 h-10 rounded-lg overflow-hidden border border-border shrink-0 bg-black/10 flex items-center justify-center">
+                          <img
+                            src={getImageSrc(file)}
+                            alt="preview"
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      ) : (
+                        <div className="w-8 h-8 rounded-lg bg-muted text-muted-foreground flex items-center justify-center shrink-0">
+                          <FileText className="w-4 h-4" />
+                        </div>
+                      )}
+                      <div className="truncate">
+                        <p className="text-xs font-bold text-foreground truncate">{file.name}</p>
+                        <p className="text-[10px] text-muted-foreground">{file.size}</p>
+                      </div>
                     </div>
-                  ) : (
-                    <div className="w-8 h-8 rounded-lg bg-muted text-muted-foreground flex items-center justify-center shrink-0">
-                      <FileText className="w-4 h-4" />
+                    <div className="flex items-center space-x-1 shrink-0 ml-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAttachedFiles(prev => {
+                            const target = prev[idx];
+                            if (target?.previewUrl && target.previewUrl.startsWith('blob:')) {
+                              URL.revokeObjectURL(target.previewUrl);
+                            }
+                            return prev.filter((_, i) => i !== idx);
+                          });
+                        }}
+                        className="p-1.5 text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
+                        title="Remove attachment"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
-                  )}
-                  <div className="truncate">
-                    <p className="text-xs font-bold text-foreground truncate">{attachedFile.name}</p>
-                    <p className="text-[10px] text-muted-foreground">{attachedFile.size}</p>
                   </div>
-                </div>
-                <div className="flex items-center space-x-1 shrink-0 ml-2">
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="px-2.5 py-1 text-[11px] font-bold text-primary hover:bg-primary/10 rounded-lg transition-colors cursor-pointer"
-                  >
-                    Change
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAttachedFile(null);
-                      if (fileInputRef.current) fileInputRef.current.value = '';
-                    }}
-                    className="p-1.5 text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
-                    title="Remove attachment"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
+                ))}
               </div>
-            ) : (
-              <>
-              <div
-                onClick={() => { if (!upload.isUploading) fileInputRef.current?.click(); }}
-                onDragOver={e => {
-                  e.preventDefault();
-                  if (!upload.isUploading) setIsDragging(true);
-                }}
-                onDragLeave={() => setIsDragging(false)}
-                onDrop={handleDrop}
-                aria-disabled={upload.isUploading}
-                className={`p-6 border-2 border-dashed rounded-xl text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-2 ${isDragging
+            )}
+
+            <div
+              onClick={() => { if (!upload.isUploading) fileInputRef.current?.click(); }}
+              onDragOver={e => {
+                e.preventDefault();
+                if (!upload.isUploading) setIsDragging(true);
+              }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={handleDrop}
+              aria-disabled={upload.isUploading}
+              className={`p-6 border-2 border-dashed rounded-xl text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-2 ${isDragging
                     ? 'border-primary bg-primary/5 scale-[1.01]'
                     : 'border-border hover:border-primary/50 hover:bg-muted/30 bg-muted/10'
                   }${upload.isUploading ? ' opacity-60 cursor-wait pointer-events-none' : ''}`}
-              >
-                <div className="w-10 h-10 rounded-xl bg-muted text-muted-foreground flex items-center justify-center">
-                  <Upload className="w-5 h-5" />
-                </div>
-                <div className="text-xs font-bold text-foreground">
-                  Click to upload or drag & drop handout file
-                </div>
-                <p className="text-[11px] text-muted-foreground">
-                  PDF, DOCX, PPTX, ZIP, or media files
-                </p>
+            >
+              <div className="w-10 h-10 rounded-xl bg-muted text-muted-foreground flex items-center justify-center">
+                <Upload className="w-5 h-5" />
               </div>
-              {upload.isUploading && upload.fileName && (
-                <UploadProgress fileName={upload.fileName} progress={upload.progress} hint="Uploading file..." />
-              )}
-              </>
+              <div className="text-xs font-bold text-foreground">
+                Click to upload or drag & drop handout files
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                PDF, DOCX, PPTX, ZIP, or media files (multiple allowed)
+              </p>
+            </div>
+            {upload.isUploading && upload.fileName && (
+              <UploadProgress fileName={upload.fileName} progress={upload.progress} hint="Uploading file..." />
             )}
 
             {/* Browse uploaded files */}

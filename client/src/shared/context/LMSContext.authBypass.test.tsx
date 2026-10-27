@@ -96,4 +96,30 @@ describe('LMSContext security: passwordless auth prevention', () => {
     expect(res?.success).toBe(false);
     expect(res?.message).toBe('Invalid email or password.');
   });
+
+  test('returns technical issues message when server returns a 502 error', async () => {
+    likhaLmsApiMock.loginLikhaUser.mockImplementationOnce(async () => {
+      const err: any = new Error('Likha authentication failed: 502');
+      err.status = 502;
+      throw err;
+    });
+
+    const { getByText } = render(
+      <LMSProvider>
+        <TestConsumer />
+      </LMSProvider>
+    );
+
+    await waitFor(() => {
+      expect(getByText('ready')).toBeDefined();
+    });
+
+    let res: { success: boolean; message?: string } | undefined;
+    await act(async () => {
+      res = await capturedLogin!('test.user@dmmmsu.edu.ph', 'somepassword');
+    });
+
+    expect(res?.success).toBe(false);
+    expect(res?.message).toBe('The system is currently experiencing technical issues. Please try again later.');
+  });
 });

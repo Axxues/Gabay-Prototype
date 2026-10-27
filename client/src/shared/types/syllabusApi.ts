@@ -37,6 +37,9 @@ export type SyllabusRevisionHeader = SyllabusRevisionResponse['revision'];
 
 export interface SyllabusApi {
   getPublished(courseId: string): Promise<SyllabusRevisionResponse | null>;
+  getDraft?(courseId: string): Promise<SyllabusRevisionResponse | null>;
+  getCourseSyllabus?(courseId: string, canManage?: boolean): Promise<SyllabusRevisionResponse | null>;
+  getAllSyllabi?(canManage?: boolean): Promise<Record<string, SyllabusRevisionResponse>>;
   listRevisions(courseId: string): Promise<SyllabusRevisionResponse['revision'][]>;
   createDraft(courseId: string, sourceRevisionId?: string): Promise<SyllabusRevisionResponse>;
   updateSection(courseId: string, revisionId: string, rowVersion: number, section: SyllabusSectionKey, value: unknown): Promise<SyllabusRevisionResponse>;

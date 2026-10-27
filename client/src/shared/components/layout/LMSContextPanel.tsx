@@ -43,6 +43,7 @@ import {
   countUnreadAnnouncements,
   countAssessmentCategoryBadge,
   countTotalAssessmentBadge,
+  countPendingPeople,
 } from '../../utils/notifiers';
 import { getDisplaySectionName } from '../../utils/sections';
 const LMS_ICONS: Record<string, React.ReactNode> = {
@@ -60,7 +61,6 @@ const COURSE_ICONS: Record<string, React.ReactNode> = {
   assignments: <FileText className="h-4 w-4" />,
   projects: <Briefcase className="h-4 w-4" />,
   presentations: <Presentation className="h-4 w-4" />,
-  exams: <QuizIcon className="h-4 w-4" />,
   files: <Folder className="h-4 w-4" />,
   grades: <Award className="h-4 w-4" />,
   people: <Users className="h-4 w-4" />,
@@ -94,6 +94,7 @@ const CourseNavigationPanel: React.FC<CourseNavigationPanelProps> = ({
   minimizeButton,
   isMinimized,
 }) => {
+  const { markTabVisited } = useLMS();
   const [copied, setCopied] = React.useState(false);
   const [prevCourseSubTab, setPrevCourseSubTab] = React.useState(courseSubTab);
   const [isAssessmentsOpen, setIsAssessmentsOpen] = React.useState(() => isAssessmentTab(courseSubTab));
@@ -120,7 +121,7 @@ const CourseNavigationPanel: React.FC<CourseNavigationPanelProps> = ({
     map['inbox'] = 0;
     map['modules'] = getUnreadNotificationCount(activeUser.id, 'module_comment_reply');
     const sectionId = activeUser.courseSections?.[cid] ?? null;
-    map['announcements'] = countUnreadAnnouncements(db.announcements || [], { id: activeUser.id, role: activeRole, sectionId }, cid);
+    map['announcements'] = countUnreadAnnouncements(db.announcements || [], { id: activeUser.id, role: activeRole, sectionId }, cid, visits);
     map['assessments'] = countTotalAssessmentBadge({
       activities: db.activities || [],
       quizzes: db.quizzes || [],
@@ -150,18 +151,9 @@ const CourseNavigationPanel: React.FC<CourseNavigationPanelProps> = ({
       const submitted = new Set(taken);
       map['quizzes'] = pub.filter((id: any) => !submitted.has(id)).length;
     }
-    if (activeRole === 'faculty' || activeRole === 'admin') {
-      const ids = (db.exams || []).filter((e: any) => e.courseId === cid).map((e: any) => `asg-exam-${e.id}`);
-      map['exams'] = countFacultyGradingBadge(db.submissions.filter((s: any) => s.courseId === cid), ids);
-    } else {
-      const pub = (db.exams || []).filter((e: any) => e.courseId === cid && e.published).map((e: any) => e.id);
-      const taken = db.submissions.filter((s: any) => s.courseId === cid && s.studentId === activeUser.id && (s.activityKey ?? '').startsWith('asg-exam-')).map((s: any) => (s.activityKey ?? '').replace('asg-exam-', ''));
-      const submitted = new Set(taken);
-      map['exams'] = pub.filter((id: any) => !submitted.has(id)).length;
-    }
-    map['files'] = countNewFiles(db.courseFiles || [], cid, visits);
+    map['files'] = countNewFiles(db.courseFiles || [], cid, visits, activeUser.id);
     map['grades'] = activeRole === 'student' ? countNewGrades(db.courseGrades || [], cid, activeUser.id, visits) : 0;
-    map['people'] = (activeRole === 'faculty' || activeRole === 'admin') ? (db.enrollmentRequests || []).filter((r: any) => r.courseId === cid && r.status === 'pending').length : 0;
+    map['people'] = (activeRole === 'faculty' || activeRole === 'admin') ? countPendingPeople(db.enrollmentRequests || [], cid, visits) : 0;
     map['pending-requests'] = map['people'];
     map['calendar'] = countUpcomingCalendar(db.calendarEvents || [], cid, visits);
     return map;
@@ -199,7 +191,10 @@ const CourseNavigationPanel: React.FC<CourseNavigationPanelProps> = ({
                       type="button"
                       title={item.label}
                       aria-label={item.label}
-                      onClick={() => onSelectCourseTab(item.id)}
+                      onClick={() => {
+                        if (course) markTabVisited?.(item.id, course.id);
+                        onSelectCourseTab(item.id);
+                      }}
                       className={`relative flex h-10 w-10 items-center justify-center rounded-xl transition-all cursor-pointer ${
                         isActive
                           ? 'bg-primary text-primary-foreground shadow-primary-sm'
@@ -262,6 +257,7 @@ const CourseNavigationPanel: React.FC<CourseNavigationPanelProps> = ({
                     type="button"
                     onClick={() => {
                       setIsAssessmentsOpen(prev => !prev);
+                      if (course) markTabVisited?.('assessments', course.id);
                       onSelectCourseTab('assessments');
                     }}
                     className={`flex w-full items-center justify-between gap-2.5 rounded-xl px-3 py-2.5 text-xs font-bold cursor-pointer transition-all duration-150 ${
@@ -300,7 +296,10 @@ const CourseNavigationPanel: React.FC<CourseNavigationPanelProps> = ({
                           <button
                             key={subItem.id}
                             type="button"
-                            onClick={() => onSelectCourseTab(subItem.id)}
+                            onClick={() => {
+                            if (course) markTabVisited?.(subItem.id, course.id);
+                            onSelectCourseTab(subItem.id);
+                          }}
                             className={`flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold cursor-pointer transition-all duration-150 ${
                               isSubActive
                                 ? 'bg-primary text-primary-foreground shadow-primary-sm'
@@ -329,7 +328,10 @@ const CourseNavigationPanel: React.FC<CourseNavigationPanelProps> = ({
               <button
                 key={item.id}
                 type="button"
-                onClick={() => onSelectCourseTab(item.id)}
+                onClick={() => {
+                if (course) markTabVisited?.(item.id, course.id);
+                onSelectCourseTab(item.id);
+              }}
                 className={`flex w-full items-center justify-between gap-2.5 rounded-xl px-3 py-2.5 text-xs font-bold cursor-pointer transition-all duration-150 ${
                   courseSubTab === item.id
                     ? 'bg-primary text-primary-foreground shadow-primary-sm'

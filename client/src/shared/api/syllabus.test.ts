@@ -123,8 +123,8 @@ describe('syllabusApi.getPublished (Likha Direct)', () => {
     const result = await syllabusApi.getPublished('c1');
     expect(calls.length).toBeGreaterThanOrEqual(1);
     expect(calls[0]!.url).toContain('/items/syllabi');
-    expect(calls[0]!.url).toContain('filter[course_id][_eq]=c1');
-    expect(calls[0]!.url).toContain('filter[status][_eq]=published');
+    expect(decodeURIComponent(calls[0]!.url)).toContain('filter[course_id][_eq]=c1');
+    expect(decodeURIComponent(calls[0]!.url)).toContain('filter[status][_eq]=published');
     expect(result?.revision.id).toBe('syl-1');
     expect(result?.revision.status).toBe('published');
     expect(result?.revision.revisionNo).toBe(2);
@@ -153,7 +153,7 @@ describe('syllabusApi.listRevisions (Likha Direct)', () => {
     stubFetch(() => okRes({ data: rows }));
     const result = await listRevisions('c1');
     expect(calls[0]!.url).toContain('/items/syllabi');
-    expect(calls[0]!.url).toContain('filter[course_id][_eq]=c1');
+    expect(decodeURIComponent(calls[0]!.url)).toContain('filter[course_id][_eq]=c1');
     expect(result).toHaveLength(2);
     expect(result[0]!.id).toBe('syl-2');
     expect(result[0]!.revisionNo).toBe(2);
