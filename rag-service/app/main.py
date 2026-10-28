@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 from fastapi import Depends, FastAPI, Header, HTTPException
@@ -293,7 +294,8 @@ async def send_course_invitations_endpoint(
     for item in request.invitations:
         if "@" not in item.recipient_email:
             continue
-        res = send_course_invitation_email(
+        res = await asyncio.to_thread(
+            send_course_invitation_email,
             to_email=item.recipient_email,
             recipient_name=item.recipient_name or "",
             instructor_name=item.instructor_name or "Your Instructor",

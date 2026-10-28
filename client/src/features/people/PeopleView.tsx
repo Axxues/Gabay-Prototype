@@ -221,7 +221,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId, initialTab = '
           return {
             recipientEmail: student.email,
             recipientName: student.name || 'Student',
-            instructorName: course?.instructorName || activeUser.name || 'Your Instructor',
+            instructorName: course?.instructorName || activeUser?.name || 'Your Instructor',
             courseCode: course?.code || 'Course',
             courseTitle: course?.title || 'Class',
             section: course?.section || '',

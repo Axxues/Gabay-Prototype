@@ -154,4 +154,41 @@ describe('CourseInvitationAcceptModal', () => {
     expect(screen.getByRole('heading', { name: /invitation not available/i })).toBeInTheDocument();
     expect(screen.getAllByText(/no longer active/i).length).toBeGreaterThan(0);
   });
+
+  test('shows invitation not available when request is missing or deleted', () => {
+    mocks.mockDb.enrollmentRequests = [];
+
+    render(
+      <CourseInvitationAcceptModal
+        isOpen={true}
+        onClose={mocks.onClose}
+        courseId="c1"
+        requestId="req-deleted"
+        targetStudentId="u-stu-1"
+        onNavigateCourse={mocks.onNavigateCourse}
+      />
+    );
+
+    expect(screen.getByRole('heading', { name: /invitation not available/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /accept & enter course/i })).not.toBeInTheDocument();
+  });
+
+  test('detects account mismatch from request.studentId when targetStudentId is omitted in props', () => {
+    mocks.mockDb.enrollmentRequests = [
+      { id: 'req-1', courseId: 'c1', studentId: 'u-other-student', type: 'faculty_enroll', status: 'pending' },
+    ];
+
+    render(
+      <CourseInvitationAcceptModal
+        isOpen={true}
+        onClose={mocks.onClose}
+        courseId="c1"
+        requestId="req-1"
+        onNavigateCourse={mocks.onNavigateCourse}
+      />
+    );
+
+    expect(screen.getByText(/account mismatch/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /accept & enter course/i })).not.toBeInTheDocument();
+  });
 });

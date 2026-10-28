@@ -121,4 +121,36 @@ describe('App Course Invitation Routing & Modal', () => {
     // Verify it clears sessionStorage so refreshing doesn't reopen
     expect(sessionStorage.getItem('gabay_pending_join')).toBeNull();
   });
+
+  it('cleans up join search parameters from browser URL via replaceState', async () => {
+    const replaceStateSpy = vi.spyOn(window.history, 'replaceState');
+    render(
+      <MemoryRouter initialEntries={['/?action=join&courseId=c1&requestId=req-1&studentId=u-stu-1']}>
+        <AppContent />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText('Class Invitation')).toBeInTheDocument();
+    expect(replaceStateSpy).toHaveBeenCalled();
+    replaceStateSpy.mockRestore();
+  });
+
+  it('re-persists pending join into sessionStorage when user clicks Switch Account in mismatch state', async () => {
+    render(
+      <MemoryRouter initialEntries={['/?action=join&courseId=c1&requestId=req-1&studentId=u-different-user']}>
+        <AppContent />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText(/account mismatch/i)).toBeInTheDocument();
+    const switchBtn = screen.getByRole('button', { name: /switch account/i });
+    fireEvent.click(switchBtn);
+
+    expect(mocks.logout).toHaveBeenCalled();
+    const preserved = sessionStorage.getItem('gabay_pending_join');
+    expect(preserved).not.toBeNull();
+    const parsed = JSON.parse(preserved!);
+    expect(parsed.courseId).toBe('c1');
+    expect(parsed.studentId).toBe('u-different-user');
+  });
 });

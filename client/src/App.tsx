@@ -293,6 +293,9 @@ export const AppShell: React.FC = () => {
       const studentId = params.get('studentId') || undefined;
       setInvitationModalData({ courseId, requestId, studentId });
       sessionStorage.removeItem('gabay_pending_join');
+      if (typeof window !== 'undefined' && window.history?.replaceState) {
+        window.history.replaceState(null, '', window.location.pathname + (window.location.hash || ''));
+      }
       return;
     }
 
@@ -425,6 +428,9 @@ export const AppShell: React.FC = () => {
             setInvitationModalData(null);
           }}
           onSwitchAccount={() => {
+            if (invitationModalData) {
+              sessionStorage.setItem('gabay_pending_join', JSON.stringify(invitationModalData));
+            }
             setInvitationModalData(null);
             logout();
           }}
