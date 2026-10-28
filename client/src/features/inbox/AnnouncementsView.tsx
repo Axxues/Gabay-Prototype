@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useLMS, getCleanStoredAvatar, loadStoredAnnouncementAttachments } from '../../shared/context/LMSContext';
 import { ModalPortal } from '../../shared/components/common/ModalPortal';
 import type { Announcement } from '../../shared/types/lms';
@@ -23,8 +23,10 @@ import { groupRepliesByRoot } from '../../shared/utils/threadReplies';
 import { PageHeader } from '../../shared/components/common/PageHeader';
 import { UserAvatar } from '../../shared/components/common/UserAvatar';
 import { getDisplayRoleLabel, canManageCourseContent } from '../../shared/utils/roles';
+import { canUserCommentOnCourse } from '../../shared/utils/courseScoping';
 import { EmptyState } from '../../shared/components/common/EmptyState';
 import { PdfViewer } from '../../shared/components/common/PdfViewer';
+import { resolveLikhaAssetUrl } from '../../shared/api/likhaLmsApi';
 import { CreateAnnouncementPage } from './CreateAnnouncementPage';
 
 interface AnnouncementsViewProps {
@@ -36,12 +38,15 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
     activeUser,
     activeRole,
     db,
+    departments,
+    colleges,
     isLoading,
     isSyncing,
     deleteAnnouncement,
     togglePinAnnouncement,
     toggleLikeAnnouncement,
     addAnnouncementReply,
+    deleteAnnouncementReply,
     markAnnouncementRead,
     markTabVisited,
     showConfirm,
@@ -64,9 +69,22 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
   const [isPostingReply, setIsPostingReply] = useState(false);
   const [postingChildIds, setPostingChildIds] = useState<Record<string, boolean>>({});
 
+  const activeCourse = useMemo(() => (db.courses || []).find(c => c.id === courseId), [db.courses, courseId]);
+  const approvedIds = useMemo(
+    () => new Set((db.enrollmentRequests || []).filter(r => r.studentId === activeUser.id && r.status === 'approved').map(r => r.courseId)),
+    [db.enrollmentRequests, activeUser.id]
+  );
+  const canComment = useMemo(
+    () => (activeCourse ? canUserCommentOnCourse(activeUser, activeRole, activeCourse, departments || [], colleges || [], approvedIds) : true),
+    [activeCourse, activeUser, activeRole, departments, colleges, approvedIds]
+  );
+
   const resolveAuthorAvatar = (authorId?: string, fallbackAvatar?: string): string => {
     if (authorId && authorId === activeUser.id && activeUser.avatar) {
       return activeUser.avatar;
+    }
+    if (fallbackAvatar) {
+      return fallbackAvatar;
     }
     if (authorId) {
       const u = (db.users || []).find(user => user.id === authorId);
@@ -74,7 +92,7 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
       const stored = getCleanStoredAvatar(authorId);
       if (stored) return stored;
     }
-    return fallbackAvatar || '';
+    return '';
   };
 
   const resolveAuthorName = (authorId?: string, fallbackName?: string): string => {
@@ -94,7 +112,7 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
   };
 
   const getImageSrc = (file: { name: string; size?: string; url?: string }) => {
-    if (file.url) return file.url;
+    if (file.url) return resolveLikhaAssetUrl(file.url);
     const encodedName = encodeURIComponent(file.name);
     return `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="600" height="340" viewBox="0 0 600 340" fill="none"><rect width="600" height="340" rx="16" fill="%231e293b"/><circle cx="300" cy="130" r="44" fill="%23ec4899" fill-opacity="0.15"/><path d="M280 142l14-14 26 26 12-12 18 18H270l10-18z" fill="%23ec4899"/><circle cx="286" cy="120" r="6" fill="%23f472b6"/><text x="300" y="220" fill="%23f8fafc" font-size="15" font-family="system-ui, sans-serif" font-weight="600" text-anchor="middle">${encodedName}</text><text x="300" y="245" fill="%2394a3b8" font-size="12" font-family="system-ui, sans-serif" text-anchor="middle">Image Attachment</text></svg>`;
   };
@@ -566,26 +584,64 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
                                           {getDisplayRoleLabel((db.users || []).find(u => u.id === rep.authorId), rep.authorRole)}
                                         </span>
                                       </div>
-                                      <span className="text-[10px] font-sans text-muted-foreground">
-                                        {new Date(rep.createdAt).toLocaleTimeString([], {
-                                          hour: '2-digit',
-                                          minute: '2-digit'
-                                        })}
-                                      </span>
+                                      <div className="flex items-center space-x-2">
+                                        <span className="text-[10px] font-sans text-muted-foreground">
+                                          {new Date(rep.createdAt).toLocaleTimeString([], {
+                                            hour: '2-digit',
+                                            minute: '2-digit'
+                                          })}
+                                        </span>
+                                        {(rep.authorId === activeUser.id || canCreate) && (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              showAlert({
+                                                title: 'Delete Reply',
+                                                message: 'Are you sure you want to delete this reply? It will be permanently deleted.',
+                                                type: 'confirm',
+                                                confirmText: 'Delete',
+                                                cancelText: 'Cancel',
+                                                onConfirm: async () => {
+                                                  try {
+                                                    await deleteAnnouncementReply(ann.id, rep.id);
+                                                    showAlert({
+                                                      title: 'Reply Deleted',
+                                                      message: 'Your reply has been deleted.',
+                                                      type: 'info'
+                                                    });
+                                                  } catch {
+                                                    showAlert({
+                                                      title: 'Delete Failed',
+                                                      message: 'Failed to delete reply. Please try again.',
+                                                      type: 'error'
+                                                    });
+                                                  }
+                                                }
+                                              });
+                                            }}
+                                            className="text-muted-foreground hover:text-destructive p-1 rounded-lg hover:bg-muted transition-colors cursor-pointer"
+                                            title="Delete reply"
+                                          >
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                          </button>
+                                        )}
+                                      </div>
                                     </div>
                                     <p className="text-xs text-foreground pl-8">{rep.content}</p>
-                                    <div className="flex items-center space-x-3 pl-8 pt-0.5">
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setReplyToReplyIds(prev => ({ ...prev, [ann.id]: rep.id }));
-                                          setChildTexts(prev => ({ ...prev, [ann.id]: '' }));
-                                        }}
-                                        className="text-[11px] font-bold font-sans text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-                                      >
-                                        Reply
-                                      </button>
-                                    </div>
+                                    {canComment && (
+                                      <div className="flex items-center space-x-3 pl-8 pt-0.5">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setReplyToReplyIds(prev => ({ ...prev, [ann.id]: rep.id }));
+                                            setChildTexts(prev => ({ ...prev, [ann.id]: '' }));
+                                          }}
+                                          className="text-[11px] font-bold font-sans text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                                        >
+                                          Reply
+                                        </button>
+                                      </div>
+                                    )}
 
                                     {/* Second-layer thread: flattened children indented under the root */}
                                     {childThreads.map(child => {
@@ -607,29 +663,67 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
                                                 {getDisplayRoleLabel((db.users || []).find(u => u.id === child.authorId), child.authorRole)}
                                               </span>
                                             </div>
-                                            <span className="text-[10px] font-sans text-muted-foreground">
-                                              {new Date(child.createdAt).toLocaleTimeString([], {
-                                                hour: '2-digit',
-                                                minute: '2-digit'
-                                              })}
-                                            </span>
+                                            <div className="flex items-center space-x-2">
+                                              <span className="text-[10px] font-sans text-muted-foreground">
+                                                {new Date(child.createdAt).toLocaleTimeString([], {
+                                                  hour: '2-digit',
+                                                  minute: '2-digit'
+                                                })}
+                                              </span>
+                                              {(child.authorId === activeUser.id || canCreate) && (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    showAlert({
+                                                      title: 'Delete Reply',
+                                                      message: 'Are you sure you want to delete this reply? It will be permanently deleted.',
+                                                      type: 'confirm',
+                                                      confirmText: 'Delete',
+                                                      cancelText: 'Cancel',
+                                                      onConfirm: async () => {
+                                                        try {
+                                                          await deleteAnnouncementReply(ann.id, child.id);
+                                                          showAlert({
+                                                            title: 'Reply Deleted',
+                                                            message: 'Your reply has been deleted.',
+                                                            type: 'info'
+                                                          });
+                                                        } catch {
+                                                          showAlert({
+                                                            title: 'Delete Failed',
+                                                            message: 'Failed to delete reply. Please try again.',
+                                                            type: 'error'
+                                                          });
+                                                        }
+                                                      }
+                                                    });
+                                                  }}
+                                                  className="text-muted-foreground hover:text-destructive p-1 rounded-lg hover:bg-muted transition-colors cursor-pointer"
+                                                  title="Delete reply"
+                                                >
+                                                  <Trash2 className="w-3.5 h-3.5" />
+                                                </button>
+                                              )}
+                                            </div>
                                           </div>
                                           <p className="text-xs text-foreground pl-0">
                                             {showMention && <span className="font-bold text-primary">@{direct?.authorName} </span>}
                                             {child.content}
                                           </p>
-                                          <div className="flex items-center space-x-3 pt-0.5">
-                                            <button
-                                              type="button"
-                                              onClick={() => {
-                                                setReplyToReplyIds(prev => ({ ...prev, [ann.id]: child.id }));
-                                                setChildTexts(prev => ({ ...prev, [ann.id]: '' }));
-                                              }}
-                                              className="text-[11px] font-bold font-sans text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-                                            >
-                                              Reply
-                                            </button>
-                                          </div>
+                                          {canComment && (
+                                            <div className="flex items-center space-x-3 pt-0.5">
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setReplyToReplyIds(prev => ({ ...prev, [ann.id]: child.id }));
+                                                  setChildTexts(prev => ({ ...prev, [ann.id]: '' }));
+                                                }}
+                                                className="text-[11px] font-bold font-sans text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                                              >
+                                                Reply
+                                              </button>
+                                            </div>
+                                          )}
                                         </div>
                                       );
                                     })}
@@ -694,46 +788,52 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
                           })()}
 
                           {/* Reply Composer Box */}
-                          <div className="flex items-start space-x-2 pt-2">
-                            <UserAvatar
-                              name={activeUser.name}
-                              src={activeUser.avatar}
-                              className="w-8 h-8 rounded-full object-cover border border-border shrink-0 mt-1"
-                            />
-                            <div className="flex-1 space-y-2">
-                              <textarea
-                                rows={2}
-                                value={replyText}
-                                onChange={e => setReplyText(e.target.value)}
-                                onKeyDown={e => {
-                                  if (e.key === 'Enter' && !e.shiftKey) {
-                                    e.preventDefault();
-                                    if (replyText.trim()) {
-                                      void handleSendReply(ann.id);
-                                    }
-                                  }
-                                }}
-                                placeholder="Type a response or inquiry... (Press Enter to send, Shift+Enter for new line)"
-                                className="w-full px-3.5 py-2 bg-background border border-border rounded-xl text-xs font-sans text-foreground outline-none focus:ring-2 focus:ring-primary/20 resize-none"
+                          {canComment ? (
+                            <div className="flex items-start space-x-2 pt-2">
+                              <UserAvatar
+                                name={activeUser.name}
+                                src={activeUser.avatar}
+                                className="w-8 h-8 rounded-full object-cover border border-border shrink-0 mt-1"
                               />
-                              <div className="flex justify-end">
-                                <button
-                                  type="button"
-                                  onClick={() => void handleSendReply(ann.id)}
-                                  disabled={!replyText.trim() || isPostingReply}
-                                  title={isPostingReply ? 'Posting...' : 'Post reply'}
-                                  className="px-3.5 py-1.5 text-xs font-bold bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-lg transition-all shadow-primary-sm flex items-center space-x-1.5 cursor-pointer"
-                                >
-                                  {isPostingReply ? (
-                                    <span className="block w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                                  ) : (
-                                    <Send className="w-3.5 h-3.5" />
-                                  )}
-                                  <span>{isPostingReply ? 'Posting...' : 'Reply'}</span>
-                                </button>
+                              <div className="flex-1 space-y-2">
+                                <textarea
+                                  rows={2}
+                                  value={replyText}
+                                  onChange={e => setReplyText(e.target.value)}
+                                  onKeyDown={e => {
+                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                      e.preventDefault();
+                                      if (replyText.trim()) {
+                                        void handleSendReply(ann.id);
+                                      }
+                                    }
+                                  }}
+                                  placeholder="Type a response or inquiry... (Press Enter to send, Shift+Enter for new line)"
+                                  className="w-full px-3.5 py-2 bg-background border border-border rounded-xl text-xs font-sans text-foreground outline-none focus:ring-2 focus:ring-primary/20 resize-none"
+                                />
+                                <div className="flex justify-end">
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleSendReply(ann.id)}
+                                    disabled={!replyText.trim() || isPostingReply}
+                                    title={isPostingReply ? 'Posting...' : 'Post reply'}
+                                    className="px-3.5 py-1.5 text-xs font-bold bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-lg transition-all shadow-primary-sm flex items-center space-x-1.5 cursor-pointer"
+                                  >
+                                    {isPostingReply ? (
+                                      <span className="block w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                                    ) : (
+                                      <Send className="w-3.5 h-3.5" />
+                                    )}
+                                    <span>{isPostingReply ? 'Posting...' : 'Reply'}</span>
+                                  </button>
+                                </div>
                               </div>
                             </div>
-                          </div>
+                          ) : (
+                            <div className="p-3 bg-muted/30 border border-border/70 rounded-xl text-center text-xs text-muted-foreground font-sans">
+                              Commenting is restricted to students, instructors, chairs, and deans of this program or college.
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -777,7 +877,7 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
                       onClick={() => {
                         const w = window.open();
                         if (w && previewingAttachment.url) {
-                          w.location.href = previewingAttachment.url;
+                          w.location.href = resolveLikhaAssetUrl(previewingAttachment.url);
                         }
                       }}
                       className="px-3.5 py-1.5 text-xs font-bold text-muted-foreground hover:text-foreground bg-muted hover:bg-muted/80 rounded-xl transition-colors flex items-center space-x-1.5 cursor-pointer font-sans"
@@ -846,7 +946,7 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
                           onClick={() => {
                             const w = window.open();
                             if (w && previewingAttachment.url) {
-                              w.location.href = previewingAttachment.url;
+                              w.location.href = resolveLikhaAssetUrl(previewingAttachment.url);
                             }
                           }}
                           className="px-5 py-2.5 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all shadow-primary-sm flex items-center space-x-2 cursor-pointer font-sans"

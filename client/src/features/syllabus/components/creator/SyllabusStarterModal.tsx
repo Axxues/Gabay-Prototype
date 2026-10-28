@@ -1,9 +1,7 @@
 import React, { useState, useRef } from 'react';
 import type { OfficialSyllabusData } from '../../../../shared/data/syllabusData';
-import { OFFICIAL_SYLLABUS_CSPC112, createDefaultSyllabusForCourse } from '../../../../shared/data/syllabusData';
-import { scanSyllabusDocument } from '../../../../shared/utils/syllabusParser';
+import { OFFICIAL_SYLLABUS_CSPC112 } from '../../../../shared/data/syllabusData';
 import type { SyllabusDraftItem } from '../../types/creator';
-import { useLMS } from '../../../../shared/context/LMSContext';
 import {
   FileText,
   Copy,
@@ -11,7 +9,6 @@ import {
   X,
   Sparkles,
   ArrowRight,
-  BookOpen,
   Loader2,
   CheckCircle2
 } from 'lucide-react';
@@ -33,7 +30,6 @@ export const SyllabusStarterModal: React.FC<SyllabusStarterModalProps> = ({
   onImportFile,
   availableDrafts
 }) => {
-  const { courses = [] } = useLMS();
   const [activeTab, setActiveTab] = useState<'blank' | 'clone' | 'import'>('blank');
   const [isParsing, setIsParsing] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { OfficialSyllabusData, CourseOutcome, ProgramOutcome } from '../../../../../shared/data/syllabusData';
+import type { OfficialSyllabusData, CourseOutcome } from '../../../../../shared/data/syllabusData';
 import { OFFICIAL_SYLLABUS_CSPC112 } from '../../../../../shared/data/syllabusData';
 import { Landmark, Award, Plus, Trash2, ChevronDown, ChevronRight, RotateCcw } from 'lucide-react';
 

@@ -68,6 +68,7 @@ import { settledValue } from '../utils/promise';
 import { formatFileSize, parseFormattedSize, toShortFileType } from '../utils/fileUploader';
 import { isValidUuid, generateSecureActivationToken, generateUuid, generateSecureId, generateSecureDigits } from '../utils/cryptoToken';
 import { isChairRole, isDeanRole, isFacultyRole, canDeleteCourse, canManageCourseContent } from '../utils/roles';
+import { canUserCommentOnCourse } from '../utils/courseScoping';
 
 export interface LMSContextType {
   theme: 'dark' | 'light';
@@ -202,6 +203,7 @@ export interface LMSContextType {
   togglePinAnnouncement: (id: string) => Promise<void>;
   toggleLikeAnnouncement: (id: string) => Promise<void>;
   addAnnouncementReply: (announcementId: string, content: string, parentId?: string) => Promise<void>;
+  deleteAnnouncementReply: (announcementId: string, replyId: string) => Promise<void>;
   markAnnouncementRead: (id: string) => Promise<void>;
 
   // Notifications
@@ -2051,7 +2053,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (parsed && typeof parsed === 'object') return parsed;
       }
     } catch (_) {}
-    return { 'col-ccs': '2025-2026' };
+    return {};
   });
 
   const collegeActiveSYRef = useRef(collegeActiveSchoolYears);
@@ -3599,6 +3601,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           return { success: true, user: effectiveUser };
         }
       } catch (likhaErr: any) {
+        if (likhaErr?.status === 502 || likhaErr?.statusCode === 502 || String(likhaErr?.message).includes('502')) {
+          return { success: false, message: 'The system is currently experiencing technical issues. Please try again later.' };
+        }
         const msg = String(likhaErr?.message || '');
         if (msg.includes('401') || msg.includes('authentication failed')) {
           return { success: false, message: 'Invalid email or password.' };
@@ -6418,6 +6423,17 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (found) return { ...found, isActive: true };
         }
       }
+      if (targetColId) {
+        const colCourses = (dbRef.current?.courses || db.courses || []).filter(c => c.collegeId === targetColId);
+        const years = colCourses
+          .map(c => (c.schoolYear || c.term || '').match(/(\d{4}-\d{4})/)?.[1])
+          .filter(Boolean) as string[];
+        if (years.length > 0) {
+          years.sort().reverse();
+          const found = list.find(sy => sy.year === years[0]);
+          if (found) return { ...found, isActive: true };
+        }
+      }
       // If college has no explicit active year recorded, default to 2025-2026 so admin baseline changes
       // do not inadvertently roll over colleges without Dean action
       const initialDefault = list.find(sy => sy.year === '2025-2026') || list.find(sy => sy.isActive) || list[0];
@@ -6532,6 +6548,23 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     collegeActiveSemestersRef.current = next;
     setCollegeActiveSemesters(next);
     safeSetLocalStorage(STORAGE_KEY_COLLEGE_ACTIVE_SEMESTERS, JSON.stringify(next));
+    const recipients = (db.users || []).filter(u => u.collegeId === collegeId || (!u.collegeId && collegeId === 'col-ccs'));
+    const now = new Date().toISOString();
+    const newNotifs: Notification[] = recipients.map(u => ({
+      id: `notif-sem-${norm}-${u.id}-${generateSecureId('notif')}`,
+      type: 'baseline_changed',
+      recipientId: u.id,
+      actorId: activeUser?.id || 'dean',
+      actorName: activeUser?.name || 'College Dean',
+      actorAvatar: activeUser?.avatar || '',
+      relatedId: norm,
+      relatedTitle: formatSemesterLabel(norm),
+      content: `The Academic Semester for your college has rolled over to ${formatSemesterLabel(norm)}.`,
+      read: false,
+      createdAt: now,
+    }));
+    setNotifications(prev => [...newNotifs, ...prev]);
+    setDb(prev => ({ ...prev, notifications: [...newNotifs, ...(prev.notifications || [])] }));
     return {
       success: true,
       message: `College rolled over to ${formatSemesterLabel(norm)}.`,
@@ -6715,6 +6748,24 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return prev;
     });
+
+    const recipients = (db.users || []).filter(u => u.collegeId === collegeId || (!u.collegeId && collegeId === 'col-ccs'));
+    const now = new Date().toISOString();
+    const newNotifs: Notification[] = recipients.map(u => ({
+      id: `notif-sy-${target.year}-${u.id}-${generateSecureId('notif')}`,
+      type: 'baseline_changed',
+      recipientId: u.id,
+      actorId: activeUser?.id || 'admin',
+      actorName: activeUser?.name || 'Academic Administration',
+      actorAvatar: activeUser?.avatar || '',
+      relatedId: target.id,
+      relatedTitle: `AY ${target.year}`,
+      content: `The Academic Year for your college has rolled over to AY ${target.year}.`,
+      read: false,
+      createdAt: now,
+    }));
+    setNotifications(prev => [...newNotifs, ...prev]);
+    setDb(prev => ({ ...prev, notifications: [...newNotifs, ...(prev.notifications || [])] }));
 
     return { success: true, message: `College rolled over to school year "${target.year}".` };
   };
@@ -7382,6 +7433,16 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const addModuleComment = async (moduleId: string, content: string, parentId?: string): Promise<void> => {
     if (!content.trim()) return;
+    const targetModule = (db.modules || []).find(m => m.id === moduleId);
+    const courseId = targetModule?.courseId || (targetModule as any)?.course_id;
+    if (courseId) {
+      const course = (db.courses || []).find(c => c.id === courseId);
+      const approvedIds = new Set((db.enrollmentRequests || []).filter(r => r.studentId === activeUser.id && r.status === 'approved').map(r => r.courseId));
+      if (course && !canUserCommentOnCourse(activeUser, activeRole, course, departments || [], colleges || [], approvedIds)) {
+        showAlert('You can only comment on modules within your college or program.', 'Permission Denied');
+        return;
+      }
+    }
     // Server creates the reply notification inline (no client call needed).
     // Likha ERP is the source of truth for module comments; the cached row
     // falls back to request/active-user values for author fields the write
@@ -7848,6 +7909,16 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addAnnouncementReply = async (announcementId: string, content: string, parentId?: string): Promise<void> => {
+    const targetAnnouncement = (db.announcements || []).find(a => a.id === announcementId);
+    const courseId = targetAnnouncement?.courseId || (targetAnnouncement as any)?.course_id;
+    if (courseId) {
+      const course = (db.courses || []).find(c => c.id === courseId);
+      const approvedIds = new Set((db.enrollmentRequests || []).filter(r => r.studentId === activeUser.id && r.status === 'approved').map(r => r.courseId));
+      if (course && !canUserCommentOnCourse(activeUser, activeRole, course, departments || [], colleges || [], approvedIds)) {
+        showAlert('You can only comment on announcements within your college or program.', 'Permission Denied');
+        return;
+      }
+    }
     try {
       const row = await likhaLmsApi.communications.addAnnouncementReply(announcementId, {
         author_id: activeUser.id,
@@ -7873,6 +7944,18 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       showAlert(message, 'Reply Failed');
       throw err;
     }
+  };
+
+  const deleteAnnouncementReply = async (announcementId: string, replyId: string): Promise<void> => {
+    setDb(prev => ({
+      ...prev,
+      announcements: (prev.announcements || []).map(a =>
+        a.id === announcementId
+          ? { ...a, replies: (a.replies || []).filter(r => String(r.id) !== String(replyId)) }
+          : a
+      )
+    }));
+    await likhaLmsApi.communications.deleteAnnouncementReply(replyId).catch(() => {});
   };
 
   const markAnnouncementRead = async (id: string): Promise<void> => {
@@ -8325,9 +8408,20 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // fields locally. Real CourseFile rows delete via the files endpoint.
     const isVirtual = /^(mod-file-|ann-file-|act-file-|act-virtual-|asg-virtual-|sub-file-|quiz-file-|quiz-q-file-|syl-file-)/.test(fileId);
     if (!isVirtual) {
-      const target = (db.courseFiles || []).find(f => f.id === fileId);
+      const allFiles = db.courseFiles || [];
+      const target = allFiles.find(f => f.id === fileId);
+      const targetName = (target?.name || '').trim().toLowerCase();
+      const affectedCourse = (db.courses || []).find(course => {
+        const doc = course.syllabus?.sourceDocument;
+        if (!doc) return false;
+        return (targetName && (doc.fileName || '').trim().toLowerCase() === targetName) || (doc as any).courseFileId === fileId;
+      });
       try {
         await likhaLmsApi.files.deleteCourseFile(fileId);
+        const clearFn1 = (likhaLmsApi.syllabus as any)?.clearSourceDocument || (likhaLmsApi.courses as any)?.clearSourceDocument;
+        if (affectedCourse && clearFn1) {
+          await clearFn1(affectedCourse.id).catch(() => {});
+        }
       } catch (err) {
         const message = err instanceof ApiError ? err.message : 'Failed to delete file.';
         setLastError(message);
@@ -8351,6 +8445,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const matchesName = targetName && (doc.fileName || '').trim().toLowerCase() === targetName;
           const matchesFileId = (doc as any).courseFileId === fileId;
           if (matchesName || matchesFileId) {
+            const clearFn2 = (likhaLmsApi.syllabus as any)?.clearSourceDocument || (likhaLmsApi.courses as any)?.clearSourceDocument;
+            if (clearFn2) {
+              clearFn2(c.id).catch(() => {});
+            }
             return {
               ...c,
               syllabus: {
@@ -9274,6 +9372,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       for (const id of approvedIds) {
         await likhaLmsApi.requests.deleteRequest(id);
       }
+      if ((likhaLmsApi.courses as any)?.deleteCourseEnrollment) {
+        await (likhaLmsApi.courses as any).deleteCourseEnrollment(courseId, studentId).catch(() => {});
+      }
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to remove student.';
       setLastError(message);
@@ -9733,6 +9834,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         togglePinAnnouncement,
         toggleLikeAnnouncement,
         addAnnouncementReply,
+        deleteAnnouncementReply,
         markAnnouncementRead,
         notifications,
         getUnreadNotificationCount,

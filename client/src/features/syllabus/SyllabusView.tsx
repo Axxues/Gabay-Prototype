@@ -49,6 +49,7 @@ import { SyllabusRevisionBar } from './components/SyllabusRevisionBar';
 import type { SyllabusSectionKey } from '../../shared/types/syllabusApi';
 import { useSimulatedUpload } from '../../shared/hooks/useSimulatedUpload';
 import type { AggregatedCourseFile } from '../../shared/hooks/useCourseFiles';
+import { resolveLikhaAssetUrl } from '../../shared/api/likhaLmsApi';
 
 const PO_ALIGNMENT_OPTIONS: DropdownOption[] = [
   { value: '', label: '–' },
@@ -228,9 +229,11 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
   const rawData = currentCourse?.syllabus || null;
 
   const [isFetchingSyllabus, setIsFetchingSyllabus] = useState(false);
+  const attemptedCourseIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!rawData && courseId && typeof refreshCourseSyllabus === 'function') {
+    if (!rawData && courseId && attemptedCourseIdRef.current !== courseId && typeof refreshCourseSyllabus === 'function') {
+      attemptedCourseIdRef.current = courseId;
       setIsFetchingSyllabus(true);
       void refreshCourseSyllabus(courseId).finally(() => {
         setIsFetchingSyllabus(false);
@@ -958,7 +961,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
 
   const handlePrint = () => {
     const doc = data?.sourceDocument;
-    const fileUrl = doc?.fileDataUrl;
+    const fileUrl = doc?.fileDataUrl ? resolveLikhaAssetUrl(doc.fileDataUrl) : undefined;
 
     // If PDF source file exists, print directly via iframe
     if (fileUrl && (doc?.fileType === 'pdf' || fileUrl.includes('.pdf') || fileUrl.startsWith('data:application/pdf'))) {
@@ -1657,6 +1660,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
             expandedSections.facultySchedule ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
           }`}
         >
+          {(expandedSections.facultySchedule || editingSection === 'facultySchedule') && (
           <div className="overflow-hidden min-h-0">
             <div className={`p-5 sm:p-6 border-t bg-card space-y-5 ${editingSection === 'facultySchedule' ? 'border-primary/50 bg-primary/5' : 'border-border'}`}>
               {editingSection === 'facultySchedule' && draft ? (
@@ -1819,6 +1823,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               )}
             </div>
           </div>
+        )}
         </div>
       </div>
 
@@ -1872,6 +1877,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
             expandedSections.vgmo ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
           }`}
         >
+          {(expandedSections.vgmo || editingSection === 'vgmo') && (
           <div className="overflow-hidden min-h-0">
             <div className={`p-5 sm:p-6 border-t bg-card space-y-6 text-xs ${editingSection === 'vgmo' ? 'border-primary/50 bg-primary/5' : 'border-border'}`}>
               {editingSection === 'vgmo' && draft ? (
@@ -2102,6 +2108,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               )}
             </div>
           </div>
+        )}
         </div>
       </div>
 
@@ -2151,6 +2158,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
             expandedSections.programOutcomes ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
           }`}
         >
+          {(expandedSections.programOutcomes || editingSection === 'programOutcomes') && (
           <div className="overflow-hidden min-h-0">
             <div className={`p-5 sm:p-6 border-t bg-card space-y-3 text-xs ${editingSection === 'programOutcomes' ? 'border-primary/50 bg-primary/5' : 'border-border'}`}>
               {editingSection === 'programOutcomes' && draft ? (
@@ -2217,6 +2225,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               )}
             </div>
           </div>
+        )}
         </div>
       </div>
 
@@ -2266,6 +2275,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
             expandedSections.courseOutcomes ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
           }`}
         >
+          {(expandedSections.courseOutcomes || editingSection === 'courseOutcomes') && (
           <div className="overflow-hidden min-h-0">
             <div className={`p-5 sm:p-6 border-t bg-card space-y-4 text-xs ${editingSection === 'courseOutcomes' ? 'border-primary/50 bg-primary/5' : 'border-border'}`}>
               {editingSection === 'courseOutcomes' && draft ? (
@@ -2329,6 +2339,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               )}
             </div>
           </div>
+        )}
         </div>
       </div>
 
@@ -2378,6 +2389,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
             expandedSections.gradingSystem ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
           }`}
         >
+          {(expandedSections.gradingSystem || editingSection === 'gradingSystem') && (
           <div className="overflow-hidden min-h-0">
             <div className={`p-5 sm:p-6 border-t bg-card space-y-6 text-xs ${editingSection === 'gradingSystem' ? 'border-primary/50 bg-primary/5' : 'border-border'}`}>
               {editingSection === 'gradingSystem' && draft ? (
@@ -2609,6 +2621,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               )}
             </div>
           </div>
+        )}
         </div>
       </div>
 
@@ -2658,6 +2671,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
             expandedSections.projectRubrics ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
           }`}
         >
+          {(expandedSections.projectRubrics || editingSection === 'projectRubrics') && (
           <div className="overflow-hidden min-h-0">
             <div className={`p-5 sm:p-6 border-t bg-card space-y-4 text-xs ${editingSection === 'projectRubrics' ? 'border-primary/50 bg-primary/5' : 'border-border'}`}>
               {editingSection === 'projectRubrics' && draft ? (
@@ -2757,6 +2771,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               )}
             </div>
           </div>
+        )}
         </div>
       </div>
 
@@ -2806,6 +2821,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
             expandedSections.classroomPolicies ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
           }`}
         >
+          {(expandedSections.classroomPolicies || editingSection === 'classroomPolicies') && (
           <div className="overflow-hidden min-h-0">
             <div className={`p-5 sm:p-6 border-t bg-card space-y-3 text-xs ${editingSection === 'classroomPolicies' ? 'border-primary/50 bg-primary/5' : 'border-border'}`}>
               {editingSection === 'classroomPolicies' && draft ? (
@@ -2863,6 +2879,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               )}
             </div>
           </div>
+        )}
         </div>
       </div>
 
@@ -2912,6 +2929,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
             expandedSections.courseOutline ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
           }`}
         >
+          {(expandedSections.courseOutline || editingSection === 'courseOutline') && (
           <div className="overflow-hidden min-h-0">
             <div className={`p-5 sm:p-6 border-t bg-card space-y-3 text-xs ${editingSection === 'courseOutline' ? 'border-primary/50 bg-primary/5' : 'border-border'}`}>
               {editingSection === 'courseOutline' && draft ? (
@@ -3005,6 +3023,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               )}
             </div>
           </div>
+        )}
         </div>
       </div>
 
@@ -3054,6 +3073,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
             expandedSections.learningPlan ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
           }`}
         >
+          {(expandedSections.learningPlan || editingSection === 'learningPlan') && (
           <div className="overflow-hidden min-h-0">
             <div className={`p-5 sm:p-6 border-t bg-card space-y-4 text-xs ${editingSection === 'learningPlan' ? 'border-primary/50 bg-primary/5' : 'border-border'}`}>
               {editingSection === 'learningPlan' && draft ? (
@@ -3341,6 +3361,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               )}
             </div>
           </div>
+        )}
         </div>
       </div>
 
@@ -3390,6 +3411,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
             expandedSections.curriculumMap ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
           }`}
         >
+          {(expandedSections.curriculumMap || editingSection === 'curriculumMap') && (
           <div className="overflow-hidden min-h-0">
             <div className={`p-5 sm:p-6 border-t bg-card space-y-4 text-xs ${editingSection === 'curriculumMap' ? 'border-primary/50 bg-primary/5' : 'border-border'}`}>
               {editingSection === 'curriculumMap' && draft ? (
@@ -3509,6 +3531,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               )}
             </div>
           </div>
+        )}
         </div>
       </div>
 
@@ -3558,6 +3581,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
             expandedSections.referencesSignatures ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
           }`}
         >
+          {(expandedSections.referencesSignatures || editingSection === 'referencesSignatures') && (
           <div className="overflow-hidden min-h-0">
             <div className={`p-5 sm:p-6 border-t bg-card space-y-6 text-xs ${editingSection === 'referencesSignatures' ? 'border-primary/50 bg-primary/5' : 'border-border'}`}>
               {editingSection === 'referencesSignatures' && draft ? (
@@ -3809,6 +3833,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               )}
             </div>
           </div>
+        )}
         </div>
       </div>
 

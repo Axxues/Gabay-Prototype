@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 // Task 6 (TDD RED): SyllabusView drives draft/published section editing
 // through revision-aware context actions.
-import { describe, expect, test, vi, beforeEach } from 'vitest';
-import '@testing-library/jest-dom';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { describe, expect, test, vi, beforeEach, afterEach } from 'vitest';
+import '@testing-library/jest-dom/vitest';
+import { fireEvent, render, screen, waitFor, cleanup } from '@testing-library/react';
 import React from 'react';
 import type { OfficialSyllabusData } from '../../shared/data/syllabusData';
 import type { SyllabusRevisionHeader } from '../../shared/types/syllabusApi';
@@ -132,6 +132,9 @@ beforeEach(() => {
 });
 
 describe('SyllabusView revision editing', () => {
+  afterEach(() => {
+    cleanup();
+  });
   test('draft revision renders the revision bar with status and number', () => {
     render(<SyllabusView courseId="c1" />);
     expect(screen.getByTestId('syllabus-revision-bar')).toBeInTheDocument();

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useLMS } from '../../../shared/context/LMSContext';
 import { ModalPortal } from '../../../shared/components/common/ModalPortal';
 import { DialogFrame } from '../../../shared/components/common/DialogFrame';
-import { BookOpen, Check, X, AlertTriangle, Loader2, ArrowRight } from 'lucide-react';
+import { BookOpen, Check, AlertTriangle, Loader2, ArrowRight } from 'lucide-react';
 
 export interface CourseInvitationAcceptModalProps {
   isOpen: boolean;
@@ -39,7 +39,8 @@ export const CourseInvitationAcceptModal: React.FC<CourseInvitationAcceptModalPr
   const effectiveRequestId = requestId || matchedRequest?.id;
 
   // 1. Account Mismatch State
-  const isAccountMismatch = Boolean(targetStudentId && activeUser?.id && targetStudentId !== activeUser.id);
+  const effectiveStudentId = targetStudentId || matchedRequest?.studentId;
+  const isAccountMismatch = Boolean(effectiveStudentId && activeUser?.id && effectiveStudentId !== activeUser.id);
   if (isAccountMismatch) {
     return (
       <ModalPortal>
@@ -126,8 +127,8 @@ export const CourseInvitationAcceptModal: React.FC<CourseInvitationAcceptModalPr
     );
   }
 
-  // 3. Stale / Resolved Invitation State
-  if (matchedRequest && matchedRequest.status !== 'pending') {
+  // 3. Stale / Resolved or Missing Invitation State
+  if (!course || !matchedRequest || matchedRequest.status !== 'pending') {
     return (
       <ModalPortal>
         <DialogFrame
@@ -137,7 +138,7 @@ export const CourseInvitationAcceptModal: React.FC<CourseInvitationAcceptModalPr
         >
           <div className="space-y-4">
             <div className="p-4 rounded-2xl bg-muted border border-border text-muted-foreground text-xs">
-              This course invitation is no longer active or has already been processed.
+              This course invitation is no longer active, has already been processed, or could not be found.
             </div>
 
             <div className="flex items-center justify-end pt-2">

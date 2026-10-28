@@ -1,6 +1,6 @@
 import React from 'react';
 import type { OfficialSyllabusData } from '../../../../../shared/data/syllabusData';
-import { Award, Printer, Link2, CheckCircle2, FileText, UserCheck } from 'lucide-react';
+import { Printer, Link2, CheckCircle2, UserCheck } from 'lucide-react';
 
 interface Step7ReviewSignatoriesProps {
   data: OfficialSyllabusData;

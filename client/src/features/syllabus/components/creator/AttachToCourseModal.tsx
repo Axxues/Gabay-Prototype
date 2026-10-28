@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useLMS } from '../../../../shared/context/LMSContext';
 import type { OfficialSyllabusData } from '../../../../shared/data/syllabusData';
-import { X, Check, BookOpen, AlertCircle, Loader2, Sparkles, Send } from 'lucide-react';
+import type { Course } from '../../../../shared/types/lms';
+import { X, Check, BookOpen, Loader2 } from 'lucide-react';
 
 interface AttachToCourseModalProps {
   isOpen: boolean;
@@ -14,7 +15,9 @@ export const AttachToCourseModal: React.FC<AttachToCourseModalProps> = ({
   onClose,
   syllabusData
 }) => {
-  const { courses = [], activeUser, updateCourseSyllabus, publishSyllabusDraft, showAlert } = useLMS();
+  const lms = useLMS();
+  const { db, activeUser, updateCourseSyllabus, publishSyllabusDraft, showAlert } = lms;
+  const courses: Course[] = (db?.courses as Course[]) || ((lms as any).courses as Course[]) || [];
   const [selectedCourseIds, setSelectedCourseIds] = useState<string[]>([]);
   const [publishImmediately, setPublishImmediately] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -22,7 +25,7 @@ export const AttachToCourseModal: React.FC<AttachToCourseModalProps> = ({
   if (!isOpen) return null;
 
   // Filter courses taught by or accessible to current faculty
-  const eligibleCourses = courses.filter(c => {
+  const eligibleCourses = courses.filter((c: Course) => {
     if (!activeUser) return true;
     if (activeUser.role === 'admin' || activeUser.role === 'superadmin') return true;
     return c.instructorId === activeUser.id || c.instructorName?.toLowerCase() === activeUser.name?.toLowerCase();
@@ -40,7 +43,7 @@ export const AttachToCourseModal: React.FC<AttachToCourseModalProps> = ({
 
     try {
       for (const courseId of selectedCourseIds) {
-        const targetCourse = courses.find(c => c.id === courseId);
+        const targetCourse = courses.find((c: Course) => c.id === courseId);
 
         // Preserve destination course schedule and section (Review Focus 2)
         const preservedSyllabus: OfficialSyllabusData = {
@@ -143,7 +146,7 @@ export const AttachToCourseModal: React.FC<AttachToCourseModalProps> = ({
             </div>
           ) : (
             <div className="space-y-2">
-              {eligibleCourses.map(c => {
+              {eligibleCourses.map((c: Course) => {
                 const isSelected = selectedCourseIds.includes(c.id);
                 return (
                   <label

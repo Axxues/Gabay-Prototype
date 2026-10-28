@@ -1,5 +1,5 @@
 import React, { useContext } from 'react';
-import { LayoutDashboard, BookOpen, Calendar, Inbox, History, HelpCircle, Building, BarChart3, FileCheck2, Users, LogOut, GraduationCap, Sparkles, Landmark, FileText } from 'lucide-react';
+import { LayoutDashboard, BookOpen, Calendar, Inbox, History, HelpCircle, BarChart3, FileCheck2, Users, LogOut, GraduationCap, Sparkles, Landmark, FileText } from 'lucide-react';
 import { useLMS } from '../../context/LMSContext';
 import { GabayChatContext } from '../../context/GabayChatContext';
 import { MAIN_NAV, isVisible, type NavIcon } from '../../config/navigation';

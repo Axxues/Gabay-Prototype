@@ -1,6 +1,6 @@
 import React from 'react';
 import type { OfficialSyllabusData } from '../../../../../shared/data/syllabusData';
-import { Calendar, Plus, Trash2, CheckCircle2 } from 'lucide-react';
+import { Calendar, Plus, Trash2 } from 'lucide-react';
 
 interface Step3CourseOutlineProps {
   data: OfficialSyllabusData;

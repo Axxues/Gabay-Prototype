@@ -1,6 +1,6 @@
 import React from 'react';
 import type { OfficialSyllabusData, LearningPlanWeek } from '../../../../../shared/data/syllabusData';
-import { BookOpen, Plus, Trash2, Globe, Clock, Layers } from 'lucide-react';
+import { Plus, Trash2, Globe, Clock, Layers } from 'lucide-react';
 
 interface Step4LearningPlanProps {
   data: OfficialSyllabusData;
@@ -15,17 +15,6 @@ const SDG_PRESETS: Array<{ goal: string; title: string; description: string }> =
   { goal: 'SDG 11', title: 'Sustainable Cities and Communities', description: 'Making cities and human settlements inclusive, safe, resilient, and sustainable.' },
   { goal: 'SDG 12', title: 'Responsible Consumption and Production', description: 'Ensuring sustainable consumption and production patterns in technology.' },
   { goal: 'SDG 16', title: 'Peace, Justice and Strong Institutions', description: 'Promoting peaceful and inclusive societies, access to justice, and effective institutions.' }
-];
-
-const COMMON_METHODOLOGIES = [
-  'Lecture-Discussion',
-  'Demonstration Method',
-  'Collaborative Learning',
-  'Technology-Based Learning',
-  'Brainstorming',
-  'Reporting and Presentation',
-  'Case Study Analysis',
-  'Laboratory Exercises'
 ];
 
 export const Step4LearningPlan: React.FC<Step4LearningPlanProps> = ({ data, onChange }) => {

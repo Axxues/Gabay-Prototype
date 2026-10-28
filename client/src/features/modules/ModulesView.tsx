@@ -36,6 +36,7 @@ import { PageHeader } from '../../shared/components/common/PageHeader';
 import { UserAvatar } from '../../shared/components/common/UserAvatar';
 import { EmptyState } from '../../shared/components/common/EmptyState';
 import { PdfViewer } from '../../shared/components/common/PdfViewer';
+import { canUserCommentOnCourse } from '../../shared/utils/courseScoping';
 import { AddModuleItemPage } from './AddModuleItemPage';
 
 interface ModulesViewProps {
@@ -57,7 +58,10 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
 }) => {
   const {
     activeUser,
+    activeRole,
     db,
+    departments,
+    colleges,
     isLoading,
     isSyncing,
     createModule,
@@ -105,9 +109,22 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
   const [replyToIds, setReplyToIds] = useState<Record<string, string | null>>({});
   const [replyTexts, setReplyTexts] = useState<Record<string, string>>({});
 
+  const activeCourse = useMemo(() => (db.courses || []).find(c => c.id === courseId), [db.courses, courseId]);
+  const approvedIds = useMemo(
+    () => new Set((db.enrollmentRequests || []).filter(r => r.studentId === activeUser.id && r.status === 'approved').map(r => r.courseId)),
+    [db.enrollmentRequests, activeUser.id]
+  );
+  const canComment = useMemo(
+    () => (activeCourse ? canUserCommentOnCourse(activeUser, activeRole, activeCourse, departments || [], colleges || [], approvedIds) : true),
+    [activeCourse, activeUser, activeRole, departments, colleges, approvedIds]
+  );
+
   const resolveAuthorAvatar = (authorId?: string, fallbackAvatar?: string): string => {
     if (authorId && authorId === activeUser.id && activeUser.avatar) {
       return activeUser.avatar;
+    }
+    if (fallbackAvatar) {
+      return fallbackAvatar;
     }
     if (authorId) {
       const u = (db.users || []).find(user => user.id === authorId);
@@ -115,7 +132,7 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
       const stored = getCleanStoredAvatar(authorId);
       if (stored) return stored;
     }
-    return fallbackAvatar || '';
+    return '';
   };
 
   const resolveAuthorName = (authorId?: string, fallbackName?: string): string => {
@@ -152,6 +169,7 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
 
   // Document Preview Modal State (file full-page — opened ONLY via file chip / preview button)
   const [previewItem, setPreviewItem] = useState<ModuleItem | null>(null);
+  const [previewAttachmentIndex, setPreviewAttachmentIndex] = useState(0);
 
   // Expanded item content (Content / syllabus instructions / URL) — toggled by clicking the item row
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
@@ -332,18 +350,20 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
     );
   };
 
-  const handleDownloadFile = (item: ModuleItem) => {
-    if (item.fileUrl) {
+  const handleDownloadFile = (item: ModuleItem, specificAttachment?: { name: string; url?: string }) => {
+    const fileUrl = specificAttachment?.url || item.fileUrl;
+    const fileName = specificAttachment?.name || item.fileName || `${item.title.toLowerCase().replace(/\s+/g, '-')}.pdf`;
+    if (fileUrl) {
       const link = document.createElement('a');
-      link.href = item.fileUrl;
-      link.download = item.fileName || `${item.title.toLowerCase().replace(/\s+/g, '-')}.pdf`;
+      link.href = fileUrl;
+      link.download = fileName;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
     } else {
       showAlert({
         title: 'Downloading Resource',
-        message: `Simulating download of "${item.fileName || item.title}" for offline study.`,
+        message: `Simulating download of "${fileName}" for offline study.`,
         type: 'info'
       });
     }
@@ -771,16 +791,48 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                                     ) : (
                                       <span className="italic text-muted-foreground">No text content available for this unit item.</span>
                                     )}
-                                    {item.fileName && (
+                                    {(item.attachments?.length || item.fileName) && (
                                       <p className="mt-2 pt-2 border-t border-border/60 text-[11px] text-muted-foreground whitespace-normal">
-                                        Attached file below — click the file chip to open its full-page preview.
+                                        Attached file(s) below — click a file chip to open its full-page preview.
                                       </p>
                                     )}
                                   </div>
                                 )}
 
-                                {/* Attached File Chip — ONLY this opens the file full-page preview */}
-                                {item.fileName && (
+                                {/* Attached File Chips — opens preview for clicked file */}
+                                {item.attachments && item.attachments.length > 0 ? (
+                                  <div className="pt-0.5 flex flex-wrap items-center gap-2">
+                                    {item.attachments.map((att, attIdx) => (
+                                      <span
+                                        key={attIdx}
+                                        role="button"
+                                        tabIndex={0}
+                                        title={`Open preview for ${att.name}`}
+                                        onClick={e => {
+                                          e.stopPropagation();
+                                          setPreviewAttachmentIndex(attIdx);
+                                          setPreviewItem(item);
+                                        }}
+                                        onKeyDown={e => {
+                                          if (e.key === 'Enter' || e.key === ' ') {
+                                            e.stopPropagation();
+                                            setPreviewAttachmentIndex(attIdx);
+                                            setPreviewItem(item);
+                                          }
+                                        }}
+                                        className="inline-flex items-center space-x-1.5 px-2.5 py-1 bg-primary/10 hover:bg-primary/20 border border-primary/20 text-primary font-sans text-[11px] font-bold rounded-lg cursor-pointer transition-colors shadow-subtle"
+                                      >
+                                        {getAttachmentIcon(att.name)}
+                                        <span className="truncate max-w-[240px]">{att.name}</span>
+                                        {att.size && (
+                                          <span className="text-muted-foreground font-normal">
+                                            ({att.size})
+                                          </span>
+                                        )}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : item.fileName ? (
                                   <div className="pt-0.5 flex items-center space-x-2">
                                     <span
                                       role="button"
@@ -788,11 +840,13 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                                       title="Open file full-page preview"
                                       onClick={e => {
                                         e.stopPropagation();
+                                        setPreviewAttachmentIndex(0);
                                         setPreviewItem(item);
                                       }}
                                       onKeyDown={e => {
                                         if (e.key === 'Enter' || e.key === ' ') {
                                           e.stopPropagation();
+                                          setPreviewAttachmentIndex(0);
                                           setPreviewItem(item);
                                         }
                                       }}
@@ -807,7 +861,7 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                                       )}
                                     </span>
                                   </div>
-                                )}
+                                ) : null}
                               </div>
                             </div>
 
@@ -816,19 +870,22 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                               className="flex items-center space-x-1.5 shrink-0 self-end sm:self-center"
                               onClick={e => e.stopPropagation()}
                             >
-                              {item.fileName && (
+                              {(item.attachments?.length || item.fileName) && (
                                 <>
                                   <button
                                     type="button"
-                                    onClick={() => setPreviewItem(item)}
-                                    title="Preview File"
+                                    onClick={() => {
+                                      setPreviewAttachmentIndex(0);
+                                      setPreviewItem(item);
+                                    }}
+                                    title="Preview Files"
                                     className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors cursor-pointer"
                                   >
                                     <Eye className="w-4 h-4" />
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => handleDownloadFile(item)}
+                                    onClick={() => handleDownloadFile(item, item.attachments?.[0])}
                                     title="Download File"
                                     className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors cursor-pointer"
                                   >
@@ -1007,8 +1064,21 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                                                   type: 'confirm',
                                                   confirmText: 'Delete',
                                                   cancelText: 'Cancel',
-                                                  onConfirm: () => {
-                                                    void deleteModuleComment(mod.id, c.id).catch(() => {});
+                                                  onConfirm: async () => {
+                                                    try {
+                                                      await deleteModuleComment(mod.id, c.id);
+                                                      showAlert({
+                                                        title: 'Comment Deleted',
+                                                        message: 'Your comment has been deleted.',
+                                                        type: 'info'
+                                                      });
+                                                    } catch {
+                                                      showAlert({
+                                                        title: 'Delete Failed',
+                                                        message: 'Failed to delete comment. Please try again.',
+                                                        type: 'error'
+                                                      });
+                                                    }
                                                   }
                                                 });
                                               }}
@@ -1092,16 +1162,18 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                                             <Heart className={`w-3.5 h-3.5 ${isLiked ? 'fill-current' : ''}`} />
                                             <span>{(c.likes || 0) > 0 ? c.likes : 'Like'}</span>
                                           </button>
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              setReplyToIds(prev => ({ ...prev, [mod.id]: c.id }));
-                                              setReplyTexts(prev => ({ ...prev, [mod.id]: '' }));
-                                            }}
-                                            className="text-[11px] font-bold font-sans text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-                                          >
-                                            Reply
-                                          </button>
+                                          {canComment && (
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setReplyToIds(prev => ({ ...prev, [mod.id]: c.id }));
+                                                setReplyTexts(prev => ({ ...prev, [mod.id]: '' }));
+                                              }}
+                                              className="text-[11px] font-bold font-sans text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                                            >
+                                              Reply
+                                            </button>
+                                          )}
                                         </div>
                                       )}
 
@@ -1168,8 +1240,21 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                                                         type: 'confirm',
                                                         confirmText: 'Delete',
                                                         cancelText: 'Cancel',
-                                                        onConfirm: () => {
-                                                          void deleteModuleComment(mod.id, child.id).catch(() => {});
+                                                        onConfirm: async () => {
+                                                          try {
+                                                            await deleteModuleComment(mod.id, child.id);
+                                                            showAlert({
+                                                              title: 'Reply Deleted',
+                                                              message: 'Your reply has been deleted.',
+                                                              type: 'info'
+                                                            });
+                                                          } catch {
+                                                            showAlert({
+                                                              title: 'Delete Failed',
+                                                              message: 'Failed to delete reply. Please try again.',
+                                                              type: 'error'
+                                                            });
+                                                          }
                                                         }
                                                       });
                                                     }}
@@ -1239,16 +1324,18 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                                                   <Heart className={`w-3.5 h-3.5 ${childIsLiked ? 'fill-current' : ''}`} />
                                                   <span>{(child.likes || 0) > 0 ? child.likes : 'Like'}</span>
                                                 </button>
-                                                <button
-                                                  type="button"
-                                                  onClick={() => {
-                                                    setReplyToIds(prev => ({ ...prev, [mod.id]: child.id }));
-                                                    setReplyTexts(prev => ({ ...prev, [mod.id]: '' }));
-                                                  }}
-                                                  className="text-[11px] font-bold font-sans text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-                                                >
-                                                  Reply
-                                                </button>
+                                                {canComment && (
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                      setReplyToIds(prev => ({ ...prev, [mod.id]: child.id }));
+                                                      setReplyTexts(prev => ({ ...prev, [mod.id]: '' }));
+                                                    }}
+                                                    className="text-[11px] font-bold font-sans text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                                                  >
+                                                    Reply
+                                                  </button>
+                                                )}
                                               </div>
                                             )}
                                           </div>
@@ -1307,36 +1394,42 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                           )}
 
                           {/* Comment composer form */}
-                          <form
-                            onSubmit={e => {
-                              e.preventDefault();
-                              void handlePostComment(mod.id);
-                            }}
-                            className="flex items-center space-x-2.5 p-1.5 pb-2"
-                          >
-                            <input
-                              type="text"
-                              value={commentInputs[mod.id] || ''}
-                              onChange={e =>
-                                setCommentInputs(prev => ({ ...prev, [mod.id]: e.target.value }))
-                              }
-                              placeholder={`Post a comment on ${mod.title}...`}
-                              className="flex-1 px-3.5 py-2.5 text-xs bg-background border border-border hover:border-primary/40 focus:border-primary rounded-xl text-foreground placeholder:text-muted-foreground font-sans focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all shadow-subtle"
-                            />
-                            <button
-                              type="submit"
-                              disabled={!(commentInputs[mod.id] || '').trim() || postingCommentIds[mod.id]}
-                              title={postingCommentIds[mod.id] ? 'Posting...' : 'Post comment'}
-                              className="px-4 py-2.5 bg-primary hover:bg-primary/90 disabled:opacity-40 text-primary-foreground text-xs font-bold font-sans rounded-xl transition-all shadow-subtle flex items-center space-x-1.5 cursor-pointer disabled:cursor-not-allowed shrink-0 active:scale-[0.98]"
+                          {canComment ? (
+                            <form
+                              onSubmit={e => {
+                                e.preventDefault();
+                                void handlePostComment(mod.id);
+                              }}
+                              className="flex items-center space-x-2.5 p-1.5 pb-2"
                             >
-                              {postingCommentIds[mod.id] ? (
-                                <span className="block w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                              ) : (
-                                <Send className="w-3.5 h-3.5" />
-                              )}
-                              <span className="hidden sm:inline">{postingCommentIds[mod.id] ? 'Posting...' : 'Post'}</span>
-                            </button>
-                          </form>
+                              <input
+                                type="text"
+                                value={commentInputs[mod.id] || ''}
+                                onChange={e =>
+                                  setCommentInputs(prev => ({ ...prev, [mod.id]: e.target.value }))
+                                }
+                                placeholder={`Post a comment on ${mod.title}...`}
+                                className="flex-1 px-3.5 py-2.5 text-xs bg-background border border-border hover:border-primary/40 focus:border-primary rounded-xl text-foreground placeholder:text-muted-foreground font-sans focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all shadow-subtle"
+                              />
+                              <button
+                                type="submit"
+                                disabled={!(commentInputs[mod.id] || '').trim() || postingCommentIds[mod.id]}
+                                title={postingCommentIds[mod.id] ? 'Posting...' : 'Post comment'}
+                                className="px-4 py-2.5 bg-primary hover:bg-primary/90 disabled:opacity-40 text-primary-foreground text-xs font-bold font-sans rounded-xl transition-all shadow-subtle flex items-center space-x-1.5 cursor-pointer disabled:cursor-not-allowed shrink-0 active:scale-[0.98]"
+                              >
+                                {postingCommentIds[mod.id] ? (
+                                  <span className="block w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                                ) : (
+                                  <Send className="w-3.5 h-3.5" />
+                                )}
+                                <span className="hidden sm:inline">{postingCommentIds[mod.id] ? 'Posting...' : 'Post'}</span>
+                              </button>
+                            </form>
+                          ) : (
+                            <div className="p-3 bg-muted/30 border border-border/70 rounded-xl text-center text-xs text-muted-foreground font-sans">
+                              Commenting is restricted to students, instructors, chairs, and deans of this program or college.
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1349,101 +1442,135 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
       </div>
 
       {/* Modal: In-Browser Document & Resource Previewer (Wide Screen) */}
-      {previewItem && (
-        <ModalPortal>
-          <div className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 md:p-6 overflow-hidden animate-fade-in select-none">
-            <div className="bg-card border border-border rounded-2xl w-[96vw] max-w-[1550px] h-[92vh] max-h-[95vh] shadow-elevated overflow-hidden animate-scale-in flex flex-col">
-              <div className="px-6 py-4 border-b border-border flex items-center justify-between bg-muted/40 shrink-0">
-                <div className="flex items-center space-x-3 overflow-hidden">
-                  <div className="p-2.5 rounded-xl bg-card border border-border text-primary shadow-subtle shrink-0">
-                    {getItemIcon(previewItem.type)}
-                  </div>
-                  <div className="truncate">
-                    <h3 className="text-sm font-bold text-foreground font-sans truncate">{previewItem.title}</h3>
-                    <div className="flex items-center space-x-2 text-[12px] font-sans font-medium text-muted-foreground truncate">
-                      {previewItem.fileName && <span>{previewItem.fileName}</span>}
-                      {previewItem.fileSize && <span>· {previewItem.fileSize}</span>}
-                      <span>· Full screen preview</span>
+      {previewItem && (() => {
+        const itemAttachments = (previewItem.attachments && previewItem.attachments.length > 0)
+          ? previewItem.attachments
+          : previewItem.fileName
+            ? [{ name: previewItem.fileName, size: previewItem.fileSize || '', url: previewItem.fileUrl, type: previewItem.fileType }]
+            : [];
+        const activeAtt = itemAttachments[previewAttachmentIndex] || itemAttachments[0] || null;
+        const activeName = activeAtt?.name || previewItem.fileName || '';
+        const activeSize = activeAtt?.size || previewItem.fileSize || '';
+        const activeUrl = activeAtt?.url || previewItem.fileUrl || '';
+        const isImg = activeName ? /\.(jpg|jpeg|png|gif|svg|webp)$/i.test(activeName) : false;
+        const isPdf = activeUrl ? (activeUrl.startsWith('data:application/pdf') || activeUrl.includes('.pdf') || (activeName && /\.pdf$/i.test(activeName))) : false;
+
+        return (
+          <ModalPortal>
+            <div className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 md:p-6 overflow-hidden animate-fade-in select-none">
+              <div className="bg-card border border-border rounded-2xl w-[96vw] max-w-[1550px] h-[92vh] max-h-[95vh] shadow-elevated overflow-hidden animate-scale-in flex flex-col">
+                <div className="px-6 py-4 border-b border-border flex items-center justify-between bg-muted/40 shrink-0">
+                  <div className="flex items-center space-x-3 overflow-hidden">
+                    <div className="p-2.5 rounded-xl bg-card border border-border text-primary shadow-subtle shrink-0">
+                      {getItemIcon(previewItem.type)}
+                    </div>
+                    <div className="truncate">
+                      <h3 className="text-sm font-bold text-foreground font-sans truncate">{previewItem.title}</h3>
+                      <div className="flex items-center space-x-2 text-[12px] font-sans font-medium text-muted-foreground truncate">
+                        {activeName && <span>{activeName}</span>}
+                        {activeSize && <span>· {activeSize}</span>}
+                        <span>· Full screen preview</span>
+                      </div>
                     </div>
                   </div>
-                </div>
-                <div className="flex items-center space-x-2 shrink-0 ml-4">
-                  {previewItem.fileName && (
+                  <div className="flex items-center space-x-2 shrink-0 ml-4">
+                    {activeName && (
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadFile(previewItem, activeAtt || undefined)}
+                        className="px-3.5 py-1.5 text-xs font-bold font-sans bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all shadow-primary-sm flex items-center space-x-1.5 cursor-pointer"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>Download</span>
+                      </button>
+                    )}
                     <button
                       type="button"
-                      onClick={() => handleDownloadFile(previewItem)}
-                      className="px-3.5 py-1.5 text-xs font-bold font-sans bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all shadow-primary-sm flex items-center space-x-1.5 cursor-pointer"
+                      onClick={() => setPreviewItem(null)}
+                      className="text-muted-foreground hover:text-foreground p-2 rounded-xl hover:bg-muted cursor-pointer transition-colors"
                     >
-                      <Download className="w-3.5 h-3.5" />
-                      <span>Download</span>
+                      <X className="w-4 h-4" />
                     </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setPreviewItem(null)}
-                    className="text-muted-foreground hover:text-foreground p-2 rounded-xl hover:bg-muted cursor-pointer transition-colors"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
+                  </div>
                 </div>
-              </div>
 
-              <div className="p-4 sm:p-6 overflow-y-auto custom-scrollbar flex-1 bg-background/50 flex flex-col space-y-4 min-h-0">
-                {/* Image Preview */}
-                {previewItem.fileName &&
-                  /\.(jpg|jpeg|png|gif|svg|webp)$/i.test(previewItem.fileName) &&
-                  previewItem.fileUrl && (
+                {/* Multi-attachment tab selector if more than 1 attachment */}
+                {itemAttachments.length > 1 && (
+                  <div className="px-6 py-2.5 bg-muted/30 border-b border-border flex items-center gap-2 overflow-x-auto shrink-0">
+                    <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider shrink-0 mr-1">
+                      Attachments ({itemAttachments.length}):
+                    </span>
+                    {itemAttachments.map((att, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setPreviewAttachmentIndex(idx)}
+                        className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-colors shrink-0 ${
+                          previewAttachmentIndex === idx
+                            ? 'bg-primary text-primary-foreground shadow-subtle'
+                            : 'bg-card hover:bg-muted text-foreground border border-border/80'
+                        }`}
+                      >
+                        {getAttachmentIcon(att.name)}
+                        <span className="truncate max-w-[200px]">{att.name}</span>
+                        {att.size && <span className="text-[10px] opacity-75 font-normal">({att.size})</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <div className="p-4 sm:p-6 overflow-y-auto custom-scrollbar flex-1 bg-background/50 flex flex-col space-y-4 min-h-0">
+                  {/* Image Preview */}
+                  {isImg && activeUrl && (
                     <div className="w-full flex-1 min-h-[300px] rounded-xl overflow-hidden border border-border flex items-center justify-center bg-black/20 p-2 sm:p-4">
                       <img
-                        src={previewItem.fileUrl}
-                        alt={previewItem.fileName}
+                        src={activeUrl}
+                        alt={activeName}
                         className="max-w-full max-h-full object-contain rounded-xl shadow-elevated"
                       />
                     </div>
                   )}
 
-                {/* PDF Preview */}
-                {previewItem.fileUrl &&
-                  (previewItem.fileUrl.startsWith('data:application/pdf') || previewItem.fileUrl.includes('.pdf') || (previewItem.fileName && /\.pdf$/i.test(previewItem.fileName))) && (
+                  {/* PDF Preview */}
+                  {isPdf && activeUrl && (
                     <PdfViewer
-                      url={previewItem.fileUrl}
-                      title={previewItem.title || previewItem.fileName || 'PDF Document'}
+                      url={activeUrl}
+                      title={previewItem.title || activeName || 'PDF Document'}
                       className="w-full flex-1 min-h-[500px]"
                     />
                   )}
 
-                {/* Text / Instructions Content */}
-                {previewItem.content && (
-                  <div className="space-y-2">
-                    <h4 className="text-xs font-bold font-sans text-muted-foreground uppercase tracking-wider">
-                      Instructions & Reading Guidelines
-                    </h4>
-                    <div className="p-5 bg-card/80 rounded-2xl border border-border text-xs text-foreground leading-relaxed whitespace-pre-line font-sans shadow-subtle">
-                      {previewItem.content}
+                  {/* Text / Instructions Content */}
+                  {previewItem.content && (
+                    <div className="space-y-2">
+                      <h4 className="text-xs font-bold font-sans text-muted-foreground uppercase tracking-wider">
+                        Instructions & Reading Guidelines
+                      </h4>
+                      <div className="p-5 bg-card/80 rounded-2xl border border-border text-xs text-foreground leading-relaxed whitespace-pre-line font-sans shadow-subtle">
+                        {previewItem.content}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {/* Attached file summary banner if not an image and not a pdf */}
-                {previewItem.fileName &&
-                  !/\.(jpg|jpeg|png|gif|svg|webp|pdf)$/i.test(previewItem.fileName) && (
+                  {/* Attached file summary banner if not an image and not a pdf */}
+                  {activeName && !isImg && !isPdf && (
                     <div className="p-6 bg-card border border-border rounded-2xl flex flex-col sm:flex-row items-center justify-between shadow-subtle gap-4 my-auto max-w-2xl mx-auto w-full">
                       <div className="flex items-center space-x-3.5">
                         <div className="w-12 h-12 rounded-xl bg-muted border border-border flex items-center justify-center shrink-0">
-                          {getAttachmentIcon(previewItem.fileName)}
+                          {getAttachmentIcon(activeName)}
                         </div>
                         <div>
                           <span className="font-bold text-sm text-foreground block font-sans">
-                            {previewItem.fileName}
+                            {activeName}
                           </span>
                           <span className="text-xs font-sans text-muted-foreground">
-                            {previewItem.fileSize || 'Document file'} • Attached to module
+                            {activeSize || 'Document file'} • Attached to module
                           </span>
                         </div>
                       </div>
                       <button
                         type="button"
-                        onClick={() => handleDownloadFile(previewItem)}
+                        onClick={() => handleDownloadFile(previewItem, activeAtt || undefined)}
                         className="px-4 py-2 text-xs font-bold font-sans bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl transition-all shadow-primary-sm flex items-center space-x-1.5 cursor-pointer shrink-0"
                       >
                         <Download className="w-3.5 h-3.5" />
@@ -1451,11 +1578,59 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                       </button>
                     </div>
                   )}
+
+                  {/* If multiple attachments exist, render a full file gallery list at the bottom for convenient download */}
+                  {itemAttachments.length > 1 && (
+                    <div className="pt-4 border-t border-border space-y-3">
+                      <h4 className="text-xs font-bold font-sans text-muted-foreground uppercase tracking-wider">
+                        All Attached Files & Resources ({itemAttachments.length})
+                      </h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                        {itemAttachments.map((att, idx) => (
+                          <div
+                            key={idx}
+                            onClick={() => setPreviewAttachmentIndex(idx)}
+                            className={`p-3 rounded-xl border flex items-center justify-between gap-3 cursor-pointer transition-all ${
+                              previewAttachmentIndex === idx
+                                ? 'bg-primary/5 border-primary/40 shadow-subtle'
+                                : 'bg-card border-border hover:bg-muted/30 hover:border-primary/20'
+                            }`}
+                          >
+                            <div className="flex items-center space-x-2.5 overflow-hidden min-w-0">
+                              <div className="w-8 h-8 rounded-lg bg-muted border border-border flex items-center justify-center shrink-0">
+                                {getAttachmentIcon(att.name)}
+                              </div>
+                              <div className="truncate min-w-0">
+                                <p className="text-xs font-semibold text-foreground truncate" title={att.name}>
+                                  {att.name}
+                                </p>
+                                <p className="text-[10px] text-muted-foreground">
+                                  {att.size || 'File'}
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={e => {
+                                e.stopPropagation();
+                                handleDownloadFile(previewItem, att);
+                              }}
+                              className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors cursor-pointer shrink-0"
+                              title={`Download ${att.name}`}
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        </ModalPortal>
-      )}
+          </ModalPortal>
+        );
+      })()}
 
       <CrossSectionPromptModal
         isOpen={isCrossSectionModalOpen}

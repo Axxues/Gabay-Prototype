@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { OfficialSyllabusData } from '../../../../shared/data/syllabusData';
-import { WIZARD_STEPS, type WizardStepId } from '../../types/creator';
+import { WIZARD_STEPS } from '../../types/creator';
 import { Step1CourseInfo } from './steps/Step1CourseInfo';
 import { Step2InstitutionalOutcomes } from './steps/Step2InstitutionalOutcomes';
 import { Step3CourseOutline } from './steps/Step3CourseOutline';
@@ -14,14 +14,7 @@ import {
   ArrowRight,
   Eye,
   EyeOff,
-  Check,
-  BookOpen,
-  Award,
-  Calendar,
-  Layers,
-  Compass,
-  ShieldCheck,
-  UserCheck
+  Check
 } from 'lucide-react';
 
 interface SyllabusWizardProps {
@@ -29,16 +22,6 @@ interface SyllabusWizardProps {
   onChange: (updated: OfficialSyllabusData) => void;
   onAttachCourse: () => void;
 }
-
-const STEP_ICONS: Record<WizardStepId, React.ReactNode> = {
-  'course-info': <BookOpen className="w-4 h-4" />,
-  'outcomes': <Award className="w-4 h-4" />,
-  'outline': <Calendar className="w-4 h-4" />,
-  'learning-plan': <Layers className="w-4 h-4" />,
-  'course-map': <Compass className="w-4 h-4" />,
-  'grading': <ShieldCheck className="w-4 h-4" />,
-  'review': <UserCheck className="w-4 h-4" />
-};
 
 export const SyllabusWizard: React.FC<SyllabusWizardProps> = ({
   syllabusData,

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import type { OfficialSyllabusData } from '../../../shared/data/syllabusData';
 import { OFFICIAL_SYLLABUS_CSPC112 } from '../../../shared/data/syllabusData';
 import type { SyllabusDraftItem } from '../types/creator';

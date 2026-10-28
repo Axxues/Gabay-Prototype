@@ -7,7 +7,6 @@ import { AttachToCourseModal } from './components/creator/AttachToCourseModal';
 import { scanSyllabusDocument } from '../../shared/utils/syllabusParser';
 import type { OfficialSyllabusData } from '../../shared/data/syllabusData';
 import {
-  FileText,
   Plus,
   Copy,
   Trash2,
@@ -21,8 +20,8 @@ interface SyllabusCreatorPageProps {
   onNavigateTab?: (tab: string) => void;
 }
 
-export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavigateTab }) => {
-  const { activeUser, activeRole, showAlert } = useLMS();
+export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavigateTab: _onNavigateTab }) => {
+  const { activeRole } = useLMS();
   const {
     drafts,
     activeDraft,
@@ -66,17 +65,19 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
     const scanResult = await scanSyllabusDocument(file);
     const baseline = createBaselineSyllabus();
 
+    const detectedInstructor = scanResult.detectedFacultyNames?.[0];
+
     const mergedData: OfficialSyllabusData = {
       ...baseline,
       courseInfo: {
         ...baseline.courseInfo,
-        code: scanResult.detectedCourseNumber || baseline.courseInfo.code,
+        code: scanResult.detectedCourseCode || baseline.courseInfo.code,
         title: scanResult.detectedCourseTitle || baseline.courseInfo.title
       },
-      facultyMembers: scanResult.detectedInstructor
+      facultyMembers: detectedInstructor
         ? [
             {
-              name: scanResult.detectedInstructor,
+              name: detectedInstructor,
               sections: baseline.facultyMembers[0]?.sections || [],
               consultation: baseline.facultyMembers[0]?.consultation || ''
             }
@@ -84,7 +85,7 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
         : baseline.facultyMembers
     };
 
-    createDraft(mergedData, `${scanResult.detectedCourseNumber || 'Imported'} Syllabus`);
+    createDraft(mergedData, `${scanResult.detectedCourseCode || 'Imported'} Syllabus`);
   };
 
   return (
