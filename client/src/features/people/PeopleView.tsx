@@ -19,6 +19,7 @@ import { PageHeader } from '../../shared/components/common/PageHeader';
 import { UserAvatar } from '../../shared/components/common/UserAvatar';
 import { canPickSection } from '../../shared/utils/sections';
 import { getDisplayRoleLabel, isCourseAssignedInstructor } from '../../shared/utils/roles';
+import { sendCourseInvitations } from '../../shared/api/emailApi';
 
 const ROLE_FILTERS = [
   { id: 'all', label: 'All' },
@@ -28,9 +29,10 @@ const ROLE_FILTERS = [
 
 interface PeopleViewProps {
   courseId: string;
+  initialTab?: 'roster' | 'pending';
 }
 
-export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
+export const PeopleView: React.FC<PeopleViewProps> = ({ courseId, initialTab = 'roster' }) => {
   const { db, activeRole, activeUser, isLoading, enrollStudentsInCourse, regenerateCourseJoinCode, getPendingRequestsForCourse, getApprovedRequestsForCourse, approveEnrollmentRequests, rejectEnrollmentRequests, removeStudentFromCourse, showAlert, showConfirm, markTabVisited } = useLMS();
   const course = db.courses.find(c => c.id === courseId);
 
@@ -38,7 +40,25 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
   const [roleFilter, setRoleFilter] = useState('all');
   const [copiedCode, setCopiedCode] = useState(false);
   const canManageEnrollments = activeRole === 'faculty' || activeRole === 'admin';
-  const [activeTab, setActiveTab] = useState<'roster' | 'pending'>('roster');
+  const getInitialActiveTab = (): 'roster' | 'pending' => {
+    if (initialTab === 'pending') return 'pending';
+    if (typeof window !== 'undefined' && window.location?.search) {
+      try {
+        const sp = new URLSearchParams(window.location.search);
+        if (sp.get('tab') === 'pending') return 'pending';
+      } catch {
+        // Fallback gracefully
+      }
+    }
+    return 'roster';
+  };
+  const [activeTab, setActiveTab] = useState<'roster' | 'pending'>(getInitialActiveTab);
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
   const pendingRequests = canManageEnrollments
     ? (db.enrollmentRequests || []).filter(
         r => r.courseId === courseId && r.status === 'pending'
@@ -192,9 +212,41 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId }) => {
       const ok = await enrollStudentsInCourse(selectedStudentIds, courseId);
       if (!ok) return;
 
+      // Dispatch Google Classroom-style email invitations
+      const origin = typeof window !== 'undefined' ? window.location.origin : '';
+      const invitationPayloads = selectedStudentIds
+        .map(sid => {
+          const student = db.users.find(u => u.id === sid);
+          if (!student?.email) return null;
+          return {
+            recipientEmail: student.email,
+            recipientName: student.name || 'Student',
+            instructorName: course?.instructorName || activeUser.name || 'Your Instructor',
+            courseCode: course?.code || 'Course',
+            courseTitle: course?.title || 'Class',
+            section: course?.section || '',
+            term: course?.term || course?.schoolYear || '',
+            joinUrl: `${origin}/?action=join&courseId=${courseId}&studentId=${sid}`,
+          };
+        })
+        .filter(Boolean) as Array<{
+          recipientEmail: string;
+          recipientName: string;
+          instructorName: string;
+          courseCode: string;
+          courseTitle: string;
+          section: string;
+          term: string;
+          joinUrl: string;
+        }>;
+
+      if (invitationPayloads.length > 0) {
+        void sendCourseInvitations(invitationPayloads);
+      }
+
       showAlert({
         title: 'Invitations Sent',
-        message: `Invited ${selectedStudentIds.length} student${selectedStudentIds.length > 1 ? 's' : ''} to ${course?.code || 'the course'}. They will appear on the roster once they accept.`,
+        message: `Invited ${selectedStudentIds.length} student${selectedStudentIds.length > 1 ? 's' : ''} to ${course?.code || 'the course'}. Email invitations have been sent.`,
         type: 'success'
       });
 

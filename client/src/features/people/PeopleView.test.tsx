@@ -1,12 +1,15 @@
+import '@testing-library/jest-dom/vitest';
 // @vitest-environment jsdom
-import { describe, expect, test, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, test, vi, beforeEach, afterEach } from 'vitest';
+import { fireEvent, render, screen, cleanup } from '@testing-library/react';
 import React from 'react';
 
 const mocks = vi.hoisted(() => ({
   activeRole: 'faculty',
-  activeUser: { id: 'u-fac-1', name: 'Prof', role: 'faculty' },
+  activeUser: { id: 'u-fac-1', name: 'Prof', role: 'faculty', department: 'CS' },
   removeStudentFromCourse: vi.fn(),
+  enrollStudentsInCourse: vi.fn(),
+  sendCourseInvitations: vi.fn(),
   showConfirm: vi.fn(),
   showAlert: vi.fn(),
   mockDb: {
@@ -29,12 +32,13 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../../shared/context/LMSContext', () => ({
+  getCleanStoredAvatar: () => '',
   useLMS: () => ({
     db: mocks.mockDb,
     activeRole: mocks.activeRole,
     activeUser: mocks.activeUser,
     isLoading: false,
-    enrollStudentsInCourse: vi.fn(),
+    enrollStudentsInCourse: mocks.enrollStudentsInCourse,
     regenerateCourseJoinCode: vi.fn(),
     getPendingRequestsForCourse: vi.fn().mockResolvedValue([]),
     approveEnrollmentRequests: vi.fn(),
@@ -45,6 +49,10 @@ vi.mock('../../shared/context/LMSContext', () => ({
   }),
 }));
 
+vi.mock('../../shared/api/emailApi', () => ({
+  sendCourseInvitations: (...args: any[]) => mocks.sendCourseInvitations(...args),
+}));
+
 import { PeopleView } from './PeopleView';
 
 function renderPage() {
@@ -52,10 +60,14 @@ function renderPage() {
 }
 
 describe('PeopleView remove student', () => {
+  afterEach(() => cleanup());
+
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.showConfirm.mockImplementation((_msg: string, cb: () => void) => cb());
     mocks.removeStudentFromCourse.mockResolvedValue(true);
+    mocks.enrollStudentsInCourse.mockResolvedValue(true);
+    mocks.sendCourseInvitations.mockResolvedValue({ success: true, sent: 1, total: 1 });
   });
 
   test('faculty sees a remove control on student roster rows only', () => {
@@ -78,6 +90,7 @@ describe('PeopleView remove student', () => {
     expect(screen.queryByText('Dean Eleanor')).not.toBeInTheDocument();
     expect(screen.queryByText('Other Prof')).not.toBeInTheDocument();
     expect(screen.queryByText('Stu Other Course')).not.toBeInTheDocument();
+    expect(screen.queryByText('Stu Pending')).not.toBeInTheDocument();
   });
 
   test('filters roster by Faculty and Students tabs correctly', () => {
@@ -150,5 +163,44 @@ describe('PeopleView remove student', () => {
     // Reset back to faculty
     mocks.activeRole = 'faculty';
     mocks.activeUser = { id: 'u-fac-1', name: 'Prof', role: 'faculty' };
+  });
+
+  test('renders directly to Pending tab when initialTab is set to pending', async () => {
+    mocks.mockDb.enrollmentRequests = [
+      { id: 'req-2', courseId: 'c1', studentId: 'u-stu-pending', studentName: 'Stu Pending', type: 'self_join', status: 'pending', requestedAt: new Date().toISOString() },
+    ];
+    render(<PeopleView courseId="c1" initialTab="pending" />);
+
+    // Pending list content is displayed directly without needing to click the tab
+    expect(await screen.findByText('Stu Pending')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /approve/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /reject/i })).toBeInTheDocument();
+  });
+
+  test('enrolling students dispatches both course enrollment request and email invitations', async () => {
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: /enroll person/i }));
+    expect(screen.getByText('Enroll Students in Course')).toBeInTheDocument();
+
+    const studentCheckbox = screen.getByText('Stu Other Course');
+    fireEvent.click(studentCheckbox);
+
+    const sendButton = screen.getByRole('button', { name: /send invitations/i });
+    fireEvent.click(sendButton);
+
+    await vi.waitFor(() => {
+      expect(mocks.enrollStudentsInCourse).toHaveBeenCalledWith(['u-stu-other'], 'c1');
+    });
+    await vi.waitFor(() => {
+      expect(mocks.sendCourseInvitations).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            recipientEmail: 'otherstu@school.edu',
+            recipientName: 'Stu Other Course',
+            courseCode: 'CMSC 131',
+          }),
+        ])
+      );
+    });
   });
 });
