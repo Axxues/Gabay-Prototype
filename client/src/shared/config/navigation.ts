@@ -6,7 +6,7 @@ export const NO_STAFF: UserRole[] = ['superadmin', 'admin', 'faculty', 'student'
 export const MAIN_NAV: NavItem[] = [
   { id: 'lms', label: 'Learning Management', icon: 'courses', roles: ALL },
   { id: 'gabay-rag', label: 'Gabay RAG', icon: 'gabay-rag', roles: ALL },
-  { id: 'page1', label: 'Page 1', icon: 'page1', roles: NO_STAFF },
+  { id: 'page1', label: 'Syllabus Creator', icon: 'page1', roles: ['superadmin', 'admin', 'faculty'] },
   { id: 'page2', label: 'Page 2', icon: 'page2', roles: NO_STAFF },
   { id: 'page3', label: 'Page 3', icon: 'page3', roles: NO_STAFF },
   { id: 'governance', label: 'Academic Governance', icon: 'governance', roles: ['superadmin', 'admin'] },
@@ -17,7 +17,7 @@ export function canAccessAccountManagement(role?: UserRole | string | null, _adm
   return role === 'superadmin' || role === 'admin';
 }
 export const LMS_CHILDREN: NavItem[] = [
-  { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', roles: NO_STAFF },
+  { id: 'dashboard', label: 'Courses', icon: 'dashboard', roles: NO_STAFF },
   { id: 'calendar', label: 'Calendar', icon: 'calendar', roles: ALL },
   { id: 'inbox', label: 'Inbox', icon: 'inbox', roles: ALL },
 ];

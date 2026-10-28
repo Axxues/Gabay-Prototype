@@ -1,5 +1,5 @@
 import React, { useContext } from 'react';
-import { LayoutDashboard, BookOpen, Calendar, Inbox, History, HelpCircle, Building, BarChart3, FileCheck2, Users, LogOut, GraduationCap, Sparkles, Landmark } from 'lucide-react';
+import { LayoutDashboard, BookOpen, Calendar, Inbox, History, HelpCircle, Building, BarChart3, FileCheck2, Users, LogOut, GraduationCap, Sparkles, Landmark, FileText } from 'lucide-react';
 import { useLMS } from '../../context/LMSContext';
 import { GabayChatContext } from '../../context/GabayChatContext';
 import { MAIN_NAV, isVisible, type NavIcon } from '../../config/navigation';
@@ -22,7 +22,7 @@ const ICONS: Record<NavIcon, React.ReactNode> = {
   projects: <BookOpen className="h-5 w-5" />,
   presentations: <BookOpen className="h-5 w-5" />,
   governance: <Landmark className="h-5 w-5" />,
-  accounts: <Users className="h-5 w-5" />, page1: <Building className="h-5 w-5" />,
+  accounts: <Users className="h-5 w-5" />, page1: <FileText className="h-5 w-5" />,
   page2: <BarChart3 className="h-5 w-5" />, page3: <FileCheck2 className="h-5 w-5" />,
 };
 
