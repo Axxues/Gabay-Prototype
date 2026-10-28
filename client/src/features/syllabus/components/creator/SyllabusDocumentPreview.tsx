@@ -98,7 +98,9 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
                 Schedule & Room Assignment:
               </td>
               <td className="p-2">
-                {primarySection ? `${primarySection.schedule || 'TBA'} (${primarySection.room || 'TBA'})` : 'TBA'}
+                {primarySection
+                  ? `${primarySection.section ? `${primarySection.section} | ` : ''}${primarySection.schedule || 'TBA'} (${primarySection.room || 'TBA'})`
+                  : 'TBA'}
               </td>
             </tr>
             <tr>
@@ -379,9 +381,9 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
             <thead>
               <tr className="bg-slate-100 border-b border-slate-900">
                 <th className="p-2 border-r border-slate-900 w-1/3">Course Outcomes (CO)</th>
-                {Array.from({ length: 11 }, (_, i) => i + 1).map(poNum => (
-                  <th key={poNum} className="p-1.5 text-center border-r border-slate-900 font-bold w-12">
-                    PO{poNum}
+                {(programOutcomes && programOutcomes.length > 0 ? programOutcomes : Array.from({ length: 11 }, (_, i) => ({ number: i + 1 }))).map(po => (
+                  <th key={po.number} className="p-1.5 text-center border-r border-slate-900 font-bold w-12">
+                    PO{po.number}
                   </th>
                 ))}
               </tr>
@@ -392,10 +394,10 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
                   <td className="p-2 border-r border-slate-900">
                     <span className="font-bold">CO{row.coNumber}:</span> {row.coStatement}
                   </td>
-                  {Array.from({ length: 11 }, (_, i) => i + 1).map(poNum => {
-                    const alignment = row.poAlignments?.[poNum] || '';
+                  {(programOutcomes && programOutcomes.length > 0 ? programOutcomes : Array.from({ length: 11 }, (_, i) => ({ number: i + 1 }))).map(po => {
+                    const alignment = row.poAlignments?.[po.number] || '';
                     return (
-                      <td key={poNum} className="p-1.5 text-center font-bold border-r border-slate-900">
+                      <td key={po.number} className="p-1.5 text-center font-bold border-r border-slate-900">
                         {alignment || ''}
                       </td>
                     );

@@ -4,6 +4,7 @@ import { useLMS } from '../../../shared/context/LMSContext';
 import type { College, Department, SchoolYear, User, AcademicSemester, LeadershipRoleType } from '../../../shared/types/lms';
 import { LeadershipTransferModal } from './LeadershipTransferModal';
 import { ACADEMIC_SEMESTERS, formatSemesterLabel, normalizeAcademicSemester } from '../../../shared/utils/academicSemester';
+import { normalizeProgramName } from '../../../shared/data/collegesData';
 import { DialogFrame } from '../../../shared/components/common/DialogFrame';
 import { UserAvatar } from '../../../shared/components/common/UserAvatar';
 import { CustomDropdown } from '../../../shared/components/common/CustomDropdown';
@@ -131,7 +132,10 @@ export const AcademicStructureTab: React.FC = () => {
              (activeUser?.department &&
                (d.id === activeUser.department ||
                 d.name?.toLowerCase() === activeUser.department.toLowerCase() ||
-                d.code?.toLowerCase() === activeUser.department.toLowerCase()))
+                d.code?.toLowerCase() === activeUser.department.toLowerCase() ||
+                normalizeProgramName(d.name) === normalizeProgramName(activeUser.department) ||
+                d.name?.toLowerCase().includes(activeUser.department.toLowerCase()) ||
+                activeUser.department.toLowerCase().includes(d.name?.toLowerCase())))
       )
     : undefined;
 

@@ -5,6 +5,7 @@ import { uploadFileToPublic, isImageFile } from '../../shared/utils/fileUploader
 import { UploadProgress } from '../../shared/components/common/UploadProgress';
 import { UserAvatar } from '../../shared/components/common/UserAvatar';
 import { getAcademicTermOptions, getDefaultAcademicTerm } from '../../shared/utils/academicTerms';
+import { normalizeProgramName } from '../../shared/data/collegesData';
 import {
   ArrowLeft,
   BookOpen,
@@ -88,6 +89,9 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
           d.id === activeUser.department ||
           d.name?.toLowerCase() === activeUser.department.toLowerCase() ||
           d.code?.toLowerCase() === activeUser.department.toLowerCase() ||
+          normalizeProgramName(d.name) === normalizeProgramName(activeUser.department) ||
+          d.name?.toLowerCase().includes(activeUser.department.toLowerCase()) ||
+          activeUser.department.toLowerCase().includes(d.name?.toLowerCase()) ||
           d.chairpersonId === activeUser.id
       );
       if (match?.collegeId) return match.collegeId;

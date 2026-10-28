@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useLMS } from '../../../shared/context/LMSContext';
 import type { AcademicSemester } from '../../../shared/types/lms';
+import { normalizeProgramName } from '../../../shared/data/collegesData';
 import { formatSemesterLabel } from '../../../shared/utils/academicSemester';
 import { AnimatedModal } from '../../../shared/components/common/ModalPortal';
 import {
@@ -90,6 +91,7 @@ export const AssignedCoursesUploadView: React.FC<AssignedCoursesUploadViewProps>
           d.id === activeUser.department ||
           d.name?.toLowerCase() === activeUser.department.toLowerCase() ||
           d.code?.toLowerCase() === activeUser.department.toLowerCase() ||
+          normalizeProgramName(d.name) === normalizeProgramName(activeUser.department) ||
           d.chairpersonId === activeUser.id ||
           (d.name && activeUser.department && (d.name.toLowerCase().includes(activeUser.department.toLowerCase()) || activeUser.department.toLowerCase().includes(d.name.toLowerCase())))
       );

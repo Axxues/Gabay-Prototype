@@ -52,7 +52,7 @@ export const DEFAULT_SCHOOL_YEARS: SchoolYear[] = generateAutomaticSchoolYears()
 /**
  * Helper to normalize program names, stripping any redundant "Program in " prefix.
  */
-export function normalizeProgramName(name: string): string {
+export function normalizeProgramName(name?: string | null): string {
   if (!name || typeof name !== 'string') return '';
   const trimmed = name.trim();
   if (/^Program in Computer Science$/i.test(trimmed)) {

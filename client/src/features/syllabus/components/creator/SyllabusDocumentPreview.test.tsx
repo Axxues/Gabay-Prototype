@@ -49,4 +49,26 @@ describe('SyllabusDocumentPreview', () => {
     expect(screen.getAllByText(/Program Chairperson/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Dean \/ Institute Director/i).length).toBeGreaterThan(0);
   });
+
+  it('renders custom program outcomes and custom institution header dynamically', () => {
+    const customSyllabus = {
+      ...OFFICIAL_SYLLABUS_CSPC112,
+      institution: {
+        university: 'Philippine State University',
+        college: 'College of Engineering',
+        formCode: 'PSU-FORM-001',
+        revision: 'REV. 03'
+      },
+      programOutcomes: [
+        { number: 1, description: 'First PO' },
+        { number: 12, description: 'Twelfth PO Specialization' }
+      ]
+    };
+    render(<SyllabusDocumentPreview syllabus={customSyllabus} />);
+    expect(screen.getByText(/Philippine State University/i)).toBeInTheDocument();
+    expect(screen.getByText(/College of Engineering/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/PSU-FORM-001/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Twelfth PO Specialization/i)).toBeInTheDocument();
+    expect(screen.getByText('PO12')).toBeInTheDocument();
+  });
 });

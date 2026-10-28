@@ -17,6 +17,10 @@ export const cycleAlignment = (current: string = ''): 'I' | 'P' | 'D' | '' => {
 export const Step5CourseMap: React.FC<Step5CourseMapProps> = ({ data, onChange }) => {
   const { courseOutcomes = [], programOutcomes = [], courseMap = [] } = data;
 
+  const poList = programOutcomes.length > 0
+    ? programOutcomes
+    : Array.from({ length: 11 }, (_, i) => ({ number: i + 1, description: '' }));
+
   // Ensure courseMap entries match current course outcomes
   const synchronizedMap: CourseMapEntry[] = courseOutcomes.map(co => {
     const existing = courseMap.find(cm => cm.coNumber === co.number);
@@ -110,13 +114,13 @@ export const Step5CourseMap: React.FC<Step5CourseMapProps> = ({ data, onChange }
               <th className="p-3 w-1/3 min-w-[260px] border-r border-border">
                 Course Outcomes (CO)
               </th>
-              {Array.from({ length: 11 }, (_, i) => i + 1).map(poNum => (
+              {poList.map(po => (
                 <th
-                  key={poNum}
+                  key={po.number}
                   className="p-2 text-center border-r border-border min-w-[48px] w-12 text-foreground"
-                  title={programOutcomes.find(p => p.number === poNum)?.description}
+                  title={po.description}
                 >
-                  PO{poNum}
+                  PO{po.number}
                 </th>
               ))}
             </tr>
@@ -132,16 +136,16 @@ export const Step5CourseMap: React.FC<Step5CourseMapProps> = ({ data, onChange }
                     {entry.coStatement}
                   </div>
                 </td>
-                {Array.from({ length: 11 }, (_, i) => i + 1).map(poNum => {
-                  const val = entry.poAlignments[poNum] || '';
+                {poList.map(po => {
+                  const val = entry.poAlignments[po.number] || '';
                   return (
-                    <td key={poNum} className="p-1 text-center border-r border-border align-middle">
+                    <td key={po.number} className="p-1 text-center border-r border-border align-middle">
                       <button
                         type="button"
-                        data-testid={`cell-co-${entry.coNumber}-po-${poNum}`}
-                        onClick={() => handleCellClick(entry.coNumber, poNum)}
+                        data-testid={`cell-co-${entry.coNumber}-po-${po.number}`}
+                        onClick={() => handleCellClick(entry.coNumber, po.number)}
                         className={`w-8 h-8 rounded-lg border font-bold text-xs transition-all cursor-pointer active:scale-95 flex items-center justify-center mx-auto ${getCellBadgeStyle(val)}`}
-                        title={`Click to cycle alignment for CO${entry.coNumber} x PO${poNum}`}
+                        title={`Click to cycle alignment for CO${entry.coNumber} x PO${po.number}`}
                       >
                         {val || '-'}
                       </button>

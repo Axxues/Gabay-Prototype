@@ -1,6 +1,8 @@
+import { sendRejectionEmail } from '../../shared/api/emailApi';
 import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLMS } from '../../shared/context/LMSContext';
+import { deduplicatePendingRegistrations } from '../../shared/utils/registration';
 import type { User, UserRole, PendingRegistration } from '../../shared/types/lms';
 import { PageHeader } from '../../shared/components/common/PageHeader';
 import { UserAvatar } from '../../shared/components/common/UserAvatar';
@@ -104,62 +106,147 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
   // Scoped Pending Registrations calculation. Applicants who have not yet confirmed their
   // email stay in the queue (flagged, and blocked from approval) so leadership can see them.
   const scopedPendingRegistrations = useMemo(() => {
-    const list = (pendingRegistrations || []).filter(
-      r => r.status === 'pending' || !r.status
+    const list = deduplicatePendingRegistrations(
+      (pendingRegistrations || []).filter(
+        r => r.status === 'pending' || !r.status
+      )
     );
 
-    // Chancellor / Superadmin sees all registrations across all colleges & departments
-    if (activeRole === 'superadmin' || activeUser?.adminSubrole === 'chancellor') {
+    const isDeanUser = (activeRole === 'admin' && activeUser?.adminSubrole === 'dean') || activeRole === 'dean';
+    const isChairUser =
+      (activeRole === 'admin' && activeUser?.adminSubrole === 'chairperson') ||
+      activeRole === 'chairperson' ||
+      isChairRole(activeUser, activeRole);
+    const isSystemAdmin =
+      activeRole === 'superadmin' ||
+      activeUser?.adminSubrole === 'chancellor' ||
+      (activeRole === 'admin' && !isDeanUser && !isChairUser);
+
+    // Admin / Chancellor / Superadmin sees all registrations throughout the system
+    if (isSystemAdmin) {
       return list;
     }
 
-    // Dean: sees all pending registrations in their college
-    if (activeRole === 'admin' && activeUser?.adminSubrole === 'dean') {
-      return list.filter(r => {
-        if (activeUser?.collegeId && r.collegeId === activeUser.collegeId) return true;
-        if (
-          activeUser?.collegeName &&
-          r.collegeName &&
-          r.collegeName.toLowerCase() === activeUser.collegeName.toLowerCase()
-        ) {
-          return true;
-        }
-        return false;
-      });
-    }
-
-    // Chairperson: sees all pending registrations in their program
-    if (activeRole === 'admin' && activeUser?.adminSubrole === 'chairperson') {
-      const activeUnit = activeUser?.program || activeUser?.department;
-      return list.filter(r => {
-        const regUnit = r.program || r.department;
-        if (
-          activeUnit &&
-          regUnit &&
-          regUnit.toLowerCase() === activeUnit.toLowerCase()
-        ) {
-          return true;
-        }
-        return false;
-      });
-    }
-
-    // Fallbacks for other roles
-    const fallbackUnit = activeUser?.program || activeUser?.department;
-    if (fallbackUnit) {
-      return list.filter(
-        r => {
-          const regUnit = r.program || r.department;
-          return regUnit && regUnit.toLowerCase() === fallbackUnit.toLowerCase();
-        }
+    // Dean sees all pending registrations within their college
+    if (isDeanUser) {
+      const deanCol = (colleges || []).find(
+        c =>
+          (activeUser?.id && c.deanId === activeUser.id) ||
+          (activeUser?.collegeId && (c.id === activeUser.collegeId || (c.code && c.code.toLowerCase() === activeUser.collegeId.toLowerCase()))) ||
+          (activeUser?.collegeName && c.name?.toLowerCase() === activeUser.collegeName.toLowerCase()) ||
+          (activeUser?.department && (c.name?.toLowerCase().includes(activeUser.department.toLowerCase()) || activeUser.department.toLowerCase().includes(c.name?.toLowerCase())))
       );
+      const deanColId = activeUser?.collegeId || deanCol?.id;
+      const deanColName = (activeUser?.collegeName || deanCol?.name || '').trim().toLowerCase();
+      const deanColCode = (deanCol?.code || '').trim().toLowerCase();
+
+      return list.filter(r => {
+        if (deanColId && r.collegeId === deanColId) return true;
+        if (deanColCode && r.collegeId && r.collegeId.toLowerCase() === deanColCode) return true;
+        if (
+          deanColName &&
+          r.collegeName &&
+          (r.collegeName.toLowerCase() === deanColName ||
+           r.collegeName.toLowerCase().includes(deanColName) ||
+           deanColName.includes(r.collegeName.toLowerCase()))
+        ) {
+          return true;
+        }
+        if (deanColCode === 'ccs' && (r.collegeId === 'col-ccs' || r.collegeName?.toLowerCase().includes('computer science'))) {
+          return true;
+        }
+        return false;
+      });
+    }
+
+    // Chairperson sees all pending registrations within their program
+    if (isChairUser) {
+      const chairDept = (departments || []).find(
+        d =>
+          (activeUser?.id && d.chairpersonId === activeUser.id) ||
+          (activeUser?.department && (
+            d.id === activeUser.department ||
+            d.name?.toLowerCase() === activeUser.department.toLowerCase() ||
+            d.code?.toLowerCase() === activeUser.department.toLowerCase() ||
+            normalizeProgramName(d.name) === normalizeProgramName(activeUser.department) ||
+            d.name?.toLowerCase().includes(activeUser.department.toLowerCase()) ||
+            activeUser.department.toLowerCase().includes(d.name?.toLowerCase())
+          )) ||
+          (activeUser?.program && (
+            d.id === activeUser.program ||
+            d.name?.toLowerCase() === activeUser.program.toLowerCase() ||
+            d.code?.toLowerCase() === activeUser.program.toLowerCase() ||
+            normalizeProgramName(d.name) === normalizeProgramName(activeUser.program) ||
+            d.name?.toLowerCase().includes(activeUser.program.toLowerCase()) ||
+            activeUser.program.toLowerCase().includes(d.name?.toLowerCase())
+          ))
+      );
+
+      return list.filter(r => {
+        const regDeptRaw = (r.department || '').trim();
+        const regProgRaw = (r.program || '').trim();
+        const regDeptNorm = normalizeProgramName(regDeptRaw).toLowerCase();
+        const regProgNorm = normalizeProgramName(regProgRaw).toLowerCase();
+        const regDeptLower = regDeptRaw.toLowerCase();
+        const regProgLower = regProgRaw.toLowerCase();
+
+        if (chairDept) {
+          if (regDeptRaw === chairDept.id || regProgRaw === chairDept.id) return true;
+
+          const chairNameLower = chairDept.name.trim().toLowerCase();
+          const chairCodeLower = (chairDept.code || '').trim().toLowerCase();
+          const chairNameNorm = normalizeProgramName(chairDept.name).toLowerCase();
+
+          if (regDeptLower === chairNameLower || regProgLower === chairNameLower) return true;
+          if (chairCodeLower && (regDeptLower === chairCodeLower || regProgLower === chairCodeLower)) return true;
+          if (chairNameNorm && (regDeptNorm === chairNameNorm || regProgNorm === chairNameNorm)) return true;
+          if (
+            (regDeptLower && (chairNameLower.includes(regDeptLower) || regDeptLower.includes(chairNameLower))) ||
+            (regProgLower && (chairNameLower.includes(regProgLower) || regProgLower.includes(chairNameLower)))
+          ) {
+            return true;
+          }
+        }
+
+        const activeUnit = (activeUser?.program || activeUser?.department || '').trim();
+        if (!activeUnit) return false;
+
+        const activeUnitLower = activeUnit.toLowerCase();
+        const activeUnitNorm = normalizeProgramName(activeUnit).toLowerCase();
+
+        if (regDeptLower === activeUnitLower || regProgLower === activeUnitLower) return true;
+        if (activeUnitNorm && (regDeptNorm === activeUnitNorm || regProgNorm === activeUnitNorm)) return true;
+        if (
+          (regDeptLower && (activeUnitLower.includes(regDeptLower) || regDeptLower.includes(activeUnitLower))) ||
+          (regProgLower && (activeUnitLower.includes(regProgLower) || regProgLower.includes(activeUnitLower)))
+        ) {
+          return true;
+        }
+
+        return false;
+      });
+    }
+
+    // Fallbacks for other scoped staff roles
+    const fallbackUnit = (activeUser?.program || activeUser?.department || '').trim().toLowerCase();
+    if (fallbackUnit) {
+      const fallbackNorm = normalizeProgramName(fallbackUnit).toLowerCase();
+      return list.filter(r => {
+        const regUnit = (r.program || r.department || '').trim().toLowerCase();
+        const regNorm = normalizeProgramName(regUnit).toLowerCase();
+        return Boolean(
+          (regUnit && regUnit === fallbackUnit) ||
+          (regNorm && fallbackNorm && regNorm === fallbackNorm) ||
+          (regUnit && (fallbackUnit.includes(regUnit) || regUnit.includes(fallbackUnit)))
+        );
+      });
     }
     if (activeUser?.collegeId) {
       return list.filter(r => r.collegeId === activeUser.collegeId);
     }
 
     return list;
-  }, [pendingRegistrations, activeRole, activeUser]);
+  }, [pendingRegistrations, activeRole, activeUser, colleges, departments]);
 
   // Role scoping helpers
   const isDean = activeRole === 'admin' && activeUser?.adminSubrole === 'dean';
@@ -465,15 +552,35 @@ export const ManageAccountsPage: React.FC<ManageAccountsPageProps> = ({ onNaviga
     if (!rejectingReg || isRejectingId) return;
     const targetId = rejectingReg.id;
     const reason = rejectReason.trim() || undefined;
+    const targetApplicant = rejectingReg;
     setIsRejectingId(targetId);
     try {
       const res = await rejectRegistration(targetId, reason);
       setRejectingReg(null);
       setRejectReason('');
       if (res.success) {
+        if (reason && targetApplicant.email) {
+          void sendRejectionEmail({
+            email: targetApplicant.email,
+            recipientName: targetApplicant.fullName || `${targetApplicant.firstName || ''} ${targetApplicant.lastName || ''}`.trim(),
+            reason,
+            reviewerName: activeUser?.name || (activeUser as any)?.fullName,
+            reviewerRole: activeUser?.title || (
+              activeRole === 'superadmin' || activeUser?.adminSubrole === 'chancellor'
+                ? 'University Chancellor'
+                : (activeRole === 'admin' && activeUser?.adminSubrole === 'dean') || activeRole === 'dean'
+                ? 'College Dean'
+                : (activeRole === 'admin' && activeUser?.adminSubrole === 'chairperson') || activeRole === 'chairperson' || isChairRole(activeUser, activeRole)
+                ? 'Department Chairperson'
+                : 'Administrator'
+            ),
+          }).catch(() => {});
+        }
         showAlert({
           title: 'Registration Rejected',
-          message: res.message || 'Registration has been rejected.',
+          message: reason
+            ? 'Registration rejected. The explanation has been dispatched to the applicant via email.'
+            : (res.message || 'Registration has been rejected.'),
           type: 'info'
         });
       } else {

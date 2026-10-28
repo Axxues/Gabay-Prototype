@@ -5,6 +5,7 @@ import { uploadFileToPublic, isImageFile } from '../../shared/utils/fileUploader
 import { UploadProgress } from '../../shared/components/common/UploadProgress';
 import { UserAvatar } from '../../shared/components/common/UserAvatar';
 import { normalizeAssignedSemester } from './utils/chairSheetParser';
+import { normalizeProgramName } from '../../shared/data/collegesData';
 import type { Course, UserRole } from '../../shared/types/lms';
 import { isFacultyRole } from '../../shared/utils/roles';
 import { resolveDirectusAssetUrl } from '../../shared/utils/avatar';
@@ -152,6 +153,9 @@ export const EditCoursePage: React.FC<EditCoursePageProps> = ({
           d.id === activeUser.department ||
           d.name?.toLowerCase() === activeUser.department.toLowerCase() ||
           d.code?.toLowerCase() === activeUser.department.toLowerCase() ||
+          normalizeProgramName(d.name) === normalizeProgramName(activeUser.department) ||
+          d.name?.toLowerCase().includes(activeUser.department.toLowerCase()) ||
+          activeUser.department.toLowerCase().includes(d.name?.toLowerCase()) ||
           d.chairpersonId === activeUser.id
       );
       if (match?.collegeId) return match.collegeId;

@@ -24,6 +24,20 @@ describe('Wizard Steps Late', () => {
     expect(onChange).toHaveBeenCalled();
   });
 
+  it('Step 5 dynamically renders custom PO columns when POs are added or modified', () => {
+    const customData = {
+      ...OFFICIAL_SYLLABUS_CSPC112,
+      programOutcomes: [
+        { number: 1, description: 'PO One' },
+        { number: 2, description: 'PO Two' },
+        { number: 12, description: 'PO Twelve Special' }
+      ]
+    };
+    render(<Step5CourseMap data={customData} onChange={vi.fn()} />);
+    expect(screen.getByText('PO12')).toBeInTheDocument();
+    expect(screen.getByTestId('cell-co-1-po-12')).toBeInTheDocument();
+  });
+
   it('Step 6 updates grading formula and policies', () => {
     const onChange = vi.fn();
     render(<Step6GradingPolicies data={OFFICIAL_SYLLABUS_CSPC112} onChange={onChange} />);
