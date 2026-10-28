@@ -112,4 +112,43 @@ describe('emailApi client', () => {
       expect(res.success).toBe(true);
     });
   });
+
+  describe('sendCourseInvitations', () => {
+    it('dispatches course invitations batch to /api/courses/send-course-invitations', async () => {
+      const { sendCourseInvitations, getCourseInvitationEmailApiUrl } = await import('./emailApi');
+      expect(getCourseInvitationEmailApiUrl()).toBe('http://localhost:8000/api/courses/send-course-invitations');
+
+      const fetchMock = vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ success: true, total: 1, sent: 1, message: 'Invitations dispatched.' }),
+      }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const invitations = [
+        {
+          recipientEmail: 's1@dmmmsu.edu.ph',
+          recipientName: 'Student One',
+          instructorName: 'Prof. Turing',
+          courseCode: 'CS 311',
+          courseTitle: 'Software Engineering',
+          section: 'BSCS 3A',
+          term: '1st Sem 2026-2027',
+          joinUrl: 'http://localhost:5173/?action=join&courseId=c1&requestId=req-1',
+          requestId: 'req-1',
+        },
+      ];
+
+      const res = await sendCourseInvitations(invitations);
+      expect(fetchMock).toHaveBeenCalledOnce();
+      const [url, init] = fetchMock.mock.calls[0] as unknown as [string, { method: string; body: string }];
+      expect(url).toBe('http://localhost:8000/api/courses/send-course-invitations');
+      expect(init.method).toBe('POST');
+      const body = JSON.parse(init.body);
+      expect(body.invitations).toHaveLength(1);
+      expect(body.invitations[0].recipient_email).toBe('s1@dmmmsu.edu.ph');
+      expect(body.invitations[0].course_code).toBe('CS 311');
+      expect(res.success).toBe(true);
+      expect(res.sent).toBe(1);
+    });
+  });
 });

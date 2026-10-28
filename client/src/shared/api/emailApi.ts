@@ -132,3 +132,75 @@ export async function verifyLeadershipCode(
     return { success: false, message: err?.message || 'Failed to verify leadership code.' };
   }
 }
+
+export interface CourseInvitationPayload {
+  recipientEmail: string;
+  recipientName?: string;
+  instructorName?: string;
+  courseCode: string;
+  courseTitle: string;
+  section?: string;
+  term?: string;
+  joinUrl: string;
+  requestId?: string;
+}
+
+export function getCourseInvitationEmailApiUrl(): string {
+  const envUrl = import.meta.env.VITE_RAG_API_URL;
+  const baseUrl = (envUrl && typeof envUrl === 'string' && envUrl.trim()
+    ? envUrl.trim()
+    : 'http://localhost:8000').replace(/\/+$/, '');
+  return `${baseUrl}/api/courses/send-course-invitations`;
+}
+
+export async function sendCourseInvitations(
+  invitations: CourseInvitationPayload[]
+): Promise<{ success: boolean; total: number; sent: number; simulated?: boolean; message?: string }> {
+  try {
+    const res = await fetch(getCourseInvitationEmailApiUrl(), {
+      method: 'POST',
+      headers: getEmailApiHeaders(),
+      body: JSON.stringify({
+        invitations: invitations.map(inv => ({
+          recipient_email: inv.recipientEmail,
+          recipient_name: inv.recipientName || '',
+          instructor_name: inv.instructorName || 'Your Instructor',
+          course_code: inv.courseCode,
+          course_title: inv.courseTitle,
+          section: inv.section || '',
+          term: inv.term || '',
+          join_url: inv.joinUrl,
+          request_id: inv.requestId,
+        })),
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text().catch(() => '');
+      return {
+        success: false,
+        total: invitations.length,
+        sent: 0,
+        message: err || `Request failed (${res.status})`,
+      };
+    }
+
+    return await res.json();
+  } catch (err: any) {
+    if (import.meta.env.DEV) {
+      return {
+        success: true,
+        simulated: true,
+        total: invitations.length,
+        sent: invitations.length,
+        message: 'Course invitations simulated (development fallback).',
+      };
+    }
+    return {
+      success: false,
+      total: invitations.length,
+      sent: 0,
+      message: err?.message || 'Failed to dispatch course invitations.',
+    };
+  }
+}
