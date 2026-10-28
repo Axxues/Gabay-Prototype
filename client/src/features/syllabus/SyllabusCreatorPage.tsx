@@ -37,7 +37,7 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
   const [isAttachOpen, setIsAttachOpen] = useState(false);
 
   // RBAC Access Gate (Review Focus 5)
-  if (activeRole === 'student' || activeRole === 'staff') {
+  if (!['superadmin', 'admin', 'faculty'].includes(activeRole as any)) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center p-6">
         <div className="max-w-md w-full p-8 text-center bg-card border border-border rounded-2xl shadow-sm space-y-4">

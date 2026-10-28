@@ -258,7 +258,10 @@ function loadStoredDrafts(): SyllabusDraftItem[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed) && parsed.length > 0) {
-      return parsed;
+      const valid = parsed.filter(
+        d => Boolean(d && typeof d === 'object' && d.id && d.data?.courseInfo && d.data?.institution)
+      );
+      return valid.length > 0 ? valid : [];
     }
     return [];
   } catch {

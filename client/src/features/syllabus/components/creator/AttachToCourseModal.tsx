@@ -63,7 +63,7 @@ export const AttachToCourseModal: React.FC<AttachToCourseModalProps> = ({
                       {
                         section: targetCourse?.section || fm.sections?.[0]?.section || 'BSCS',
                         schedule: targetCourse?.schedule || fm.sections?.[0]?.schedule || 'TBA',
-                        room: fm.sections?.[0]?.room || 'TBA'
+                        room: (targetCourse as any)?.room || fm.sections?.[0]?.room || 'TBA'
                       }
                     ]
                   };
@@ -77,7 +77,7 @@ export const AttachToCourseModal: React.FC<AttachToCourseModalProps> = ({
                     {
                       section: targetCourse?.section || 'BSCS',
                       schedule: targetCourse?.schedule || 'TBA',
-                      room: 'TBA'
+                      room: (targetCourse as any)?.room || 'TBA'
                     }
                   ],
                   consultation: 'MWF 01:00 PM - 03:00 PM'

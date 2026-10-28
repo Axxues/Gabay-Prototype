@@ -15,7 +15,7 @@ describe('AttachToCourseModal', () => {
     vi.spyOn(LMSContext, 'useLMS').mockReturnValue({
       activeUser: { id: 'usr-1', name: 'Floribeth Cuison', role: 'faculty' },
       courses: [
-        { id: 'crs-1', code: 'CSPC 112', title: 'Software Engineering 2', section: '4A', schedule: 'MWF 8-9AM', instructorId: 'usr-1' }
+        { id: 'crs-1', code: 'CSPC 112', title: 'Software Engineering 2', section: '4A', schedule: 'MWF 8-9AM', room: 'LR 203', instructorId: 'usr-1' }
       ],
       updateCourseSyllabus: mockUpdateCourseSyllabus,
       publishSyllabusDraft: mockPublishSyllabusDraft,
@@ -38,7 +38,7 @@ describe('AttachToCourseModal', () => {
           facultyMembers: expect.arrayContaining([
             expect.objectContaining({
               sections: expect.arrayContaining([
-                expect.objectContaining({ section: '4A', schedule: 'MWF 8-9AM' })
+                expect.objectContaining({ section: '4A', schedule: 'MWF 8-9AM', room: 'LR 203' })
               ])
             })
           ])

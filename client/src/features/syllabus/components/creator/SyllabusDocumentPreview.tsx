@@ -98,7 +98,7 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
                 Schedule & Room Assignment:
               </td>
               <td className="p-2">
-                {primarySection ? `${primarySection.schedule} (${primarySection.room || 'TBA'})` : 'TBA'}
+                {primarySection ? `${primarySection.schedule || 'TBA'} (${primarySection.room || 'TBA'})` : 'TBA'}
               </td>
             </tr>
             <tr>
@@ -428,7 +428,7 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
                 <td className="w-1/3 p-4 border-r border-slate-900 align-top">
                   <div className="text-[10px] uppercase font-bold text-slate-600 mb-6">Prepared by:</div>
                   <div className="font-bold uppercase tracking-wide">
-                    {signatories?.preparedBy?.[0]?.name || primaryFaculty?.name || 'FLORIBETH P. CUISON'}
+                    {signatories?.preparedBy?.[0]?.name || primaryFaculty?.name || 'Faculty Member'}
                   </div>
                   <div className="text-[10px] text-slate-700">
                     {signatories?.preparedBy?.[0]?.title || 'Faculty Member'}
@@ -438,7 +438,7 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
                 <td className="w-1/3 p-4 border-r border-slate-900 align-top">
                   <div className="text-[10px] uppercase font-bold text-slate-600 mb-6">Recommending Approval:</div>
                   <div className="font-bold uppercase tracking-wide">
-                    {signatories?.recommendingApproval?.name || 'NEMA ROSE D. RIVERA'}
+                    {signatories?.recommendingApproval?.name || 'Program Chairperson'}
                   </div>
                   <div className="text-[10px] text-slate-700">
                     {signatories?.recommendingApproval?.title || 'Program Chairperson'}
@@ -448,7 +448,7 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
                 <td className="w-1/3 p-4 align-top">
                   <div className="text-[10px] uppercase font-bold text-slate-600 mb-6">Approved:</div>
                   <div className="font-bold uppercase tracking-wide">
-                    {signatories?.approved?.name || 'CHARLIE S. MARZAN'}
+                    {signatories?.approved?.name || 'Dean / Institute Director'}
                   </div>
                   <div className="text-[10px] text-slate-700">
                     {signatories?.approved?.title || 'Dean / Institute Director'}

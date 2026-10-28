@@ -42,4 +42,11 @@ describe('useSyllabusDraftsStorage', () => {
     expect(result.current.drafts.length).toBeGreaterThan(0);
     expect(result.current.activeDraft).toBeDefined();
   });
+
+  it('filters out malformed or corrupt draft items from localStorage array', () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([null, { id: 'broken' }, { id: 'no-data', data: {} }]));
+    const { result } = renderHook(() => useSyllabusDraftsStorage());
+    expect(result.current.drafts.length).toBeGreaterThan(0);
+    expect(result.current.activeDraft?.data?.courseInfo).toBeDefined();
+  });
 });

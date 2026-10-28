@@ -33,4 +33,20 @@ describe('SyllabusDocumentPreview', () => {
     render(<SyllabusDocumentPreview syllabus={sparseSyllabus} />);
     expect(screen.getAllByText(/Software Engineering 2/i).length).toBeGreaterThan(0);
   });
+
+  it('renders generic role fallbacks when signatories are omitted', () => {
+    const withoutSignatories = {
+      ...OFFICIAL_SYLLABUS_CSPC112,
+      signatories: {
+        preparedBy: [],
+        recommendingApproval: { name: '', title: '' },
+        approved: { name: '', title: '' }
+      },
+      facultyMembers: []
+    };
+    render(<SyllabusDocumentPreview syllabus={withoutSignatories} />);
+    expect(screen.getAllByText(/Faculty Member/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Program Chairperson/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Dean \/ Institute Director/i).length).toBeGreaterThan(0);
+  });
 });
