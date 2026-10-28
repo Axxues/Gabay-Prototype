@@ -32,6 +32,7 @@ const EditAccountPage = React.lazy(() => import('./features/accounts').then(m =>
 const AccountProfilePage = React.lazy(() => import('./features/accounts').then(m => ({ default: m.AccountProfilePage })));
 const GabayRAGPage = React.lazy(() => import('./features/rag').then(m => ({ default: m.GabayRAGPage })));
 const SpeedGraderModal = React.lazy(() => import('./features/assessments').then(m => ({ default: m.SpeedGraderModal })));
+const SyllabusCreatorPage = React.lazy(() => import('./features/syllabus').then(m => ({ default: m.SyllabusCreatorPage })));
 
 function useAppNavigation() {
   const navigate = useNavigate();
@@ -487,7 +488,8 @@ export const AppContent: React.FC = () => {
         <Route path="/accounts/:userId/view" element={<RequireAdmin><RouteWithNav element={(nav) => <AccountProfileRoute nav={nav} />} /></RequireAdmin>} />
         <Route path="/accounts/:userId" element={<RequireAdmin><RouteWithNav element={(nav) => <AccountProfileRoute nav={nav} />} /></RequireAdmin>} />
         <Route path="/accounts/:userId/edit" element={<RequireAdmin><RouteWithNav element={(nav) => <EditAccountRoute nav={nav} />} /></RequireAdmin>} />
-        <Route path="/page1" element={<RouteWithNav element={(nav) => <EmptyPage title="Page 1" onNavigateTab={nav.handleNavigateTab} />} />} />
+        <Route path="/page1" element={<RouteWithNav element={(nav) => <SyllabusCreatorPage onNavigateTab={nav.handleNavigateTab} />} />} />
+        <Route path="/syllabus-creator" element={<RouteWithNav element={(nav) => <SyllabusCreatorPage onNavigateTab={nav.handleNavigateTab} />} />} />
         <Route path="/page2" element={<RouteWithNav element={(nav) => <EmptyPage title="Page 2" onNavigateTab={nav.handleNavigateTab} />} />} />
         <Route path="/page3" element={<RouteWithNav element={(nav) => <EmptyPage title="Page 3" onNavigateTab={nav.handleNavigateTab} />} />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
