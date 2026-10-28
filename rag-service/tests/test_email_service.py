@@ -4,6 +4,8 @@ from app.main import app
 from app.services.email_service import (
     render_activation_email_html,
     send_activation_email,
+    render_course_invitation_email_html,
+    send_course_invitation_email,
 )
 
 client = TestClient(app, headers={"X-Gabay-Client-Key": "test-client-key"})
@@ -144,4 +146,43 @@ def test_api_send_leadership_code_endpoint_success():
         call_kwargs = mock_send.call_args[1]
         assert call_kwargs["to_email"] == "chair@dmmmsu.edu.ph"
         assert len(call_kwargs["code"]) == 6
+
+
+def test_render_course_invitation_email_html():
+    html_output = render_course_invitation_email_html(
+        recipient_name="Maria Santos",
+        instructor_name="Prof. Alan Turing",
+        course_code="CS 311",
+        course_title="Software Engineering",
+        section="BSCS 3A",
+        term="1st Sem 2026-2027",
+        join_url="https://gabay.dmmmsu.edu.ph/?action=join&courseId=c1&requestId=req-1",
+    )
+    assert "Maria Santos" in html_output
+    assert "Prof. Alan Turing" in html_output
+    assert "CS 311" in html_output
+    assert "Software Engineering" in html_output
+    assert "BSCS 3A" in html_output
+    assert "JOIN CLASS" in html_output
+    assert "action=join" in html_output
+
+
+def test_send_course_invitation_email_simulates_when_unconfigured():
+    with patch("app.services.email_service.get_settings") as mock_settings:
+        mock_settings.return_value.smtp_user = ""
+        mock_settings.return_value.smtp_password = ""
+        res = send_course_invitation_email(
+            to_email="student@dmmmsu.edu.ph",
+            recipient_name="Maria Santos",
+            instructor_name="Prof. Turing",
+            course_code="CS 311",
+            course_title="Software Engineering",
+            section="3A",
+            term="1st Sem",
+            join_url="http://localhost:5173/?action=join&courseId=c1&requestId=req-1",
+        )
+        assert res["success"] is True
+        assert res["simulated"] is True
+        assert res["recipient"] == "student@dmmmsu.edu.ph"
+
 
