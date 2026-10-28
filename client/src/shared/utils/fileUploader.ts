@@ -57,12 +57,19 @@ export const toShortFileType = (nameOrMime: string): string => {
   return 'document';
 };
 
-export const formatFileSize = (bytes: number): string => {
-  if (bytes === 0) return '0 B';
+export const extractDirectusFileId = (val?: string | null): string | null => {
+  if (!val || typeof val !== 'string') return null;
+  const match = val.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+  return match ? match[0] : null;
+};
+
+export const formatFileSize = (bytes: number | string): string => {
+  const b = typeof bytes === 'string' ? parseFloat(bytes) : bytes;
+  if (!b || isNaN(b) || b <= 0) return '0 B';
   const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+  const i = Math.floor(Math.log(b) / Math.log(k));
+  return `${parseFloat((b / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 };
 
 export const parseFormattedSize = (formatted?: string | null): number => {

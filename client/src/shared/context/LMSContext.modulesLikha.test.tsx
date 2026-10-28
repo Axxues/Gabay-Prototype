@@ -360,6 +360,35 @@ describe('modules, items, comments via Likha (Task 5)', () => {
     expect((mod.items || []).find((it: any) => it.id === 'it-1')?.completed).toBe(true);
   });
 
+  test('addModuleComment rejects comments when course is outside user college/program jurisdiction', async () => {
+    await renderLoggedInAs('Student', 'u-stud-unaffiliated', 'unaffil@dmmmsu.edu.ph');
+    (seenDb.modules || []).push({
+      id: 'm-unaffiliated',
+      course_id: 'c-unaffiliated',
+      courseId: 'c-unaffiliated',
+      title: 'Secret Module',
+      order: 1,
+      items: [],
+      comments: [],
+    });
+    (seenDb.courses || []).push({
+      id: 'c-unaffiliated',
+      code: 'ENGL 999',
+      title: 'Foreign Literature',
+      instructorId: 'u-fac-other',
+      collegeId: 'col-other',
+      departmentId: 'dept-other',
+      published: true,
+      termId: '1st-sem-2025',
+    });
+
+    addCommentMock.mockClear();
+    await act(async () => {
+      await ctx.addModuleComment('m-unaffiliated', 'Unauthorized module comment');
+    });
+    expect(addCommentMock).not.toHaveBeenCalled();
+  });
+
   test('addModuleComment posts via Likha, never Express', async () => {
     await renderLoggedInAs('Faculty', 'u-fac-1', 'faculty1@dmmmsu.edu.ph');
     await act(async () => {

@@ -206,7 +206,7 @@ export const useCourseFiles = (courseId?: string) => {
     const syllabusFiles: AggregatedCourseFile[] = [];
     if (!isPersonal && course?.syllabus) {
       const srcDoc = course.syllabus.sourceDocument;
-      const sName = srcDoc?.fileName || ((course.syllabus as any)?.courseInfo?.code ? `${course.code}_Syllabus.pdf` : null);
+      const sName = srcDoc?.fileName || null;
       if (sName) {
         const sUrl = (srcDoc as any)?.fileUrl || (srcDoc?.fileName ? `/public/uploads/${srcDoc.fileName}` : undefined);
         const alreadyInDirect = directFiles.some(f => f.name === sName || (f.id && f.id === (srcDoc as any)?.courseFileId));

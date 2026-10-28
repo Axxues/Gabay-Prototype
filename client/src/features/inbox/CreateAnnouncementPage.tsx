@@ -1,6 +1,6 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { useLMS } from '../../shared/context/LMSContext';
-import { uploadFileToPublic, isImageFile, formatFileSize } from '../../shared/utils/fileUploader';
+import { uploadFileToPublic, isImageFile, formatFileSize, extractDirectusFileId } from '../../shared/utils/fileUploader';
 import { findMatchingSiblingCourses } from '../../shared/utils/crossSectionSync';
 import { CrossSectionPromptModal } from '../../shared/components/common/CrossSectionPromptModal';
 import {
@@ -135,14 +135,16 @@ export const CreateAnnouncementPage: React.FC<CreateAnnouncementPageProps> = ({
       const primaryAnnouncementId = (typeof crypto !== 'undefined' && crypto.randomUUID)
         ? crypto.randomUUID()
         : (`ann-${Date.now()}`);
-      const attachments: { name: string; size: string; url?: string }[] = [];
+      const attachments: { name: string; size: string; url?: string; directus_files_id?: string; fileId?: string }[] = [];
 
       for (const file of attachedFiles) {
         if (!file.rawFile) {
+          const directusId = (file as any).directus_files_id || (file as any).fileId || extractDirectusFileId(file.url);
           attachments.push({
             name: file.name,
             size: file.size,
-            url: file.url
+            url: file.url,
+            ...(directusId ? { directus_files_id: directusId, fileId: directusId } : {})
           });
           continue;
         }
@@ -151,6 +153,7 @@ export const CreateAnnouncementPage: React.FC<CreateAnnouncementPageProps> = ({
         upload.start(file.name);
         let url = '';
         let size = file.size;
+        let fileId = '';
 
         try {
           if (uploadCourseFile) {
@@ -166,6 +169,7 @@ export const CreateAnnouncementPage: React.FC<CreateAnnouncementPageProps> = ({
               silent: true
             });
             url = saved.fileUrl || saved.url || '';
+            fileId = (saved as any)?.fileId || (saved as any)?.file || extractDirectusFileId(url) || '';
             if (saved.formattedSize && saved.formattedSize !== '0 B') {
               size = saved.formattedSize;
             }
@@ -199,13 +203,19 @@ export const CreateAnnouncementPage: React.FC<CreateAnnouncementPageProps> = ({
         if (!url) {
           const result = await uploadFileToPublic(file.rawFile);
           url = result.url;
+          fileId = (result as any).id || (result as any).fileId || extractDirectusFileId(url) || '';
           if (result.size && result.size !== '0 B') size = result.size;
+        }
+
+        if (!fileId && url) {
+          fileId = extractDirectusFileId(url) || '';
         }
 
         attachments.push({
           name: file.name,
           size,
-          url
+          url,
+          ...(fileId ? { directus_files_id: fileId, fileId } : {})
         });
         upload.complete();
       }

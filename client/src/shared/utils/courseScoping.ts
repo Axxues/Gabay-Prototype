@@ -325,3 +325,153 @@ export function getScopedCourses({
 
   return courses;
 }
+
+/**
+ * Determines whether a user is allowed to comment on announcements or modules
+ * for a given course based on collegiate and program boundaries:
+ * - Admin/superadmin: unrestricted across all colleges and programs.
+ * - Student: must be enrolled/approved for the course, or affiliated with the course's program/college.
+ * - Instructor/Faculty: must be assigned to the course, or affiliated with the course's department/college.
+ * - Chairperson: course must belong to the chairperson's academic department/program.
+ * - Dean: course must belong to the dean's collegiate unit.
+ * - Staff: must be affiliated with the course's department or college.
+ */
+export function canUserCommentOnCourse(
+  user?: User | null,
+  role?: UserRole | null,
+  course?: Course | null,
+  departments: Department[] = [],
+  colleges: College[] = [],
+  approvedCourseIds: Set<string> = new Set()
+): boolean {
+  if (!user || !course) return false;
+  const effectiveRole = role || user.role;
+
+  // 1. Admin/superadmin: unrestricted across all colleges and programs
+  if (
+    effectiveRole === 'admin' ||
+    effectiveRole === 'superadmin' ||
+    user.role === 'admin' ||
+    user.role === 'superadmin'
+  ) {
+    return true;
+  }
+
+  // 2. Student: enrolled or approved for this course, or belonging to its program/college
+  if (effectiveRole === 'student') {
+    if ((user.enrolledCourseIds || []).includes(course.id) || approvedCourseIds.has(course.id)) {
+      return true;
+    }
+    if (user.department || user.program) {
+      const studentDept = departments.find(
+        d =>
+          (user.department &&
+            (d.id === user.department ||
+              d.name.toLowerCase() === user.department.toLowerCase() ||
+              d.code.toLowerCase() === user.department.toLowerCase())) ||
+          (user.program &&
+            (d.id === user.program ||
+              d.name.toLowerCase() === user.program.toLowerCase() ||
+              d.code.toLowerCase() === user.program.toLowerCase()))
+      );
+      if (studentDept && courseMatchesProgram(course, studentDept)) {
+        return true;
+      }
+    }
+    if (user.collegeId || user.collegeName) {
+      if (courseMatchesCollege(course, user.collegeId || '', user.collegeName || '', departments)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // 3. Faculty / Instructor: assigned instructor, or belonging to the course's department/college
+  if (effectiveRole === 'faculty') {
+    if (course.instructorId === user.id) {
+      return true;
+    }
+    if (user.department || user.program) {
+      const facDept = departments.find(
+        d =>
+          (user.department &&
+            (d.id === user.department ||
+              d.name.toLowerCase() === user.department.toLowerCase() ||
+              d.code.toLowerCase() === user.department.toLowerCase())) ||
+          (user.program &&
+            (d.id === user.program ||
+              d.name.toLowerCase() === user.program.toLowerCase() ||
+              d.code.toLowerCase() === user.program.toLowerCase()))
+      );
+      if (facDept && courseMatchesProgram(course, facDept)) {
+        return true;
+      }
+    }
+    if (user.collegeId || user.collegeName) {
+      if (courseMatchesCollege(course, user.collegeId || '', user.collegeName || '', departments)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // 4. Chairperson: course must belong to the chair's academic department/program
+  if (isChairRole(user, effectiveRole)) {
+    const chairDept = departments.find(
+      d =>
+        d.chairpersonId === user.id ||
+        (user.department &&
+          (d.name.toLowerCase() === user.department.toLowerCase() ||
+            d.id === user.department ||
+            d.code.toLowerCase() === user.department.toLowerCase())) ||
+        (user.program &&
+          (d.name.toLowerCase() === user.program.toLowerCase() ||
+            d.id === user.program ||
+            d.code.toLowerCase() === user.program.toLowerCase()))
+    );
+    if (chairDept && courseMatchesProgram(course, chairDept)) {
+      return true;
+    }
+    return false;
+  }
+
+  // 5. Dean: course must belong to the dean's college
+  if (isDeanRole(user, effectiveRole)) {
+    const deanCol = colleges.find(
+      c =>
+        c.deanId === user.id ||
+        (user.collegeId && c.id === user.collegeId) ||
+        (user.collegeName && c.name.toLowerCase() === user.collegeName.toLowerCase())
+    );
+    const colId = deanCol?.id || user.collegeId || '';
+    const colName = deanCol?.name || user.collegeName || '';
+    if (courseMatchesCollege(course, colId, colName, departments)) {
+      return true;
+    }
+    return false;
+  }
+
+  // 6. Staff: must match department or college
+  if (effectiveRole === 'staff') {
+    if (user.department) {
+      const staffDept = departments.find(
+        d =>
+          d.id === user.department ||
+          d.name.toLowerCase() === user.department.toLowerCase() ||
+          d.code.toLowerCase() === user.department.toLowerCase()
+      );
+      if (staffDept && courseMatchesProgram(course, staffDept)) {
+        return true;
+      }
+    }
+    if (user.collegeId || user.collegeName) {
+      if (courseMatchesCollege(course, user.collegeId || '', user.collegeName || '', departments)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  return false;
+}
+

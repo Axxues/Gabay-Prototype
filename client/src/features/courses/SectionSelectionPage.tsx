@@ -84,67 +84,81 @@ export const SectionSelectionPage: React.FC<SectionSelectionPageProps> = ({
         </div>
       </div>
 
-      <div className="grid gap-4">
-        {sections.map(section => {
-          const isFull = section.capacity !== undefined && section.enrolledCount >= section.capacity;
-          const isSelected = currentSectionId === section.id;
-          const slotsLeft = section.capacity !== undefined ? section.capacity - section.enrolledCount : 0;
+      {sections.length === 0 ? (
+        <div className="bg-card border border-border rounded-2xl p-8 text-center space-y-3">
+          <p className="text-sm font-bold text-foreground">No sections configured</p>
+          <p className="text-xs text-muted-foreground">This course does not have multiple sections. You are enrolled in the main course section.</p>
+          <button
+            type="button"
+            onClick={onSectionSelected}
+            className="px-4 py-2 text-xs font-bold bg-primary text-primary-foreground rounded-xl cursor-pointer"
+          >
+            Go to Course Modules
+          </button>
+        </div>
+      ) : (
+        <div className="grid gap-4">
+          {sections.map(section => {
+            const isFull = section.capacity !== undefined && section.enrolledCount >= section.capacity;
+            const isSelected = currentSectionId === section.id;
+            const slotsLeft = section.capacity !== undefined ? section.capacity - section.enrolledCount : 0;
 
-          return (
-            <button
-              key={section.id}
-              onClick={() => !isFull && !isSelected && !processingSectionId && handleSelectSection(section.id)}
-              disabled={isFull || isSelected || processingSectionId !== null}
-              className={`p-5 rounded-2xl border text-left transition-all cursor-pointer disabled:cursor-wait ${
-                isSelected
-                  ? 'border-border bg-muted ring-1 ring-primary/15'
-                  : isFull
-                  ? 'border-border bg-muted/50 opacity-60 cursor-not-allowed'
-                  : 'border-border bg-card hover:ring-1 hover:ring-primary/15'
-              } ${processingSectionId === section.id ? 'opacity-70' : ''}`}
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <BookOpen className="w-4 h-4 text-muted-foreground" />
-                  <span className="font-bold text-[14px]">{section.name}</span>
+            return (
+              <button
+                key={section.id}
+                onClick={() => !isFull && !isSelected && !processingSectionId && handleSelectSection(section.id)}
+                disabled={isFull || isSelected || processingSectionId !== null}
+                className={`p-5 rounded-2xl border text-left transition-all cursor-pointer disabled:cursor-wait ${
+                  isSelected
+                    ? 'border-border bg-muted ring-1 ring-primary/15'
+                    : isFull
+                    ? 'border-border bg-muted/50 opacity-60 cursor-not-allowed'
+                    : 'border-border bg-card hover:ring-1 hover:ring-primary/15'
+                } ${processingSectionId === section.id ? 'opacity-70' : ''}`}
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <BookOpen className="w-4 h-4 text-muted-foreground" />
+                    <span className="font-bold text-[14px]">{section.name}</span>
+                  </div>
+                  {processingSectionId === section.id ? (
+                    <span className="flex items-center gap-1 text-xs font-bold text-primary">
+                      <Loader2 className="w-4 h-4 animate-spin" /> Processing...
+                    </span>
+                  ) : (
+                    <>
+                      {isSelected && (
+                        <span className="flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold rounded-full bg-muted text-muted-foreground border border-border">
+                          <Check className="w-3.5 h-3.5" /> Selected
+                        </span>
+                      )}
+                      {isFull && !isSelected && (
+                        <span className="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-muted text-muted-foreground border border-border">Full</span>
+                      )}
+                    </>
+                  )}
                 </div>
-                {processingSectionId === section.id ? (
-                  <span className="flex items-center gap-1 text-xs font-bold text-primary">
-                    <Loader2 className="w-4 h-4 animate-spin" /> Processing...
-                  </span>
-                ) : (
-                  <>
-                    {isSelected && (
-                      <span className="flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold rounded-full bg-muted text-muted-foreground border border-border">
-                        <Check className="w-3.5 h-3.5" /> Selected
-                      </span>
-                    )}
-                    {isFull && !isSelected && (
-                      <span className="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-muted text-muted-foreground border border-border">Full</span>
-                    )}
-                  </>
-                )}
-              </div>
 
-              <div className="flex items-center gap-4 text-[12px] text-muted-foreground">
-                {section.schedule && (
-                  <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> {section.schedule}</span>
-                )}
-                {section.location && (
-                  <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5" /> {section.location}</span>
-                )}
-                <span className="flex items-center gap-1">
-                  <Users className="w-3.5 h-3.5" />
-                  {section.capacity === undefined
-                    ? `${section.enrolledCount} enrolled · Uncapped`
-                    : `${section.enrolledCount}/${section.capacity} enrolled`}
-                  {!isFull && section.capacity !== undefined && <span className="text-emerald-600">({slotsLeft} slots left)</span>}
-                </span>
-              </div>
-            </button>
-          );
-        })}
-      </div>
+                <div className="flex items-center gap-4 text-[12px] text-muted-foreground">
+                  {section.schedule && (
+                    <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> {section.schedule}</span>
+                  )}
+                  {section.location && (
+                    <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5" /> {section.location}</span>
+                  )}
+                  <span className="flex items-center gap-1">
+                    <Users className="w-3.5 h-3.5" />
+                    {section.capacity === undefined
+                      ? `${section.enrolledCount} enrolled · Uncapped`
+                      : `${section.enrolledCount}/${section.capacity} enrolled`}
+                    {!isFull && section.capacity !== undefined && <span className="text-emerald-600">({slotsLeft} slots left)</span>}
+                  </span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };

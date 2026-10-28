@@ -1,6 +1,7 @@
+import '@testing-library/jest-dom/vitest';
 // @vitest-environment jsdom
-import { describe, expect, test, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, expect, test, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import React from 'react';
 import { ModulesView } from '../modules';
 import { AnnouncementsView } from '../inbox';
@@ -81,9 +82,13 @@ const lmsState = {
 
 vi.mock('../../shared/context/LMSContext', () => ({
   useLMS: () => lmsState,
+  getCleanStoredAvatar: () => '',
+  loadStoredAnnouncementAttachments: () => [],
 }));
 
 describe('Course Pages RBAC UI - Dean, Chair & Admin View', () => {
+  afterEach(() => cleanup());
+
   beforeEach(() => {
     vi.clearAllMocks();
   });

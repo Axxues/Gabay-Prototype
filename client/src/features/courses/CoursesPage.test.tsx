@@ -11,6 +11,7 @@ afterEach(() => {
 
 let mockCourseSyllabus: any = { courseInfo: { title: 'Introduction to Computer Science' } };
 let mockRole = 'faculty';
+let mockSections: any[] = [];
 
 vi.mock('../../shared/context/LMSContext', () => ({
   useLMS: () => ({
@@ -38,6 +39,9 @@ vi.mock('../../shared/context/LMSContext', () => ({
       submissions: [],
       files: [],
       users: [],
+      get courseSections() {
+        return mockSections;
+      },
     },
     get activeRole() {
       return mockRole;
@@ -96,5 +100,36 @@ describe('CoursesPage syllabus gating and lazy loading', () => {
     const gate = screen.getByTestId('assessments-syllabus-gate');
     expect(gate).toBeInTheDocument();
     expect(screen.getByText('Syllabus required for assessments')).toBeInTheDocument();
+  });
+
+  test('renders SectionSelectionPage when initialSubTab is section-selection and course has sections', () => {
+    mockSections = [
+      { id: 'sec-1', courseId: 'c1', name: 'Section A', enrolledCount: 10, capacity: 40 },
+      { id: 'sec-2', courseId: 'c1', name: 'Section B', enrolledCount: 15, capacity: 40 },
+    ];
+    render(<CoursesPage initialSubTab="section-selection" />);
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Select your section' })).toBeInTheDocument();
+    expect(screen.getByText('Section A')).toBeInTheDocument();
+    expect(screen.getByText('Section B')).toBeInTheDocument();
+  });
+
+  test('falls back to modules when initialSubTab is section-selection but course has no sections', async () => {
+    mockSections = [];
+    render(<CoursesPage initialSubTab="section-selection" />);
+
+    // Should redirect/fallback away from blank section-selection
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { level: 1, name: 'Modules' })).toBeInTheDocument();
+    });
+  });
+
+  test('falls back to modules when initialSubTab is an unrecognized sub-tab', async () => {
+    mockSections = [];
+    render(<CoursesPage initialSubTab="unknown-subtab" />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { level: 1, name: 'Modules' })).toBeInTheDocument();
+    });
   });
 });

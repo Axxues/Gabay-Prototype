@@ -1,3 +1,4 @@
+import { resolveLikhaAssetUrl } from '../../api/likhaLmsApi';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ChevronLeft,
@@ -113,7 +114,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
       return;
     }
 
-    const activeUrl = url;
+    const activeUrl = resolveLikhaAssetUrl(url);
     let isEffectActive = true;
 
     async function initDoc() {

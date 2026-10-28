@@ -13,7 +13,8 @@ import {
   buildActivityPayload,
   emptyActivityFormValue,
   validateActivityForm,
-  type ActivityFormValue
+  type ActivityFormValue,
+  type ActivityAttachment
 } from './components/forms/ActivityFormFields';
 import {
   QuestionSetFields,
@@ -69,59 +70,86 @@ export const CreateAssignmentPage: React.FC<CreateAssignmentPageProps> = ({
     setSavingAction(publish ? 'publish' : 'draft');
     try {
       let formToSave = form;
-      if (form.attachedFile?.rawFile) {
-        let url = '';
-        let name = form.attachedFile.name;
-        let size = form.attachedFile.size;
-        try {
-          const saved = await uploadCourseFile({
-            courseId,
-            name: form.attachedFile.name,
-            rawFile: form.attachedFile.rawFile,
-            size: form.attachedFile.rawFile.size,
-            formattedSize: size,
-            area: 'assignments',
-            visibility: 'published',
-            silent: true
-          });
-          url = saved.fileUrl || saved.url || '';
-          name = saved.name || name;
-          if (saved.formattedSize && saved.formattedSize !== '0 B') {
-            size = saved.formattedSize;
-          }
-          if (targetCourseIds.length > 1) {
-            for (const siblingId of targetCourseIds) {
-              if (siblingId !== courseId) {
-                try {
-                  await uploadCourseFile({
-                    courseId: siblingId,
-                    name: saved.name || form.attachedFile.name,
-                    fileUrl: saved.fileUrl || saved.url,
-                    url: saved.url || saved.fileUrl,
-                    formattedSize: size,
-                    type: saved.type || 'document',
-                    area: 'assignments',
-                    visibility: 'published',
-                    silent: true
-                  });
-                } catch {}
+      const rawFilesToProcess = (form.attachedFiles && form.attachedFiles.length > 0)
+        ? form.attachedFiles
+        : form.attachedFile
+          ? [form.attachedFile]
+          : [];
+
+      if (rawFilesToProcess.length > 0) {
+        const processedAttachments: ActivityAttachment[] = [];
+        for (const att of rawFilesToProcess) {
+          if (att.rawFile) {
+            let url = '';
+            let name = att.name;
+            let size = att.size;
+            let fileId = att.fileId;
+            let directus_files_id = att.directus_files_id;
+            try {
+              const saved = await uploadCourseFile({
+                courseId,
+                name: att.name,
+                rawFile: att.rawFile,
+                size: att.rawFile.size,
+                formattedSize: size,
+                area: 'assignments',
+                visibility: 'published',
+                silent: true
+              });
+              url = saved.fileUrl || saved.url || '';
+              name = saved.name || name;
+              if (saved.formattedSize && saved.formattedSize !== '0 B') {
+                size = saved.formattedSize;
+              }
+              fileId = (saved as any).fileId || saved.id;
+              directus_files_id = (saved as any).directus_files_id;
+              if (targetCourseIds.length > 1) {
+                for (const siblingId of targetCourseIds) {
+                  if (siblingId !== courseId) {
+                    try {
+                      await uploadCourseFile({
+                        courseId: siblingId,
+                        name: saved.name || att.name,
+                        fileUrl: saved.fileUrl || saved.url,
+                        url: saved.url || saved.fileUrl,
+                        formattedSize: size,
+                        type: saved.type || 'document',
+                        area: 'assignments',
+                        visibility: 'published',
+                        silent: true
+                      });
+                    } catch {}
+                  }
+                }
+              }
+            } catch {
+              url = '';
+            }
+            if (!url || url.startsWith('data:')) {
+              const viaVite = await uploadFileToPublic(att.rawFile);
+              if (!viaVite.url.startsWith('data:')) {
+                url = viaVite.url;
+                name = viaVite.name;
+                size = viaVite.size;
               }
             }
-          }
-        } catch {
-          url = '';
-        }
-        if (!url || url.startsWith('data:')) {
-          const viaVite = await uploadFileToPublic(form.attachedFile.rawFile);
-          if (!viaVite.url.startsWith('data:')) {
-            url = viaVite.url;
-            name = viaVite.name;
-            size = viaVite.size;
+            processedAttachments.push({
+              id: att.id,
+              name,
+              size,
+              url,
+              type: att.type,
+              fileId,
+              directus_files_id
+            });
+          } else {
+            processedAttachments.push(att);
           }
         }
         formToSave = {
           ...form,
-          attachedFile: { name, size, url }
+          attachedFile: processedAttachments[0] || null,
+          attachedFiles: processedAttachments
         };
       }
 

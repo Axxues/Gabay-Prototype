@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useLMS } from '../../../../shared/context/LMSContext';
-import { formatFileSize, FILE_UPLOAD_MAX_BYTES, isFileTooLarge } from '../../../../shared/utils/fileUploader';
+import { formatFileSize, FILE_UPLOAD_MAX_BYTES, isFileTooLarge, isImageFile } from '../../../../shared/utils/fileUploader';
 import {
   Award,
   Calendar,
@@ -10,6 +10,7 @@ import {
   Trash2,
   FolderOpen,
   Plus,
+  Image as ImageIcon,
   X
 } from 'lucide-react';
 import { FilePickerModal } from '../../../../shared/components/common/FilePickerModal';
@@ -20,10 +21,14 @@ import type { Activity, RubricCriterion, RubricRating, TermId } from '../../../.
 import { TermSelect } from '../../../../shared/components/common/TermSelect';
 
 export interface ActivityAttachment {
+  id?: string;
   name: string;
   size: string;
   url: string;
+  type?: string;
   rawFile?: File;
+  fileId?: string;
+  directus_files_id?: string;
 }
 
 export interface ActivityFormValue {
@@ -37,6 +42,7 @@ export interface ActivityFormValue {
   allowFileUpload: boolean;
   allowOnlineText: boolean;
   attachedFile: ActivityAttachment | null;
+  attachedFiles?: ActivityAttachment[];
   includeRubric: boolean;
   rubric: RubricCriterion[];
 }
@@ -69,6 +75,7 @@ export function emptyActivityFormValue(): ActivityFormValue {
     allowFileUpload: true,
     allowOnlineText: true,
     attachedFile: null,
+    attachedFiles: [],
     includeRubric: false,
     rubric: []
   };
@@ -156,9 +163,26 @@ export function buildActivityPayload(courseId: string, v: ActivityFormValue, pub
     submissionTypes,
     published: publish,
     sectionRestriction: 'All Sections',
-    fileName: v.attachedFile?.name,
-    fileUrl: v.attachedFile?.url,
-    fileSize: v.attachedFile?.size
+    fileName: (v.attachedFiles && v.attachedFiles.length > 0) ? v.attachedFiles[0]?.name : v.attachedFile?.name,
+    fileUrl: (v.attachedFiles && v.attachedFiles.length > 0) ? v.attachedFiles[0]?.url : v.attachedFile?.url,
+    fileSize: (v.attachedFiles && v.attachedFiles.length > 0) ? v.attachedFiles[0]?.size : v.attachedFile?.size,
+    attachments: (v.attachedFiles && v.attachedFiles.length > 0)
+      ? v.attachedFiles.map(f => ({
+          name: f.name,
+          size: f.size,
+          url: f.url,
+          type: f.type,
+          fileId: f.fileId,
+          directus_files_id: f.directus_files_id || f.fileId,
+        }))
+      : (v.attachedFile ? [{
+          name: v.attachedFile.name,
+          size: v.attachedFile.size,
+          url: v.attachedFile.url,
+          type: v.attachedFile.type,
+          fileId: v.attachedFile.fileId,
+          directus_files_id: v.attachedFile.directus_files_id || v.attachedFile.fileId,
+        }] : []),
   };
 }
 
@@ -185,46 +209,61 @@ export const ActivityFormFields: React.FC<{
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isFilePickerOpen, setIsFilePickerOpen] = useState(false);
 
-  const handleFileUpload = (file: File) => {
-    if (isFileTooLarge(file.size)) {
-      showAlert({
-        title: 'File Too Large',
-        message: `Please attach a document or archive smaller than ${FILE_UPLOAD_MAX_BYTES / 1024 / 1024}MB.`,
-        type: 'warning'
-      });
-      return;
-    }
-    const name = file.name;
-    const formatted = formatFileSize(file.size);
-    const size = formatted !== '0 B' ? formatted : `${(file.size / 1024).toFixed(1)} KB`;
-    let previewUrl = '';
-    try {
-      if (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
-        previewUrl = URL.createObjectURL(file);
+  const currentFiles: ActivityAttachment[] = (value.attachedFiles && value.attachedFiles.length > 0)
+    ? value.attachedFiles
+    : (value.attachedFile ? [value.attachedFile] : []);
+
+  const handleFilesUpload = (files: File[]) => {
+    const validAttachments: ActivityAttachment[] = [];
+    for (const file of files) {
+      if (isFileTooLarge(file.size)) {
+        showAlert({
+          title: 'File Too Large',
+          message: `"${file.name}" exceeds ${FILE_UPLOAD_MAX_BYTES / 1024 / 1024}MB limit.`,
+          type: 'warning'
+        });
+        continue;
       }
-    } catch {
-      previewUrl = '';
-    }
-    onChange({
-      ...value,
-      attachedFile: {
+      const name = file.name;
+      const formatted = formatFileSize(file.size);
+      const size = formatted !== '0 B' ? formatted : `${(file.size / 1024).toFixed(1)} KB`;
+      let previewUrl = '';
+      try {
+        if (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+          previewUrl = URL.createObjectURL(file);
+        }
+      } catch {
+        previewUrl = '';
+      }
+      validAttachments.push({
+        id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         name,
         size,
         url: previewUrl,
+        type: file.type,
         rawFile: file
-      }
+      });
+    }
+
+    if (validAttachments.length === 0) return;
+
+    const nextFiles = [...currentFiles, ...validAttachments];
+    onChange({
+      ...value,
+      attachedFile: nextFiles[0] || null,
+      attachedFiles: nextFiles
     });
     showAlert({
-      title: 'File Attached',
-      message: `"${file.name}" has been attached to this activity.`,
+      title: 'Files Attached',
+      message: `${validAttachments.length} file${validAttachments.length > 1 ? 's' : ''} attached to this activity.`,
       type: 'success'
     });
   };
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      handleFileUpload(file);
+    const files = Array.from(e.target.files || []);
+    if (files.length > 0) {
+      handleFilesUpload(files);
     }
     e.target.value = '';
   };
@@ -233,20 +272,26 @@ export const ActivityFormFields: React.FC<{
     e.preventDefault();
     setIsDragging(false);
     if (upload.isUploading) return;
-    const file = e.dataTransfer.files?.[0];
-    if (file) {
-      handleFileUpload(file);
+    const files = Array.from(e.dataTransfer.files || []);
+    if (files.length > 0) {
+      handleFilesUpload(files);
     }
   };
 
   const handleSelectExistingFile = (file: AggregatedCourseFile) => {
+    const newAtt: ActivityAttachment = {
+      id: file.id || `cf-${Date.now()}`,
+      name: file.name,
+      size: file.formattedSize || '',
+      url: file.url || file.fileUrl || `/public/uploads/${file.name}`,
+      type: file.type,
+      fileId: file.id
+    };
+    const nextFiles = [...currentFiles, newAtt];
     onChange({
       ...value,
-      attachedFile: {
-        name: file.name,
-        size: file.formattedSize || '',
-        url: file.url || file.fileUrl || `/public/uploads/${file.name}`
-      }
+      attachedFile: nextFiles[0] || null,
+      attachedFiles: nextFiles
     });
     setIsFilePickerOpen(false);
     showAlert({
@@ -254,6 +299,25 @@ export const ActivityFormFields: React.FC<{
       message: `"${file.name}" has been attached from your uploaded course files.`,
       type: 'success'
     });
+  };
+
+  const handleRemoveAttachment = (idxToRemove: number) => {
+    const nextFiles = currentFiles.filter((_, idx) => idx !== idxToRemove);
+    onChange({
+      ...value,
+      attachedFile: nextFiles[0] || null,
+      attachedFiles: nextFiles
+    });
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleClearAllAttachments = () => {
+    onChange({
+      ...value,
+      attachedFile: null,
+      attachedFiles: []
+    });
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   // Host course for the syllabus-driven term picker. When the context
@@ -317,55 +381,86 @@ export const ActivityFormFields: React.FC<{
 
           {/* Handout Attachment Upload */}
           <div>
-            <label className="block text-[12px] font-semibold text-muted-foreground mb-1.5">
-              Starter code / handout file
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-[12px] font-semibold text-muted-foreground">
+                Starter code, documents & reference files {currentFiles.length > 0 && `(${currentFiles.length})`}
+              </label>
+              {currentFiles.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleClearAllAttachments}
+                  className="text-[11px] text-rose-600 hover:text-rose-700 dark:text-rose-400 font-sans flex items-center space-x-1 cursor-pointer"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  <span>Clear all ({currentFiles.length})</span>
+                </button>
+              )}
+            </div>
             <input
               ref={fileInputRef}
               type="file"
+              multiple
               onChange={handleFileInputChange}
               className="hidden"
             />
 
-            {value.attachedFile ? (
-              <div className="p-3.5 bg-muted/30 border border-border rounded-xl flex items-center justify-between">
-                <div className="flex items-center space-x-3 overflow-hidden">
-                  <div className="w-10 h-10 rounded-xl bg-muted text-muted-foreground flex items-center justify-center shrink-0">
-                    <FileText className="w-5 h-5" />
-                  </div>
-                  <div className="truncate">
-                    <p className="font-semibold text-[12.5px] text-foreground truncate">{value.attachedFile.name}</p>
-                    <p className="text-[12px] text-muted-foreground">
-                      {value.attachedFile.size} • Attached
-                    </p>
-                  </div>
+            {currentFiles.length > 0 ? (
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {currentFiles.map((file, idx) => {
+                    const isImg = isImageFile(file.name, file.type, file.url);
+                    return (
+                      <div
+                        key={file.id || idx}
+                        className="p-3 bg-muted/30 border border-border rounded-xl flex items-center justify-between gap-3 group hover:border-primary/30 transition-colors"
+                      >
+                        <div className="flex items-center space-x-3 overflow-hidden min-w-0">
+                          <div className="w-9 h-9 rounded-lg bg-card border border-border flex items-center justify-center shrink-0 text-primary">
+                            {isImg ? (
+                              <ImageIcon className="w-4 h-4 text-pink-500" />
+                            ) : (
+                              <FileText className="w-4 h-4 text-primary" />
+                            )}
+                          </div>
+                          <div className="truncate min-w-0">
+                            <p className="font-semibold text-xs text-foreground truncate" title={file.name}>
+                              {file.name}
+                            </p>
+                            <p className="text-[11px] text-muted-foreground">
+                              {file.size || 'File'} • {isImg ? 'Image' : 'Document'} • Attached
+                            </p>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveAttachment(idx)}
+                          className="p-1.5 text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer shrink-0"
+                          title={`Remove ${file.name}`}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
 
-                <div className="flex items-center space-x-2 shrink-0 ml-3">
+                <div className="flex items-center gap-2 pt-1">
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors cursor-pointer"
+                    className="px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/10 rounded-lg transition-colors cursor-pointer flex items-center space-x-1.5 border border-primary/20"
                   >
-                    Change file
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add more files</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setIsFilePickerOpen(true)}
-                    className="px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors cursor-pointer"
+                    className="px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors cursor-pointer flex items-center space-x-1.5 border border-border/70"
                   >
-                    Browse uploaded
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onChange({ ...value, attachedFile: null });
-                      if (fileInputRef.current) fileInputRef.current.value = '';
-                    }}
-                    className="p-1.5 text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
-                    title="Remove attachment"
-                  >
-                    <Trash2 className="w-4 h-4" />
+                    <FolderOpen className="w-3.5 h-3.5" />
+                    <span>Browse uploaded</span>
                   </button>
                 </div>
               </div>
@@ -391,10 +486,10 @@ export const ActivityFormFields: React.FC<{
                 </div>
                 <div>
                   <span className="text-[12.5px] font-semibold text-foreground block">
-                    Click to browse or drop reference file here
+                    Click to browse or drop reference files & images here
                   </span>
                   <span className="text-[12px] text-muted-foreground">
-                    PDF instructions, starter ZIP repositories, or sample datasets (up to 25MB)
+                    Select multiple PDFs, images, starter ZIP repositories, or datasets (up to 25MB each)
                   </span>
                 </div>
               </div>

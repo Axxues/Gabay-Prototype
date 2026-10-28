@@ -292,4 +292,41 @@ describe('School Year Management & Scoping State in LMSContext', () => {
     const student = contextValues.db.users.find((u: User) => u.id === 'u-stud1');
     expect(student?.schoolYear).toBe('2025-2026');
   });
+
+  test('resolves active school year as 2026-2027 when college courses are in 2026-2027', async () => {
+    let contextValues: any = null;
+    const Probe = () => {
+      contextValues = useLMS();
+      return null;
+    };
+
+    render(
+      <LMSProvider>
+        <Probe />
+      </LMSProvider>
+    );
+
+    await act(async () => {
+      await contextValues.login('chancellor@dmmmsu.edu.ph', 'pw');
+    });
+
+    await waitFor(() => {
+      expect(contextValues.db.courses.length).toBeGreaterThan(0);
+    });
+
+    await act(async () => {
+      await contextValues.addSchoolYear('2026-2027');
+      await contextValues.setBaselineSchoolYear('2026-2027');
+      await contextValues.createCourse({
+        code: 'CSPC 112',
+        title: 'Software Engineering 2',
+        term: '1st Sem AY 2026-2027',
+        collegeId: 'col-ccs',
+      });
+    });
+
+    const activeYear = contextValues.getActiveSchoolYearForCollege('col-ccs');
+    expect(activeYear?.year).toBe('2026-2027');
+    expect(activeYear?.isActive).toBe(true);
+  });
 });

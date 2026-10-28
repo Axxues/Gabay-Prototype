@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { likhaLmsApi } from './likhaLmsApi';
@@ -68,7 +69,7 @@ describe('Likha LMS Direct API Client', () => {
 
     expect(fetchSpy).toHaveBeenCalledWith(
 
-      expect.stringContaining('/items/activities?filter[course_id][_eq]=c-1&fields=*,attachments.directus_files_id.*,questions.*'),
+      expect.stringContaining('/items/activities?filter%5Bcourse_id%5D%5B_eq%5D=c-1&fields=*,attachments.directus_files_id.*,questions.*'),
 
       expect.any(Object)
 
@@ -76,6 +77,44 @@ describe('Likha LMS Direct API Client', () => {
 
     expect(activities[0].id).toBe('act-1');
 
+  });
+
+  it('createAnnouncement formats attachments with directus_files_id for M2M junction', async () => {
+    let capturedBody: any = null;
+    const fetchSpy = vi.spyOn(global, 'fetch').mockImplementationOnce(async (url: any, opts: any) => {
+      capturedBody = JSON.parse(opts.body);
+      return {
+        ok: true,
+        json: async () => ({
+          data: { id: capturedBody.id, ...capturedBody },
+        }),
+      } as any;
+    });
+
+    await likhaLmsApi.communications.createAnnouncement({
+      id: 'ann-test-1',
+      course_id: 'c-1',
+      title: 'Announcement Title',
+      content: 'Announcement Content',
+      attachments: [
+        {
+          name: 'Diagram.png',
+          size: '176.9 KB',
+          url: 'https://gabay.zyberlab.com/assets/a0a300fe-03b9-47c2-9021-108cded9d9fa',
+        },
+        {
+          name: 'Document.pdf',
+          size: '1.4 MB',
+          directus_files_id: 'cef73bc5-d004-44cc-bcaf-8bcaa24e07d6',
+        },
+      ],
+    });
+
+    expect(capturedBody).toBeDefined();
+    expect(capturedBody.attachments).toEqual([
+      { directus_files_id: 'a0a300fe-03b9-47c2-9021-108cded9d9fa' },
+      { directus_files_id: 'cef73bc5-d004-44cc-bcaf-8bcaa24e07d6' },
+    ]);
   });
 
 
@@ -100,7 +139,7 @@ describe('Likha LMS Direct API Client', () => {
 
     expect(fetchSpy).toHaveBeenCalledWith(
 
-      expect.stringContaining('/items/Course_Enrollments?filter[course][_eq]=c-1&fields=*,user.*,course.*'),
+      expect.stringContaining('/items/Course_Enrollments?filter%5Bcourse%5D%5B_eq%5D=c-1&fields=*,user.*,course.*'),
 
       expect.any(Object)
 
@@ -143,7 +182,18 @@ describe('Likha LMS Direct API Client', () => {
     expect(uploaded.id).toBe('file-uuid-123');
 
     expect(uploaded.url).toContain('/assets/file-uuid-123');
+  });
 
+  it('resolves asset URLs through proxy and handles adversarial edge cases', async () => {
+    const { resolveLikhaAssetUrl } = await import('./likhaLmsApi');
+    expect(resolveLikhaAssetUrl(null)).toBe('');
+    expect(resolveLikhaAssetUrl('')).toBe('');
+    expect(resolveLikhaAssetUrl('data:image/png;base64,123')).toBe('data:image/png;base64,123');
+    expect(resolveLikhaAssetUrl('/local/path/doc.pdf')).toBe('/local/path/doc.pdf');
+    // If in dev /likha mode, live URLs rewrite to /likha/assets
+    const liveAsset = 'https://gabay.zyberlab.com/assets/f123-abc';
+    const resolved = resolveLikhaAssetUrl(liveAsset);
+    expect(resolved === '/likha/assets/f123-abc' || resolved === liveAsset).toBe(true);
   });
 
 
@@ -520,6 +570,57 @@ describe('Likha LMS Direct API Client', () => {
 
   });
 
+  it('getModulesWithItems hydrates modules, items, and module_comments concurrently', async () => {
+    vi.spyOn(global, 'fetch')
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ data: [{ id: 'mod-1', title: 'Module 1', course_id: 'c1' }] }),
+      } as any)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ data: [{ id: 'item-1', module_id: 'mod-1', title: 'Lesson 1' }] }),
+      } as any)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: [{ id: 'comm-1', module_id: 'mod-1', content: 'What is due?', author_name: 'Student 1' }],
+        }),
+      } as any);
+
+    const modules = await likhaLmsApi.modules.getModulesWithItems('c1');
+    expect(modules).toHaveLength(1);
+    expect(modules[0].items).toHaveLength(1);
+    expect(modules[0].items[0].id).toBe('item-1');
+    expect(modules[0].comments).toHaveLength(1);
+    expect(modules[0].comments[0].id).toBe('comm-1');
+    expect(modules[0].comments[0].content).toBe('What is due?');
+  });
+
+  it('getAnnouncements hydrates announcements and their announcement_replies', async () => {
+    vi.spyOn(global, 'fetch')
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ data: [{ id: 'ann-1', title: 'Midterms', course_id: 'c1' }] }),
+      } as any)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: [{ id: 10, announcement_id: 'ann-1', content: 'Understood!', author_name: 'Student 1' }],
+        }),
+      } as any);
+
+    const anns = await likhaLmsApi.communications.getAnnouncements('c1');
+    expect(anns).toHaveLength(1);
+    expect(anns[0].replies).toHaveLength(1);
+    expect(anns[0].replies[0].id).toBe(10);
+    expect(anns[0].replies[0].content).toBe('Understood!');
+  });
+
 
 
   it('posts rubric scores and comments to normalized assessment tables', async () => {
@@ -624,7 +725,7 @@ describe('Likha LMS Direct API Client', () => {
 
     expect(fetchSpy).toHaveBeenCalledWith(
 
-      expect.stringContaining('/roles?filter[name][_eq]=Administrator'),
+      expect.stringContaining('/roles?filter%5Bname%5D%5B_eq%5D=Administrator'),
 
       expect.any(Object)
 

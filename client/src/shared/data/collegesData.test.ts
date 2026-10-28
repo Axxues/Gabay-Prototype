@@ -7,7 +7,9 @@ import {
   getCollegeById,
   getDepartmentByName,
   generateAutomaticSchoolYears,
-  DEFAULT_SCHOOL_YEARS
+  DEFAULT_SCHOOL_YEARS,
+  getUserCollege,
+  getUserCollegeCode,
 } from './collegesData';
 
 describe('Colleges & Departments Data Store', () => {
@@ -79,5 +81,44 @@ describe('Colleges & Departments Data Store', () => {
     // Verify DEFAULT_SCHOOL_YEARS is populated with generated years
     expect(DEFAULT_SCHOOL_YEARS.length).toBeGreaterThanOrEqual(6);
     expect(DEFAULT_SCHOOL_YEARS[0].id).toContain('sy-univ-');
+  });
+
+  describe('getUserCollege & getUserCollegeCode', () => {
+    const colleges = [
+      { id: 'col-ccs', name: 'College of Computer Science', code: 'CCS', deanId: 'dean-1' },
+      { id: 'col-coe', name: 'College of Education', code: 'COED', deanId: 'dean-coe' },
+    ];
+    const departments = [
+      { id: 'dept-cs', collegeId: 'col-ccs', name: 'Computer Science', code: 'CS' },
+      { id: 'dept-elem', collegeId: 'col-coe', name: 'Elementary Education', code: 'ELED' },
+    ];
+
+    it('resolves college by collegeId or collegeCode', () => {
+      expect(getUserCollegeCode({ collegeId: 'col-ccs' }, colleges, departments)).toBe('CCS');
+      expect(getUserCollegeCode({ collegeCode: 'COED' }, colleges, departments)).toBe('COED');
+      expect(getUserCollegeCode({ collegeId: 'col-coe' }, colleges, departments)).toBe('COED');
+    });
+
+    it('resolves college by deanId', () => {
+      expect(getUserCollegeCode({ id: 'dean-1' }, colleges, departments)).toBe('CCS');
+      expect(getUserCollegeCode({ id: 'dean-coe' }, colleges, departments)).toBe('COED');
+    });
+
+    it('resolves college by collegeName or partial keyword', () => {
+      expect(getUserCollegeCode({ collegeName: 'College of Computer Science' }, colleges, departments)).toBe('CCS');
+      expect(getUserCollegeCode({ collegeName: 'Education' }, colleges, departments)).toBe('COED');
+    });
+
+    it('resolves college by department name', () => {
+      expect(getUserCollegeCode({ department: 'Computer Science' }, colleges, departments)).toBe('CCS');
+      expect(getUserCollegeCode({ department: 'Program in Computer Science' }, colleges, departments)).toBe('CCS');
+      expect(getUserCollegeCode({ department: 'Elementary Education' }, colleges, departments)).toBe('COED');
+    });
+
+    it('returns undefined for users with no college affiliation', () => {
+      expect(getUserCollegeCode(null)).toBeUndefined();
+      expect(getUserCollegeCode({})).toBeUndefined();
+      expect(getUserCollegeCode({ department: 'Office of the Chancellor' }, colleges, departments)).toBeUndefined();
+    });
   });
 });

@@ -93,6 +93,7 @@ const getCoursesMock = vi.fn(async () => [{ ...courseRow }]);
 const getCourseMock = vi.fn(async (id: string) => ({ ...courseRow, id }));
 const createCourseMock = vi.fn(async (payload: any) => ({ ...payload, id: 'c-new' }));
 const updateCourseMock = vi.fn(async (id: string, updates: any) => ({ id, ...updates }));
+const deleteCourseEnrollmentMock = vi.fn(async () => true);
 const getNotifsMock = vi.fn(async () => []);
 const getUsersMock = vi.fn(async () => [
   { id: 'u-fac-1', first_name: 'Faculty', last_name: 'One', email: 'faculty1@dmmmsu.edu.ph', role: { name: 'Faculty' } },
@@ -152,6 +153,7 @@ vi.mock('../api/client', () => ({
       getCourse: (...args: any[]) => (getCourseMock as any)(...args),
       createCourse: (...args: any[]) => (createCourseMock as any)(...args),
       updateCourse: (...args: any[]) => (updateCourseMock as any)(...args),
+      deleteCourseEnrollment: (...args: any[]) => (deleteCourseEnrollmentMock as any)(...args),
     },
     requests: {
       getRequests: (...args: any[]) => (getRequestsMock as any)(...args),
@@ -415,6 +417,7 @@ describe('courses, sections, requests via Likha (Task 4)', () => {
     });
     expect(ok).toBe(true);
     expect(deleteRequestMock).toHaveBeenCalledWith('req-approved-1');
+    expect(deleteCourseEnrollmentMock).toHaveBeenCalledWith('c1', 'u-stud-1');
     expect(task4ExpressCalls()).toEqual([]);
     expect((seenDb.enrollmentRequests || []).some((r: any) => r.id === 'req-approved-1')).toBe(false);
   });

@@ -172,6 +172,65 @@ describe('FilesView file deletion loading indicator', () => {
     });
     mocks.db.courseFiles = [];
   });
+
+  test('deleting a syllabus file removes it and triggers deleteCourseFile', async () => {
+    mocks.deleteCourseFile.mockImplementation(async (fileId: string) => {
+      mocks.db.courseFiles = mocks.db.courseFiles.filter((f: any) => f.id !== fileId);
+      const c = mocks.db.courses.find((course: any) => course.id === 'c1');
+      if (c?.syllabus) {
+        delete c.syllabus.sourceDocument;
+      }
+    });
+    mocks.showConfirm.mockImplementation((_msg: string, onConfirm: () => void) => onConfirm());
+
+    mocks.db.courses = [
+      {
+        id: 'c1',
+        code: 'CSPC 112',
+        title: 'Software Engineering 2',
+        instructorId: 'u-fac-1',
+        syllabus: {
+          courseInfo: { code: 'CSPC 112' },
+          sourceDocument: { fileName: 'CMSC131_Course_Orientation.pdf', fileSize: '1.0 MB' },
+        },
+      },
+    ];
+    mocks.db.courseFiles = [
+      {
+        id: 'cf-syl-1',
+        courseId: 'c1',
+        folderId: 'vf-syllabus',
+        name: 'CMSC131_Course_Orientation.pdf',
+        type: 'pdf',
+        formattedSize: '1.0 MB',
+        sourceArea: 'syllabus',
+        uploadedByName: 'Faculty',
+        updatedAt: new Date().toISOString(),
+        visibility: 'published',
+      },
+    ];
+
+    render(<FilesView courseId="c1" />);
+    const folderItem = screen.getByText(/Folder • Updated/i).closest('.cursor-pointer')!;
+    fireEvent.click(folderItem);
+
+    expect(screen.getByText('CMSC131_Course_Orientation.pdf')).toBeInTheDocument();
+
+    const deleteBtn = screen.getByTitle('Delete File');
+    fireEvent.click(deleteBtn);
+
+    await waitFor(() => {
+      expect(mocks.deleteCourseFile).toHaveBeenCalledWith('cf-syl-1');
+    });
+    expect(mocks.showAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'File Deleted',
+        type: 'success',
+      })
+    );
+    mocks.db.courseFiles = [];
+    mocks.db.courses = [];
+  });
 });
 
 describe('FilesView Cross-Section replication', () => {

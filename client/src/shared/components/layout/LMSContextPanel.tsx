@@ -547,7 +547,7 @@ export const LMSContextPanel: React.FC<{ currentTab: string; courseSubTab: strin
     <aside className="relative flex w-[240px] flex-shrink-0 flex-col border-r border-border/60 bg-card/50 p-3 transition-[width] duration-200">
       {minimizeButton}
       {lmsNav}
-      <div className="mt-auto px-2 pt-3 text-[10px] text-muted-foreground">Trail: LMS &gt; {p.currentTab}</div>
+      <div className="mt-auto px-2 pt-3 text-[10px] text-muted-foreground">Trail: LMS &gt; {p.currentTab === 'dashboard' ? 'courses' : p.currentTab}</div>
     </aside>
   );
 });

@@ -24,6 +24,7 @@ export {
   emptyActivityFormValue,
   validateActivityForm,
   type ActivityFormValue,
+  type ActivityAttachment,
   type GradingRubricSectionProps,
 } from './components/forms/ActivityFormFields';
 

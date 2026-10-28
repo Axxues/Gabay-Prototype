@@ -30,6 +30,8 @@ const mocks = vi.hoisted(() => ({
     quizzes: [],
     modules: [],
   } as any,
+  studentApproveInvitation: vi.fn(),
+  studentDeclineInvitation: vi.fn(),
 }));
 
 vi.mock('../../shared/context/LMSContext', () => ({
@@ -43,8 +45,8 @@ vi.mock('../../shared/context/LMSContext', () => ({
     isSyncing: mocks.isSyncing,
     openSpeedGrader: vi.fn(),
     getPendingRequestsForStudent: () => mocks.pendingRequests,
-    studentApproveInvitation: vi.fn(),
-    studentDeclineInvitation: vi.fn(),
+    studentApproveInvitation: (...args: any[]) => mocks.studentApproveInvitation(...args),
+    studentDeclineInvitation: (...args: any[]) => mocks.studentDeclineInvitation(...args),
     deleteCourse: vi.fn(),
     updateCourse: vi.fn(),
     showConfirm: vi.fn(),
@@ -61,9 +63,9 @@ vi.mock('../../shared/context/LMSContext', () => ({
 
 import { DashboardPage } from './DashboardPage';
 
-function renderPage() {
+function renderPage(props?: Partial<React.ComponentProps<typeof DashboardPage>>) {
   return render(
-    <DashboardPage onNavigateCourse={() => {}} onNavigateTab={() => {}} />
+    <DashboardPage onNavigateCourse={() => {}} onNavigateTab={() => {}} {...props} />
   );
 }
 
@@ -125,7 +127,7 @@ describe('DashboardPage pending requests', () => {
 
   test('shows the course snapshot when the course is not cached', () => {
     renderPage();
-    expect(screen.getByText('CMSC 180 — Artificial Intelligence & Expert Systems')).toBeInTheDocument();
+    expect(screen.getByText('Artificial Intelligence & Expert Systems')).toBeInTheDocument();
   });
 
   test('never renders a bare dash for an unresolvable course', () => {
@@ -730,6 +732,60 @@ describe('DashboardPage semester filter', () => {
     renderPage();
 
     expect(screen.queryByTitle('Delete Course')).not.toBeInTheDocument();
+  });
+
+  test('student accepting invitation routes directly to modules when course has <= 1 section', async () => {
+    const onNavigateCourse = vi.fn();
+    mocks.activeRole = 'student';
+    mocks.activeUser = { id: 'u-stud-1', name: 'Student One', role: 'student', enrolledCourseIds: [] } as any;
+    mocks.db.courses = [
+      { id: 'c-se-2', code: 'CMSC 128', title: 'Software Engineering 2', section: 'BSCS 3-1', instructorName: 'Prof Dilan', published: true } as any
+    ];
+    mocks.db.courseSections = [];
+    mocks.pendingRequests = [
+      { id: 'req-inv-1', courseId: 'c-se-2', studentId: 'u-stud-1', type: 'faculty_enroll', status: 'pending' } as any
+    ];
+    mocks.studentApproveInvitation.mockResolvedValueOnce(true);
+
+    renderPage({ onNavigateCourse });
+
+    expect(screen.getByText('Pending invitations')).toBeInTheDocument();
+    expect(screen.getByText('Software Engineering 2')).toBeInTheDocument();
+
+    const acceptBtn = screen.getByRole('button', { name: /accept/i });
+    fireEvent.click(acceptBtn);
+
+    await waitFor(() => {
+      expect(mocks.studentApproveInvitation).toHaveBeenCalledWith('req-inv-1');
+      expect(onNavigateCourse).toHaveBeenCalledWith('c-se-2', 'modules');
+    });
+  });
+
+  test('student accepting invitation routes to section-selection when course has multiple sections', async () => {
+    const onNavigateCourse = vi.fn();
+    mocks.activeRole = 'student';
+    mocks.activeUser = { id: 'u-stud-1', name: 'Student One', role: 'student', enrolledCourseIds: [] } as any;
+    mocks.db.courses = [
+      { id: 'c-se-2', code: 'CMSC 128', title: 'Software Engineering 2', section: 'BSCS 3-1', instructorName: 'Prof Dilan', published: true } as any
+    ];
+    mocks.db.courseSections = [
+      { id: 'sec-1', courseId: 'c-se-2', name: 'Section A', enrolledCount: 5, capacity: 40 },
+      { id: 'sec-2', courseId: 'c-se-2', name: 'Section B', enrolledCount: 10, capacity: 40 },
+    ] as any;
+    mocks.pendingRequests = [
+      { id: 'req-inv-2', courseId: 'c-se-2', studentId: 'u-stud-1', type: 'faculty_enroll', status: 'pending' } as any
+    ];
+    mocks.studentApproveInvitation.mockResolvedValueOnce(true);
+
+    renderPage({ onNavigateCourse });
+
+    const acceptBtn = screen.getByRole('button', { name: /accept/i });
+    fireEvent.click(acceptBtn);
+
+    await waitFor(() => {
+      expect(mocks.studentApproveInvitation).toHaveBeenCalledWith('req-inv-2');
+      expect(onNavigateCourse).toHaveBeenCalledWith('c-se-2', 'section-selection');
+    });
   });
 });
 

@@ -3,9 +3,10 @@ import { BookOpen } from 'lucide-react';
 import { useLMS } from '../../shared/context/LMSContext';
 import { JoinCourseModal } from '../../shared/components/common/JoinCourseModal';
 import { EmptyState } from '../../shared/components/common/EmptyState';
-import { PageTransition } from '../../shared/components/common/PageTransition';
-import { COURSE_CHILDREN, isVisible, isAssessmentTab } from '../../shared/config/navigation';
+import { CoursesSkeleton } from '../../shared/components/common';
+import { COURSE_CHILDREN, isVisible, isAssessmentTab, ASSESSMENT_TAB_IDS } from '../../shared/config/navigation';
 import { getScopedCourses } from '../../shared/utils/courseScoping';
+import { SectionSelectionPage } from './SectionSelectionPage';
 import {
   countNewFiles,
   countNewGrades,
@@ -18,17 +19,6 @@ import {
   countUnreadMessages,
 } from '../../shared/utils/notifiers';
 
-const CourseSubTabSkeleton: React.FC = () => (
-  <div className="flex-1 p-6 space-y-5 animate-pulse" data-testid="course-subtab-skeleton">
-    <div className="h-8 w-48 bg-muted rounded-xl" />
-    <div className="h-32 bg-card border border-border rounded-2xl" />
-    <div className="space-y-3 pt-2">
-      <div className="h-16 bg-card border border-border rounded-2xl" />
-      <div className="h-16 bg-card border border-border rounded-2xl" />
-      <div className="h-16 bg-card border border-border rounded-2xl" />
-    </div>
-  </div>
-);
 
 const ModulesView = React.lazy(() => import('../modules').then(m => ({ default: m.ModulesView })));
 const SyllabusView = React.lazy(() => import('../syllabus').then(m => ({ default: m.SyllabusView })));
@@ -46,9 +36,10 @@ const StudentGradebook = React.lazy(() => import('../assessments').then(m => ({ 
 
 interface CoursesPageProps {
   initialSubTab?: string;
+  initialPeopleTab?: 'pending' | 'roster';
 }
 
-export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modules' }) => {
+export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modules', initialPeopleTab }) => {
   const {
     activeCourseId,
     setActiveCourseId,
@@ -134,10 +125,44 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
   }, [activeRole, subTab]);
 
   useEffect(() => {
+    if (subTab === 'section-selection' && activeCourse) {
+      const sections = (db.courseSections || []).filter(s => s.courseId === activeCourse.id);
+      if (sections.length === 0) {
+        setSubTab('modules');
+        if (typeof window !== 'undefined' && window.history?.replaceState) {
+          window.history.replaceState(null, '', `/courses/${encodeURIComponent(activeCourse.id)}/modules`);
+        }
+      }
+    }
+  }, [subTab, activeCourse?.id, db.courseSections]);
+
+  useEffect(() => {
+    const recognized = [
+      ...COURSE_CHILDREN.map(c => c.id),
+      ...ASSESSMENT_TAB_IDS,
+      'section-selection'
+    ];
+    if (subTab && !recognized.includes(subTab as any) && activeCourse) {
+      setSubTab('modules');
+      if (typeof window !== 'undefined' && window.history?.replaceState) {
+        window.history.replaceState(null, '', `/courses/${encodeURIComponent(activeCourse.id)}/modules`);
+      }
+    }
+  }, [subTab, activeCourse?.id]);
+
+  useEffect(() => {
     if (activeCourse?.id && typeof hydrateCourse === 'function') {
       void hydrateCourse(activeCourse.id);
     }
   }, [activeCourse?.id, hydrateCourse]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && typeof (window as any).requestIdleCallback === 'function') {
+      (window as any).requestIdleCallback(() => { void import('../syllabus'); });
+    } else {
+      setTimeout(() => { void import('../syllabus'); }, 1000);
+    }
+  }, []);
 
   const tabBadges = useMemo(() => {
     const badges: Record<string, number> = {};
@@ -243,6 +268,11 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
               <button
                 key={tab.id}
                 type="button"
+                onMouseEnter={() => {
+                  if (tab.id === 'syllabus') {
+                    void import('../syllabus');
+                  }
+                }}
                 onClick={() => { setSubTab(tab.id); setReturnToTab(null); markTabVisited(tab.id, activeCourse.id); }}
                 className={`shrink-0 rounded-full px-3 py-1.5 text-[12px] font-semibold cursor-pointer relative ${subTab === tab.id ? 'bg-foreground text-background' : 'bg-card text-muted-foreground border border-border'}`}
               >
@@ -259,8 +289,8 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
             );
           })}
         </div>
-        <PageTransition pageKey={`${subTab}:${activeCourse.id}`} className="w-full min-w-0">
-        <React.Suspense fallback={<CourseSubTabSkeleton />}>
+        <div className="w-full min-w-0">
+        <React.Suspense fallback={<CoursesSkeleton />}>
         {subTab === 'modules' && activeCourse && !courseHasSyllabus && (
           <div className="bg-card border border-border rounded-2xl p-8 text-center" data-testid="modules-syllabus-gate">
             <h3 className="text-sm font-bold text-foreground">Syllabus required for modules</h3>
@@ -434,10 +464,21 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
           )
         )}
 
-        {subTab === 'people' && <PeopleView courseId={activeCourse.id} />}
+        {subTab === 'people' && <PeopleView courseId={activeCourse.id} initialTab={initialPeopleTab} />}
 
+        {subTab === 'section-selection' && activeCourse && (
+          <SectionSelectionPage
+            courseId={activeCourse.id}
+            onSectionSelected={() => {
+              setSubTab('modules');
+              if (typeof window !== 'undefined' && window.history?.replaceState) {
+                window.history.replaceState(null, '', `/courses/${encodeURIComponent(activeCourse.id)}/modules`);
+              }
+            }}
+          />
+        )}
         </React.Suspense>
-        </PageTransition>
+        </div>
 
       </main>
 

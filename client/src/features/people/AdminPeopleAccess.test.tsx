@@ -1,6 +1,7 @@
+import '@testing-library/jest-dom/vitest';
 // @vitest-environment jsdom
-import { describe, expect, test, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, expect, test, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, cleanup } from '@testing-library/react';
 import React from 'react';
 
 const mocks = vi.hoisted(() => ({
@@ -12,6 +13,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../../shared/context/LMSContext', () => ({
+  getCleanStoredAvatar: () => '',
   useLMS: () => ({
     db: {
       courses: [{ id: 'c1', code: 'CMSC 131', instructorId: 'u-fac-1', joinCode: 'JOIN123' }],
@@ -40,6 +42,8 @@ vi.mock('../../shared/context/LMSContext', () => ({
 import { PeopleView } from './PeopleView';
 
 describe('Admin PeopleView Access', () => {
+  afterEach(() => cleanup());
+
   beforeEach(() => {
     vi.clearAllMocks();
   });

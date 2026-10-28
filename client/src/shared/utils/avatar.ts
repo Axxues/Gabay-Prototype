@@ -5,6 +5,8 @@
  * to initials automatically.
  */
 
+import { LIKHA_URL, resolveLikhaAssetUrl } from '../api/likhaLmsApi';
+
 export function getInitials(name: string): string {
   const trimmed = (name || '').trim();
   if (!trimmed) return '';
@@ -48,10 +50,10 @@ export function resolveDirectusAssetUrl(
   const assetId = typeof asset === 'string' ? asset.trim() : asset.id || asset.url || '';
   if (!assetId) return '';
   if (assetId.startsWith('http://') || assetId.startsWith('https://') || assetId.startsWith('/') || assetId.startsWith('data:')) {
-    return assetId;
+    return resolveLikhaAssetUrl(assetId);
   }
 
-  let url = `https://gabay.zyberlab.com/assets/${assetId}`;
+  let url = `${LIKHA_URL}/assets/${assetId}`;
   const params: string[] = [];
   if (options?.width) params.push(`width=${options.width}`);
   if (options?.height) params.push(`height=${options.height}`);
@@ -61,6 +63,6 @@ export function resolveDirectusAssetUrl(
   if (params.length > 0) {
     url += `?${params.join('&')}`;
   }
-  return url;
+  return resolveLikhaAssetUrl(url);
 }
 

@@ -101,6 +101,7 @@ export interface User {
   adminSubrole?: AdminSubrole;
   collegeId?: string;
   collegeName?: string;
+  collegeCode?: string;
   verificationStatus?: VerificationStatus;
   emailVerified?: boolean;
   registeredAt?: string;
@@ -226,6 +227,7 @@ export interface ModuleItem {
   completed?: boolean;
   authorId?: string;
   authorName?: string;
+  attachments?: Array<{ name: string; size: string; url?: string; type?: string; directus_files_id?: string; fileId?: string }>;
 }
 
 export interface ModuleComment {
@@ -322,6 +324,7 @@ export interface Activity {
   availableFrom?: string;
   availableUntil?: string;
   sectionRestriction?: string;
+  attachments?: Array<{ name: string; size: string; url?: string; type?: string; directus_files_id?: string; fileId?: string }>;
 }
 
 export interface SubmissionComment {
@@ -527,7 +530,7 @@ export interface Announcement {
   likes: number;
   likedBy?: string[];
   pinned: boolean;
-  attachments?: { name: string; size: string; url?: string }[];
+  attachments?: { name: string; size: string; url?: string; directus_files_id?: string; fileId?: string }[];
   replies: AnnouncementReply[];
   readBy?: string[];
 }
@@ -584,6 +587,7 @@ export interface CourseFile {
   fileUrl?: string;
   sourceArea?: FileSourceArea;
   sourceId?: string;
+  fileId?: string;
 }
 
 export interface CourseFolder {
@@ -601,6 +605,7 @@ export interface FileAreaInput {
   courseId: string;
   area: FileSourceArea;
   sourceId?: string;
+  fileId?: string;
   moduleId?: string;
   moduleTitle?: string;
   name: string;

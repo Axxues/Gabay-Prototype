@@ -118,4 +118,21 @@ describe('classic activity rubric opt-in', () => {
     expect(payload.rubric).toHaveLength(1);
     expect(payload.rubric?.[0].title).toBe('Correctness');
   });
+
+  test('payload carries multiple attachments and retains backwards-compatible primary file fields', () => {
+    const v: ActivityFormValue = {
+      ...base,
+      attachedFiles: [
+        { name: 'Diagram.png', size: '150 KB', url: '/uploads/Diagram.png' },
+        { name: 'Handout.pdf', size: '1.2 MB', url: '/uploads/Handout.pdf' },
+      ],
+    };
+    const payload = buildActivityPayload('c1', v, true);
+    expect(payload.fileName).toBe('Diagram.png');
+    expect(payload.fileUrl).toBe('/uploads/Diagram.png');
+    expect(payload.fileSize).toBe('150 KB');
+    expect(payload.attachments).toHaveLength(2);
+    expect(payload.attachments?.[0].name).toBe('Diagram.png');
+    expect(payload.attachments?.[1].name).toBe('Handout.pdf');
+  });
 });

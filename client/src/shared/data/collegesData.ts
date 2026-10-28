@@ -17,6 +17,11 @@ export const DEFAULT_COLLEGES: College[] = [
  * Automatically generates university school years 5 years in advance.
  * Base year defaults to 2025.
  */
+export const parseStartYear = (sy: string): number => {
+  const match = (sy || '').match(/^(\d{4})/);
+  return match ? parseInt(match[1], 10) : 0;
+};
+
 export function generateAutomaticSchoolYears(
   baseStartYear = 2025,
   yearsAhead = 5
@@ -93,7 +98,8 @@ export function getCollegeById(
       c.id.toLowerCase() === target ||
       c.code.toLowerCase() === target ||
       c.name.toLowerCase() === target ||
-      (target === 'col-coed' && c.id === 'col-coe') ||
+      (target === 'col-ccs' && (c.code?.toLowerCase() === 'ccs' || c.id === 'col-ccs')) ||
+      (target === 'col-coed' && (c.code?.toLowerCase() === 'coe' || c.code?.toLowerCase() === 'ce' || c.id === 'col-coe')) ||
       (target === 'col-coeng' && c.id === 'col-eng') ||
       (target === 'col-engineering' && c.id === 'col-eng') ||
       (target === 'col-education' && c.id === 'col-coe')
@@ -185,3 +191,85 @@ export function getDepartmentById(
 export const getProgramsByCollege = getDepartmentsByCollege;
 export const getProgramByName = getDepartmentByName;
 export const getProgramById = getDepartmentById;
+
+/**
+ * Resolves the academic college for a user based on their collegeId, collegeName,
+ * dean assignment, or department affiliation.
+ */
+export function getUserCollege(
+  user?: {
+    id?: string;
+    collegeId?: string;
+    collegeName?: string;
+    collegeCode?: string;
+    department?: string;
+  } | null,
+  colleges: College[] = DEFAULT_COLLEGES,
+  departments: Department[] = DEFAULT_DEPARTMENTS
+): College | undefined {
+  if (!user) return undefined;
+  const colList = Array.isArray(colleges) && colleges.length > 0 ? colleges : DEFAULT_COLLEGES;
+  const deptList = Array.isArray(departments) && departments.length > 0 ? departments : DEFAULT_DEPARTMENTS;
+
+  // 1. Explicit collegeCode match
+  if (user.collegeCode) {
+    const matched = getCollegeByCode(user.collegeCode, colList);
+    if (matched) return matched;
+  }
+
+  // 2. Direct collegeId match
+  if (user.collegeId) {
+    const matched = getCollegeById(user.collegeId, colList);
+    if (matched) return matched;
+  }
+
+  // 3. Dean assigned to college
+  if (user.id) {
+    const deanMatched = colList.find(c => c.deanId === user.id);
+    if (deanMatched) return deanMatched;
+  }
+
+  // 4. Direct collegeName match
+  if (user.collegeName) {
+    const matched = getCollegeById(user.collegeName, colList);
+    if (matched) return matched;
+  }
+
+  // 5. Department affiliation match
+  if (user.department) {
+    const matchedDept = getDepartmentByName(user.department, deptList) || getDepartmentById(user.department, deptList);
+    if (matchedDept && matchedDept.collegeId) {
+      const matched = getCollegeById(matchedDept.collegeId, colList);
+      if (matched) return matched;
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Returns the uppercase college code (e.g. 'CCS', 'COED', 'COE') for a given user.
+ */
+export function getUserCollegeCode(
+  user?: {
+    id?: string;
+    collegeId?: string;
+    collegeName?: string;
+    collegeCode?: string;
+    department?: string;
+  } | null,
+  colleges: College[] = DEFAULT_COLLEGES,
+  departments: Department[] = DEFAULT_DEPARTMENTS
+): string | undefined {
+  if (!user) return undefined;
+  if (user.collegeCode) return user.collegeCode.toUpperCase();
+  const college = getUserCollege(user, colleges, departments);
+  if (college?.code) return college.code.toUpperCase();
+  if (user.collegeName) {
+    const lower = user.collegeName.toLowerCase();
+    if (lower.includes('computer science')) return 'CCS';
+    if (lower.includes('education')) return 'COED';
+    if (lower.includes('engineering')) return 'COE';
+  }
+  return undefined;
+}

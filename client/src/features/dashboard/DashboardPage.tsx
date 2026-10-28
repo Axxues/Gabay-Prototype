@@ -35,6 +35,7 @@ import { useProcessing } from '../../shared/hooks/useProcessing';
 import { useModalAnimate } from '../../shared/hooks/useModalAnimate';
 import { normalizeAcademicSemester } from '../../shared/utils/academicSemester';
 import type { AcademicSemester } from '../../shared/types/lms';
+import { getCollegeById, normalizeProgramName } from '../../shared/data/collegesData';
 
 const SEMESTER_FILTERS = [
   { value: 'all', label: 'All Semesters' },
@@ -163,16 +164,28 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     if (scopedCollegeId && scopedCollegeId !== 'all') return scopedCollegeId;
     if (isDean && effectiveDeanCollegeId) return effectiveDeanCollegeId;
     if (isChair && chairDept?.collegeId) return chairDept.collegeId;
-    if (activeUser?.collegeId) return activeUser.collegeId;
-    if (activeUser?.department && departments) {
+    if (activeUser?.collegeId) {
+      const col = getCollegeById(activeUser.collegeId, colleges);
+      if (col?.id) return col.id;
+      return activeUser.collegeId;
+    }
+    const userDept = activeUser?.department || activeUser?.program;
+    if (userDept && departments) {
+      const normDept = normalizeProgramName(userDept);
       const match = departments.find(
         d =>
-          d.id === activeUser.department ||
-          d.name?.toLowerCase() === activeUser.department.toLowerCase() ||
-          d.code?.toLowerCase() === activeUser.department.toLowerCase() ||
+          d.id === userDept ||
+          d.name?.toLowerCase() === userDept.toLowerCase() ||
+          d.code?.toLowerCase() === userDept.toLowerCase() ||
+          (normDept && d.name?.toLowerCase() === normDept.toLowerCase()) ||
+          (normDept && d.code?.toLowerCase() === normDept.toLowerCase()) ||
+          (userDept && (d.name?.toLowerCase().includes(userDept.toLowerCase()) || userDept.toLowerCase().includes(d.name?.toLowerCase()))) ||
           d.chairpersonId === activeUser.id
       );
-      if (match?.collegeId) return match.collegeId;
+      if (match?.collegeId) {
+        const col = getCollegeById(match.collegeId, colleges);
+        return col?.id || match.collegeId;
+      }
     }
     if (colleges) {
       const deanMatch = colleges.find(
@@ -182,7 +195,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       );
       if (deanMatch?.id) return deanMatch.id;
     }
-    return 'col-ccs';
+    const defaultCol = getCollegeById('col-ccs', colleges);
+    return defaultCol?.id || 'col-ccs';
   }, [scopedCollegeId, isDean, isChair, effectiveDeanCollegeId, chairDept, activeUser, departments, colleges]);
 
   const baseMonitoredCourses = useMemo(() => getScopedCourses({
@@ -206,10 +220,22 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       if (activeSy?.year) return activeSy.year;
     }
 
-    // 2. If user is Dean or Chair or Faculty with an assigned college, check their college
+    // 2. If user is Dean or Chair or Faculty or Student with an assigned college, check their college
     if (!isAdmin && userCollegeId) {
       const activeSy = getActiveSchoolYearForCollege?.(userCollegeId);
-      if (activeSy?.year) return activeSy.year;
+      if (activeSy?.year) {
+        // If the user's courses are in a newer school year, prefer the course academic year
+        const courseYears = baseMonitoredCourses
+          .map(c => c.schoolYear || c.term?.match(/\b\d{4}-\d{4}\b/)?.[0])
+          .filter(Boolean) as string[];
+        if (courseYears.length > 0) {
+          courseYears.sort((a, b) => parseStartYear(b) - parseStartYear(a));
+          if (parseStartYear(courseYears[0]) > parseStartYear(activeSy.year)) {
+            return courseYears[0];
+          }
+        }
+        return activeSy.year;
+      }
       const list = getSchoolYearsByCollege ? getSchoolYearsByCollege(userCollegeId) : [];
       const active = list.find(sy => sy.isActive);
       if (active?.year) return active.year;
@@ -246,7 +272,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       if (activeSy?.year) return activeSy.year;
     }
 
-    return '2025-2026';
+    return baseline?.year || '2026-2027';
   }, [
     scopedCollegeId,
     getActiveSchoolYearForCollege,
@@ -364,10 +390,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const baseMonitoredCoursesInYear = useMemo(() => {
     const activeYearToFilter = selectedSchoolYear || currentActiveSchoolYear;
     return baseMonitoredCourses.filter(c => {
-      const courseYear = c.schoolYear || c.term?.match(/\b\d{4}-\d{4}\b/)?.[0] || '2025-2026';
+      const courseYear = c.schoolYear || c.term?.match(/\b\d{4}-\d{4}\b/)?.[0] || currentActiveSchoolYear || baselineYear || '2026-2027';
       return courseYear === activeYearToFilter;
     });
-  }, [baseMonitoredCourses, selectedSchoolYear, currentActiveSchoolYear]);
+  }, [baseMonitoredCourses, selectedSchoolYear, currentActiveSchoolYear, baselineYear]);
 
   const programCourseCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -465,10 +491,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   // never render a bare "—".
   const requestCourseLabel = (req: EnrollmentRequest): string => {
     const course = db.courses.find(c => c.id === req.courseId);
-    const code = course?.code ?? req.courseCode ?? undefined;
     const title = course?.title ?? req.courseTitle ?? undefined;
-    if (code || title) return `${code ?? ''}${code && title ? ' — ' : ''}${title ?? ''}`;
-    return 'Pending course request';
+    if (title) return title;
+    const code = course?.code ?? req.courseCode ?? undefined;
+    return code || 'Pending course request';
   };
 
   const todoItems = useMemo(() => {
@@ -1338,7 +1364,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                             onClick={() => {
                               void run(`accept:${req.id}`, async () => {
                                 const ok = await studentApproveInvitation(req.id);
-                                if (ok) onNavigateCourse(req.courseId, 'section-selection');
+                                if (ok) {
+                                  const courseSections = (db.courseSections || []).filter(s => s.courseId === req.courseId);
+                                  if (courseSections.length > 1) {
+                                    onNavigateCourse(req.courseId, 'section-selection');
+                                  } else {
+                                    onNavigateCourse(req.courseId, 'modules');
+                                  }
+                                }
                               });
                             }}
                             disabled={isProcessing(`accept:${req.id}`) || isProcessing(`decline:${req.id}`)}
@@ -1366,7 +1399,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                       <div key={req.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-xl">
                         <div>
                           <div className="text-xs font-bold">{requestCourseLabel(req)}</div>
-                          <div className="text-[11px] text-muted-foreground">Request sent — waiting for instructor approval</div>
+                          <div className="text-[11px] text-muted-foreground">Awaiting approval</div>
                         </div>
                         <button
                           onClick={() => {

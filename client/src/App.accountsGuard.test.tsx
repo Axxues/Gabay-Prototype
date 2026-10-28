@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import '@testing-library/jest-dom/vitest';
+import { render, screen, waitFor, cleanup } from '@testing-library/react';
 import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 
 const mocks = vi.hoisted(() => ({
   activeRole: 'superadmin',
+  activeUser: { id: 'u-chancellor', name: 'Chancellor', role: 'superadmin', adminSubrole: undefined as string | undefined },
   isAuthenticated: true,
   authReady: true,
 }));
@@ -13,8 +15,8 @@ const mocks = vi.hoisted(() => ({
 vi.mock('./shared/context/LMSContext', () => ({
   useLMS: () => ({
     activeRole: mocks.activeRole,
-    activeUser: { id: 'u-chancellor', name: 'Chancellor', role: mocks.activeRole },
-    currentUser: { id: 'u-chancellor', name: 'Chancellor', role: mocks.activeRole },
+    activeUser: mocks.activeUser,
+    currentUser: mocks.activeUser,
     isAuthenticated: mocks.isAuthenticated,
     authReady: mocks.authReady,
     db: { users: [], courses: [], enrollmentRequests: [], notifications: [], messages: [], announcements: [] },
@@ -53,6 +55,12 @@ vi.mock('./features/dashboard/DashboardPage', () => ({
 import { AppContent } from './App';
 
 describe('App accounts route guard and decommissioned backdoor', () => {
+  afterEach(() => cleanup());
+
+  beforeEach(() => {
+    mocks.activeRole = 'superadmin';
+    mocks.activeUser = { id: 'u-chancellor', name: 'Chancellor', role: 'superadmin', adminSubrole: undefined };
+  });
   it('allows superadmin to visit /accounts without redirecting to dashboard', async () => {
     mocks.activeRole = 'superadmin';
     render(
@@ -113,5 +121,43 @@ describe('App accounts route guard and decommissioned backdoor', () => {
     // The page must fill the screen rather than sit inside the 1600px content cap.
     const contentWrapper = document.querySelector('main > div');
     expect(contentWrapper?.className).not.toContain('max-w-[1600px]');
+  });
+
+  it('allows institutional admin to access /accounts/create-leadership without redirecting to dashboard', async () => {
+    mocks.activeRole = 'admin';
+    mocks.activeUser = { id: 'u-inst-admin', name: 'Institutional Admin', role: 'admin', adminSubrole: undefined };
+    render(
+      <MemoryRouter initialEntries={['/accounts/create-leadership']}>
+        <AppContent />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /create leadership account/i })).toBeInTheDocument();
+    });
+  });
+
+  it('pressure tests RBAC: redirects deans, chairpersons, faculty, and students away from /accounts/create-leadership', async () => {
+    const restrictedPersonas = [
+      { role: 'admin', adminSubrole: 'dean' },
+      { role: 'admin', adminSubrole: 'chairperson' },
+      { role: 'faculty', adminSubrole: undefined },
+      { role: 'student', adminSubrole: undefined },
+    ];
+
+    for (const persona of restrictedPersonas) {
+      mocks.activeRole = persona.role;
+      mocks.activeUser = { id: `u-${persona.role}-${persona.adminSubrole || 'default'}`, name: 'User', role: persona.role, adminSubrole: persona.adminSubrole };
+      const { unmount } = render(
+        <MemoryRouter initialEntries={['/accounts/create-leadership']}>
+          <AppContent />
+        </MemoryRouter>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('dashboard-page')).toBeInTheDocument();
+      });
+      unmount();
+    }
   });
 });

@@ -1,0 +1,5 @@
+# Rules for Autonomous Tool Calling
+
+1. **NO TEXT-ONLY PREAMBLES**: Never output a conversational sentence explaining what you will do (e.g. "I'll scan the repository...", "Let me start by listing files...") without actually calling the tool in the exact same response.
+2. **ALWAYS CALL TOOLS IMMEDIATELY**: Any response that describes an action MUST include the corresponding tool call (such as `list_files`, `read_files`, `search_files`, or `run_commands`).
+3. **DO NOT HALT PREMATURELY**: A response without a tool call terminates the session immediately. Always proceed with the required tool calls until the entire task is finished.

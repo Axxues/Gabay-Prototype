@@ -43,5 +43,6 @@ export interface SyllabusApi {
   listRevisions(courseId: string): Promise<SyllabusRevisionResponse['revision'][]>;
   createDraft(courseId: string, sourceRevisionId?: string): Promise<SyllabusRevisionResponse>;
   updateSection(courseId: string, revisionId: string, rowVersion: number, section: SyllabusSectionKey, value: unknown): Promise<SyllabusRevisionResponse>;
-  publish(courseId: string, revisionId: string, rowVersion: number): Promise<SyllabusRevisionResponse>;
+  publish(courseId: string, revisionId: string, rowVersion: number): Promise<SyllabusRevisionResponse>;
+  clearSourceDocument?(courseId: string): Promise<void>;
 }

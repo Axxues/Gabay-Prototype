@@ -386,5 +386,121 @@ describe('NotificationBell Profile Incomplete Card', () => {
     expect(screen.getByText(/Juan Dela Cruz/)).toBeInTheDocument();
     expect(screen.queryByText(/cf220235-9d33-40fa-8692-f018e614138e/)).not.toBeInTheDocument();
   });
-});
 
+  it('navigates faculty to course people page and displays no action buttons when clicking course request', () => {
+    const onNavigateCourse = vi.fn();
+    mockLMS.activeUser = {
+      id: 'fac-1',
+      role: 'faculty',
+      firstName: 'Prof',
+      lastName: 'Smith',
+      name: 'Prof. Smith',
+      birthday: '1980-01-01',
+      address: 'Campus',
+      contactNumber: '09123456789',
+      yearsOfTeaching: 5,
+      educationalBackground: [{ id: 'deg-1', degreeLevel: 'masters', school: 'DMMMSU', yearGraduated: 2015, specialization: 'CS' }],
+    };
+    mockLMS.activeRole = 'faculty';
+    mockLMS.db = {
+      courses: [{ id: 'c101', code: 'CSPC 112', title: 'Software Engineering 2' }],
+      courseSections: [],
+      users: [{ id: 'stud-1', name: 'Alice Student' }],
+      enrollmentRequests: [
+        {
+          id: 'req-faculty-view',
+          courseId: 'c101',
+          studentId: 'stud-1',
+          studentName: 'Alice Student',
+          type: 'self_join',
+          status: 'pending',
+          requestedAt: '2026-10-27',
+        },
+      ],
+    };
+    mockLMS.getUnreadNotificationCount = vi.fn(() => 0);
+
+    render(
+      <MemoryRouter>
+        <NotificationBell onNavigateCourse={onNavigateCourse} />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByTitle('Notifications'));
+
+    // Check no action buttons exist
+    expect(screen.queryByRole('button', { name: /approve/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /reject/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /withdraw/i })).not.toBeInTheDocument();
+
+    // Click the request item
+    const requestItem = screen.getByText(/Alice Student/).closest('button');
+    expect(requestItem).toBeInTheDocument();
+    fireEvent.click(requestItem);
+
+    // Should navigate to course people page
+    expect(onNavigateCourse).toHaveBeenCalledWith('c101', 'people?tab=pending');
+    expect(mockNavigate).toHaveBeenCalledWith('/courses/c101/people?tab=pending');
+  });
+
+  it('navigates student to dashboard page and displays no action buttons when clicking course request', () => {
+    const onNavigateTab = vi.fn();
+    mockLMS.activeUser = {
+      id: 'stud-1',
+      role: 'student',
+      firstName: 'Alice',
+      lastName: 'Student',
+      name: 'Alice Student',
+      birthday: '2004-01-01',
+      permanentAddress: 'Brgy 1, City',
+      presentAddress: 'Brgy 1, City',
+      sameAsPermanentAddress: true,
+      contactNumber: '09123456789',
+      hasGuardianOnly: false,
+      motherName: { firstName: 'Juana', lastName: 'Cruz' },
+      fatherName: { firstName: 'Juan', lastName: 'Cruz' },
+      parentContactNumber: '09991112222',
+      yearLevel: 2,
+    };
+    mockLMS.activeRole = 'student';
+    mockLMS.db = {
+      courses: [{ id: 'c101', code: 'CSPC 112', title: 'Software Engineering 2' }],
+      courseSections: [],
+      users: [],
+      enrollmentRequests: [],
+    };
+    mockLMS.getPendingRequestsForStudent = vi.fn(() => [
+      {
+        id: 'req-student-view',
+        courseId: 'c101',
+        studentId: 'stud-1',
+        type: 'self_join',
+        status: 'pending',
+        requestedAt: '2026-10-27',
+      },
+    ]);
+    mockLMS.getUnreadNotificationCount = vi.fn(() => 0);
+
+    render(
+      <MemoryRouter>
+        <NotificationBell onNavigateTab={onNavigateTab} />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByTitle('Notifications'));
+
+    // Check no action buttons exist (Withdraw, Accept, Decline)
+    expect(screen.queryByRole('button', { name: /withdraw/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /accept/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /decline/i })).not.toBeInTheDocument();
+
+    // Click the notification item
+    const requestItem = screen.getByText(/Awaiting approval/).closest('button');
+    expect(requestItem).toBeInTheDocument();
+    fireEvent.click(requestItem);
+
+    // Should navigate to dashboard
+    expect(onNavigateTab).toHaveBeenCalledWith('dashboard');
+    expect(mockNavigate).toHaveBeenCalledWith('/dashboard');
+  });
+});

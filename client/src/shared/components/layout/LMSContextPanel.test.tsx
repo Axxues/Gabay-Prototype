@@ -175,8 +175,8 @@ describe('LMSContextPanel Collapsible Assessments', () => {
 
     // Learning Management should be visible without the Courses button
     expect(screen.getByText('Learning Management')).toBeDefined();
-    expect(screen.getByRole('button', { name: /Dashboard/i })).toBeDefined();
-    expect(screen.queryByRole('button', { name: /^Courses$/i })).toBeNull();
+    expect(screen.getByRole('button', { name: /^Courses$/i })).toBeDefined();
+    expect(screen.queryByRole('button', { name: /^Dashboard$/i })).toBeNull();
 
     // Course Navigation header and course items should NOT be displayed
     expect(screen.queryByText('Course Navigation')).toBeNull();
@@ -246,7 +246,7 @@ describe('LMSContextPanel Collapsible Assessments', () => {
     expect(localStorage.getItem('gabay_lms_nav_minimized')).toBe('true');
 
     // Learning Management icons are still present
-    expect(screen.getByRole('button', { name: 'Dashboard' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Courses' })).toBeDefined();
     expect(screen.getByRole('button', { name: 'Calendar' })).toBeDefined();
 
     // Expand button is present

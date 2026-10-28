@@ -32,11 +32,16 @@ export function tabToPath(tab: string, activeCourseId?: string | null): string {
 }
 
 export function courseToPath(courseId: string, subTab = 'modules'): string {
+  if (subTab.includes('?')) {
+    const [tab, query] = subTab.split('?');
+    return `/courses/${encodeURIComponent(courseId)}/${encodeURIComponent(tab)}?${query}`;
+  }
   return `/courses/${encodeURIComponent(courseId)}/${encodeURIComponent(subTab)}`;
 }
 
 export function pathToTab(pathname: string): { tab: string; courseId?: string; subTab?: string; editUserId?: string; departmentId?: string } {
-  const parts = pathname.split('/').filter(Boolean);
+  const cleanPathname = pathname.split('?')[0];
+  const parts = cleanPathname.split('/').filter(Boolean);
   if (parts.length === 0) return { tab: 'dashboard' };
   const [first, second, third] = parts;
   if (first === 'login') return { tab: 'login' };

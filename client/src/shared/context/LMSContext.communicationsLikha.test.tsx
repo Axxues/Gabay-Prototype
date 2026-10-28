@@ -495,6 +495,42 @@ describe('communications via Likha (Task 8)', () => {
     expect((ann.replies || []).some((r: any) => r.id === 'ar-1' && r.content === 'Thanks!')).toBe(true);
   });
 
+  test('addAnnouncementReply rejects replies when course is outside user college/program jurisdiction', async () => {
+    await renderLoggedIn();
+    const outOfScopeAnn = {
+      id: 'ann-out-of-scope',
+      course_id: 'c-unaffiliated',
+      courseId: 'c-unaffiliated',
+      title: 'Secret Announcement',
+      content: 'Out of reach',
+      author_id: 'u-fac-other',
+      author_name: 'Other Faculty',
+      created_at: TS,
+      replies: [],
+    };
+    (seenDb.announcements || []).push(outOfScopeAnn);
+    (seenDb.courses || []).push({
+      id: 'c-unaffiliated',
+      code: 'ENGL 999',
+      title: 'Foreign Literature',
+      instructorId: 'u-fac-other',
+      collegeId: 'col-other',
+      departmentId: 'dept-other',
+      published: true,
+      termId: '1st-sem-2025',
+    });
+
+    addAnnouncementReplyMock.mockClear();
+    await act(async () => {
+      ctx.switchRole('student');
+    });
+
+    await act(async () => {
+      await ctx.addAnnouncementReply('ann-out-of-scope', 'Unauthorized comment');
+    });
+    expect(addAnnouncementReplyMock).not.toHaveBeenCalled();
+  });
+
   test('deleteAnnouncement deletes via Likha, never Express', async () => {
     await renderLoggedIn();
     await act(async () => {

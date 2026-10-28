@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getScopedCourses } from './courseScoping';
+import { getScopedCourses, canUserCommentOnCourse } from './courseScoping';
 import type { Course, User, College, Department } from '../types/lms';
 
 describe('getScopedCourses utility', () => {
@@ -400,5 +400,81 @@ describe('getScopedCourses utility', () => {
       selectedProgramId: 'dept-it',
     });
     expect(itFiltered.map(c => c.id)).toEqual(['c-4']);
+  });
+
+  describe('canUserCommentOnCourse authority gate', () => {
+    const csCourse: Course = {
+      id: 'c-cs-1',
+      code: 'CSCC 101',
+      title: 'Intro to CS',
+      instructorId: 'u-fac-cs',
+      collegeId: 'col-ccs',
+      departmentId: 'dept-cs',
+      published: true,
+      termId: '1st-sem-2025',
+    } as any;
+
+    const coeCourse: Course = {
+      id: 'c-coe-1',
+      code: 'EDUC 101',
+      title: 'Foundations of Education',
+      instructorId: 'u-fac-coe',
+      collegeId: 'col-coe',
+      departmentId: 'dept-eled',
+      published: true,
+      termId: '1st-sem-2025',
+    } as any;
+
+    const adminUser = users.find(u => u.id === 'u-admin-gen')!;
+    const deanCCSUser = users.find(u => u.id === 'u-dean-ccs')!;
+    const chairCSUser = users.find(u => u.id === 'u-chair-cs')!;
+    const facCSUser = users.find(u => u.id === 'u-fac-cs')!;
+
+    const studCSUser: User = {
+      id: 'u-stud-cs',
+      name: 'Student CS',
+      email: 'student.cs@dmmmsu.edu.ph',
+      role: 'student',
+      collegeId: 'col-ccs',
+      department: 'Department of Computer Science',
+      program: 'BS Computer Science',
+      enrolledCourseIds: ['c-cs-1'],
+    };
+
+    const unenrolledStudUser: User = {
+      id: 'u-stud-other',
+      name: 'Unenrolled Student',
+      email: 'student.other@dmmmsu.edu.ph',
+      role: 'student',
+      collegeId: 'col-coe',
+      department: 'Department of Elementary Education',
+      program: 'BS Elementary Education',
+      enrolledCourseIds: [],
+    };
+
+    it('allows admin/superadmin to comment on any course', () => {
+      expect(canUserCommentOnCourse(adminUser, 'admin', csCourse, departments, colleges)).toBe(true);
+      expect(canUserCommentOnCourse(adminUser, 'admin', coeCourse, departments, colleges)).toBe(true);
+    });
+
+    it('allows dean to comment on courses in their college and blocks other colleges', () => {
+      expect(canUserCommentOnCourse(deanCCSUser, 'dean', csCourse, departments, colleges)).toBe(true);
+      expect(canUserCommentOnCourse(deanCCSUser, 'dean', coeCourse, departments, colleges)).toBe(false);
+    });
+
+    it('allows chairperson to comment on courses in their program and blocks other programs/colleges', () => {
+      expect(canUserCommentOnCourse(chairCSUser, 'chairperson', csCourse, departments, colleges)).toBe(true);
+      expect(canUserCommentOnCourse(chairCSUser, 'chairperson', coeCourse, departments, colleges)).toBe(false);
+    });
+
+    it('allows assigned faculty to comment on their courses and blocks unrelated courses', () => {
+      expect(canUserCommentOnCourse(facCSUser, 'faculty', csCourse, departments, colleges)).toBe(true);
+      expect(canUserCommentOnCourse(facCSUser, 'faculty', coeCourse, departments, colleges)).toBe(false);
+    });
+
+    it('allows enrolled student to comment on their course and blocks unenrolled outside students', () => {
+      expect(canUserCommentOnCourse(studCSUser, 'student', csCourse, departments, colleges)).toBe(true);
+      expect(canUserCommentOnCourse(unenrolledStudUser, 'student', csCourse, departments, colleges)).toBe(false);
+    });
   });
 });

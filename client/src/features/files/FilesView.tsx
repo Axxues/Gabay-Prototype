@@ -1,3 +1,4 @@
+import { resolveLikhaAssetUrl } from '../../shared/api/likhaLmsApi';
 import React, { useState, useRef, useMemo } from 'react';
 import { useLMS } from '../../shared/context/LMSContext';
 import type { CourseFile, CourseFolder } from '../../shared/types/lms';
@@ -358,6 +359,19 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
   };
 
   const handleDownloadFile = (file: CourseFile) => {
+    const rawUrl = file.url || file.fileUrl;
+    if (rawUrl) {
+      const targetUrl = resolveLikhaAssetUrl(rawUrl);
+      const a = document.createElement('a');
+      a.href = targetUrl;
+      a.download = file.name;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      return;
+    }
     // Generate simulated blob download or open content
     const blob = new Blob([file.content || `Simulation Content for ${file.name}`], {
       type: 'application/octet-stream'
@@ -678,7 +692,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
                     </div>
                     {(previewFile.url || previewFile.fileUrl) ? (
                       <PdfViewer
-                        url={previewFile.url || previewFile.fileUrl}
+                        url={resolveLikhaAssetUrl(previewFile.url || previewFile.fileUrl)}
                         title={previewFile.name}
                         className="w-full min-h-[65vh]"
                       />
@@ -692,7 +706,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
                 ) : previewFile.type === 'image' && (previewFile.url || previewFile.fileUrl) ? (
                   <div className="flex items-center justify-center p-4 bg-muted/10 rounded-xl">
                     <img
-                      src={previewFile.url || previewFile.fileUrl}
+                      src={resolveLikhaAssetUrl(previewFile.url || previewFile.fileUrl)}
                       alt={previewFile.name}
                       className="max-h-[65vh] w-auto max-w-full rounded-xl object-contain shadow-card border border-border"
                     />

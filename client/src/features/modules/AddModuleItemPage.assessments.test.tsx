@@ -212,4 +212,133 @@ describe('AddModuleItemPage assessment resource types', () => {
 
     expect(screen.getByText(/Quiz-style question set/i)).toBeInTheDocument();
   });
+
+  test('allows attaching multiple files to a direct module item and saves attachments', async () => {
+    mocks.uploadCourseFile
+      .mockResolvedValueOnce({
+        id: 'f1',
+        name: 'lecture1.pdf',
+        formattedSize: '2.5 MB',
+        fileUrl: '/uploads/lecture1.pdf',
+        type: 'pdf'
+      })
+      .mockResolvedValueOnce({
+        id: 'f2',
+        name: 'diagram.png',
+        formattedSize: '500 KB',
+        fileUrl: '/uploads/diagram.png',
+        type: 'image'
+      });
+
+    const { container } = render(<AddModuleItemPage courseId="c1" moduleId="m1" onBack={() => {}} />);
+
+    const titleInput = screen.getByPlaceholderText(/Chapter 4: Neural Architectures/i);
+    fireEvent.change(titleInput, { target: { value: 'Intro to Trees' } });
+
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    expect(fileInput).toBeTruthy();
+    expect(fileInput.multiple).toBe(true);
+
+    const file1 = new File(['pdf data'], 'lecture1.pdf', { type: 'application/pdf' });
+    const file2 = new File(['png data'], 'diagram.png', { type: 'image/png' });
+
+    fireEvent.change(fileInput, { target: { files: [file1, file2] } });
+
+    expect(screen.getByText('lecture1.pdf')).toBeInTheDocument();
+    expect(screen.getByText('diagram.png')).toBeInTheDocument();
+    expect(screen.getByText(/File attachments \(2\)/i)).toBeInTheDocument();
+
+    const saveBtn = screen.getByRole('button', { name: /Save & add to module/i });
+    fireEvent.click(saveBtn);
+
+    await waitFor(() => {
+      expect(mocks.uploadCourseFile).toHaveBeenCalledTimes(2);
+      expect(mocks.addModuleItem).toHaveBeenCalledWith(
+        'm1',
+        expect.objectContaining({
+          title: 'Intro to Trees',
+          type: 'page',
+          fileName: 'lecture1.pdf',
+          fileUrl: '/uploads/lecture1.pdf',
+          attachments: expect.arrayContaining([
+            expect.objectContaining({ name: 'lecture1.pdf', url: '/uploads/lecture1.pdf' }),
+            expect.objectContaining({ name: 'diagram.png', url: '/uploads/diagram.png' }),
+          ])
+        })
+      );
+    });
+  });
+
+  test('allows attaching multiple starter files to classic activity and saves attachments', async () => {
+    mocks.createActivity.mockResolvedValueOnce({ id: 'act-multi-1' });
+    mocks.uploadCourseFile
+      .mockResolvedValueOnce({
+        id: 'f1',
+        name: 'handout.pdf',
+        formattedSize: '1.2 MB',
+        fileUrl: '/uploads/handout.pdf',
+      })
+      .mockResolvedValueOnce({
+        id: 'f2',
+        name: 'dataset.csv',
+        formattedSize: '300 KB',
+        fileUrl: '/uploads/dataset.csv',
+      });
+
+    const { container } = render(<AddModuleItemPage courseId="c1" moduleId="m1" onBack={() => {}} />);
+
+    // Select Activity
+    const openBtn = screen.getByRole('button', { name: /Lecture note \/ reading page/i });
+    fireEvent.click(openBtn);
+    const activityOpt = screen.getByRole('button', { name: /^Activity/i });
+    fireEvent.click(activityOpt);
+
+    const titleInput = screen.getByPlaceholderText(/SpeedGrader/i);
+    fireEvent.change(titleInput, { target: { value: 'Lab 1 Pathfinding' } });
+
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    expect(fileInput).toBeTruthy();
+    expect(fileInput.multiple).toBe(true);
+
+    const file1 = new File(['handout content'], 'handout.pdf', { type: 'application/pdf' });
+    const file2 = new File(['dataset content'], 'dataset.csv', { type: 'text/csv' });
+
+    fireEvent.change(fileInput, { target: { files: [file1, file2] } });
+
+    expect(screen.getByText('handout.pdf')).toBeInTheDocument();
+    expect(screen.getByText('dataset.csv')).toBeInTheDocument();
+
+    const saveBtn = screen.getByRole('button', { name: /Save & add to module/i });
+    fireEvent.click(saveBtn);
+
+    await waitFor(() => {
+      expect(mocks.uploadCourseFile).toHaveBeenCalledTimes(2);
+      expect(mocks.createActivity).toHaveBeenCalledWith(
+        expect.objectContaining({
+          courseId: 'c1',
+          title: 'Lab 1 Pathfinding',
+          fileName: 'handout.pdf',
+          fileUrl: '/uploads/handout.pdf',
+          attachments: expect.arrayContaining([
+            expect.objectContaining({ name: 'handout.pdf', url: '/uploads/handout.pdf' }),
+            expect.objectContaining({ name: 'dataset.csv', url: '/uploads/dataset.csv' }),
+          ])
+        })
+      );
+      expect(mocks.addModuleItem).toHaveBeenCalledWith(
+        'm1',
+        expect.objectContaining({
+          title: 'Lab 1 Pathfinding',
+          type: 'activity',
+          activityId: 'act-multi-1',
+          fileName: 'handout.pdf',
+          fileUrl: '/uploads/handout.pdf',
+          attachments: expect.arrayContaining([
+            expect.objectContaining({ name: 'handout.pdf', url: '/uploads/handout.pdf' }),
+            expect.objectContaining({ name: 'dataset.csv', url: '/uploads/dataset.csv' }),
+          ])
+        })
+      );
+    });
+  });
 });

@@ -208,4 +208,38 @@ describe('CreateAnnouncementPage cross-section sync', () => {
       );
     });
   });
+
+  test('includes directus_files_id in attachments payload when file upload resolves asset URL', async () => {
+    mocks.createAnnouncement.mockResolvedValue({ id: 'an1' });
+    mocks.uploadCourseFile.mockResolvedValue({
+      fileUrl: 'https://gabay.zyberlab.com/assets/a0a300fe-03b9-47c2-9021-108cded9d9fa',
+      fileId: 'a0a300fe-03b9-47c2-9021-108cded9d9fa',
+      formattedSize: '176.9 KB',
+    });
+
+    const { container } = renderPage();
+    fillRequiredFields();
+
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File([new Uint8Array(181120)], 'Diagram.png', { type: 'image/png' });
+
+    fireEvent.change(fileInput, { target: { files: [file] } });
+    expect(await screen.findByText('Diagram.png')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Publish announcement' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Publish to Current Section Only/i }));
+
+    await waitFor(() => {
+      expect(mocks.createAnnouncement).toHaveBeenCalledWith(
+        expect.objectContaining({
+          attachments: [
+            expect.objectContaining({
+              name: 'Diagram.png',
+              directus_files_id: 'a0a300fe-03b9-47c2-9021-108cded9d9fa',
+            }),
+          ],
+        })
+      );
+    });
+  });
 });

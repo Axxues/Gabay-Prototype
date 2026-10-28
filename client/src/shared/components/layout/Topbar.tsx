@@ -3,6 +3,7 @@ import { useLMS } from '../../context/LMSContext';
 import { NotificationBell } from '../common/NotificationBell';
 import { UserAvatar } from '../common/UserAvatar';
 import { getDisplayRoleLabel } from '../../utils/roles';
+import { getUserCollege, getUserCollegeCode } from '../../data/collegesData';
 import {
   Menu,
   Search,
@@ -35,11 +36,25 @@ export const Topbar: React.FC<TopbarProps> = React.memo(({
   const {
     activeUser,
     activeRole,
+    colleges,
+    departments,
     theme,
     toggleTheme,
     logout,
     showConfirm
   } = useLMS();
+
+  const displayRole = getDisplayRoleLabel(activeUser, activeRole);
+  const isEligibleRole =
+    displayRole === 'Student' ||
+    displayRole === 'Dean' ||
+    displayRole === 'Faculty' ||
+    displayRole === 'Staff' ||
+    displayRole === 'Chair';
+
+  const userCollege = getUserCollege(activeUser, colleges, departments);
+  const collegeCode = getUserCollegeCode(activeUser, colleges, departments);
+  const collegeName = userCollege?.name || activeUser?.collegeName;
 
   const [profileOpen, setProfileOpen] = useState(false);
 
@@ -99,6 +114,16 @@ export const Topbar: React.FC<TopbarProps> = React.memo(({
               <Moon className="h-4 w-4 text-amber-500" />
             )}
           </button>
+          {isEligibleRole && collegeCode && (
+            <div
+              data-testid="header-college-badge"
+              className="inline-flex items-center justify-center h-8 px-2.5 rounded-xl border border-primary/20 bg-primary/10 text-primary font-bold text-xs uppercase tracking-wider select-none shadow-xs shrink-0 hover:bg-primary/15 transition-colors cursor-default"
+              title={collegeName ? `${collegeName} (${collegeCode})` : `College: ${collegeCode}`}
+              aria-label={collegeName ? `College: ${collegeName} (${collegeCode})` : `College: ${collegeCode}`}
+            >
+              {collegeCode}
+            </div>
+          )}
         </div>
 
         {/* Center Section: Cellwego Universal Search Trigger */}

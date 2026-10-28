@@ -2,56 +2,62 @@ import React from 'react';
 import { useLocation } from 'react-router-dom';
 
 // Shared shell chrome so full-screen loads (e.g. initial token bootstrap before AppShell mounts) show realistic shell
-export const ShellChromeSkeleton: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <div className="h-screen flex flex-col overflow-hidden bg-muted font-sans dark:bg-background" role="status" aria-label="Loading workspace">
-    {/* Topbar placeholder */}
-    <div className="h-16 shrink-0 border-b border-border/70 bg-background/80 px-4 sm:px-6 flex items-center justify-between">
-      <div className="flex items-center gap-3">
-        <div className="h-9 w-9 rounded-xl bg-muted animate-pulse" />
-        <div className="space-y-1.5">
-          <div className="h-3 w-28 rounded-md bg-muted animate-pulse" />
-          <div className="h-2 w-20 rounded-md bg-muted/70 animate-pulse" />
+export const ShellChromeSkeleton: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const location = useLocation();
+  const path = location?.pathname || '/dashboard';
+  const isFullBleed = path.startsWith('/courses') || path === '/inbox' || path === '/gabay-rag';
+
+  return (
+    <div className="h-screen flex flex-col overflow-hidden bg-muted font-sans dark:bg-background" role="status" aria-label="Loading workspace">
+      {/* Topbar placeholder */}
+      <div className="h-16 shrink-0 border-b border-border/70 bg-background/80 px-4 sm:px-6 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="h-9 w-9 rounded-xl bg-muted animate-pulse" />
+          <div className="space-y-1.5">
+            <div className="h-3 w-28 rounded-md bg-muted animate-pulse" />
+            <div className="h-2 w-20 rounded-md bg-muted/70 animate-pulse" />
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="hidden sm:block h-8 w-56 rounded-xl bg-muted animate-pulse" />
+          <div className="h-8 w-8 rounded-full bg-muted animate-pulse" />
+          <div className="h-8 w-8 rounded-full bg-muted animate-pulse" />
         </div>
       </div>
-      <div className="flex items-center gap-2">
-        <div className="hidden sm:block h-8 w-56 rounded-xl bg-muted animate-pulse" />
-        <div className="h-8 w-8 rounded-full bg-muted animate-pulse" />
-        <div className="h-8 w-8 rounded-full bg-muted animate-pulse" />
-      </div>
-    </div>
 
-    <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden pt-0">
-      {/* AppRail placeholder */}
-      <div className="hidden sm:flex w-[68px] flex-shrink-0 flex-col items-center border-r border-border/70 bg-background py-3 gap-1">
-        <div className="mb-3 h-9 w-9 rounded-xl bg-muted animate-pulse" />
-        {[0, 1, 2, 3, 4].map(i => (
-          <div key={i} className="h-11 w-11 rounded-xl bg-muted/70 animate-pulse" />
-        ))}
-      </div>
-
-      {/* Context panel placeholder */}
-      <div className="hidden lg:flex w-[240px] flex-shrink-0 flex-col border-r border-border/60 bg-card/50 p-3 gap-2">
-        <div className="h-3 w-32 rounded-md bg-muted animate-pulse mx-2" />
-        {[0, 1, 2, 3].map(i => (
-          <div key={i} className="h-10 rounded-xl bg-muted/60 animate-pulse" />
-        ))}
-        <div className="mx-1 my-2 border-t border-border" />
-        <div className="h-3 w-32 rounded-md bg-muted animate-pulse mx-2" />
-        <div className="h-16 rounded-xl bg-muted/60 animate-pulse" />
-        {[0, 1, 2, 3, 4].map(i => (
-          <div key={i} className="h-10 rounded-xl bg-muted/60 animate-pulse" />
-        ))}
-      </div>
-
-      {/* Page content skeleton container */}
-      <main className="min-h-0 min-w-0 w-full flex-1 overflow-y-auto custom-scrollbar">
-        <div className="mx-auto flex min-h-full w-full max-w-[1600px] flex-col p-5 sm:p-8 lg:p-10">
-          {children}
+      <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden pt-0">
+        {/* AppRail placeholder */}
+        <div className="hidden sm:flex w-[68px] flex-shrink-0 flex-col items-center border-r border-border/70 bg-background py-3 gap-1">
+          <div className="mb-3 h-9 w-9 rounded-xl bg-muted animate-pulse" />
+          {[0, 1, 2, 3, 4].map(i => (
+            <div key={i} className="h-11 w-11 rounded-xl bg-muted/70 animate-pulse" />
+          ))}
         </div>
-      </main>
+
+        {/* Context panel placeholder */}
+        <div className="hidden lg:flex w-[240px] flex-shrink-0 flex-col border-r border-border/60 bg-card/50 p-3 gap-2">
+          <div className="h-3 w-32 rounded-md bg-muted animate-pulse mx-2" />
+          {[0, 1, 2, 3].map(i => (
+            <div key={i} className="h-10 rounded-xl bg-muted/60 animate-pulse" />
+          ))}
+          <div className="mx-1 my-2 border-t border-border" />
+          <div className="h-3 w-32 rounded-md bg-muted animate-pulse mx-2" />
+          <div className="h-16 rounded-xl bg-muted/60 animate-pulse" />
+          {[0, 1, 2, 3, 4].map(i => (
+            <div key={i} className="h-10 rounded-xl bg-muted/60 animate-pulse" />
+          ))}
+        </div>
+
+        {/* Page content skeleton container matching AppShell structure */}
+        <main className={`relative min-h-0 min-w-0 w-full flex-1 ${isFullBleed ? 'overflow-hidden flex flex-col' : 'overflow-y-auto custom-scrollbar'}`}>
+          <div className={isFullBleed ? "flex h-full min-h-0 w-full min-w-0 flex-1 flex-col" : "mx-auto flex min-h-full w-full max-w-[1600px] flex-col p-5 sm:p-8 lg:p-10"}>
+            {children}
+          </div>
+        </main>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 // Mirrors DashboardPage layout 1:1:
 // - Header with "My courses" title, subtitle, "+ Create course" button, and count pill
@@ -150,42 +156,38 @@ export const DashboardSkeleton: React.FC = () => (
   </div>
 );
 
-// Mirrors CoursesPage layout: header banner + tab navigation pills + module/content rows
+// Mirrors CoursesPage content view: PageHeader + toolbar card + stacked content cards / rows
 export const CoursesSkeleton: React.FC = () => (
-  <div className="flex min-h-full w-full flex-1 flex-col space-y-6 animate-pulse" data-testid="courses-skeleton">
-    {/* Course Header Banner */}
-    <div className="p-6 bg-card border border-border rounded-2xl space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <div className="h-5 w-20 rounded-full bg-muted/70" />
-            <div className="h-5 w-32 rounded-full bg-muted/50" />
-          </div>
-          <div className="h-7 w-72 rounded-lg bg-muted" />
-        </div>
-        <div className="h-9 w-28 rounded-xl bg-muted" />
+  <div className="flex min-h-full w-full flex-1 flex-col space-y-5 animate-pulse" data-testid="courses-skeleton">
+    {/* Page Header (Title + Subtitle + Action Badge) */}
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2">
+      <div className="space-y-1.5">
+        <div className="h-7 w-48 rounded-lg bg-muted" />
+        <div className="h-4 w-72 rounded bg-muted/60" />
+      </div>
+      <div className="flex items-center gap-2">
+        <div className="h-9 w-36 rounded-xl bg-muted/70" />
       </div>
     </div>
 
-    {/* Subtab Navigation Pills */}
-    <div className="flex items-center gap-2 overflow-x-auto pb-1">
-      {['Modules', 'Syllabus', 'Activities', 'Quizzes', 'Exams', 'Grades', 'People', 'Files'].map(tab => (
-        <div key={tab} className="h-9 w-24 rounded-xl bg-muted/50 shrink-0" />
-      ))}
+    {/* Toolbar / Control Card */}
+    <div className="h-14 w-full rounded-2xl bg-card border border-border p-3 flex items-center justify-between gap-3">
+      <div className="h-8 flex-1 max-w-md rounded-xl bg-muted/50" />
+      <div className="h-8 w-28 rounded-xl bg-muted/40" />
     </div>
 
-    {/* Content Area */}
-    <div className="space-y-4">
-      {[0, 1, 2].map(i => (
-        <div key={i} className="bg-card border border-border rounded-2xl p-5 space-y-3">
-          <div className="flex items-center justify-between pb-2 border-b border-border/50">
-            <div className="h-5 w-48 rounded bg-muted" />
-            <div className="h-4 w-16 rounded bg-muted/60" />
+    {/* Content Rows / Cards */}
+    <div className="space-y-3">
+      {[0, 1, 2, 3].map(i => (
+        <div key={i} className="h-16 w-full rounded-2xl bg-card border border-border p-4 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 flex-1">
+            <div className="h-8 w-8 rounded-full bg-muted/70 shrink-0" />
+            <div className="space-y-1.5 flex-1 max-w-sm">
+              <div className="h-4 w-3/4 rounded bg-muted" />
+              <div className="h-3 w-1/2 rounded bg-muted/50" />
+            </div>
           </div>
-          <div className="space-y-2 pt-1">
-            <div className="h-4 w-5/6 rounded bg-muted/60" />
-            <div className="h-3.5 w-2/3 rounded bg-muted/40" />
-          </div>
+          <div className="h-6 w-20 rounded-full bg-muted/40" />
         </div>
       ))}
     </div>
@@ -357,7 +359,13 @@ export const PageSkeleton: React.FC = () => {
     return <DashboardSkeleton />;
   }
   if (path.startsWith('/courses')) {
-    return <CoursesSkeleton />;
+    return (
+      <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
+        <main className="min-h-0 flex-1 p-6 overflow-y-auto bg-background custom-scrollbar">
+          <CoursesSkeleton />
+        </main>
+      </div>
+    );
   }
   if (path === '/calendar') {
     return <CalendarSkeleton />;

@@ -22,7 +22,11 @@ import {
   Trash2,
   ArrowLeft,
   Calendar,
-  Users
+  Users,
+  Paperclip,
+  Download,
+  Image as ImageIcon,
+  FileText
 } from 'lucide-react';
 import { CreateActivityPage } from './CreateActivityPage';
 import { ActivityRunnerView } from './ActivityRunnerView';
@@ -577,6 +581,69 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
           </h4>
           <p className="text-[13.5px] leading-relaxed text-muted-foreground whitespace-pre-line">{selectedActivity.instructions}</p>
         </div>
+
+        {/* Attached Starter Handouts / Reference Files */}
+        {(() => {
+          const attachments = (selectedActivity.attachments && selectedActivity.attachments.length > 0)
+            ? selectedActivity.attachments
+            : selectedActivity.fileName
+              ? [{ name: selectedActivity.fileName, size: selectedActivity.fileSize || '', url: selectedActivity.fileUrl, type: 'file' }]
+              : [];
+          if (attachments.length === 0) return null;
+
+          return (
+            <div className="pt-2 space-y-3">
+              <h4 className="text-[13px] font-bold text-foreground flex items-center gap-1.5">
+                <Paperclip className="w-4 h-4 text-muted-foreground" />
+                <span>Reference & Starter Handouts</span>
+                <span className="text-[12px] font-semibold text-muted-foreground">· {attachments.length} {attachments.length === 1 ? 'file' : 'files'}</span>
+              </h4>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {attachments.map((att, idx) => {
+                  const isImg = att.name ? /\.(jpg|jpeg|png|gif|svg|webp)$/i.test(att.name) : false;
+                  return (
+                    <div
+                      key={idx}
+                      className="p-3.5 bg-muted/20 hover:bg-muted/30 border border-border/70 rounded-xl flex items-center justify-between gap-3 transition-colors"
+                    >
+                      <div className="flex items-center space-x-3 overflow-hidden min-w-0">
+                        <div className="w-9 h-9 rounded-lg bg-card border border-border flex items-center justify-center shrink-0">
+                          {isImg ? (
+                            <ImageIcon className="w-4 h-4 text-pink-500" />
+                          ) : (
+                            <FileText className="w-4 h-4 text-primary" />
+                          )}
+                        </div>
+                        <div className="truncate min-w-0">
+                          <p className="font-semibold text-xs text-foreground truncate" title={att.name}>
+                            {att.name}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground">
+                            {att.size || 'Resource'} • {isImg ? 'Image' : 'Document'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {att.url && (
+                        <a
+                          href={att.url}
+                          download={att.name}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/10 rounded-lg transition-colors cursor-pointer flex items-center space-x-1 shrink-0 border border-primary/20"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>Download</span>
+                        </a>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Rubric Criteria Summary */}
         <div className="pt-2 space-y-3">

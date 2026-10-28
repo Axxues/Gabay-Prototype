@@ -1,3 +1,4 @@
+import https from 'node:https';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
@@ -43,6 +44,7 @@ export default defineConfig({
         target: 'https://gabay.zyberlab.com',
         changeOrigin: true,
         secure: true,
+        agent: new https.Agent({ keepAlive: true, keepAliveMsecs: 30000, maxSockets: 50 }),
         rewrite: (path) => path.replace(/^\/likha/, ''),
       },
     },

@@ -9,10 +9,18 @@ import type { OfficialSyllabusData } from '../data/syllabusData';
 export const LIKHA_URL =
   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_LIKHA_URL) ||
   (typeof window !== 'undefined' &&
-  window.location?.hostname === 'localhost' &&
+  (window.location?.hostname === 'localhost' || window.location?.hostname === '127.0.0.1' || window.location?.hostname === '::1') &&
   !((globalThis as any).process?.env?.VITEST)
     ? '/likha'
     : 'https://gabay.zyberlab.com');
+
+export function resolveLikhaAssetUrl(url?: string | null): string {
+  if (!url) return '';
+  if (LIKHA_URL === '/likha') {
+    return url.replace(/^https?:\/\/gabay\.zyberlab\.com\/assets\//, '/likha/assets/');
+  }
+  return url;
+}
 
 export interface LikhaUploadedFile {
   id: string;
@@ -115,9 +123,7 @@ export const UUID_ITEM_COLLECTIONS = new Set([
   'module_items',
   'module_comments',
   'announcements',
-  'announcement_replies',
   'discussions',
-  'discussion_replies',
   'messages',
   'chat_groups',
   'calendar_events',
@@ -129,13 +135,9 @@ export const UUID_ITEM_COLLECTIONS = new Set([
   'activities',
   'assessment_questions',
   'rubric_criteria',
-  'activities_files',
   'submissions',
   'submission_answers',
-  'submission_rubric_scores',
-  'submission_comments',
   'course_sections',
-  'sections',
   'enrollment_requests',
   'spr_cells',
   'spr_configs',
@@ -630,7 +632,7 @@ export const likhaLmsApi = {
 
       // Filter by approved enrollment requests
       const requests = await likhaRequest<any[]>(
-        `/items/enrollment_requests?filter[student_id][_eq]=${encodeURIComponent(studentId)}&filter[status][_eq]=approved&limit=100`
+        `/items/enrollment_requests?filter%5Bstudent_id%5D%5B_eq%5D=${encodeURIComponent(studentId)}&filter%5Bstatus%5D%5B_eq%5D=approved&limit=100`
       );
       const approvedCourseIds = new Set((requests || []).map((r: any) => r.course_id));
       if (approvedCourseIds.size === 0) {
@@ -645,7 +647,7 @@ export const likhaLmsApi = {
 
     async getCourseEnrollments(courseId?: string): Promise<any[]> {
       const query = courseId
-        ? `filter[course][_eq]=${encodeURIComponent(courseId)}&fields=*,user.*,course.*`
+        ? `filter%5Bcourse%5D%5B_eq%5D=${encodeURIComponent(courseId)}&fields=*,user.*,course.*`
         : 'fields=*,user.*,course.*';
       return likhaRequest<any[]>(`/items/Course_Enrollments?${query}`).catch(() => []);
     },
@@ -670,6 +672,23 @@ export const likhaLmsApi = {
         method: 'POST',
         body: JSON.stringify(payload),
       }).catch(() => {});
+    },
+
+    async deleteCourseEnrollment(courseId: string, studentId: string): Promise<boolean> {
+      const query = `filter%5Bcourse%5D%5B_eq%5D=${encodeURIComponent(courseId)}&filter%5Buser%5D%5B_eq%5D=${encodeURIComponent(studentId)}&fields=id`;
+      const rows = await likhaRequest<any[]>(`/items/Course_Enrollments?${query}`).catch(() => []);
+      let deleted = false;
+      if (Array.isArray(rows) && rows.length > 0) {
+        for (const row of rows) {
+          if (row.id) {
+            await likhaRequest(`/items/Course_Enrollments/${encodeURIComponent(row.id)}`, {
+              method: 'DELETE',
+            }).catch(() => {});
+            deleted = true;
+          }
+        }
+      }
+      return deleted;
     },
 
     async createCourse(course: any): Promise<any> {
@@ -729,8 +748,8 @@ export const likhaLmsApi = {
   requests: {
     async getRequests(courseId?: string, status?: string): Promise<any[]> {
       let q = `/items/enrollment_requests?limit=200`;
-      if (courseId) q += `&filter[course_id][_eq]=${encodeURIComponent(courseId)}`;
-      if (status) q += `&filter[status][_eq]=${encodeURIComponent(status)}`;
+      if (courseId) q += `&filter%5Bcourse_id%5D%5B_eq%5D=${encodeURIComponent(courseId)}`;
+      if (status) q += `&filter%5Bstatus%5D%5B_eq%5D=${encodeURIComponent(status)}`;
       return likhaRequest(q).catch(() => []);
     },
 
@@ -763,17 +782,32 @@ export const likhaLmsApi = {
       );
       if (!Array.isArray(modules) || modules.length === 0) return [];
       const moduleIds = modules.map((m: any) => m.id).filter(Boolean);
-      if (moduleIds.length === 0) return modules.map((m: any) => ({ ...m, items: [] }));
-      const items = await likhaRequest<any[]>(
-        `/items/module_items?filter[module_id][_in]=${moduleIds.join(',')}&sort=order`
-      ).catch(() => []);
+      if (moduleIds.length === 0) return modules.map((m: any) => ({ ...m, items: [], comments: [] }));
+      const [items, comments] = await Promise.all([
+        likhaRequest<any[]>(
+          `/items/module_items?filter[module_id][_in]=${moduleIds.join(',')}&sort=order`
+        ).catch(() => []),
+        likhaRequest<any[]>(
+          `/items/module_comments?filter[module_id][_in]=${moduleIds.join(',')}&sort=created_at`
+        ).catch(() => []),
+      ]);
       const itemMap = new Map<string, any[]>();
       for (const item of (items || [])) {
         const list = itemMap.get(item.module_id) || [];
         list.push(item);
         itemMap.set(item.module_id, list);
       }
-      return modules.map((m: any) => ({ ...m, items: itemMap.get(m.id) || [] }));
+      const commentMap = new Map<string, any[]>();
+      for (const comm of (comments || [])) {
+        const list = commentMap.get(comm.module_id) || [];
+        list.push(comm);
+        commentMap.set(comm.module_id, list);
+      }
+      return modules.map((m: any) => ({
+        ...m,
+        items: itemMap.get(m.id) || [],
+        comments: commentMap.get(m.id) || [],
+      }));
     },
 
     async createModule(module: any): Promise<any> {
@@ -1098,13 +1132,53 @@ export const likhaLmsApi = {
   // =========================================================================
   communications: {
     async getAnnouncements(courseId: string): Promise<any[]> {
-      return likhaRequest(`/items/announcements?filter[course_id][_eq]=${encodeURIComponent(courseId)}&fields=*,attachments.directus_files_id.*&sort=-created_at`).catch(() =>
-        likhaRequest(`/items/announcements?filter[course_id][_eq]=${encodeURIComponent(courseId)}&sort=-created_at`)
+      const announcements = await likhaRequest<any[]>(
+        `/items/announcements?filter[course_id][_eq]=${encodeURIComponent(courseId)}&fields=*,attachments.directus_files_id.*&sort=-created_at`
+      ).catch(() =>
+        likhaRequest<any[]>(`/items/announcements?filter[course_id][_eq]=${encodeURIComponent(courseId)}&sort=-created_at`)
       );
+      if (!Array.isArray(announcements) || announcements.length === 0) return [];
+      const announcementIds = announcements.map((a: any) => a.id).filter(Boolean);
+      if (announcementIds.length === 0) return announcements.map((a: any) => ({ ...a, replies: [] }));
+
+      const replies = await likhaRequest<any[]>(
+        `/items/announcement_replies?filter[announcement_id][_in]=${announcementIds.join(',')}&sort=created_at`
+      ).catch(() => []);
+
+      const replyMap = new Map<string, any[]>();
+      for (const rep of (replies || [])) {
+        const list = replyMap.get(String(rep.announcement_id)) || [];
+        list.push(rep);
+        replyMap.set(String(rep.announcement_id), list);
+      }
+      return announcements.map((a: any) => ({
+        ...a,
+        replies: replyMap.get(String(a.id)) || (Array.isArray(a.replies) ? a.replies : []),
+      }));
     },
 
     async createAnnouncement(data: any): Promise<any> {
-      const payload = { id: data.id || generateUuid(), ...data };
+      const attachmentsPayload = Array.isArray(data.attachments)
+        ? data.attachments
+            .map((att: any) => {
+              if (!att) return null;
+              if (att.directus_files_id) {
+                const fId = typeof att.directus_files_id === 'object' ? att.directus_files_id?.id : att.directus_files_id;
+                return fId ? { directus_files_id: String(fId) } : null;
+              }
+              const rawUrl = att.url || att.fileUrl || (typeof att === 'string' ? att : '');
+              const match = rawUrl ? String(rawUrl).match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i) : null;
+              const fId = att.fileId || att.file_id || att.file || (match ? match[0] : null);
+              return fId ? { directus_files_id: String(fId) } : null;
+            })
+            .filter((x: any): x is { directus_files_id: string } => Boolean(x))
+        : undefined;
+
+      const payload = {
+        id: data.id || generateUuid(),
+        ...data,
+        ...(attachmentsPayload !== undefined ? { attachments: attachmentsPayload } : {}),
+      };
       try {
         return await likhaRequest('/items/announcements', {
           method: 'POST',
@@ -1123,9 +1197,25 @@ export const likhaLmsApi = {
     },
 
     async updateAnnouncement(id: string, patch: any): Promise<any> {
+      const transformedPatch = { ...patch };
+      if (Array.isArray(patch.attachments)) {
+        transformedPatch.attachments = patch.attachments
+          .map((att: any) => {
+            if (!att) return null;
+            if (att.directus_files_id) {
+              const fId = typeof att.directus_files_id === 'object' ? att.directus_files_id?.id : att.directus_files_id;
+              return fId ? { directus_files_id: String(fId) } : null;
+            }
+            const rawUrl = att.url || att.fileUrl || (typeof att === 'string' ? att : '');
+            const match = rawUrl ? String(rawUrl).match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i) : null;
+            const fId = att.fileId || att.file_id || att.file || (match ? match[0] : null);
+            return fId ? { directus_files_id: String(fId) } : null;
+          })
+          .filter((x: any): x is { directus_files_id: string } => Boolean(x));
+      }
       return likhaRequest(`/items/announcements/${encodeURIComponent(id)}`, {
         method: 'PATCH',
-        body: JSON.stringify(patch),
+        body: JSON.stringify(transformedPatch),
       });
     },
 
@@ -1136,10 +1226,20 @@ export const likhaLmsApi = {
     },
 
     async addAnnouncementReply(announcementId: string, reply: any): Promise<any> {
-      const payload = { id: reply.id || generateUuid(), announcement_id: announcementId, ...reply };
+      const { id, ...rest } = reply || {};
+      const payload: any = { announcement_id: announcementId, ...rest };
+      if (typeof id === 'number' || (typeof id === 'string' && /^\d+$/.test(id))) {
+        payload.id = Number(id);
+      }
       return likhaRequest('/items/announcement_replies', {
         method: 'POST',
         body: JSON.stringify(payload),
+      });
+    },
+
+    async deleteAnnouncementReply(id: string | number): Promise<void> {
+      await likhaRequest(`/items/announcement_replies/${encodeURIComponent(String(id))}`, {
+        method: 'DELETE',
       });
     },
 
@@ -1169,7 +1269,11 @@ export const likhaLmsApi = {
     },
 
     async addDiscussionReply(discussionId: string, reply: any): Promise<any> {
-      const payload = { id: reply.id || generateUuid(), discussion_id: discussionId, ...reply };
+      const { id, ...rest } = reply || {};
+      const payload: any = { discussion_id: discussionId, ...rest };
+      if (typeof id === 'number' || (typeof id === 'string' && /^\d+$/.test(id))) {
+        payload.id = Number(id);
+      }
       return likhaRequest('/items/discussion_replies', {
         method: 'POST',
         body: JSON.stringify(payload),
@@ -1180,6 +1284,12 @@ export const likhaLmsApi = {
       return likhaRequest(`/items/discussion_replies/${encodeURIComponent(id)}`, {
         method: 'PATCH',
         body: JSON.stringify(updates),
+      });
+    },
+
+    async deleteDiscussionReply(id: string | number): Promise<void> {
+      await likhaRequest(`/items/discussion_replies/${encodeURIComponent(String(id))}`, {
+        method: 'DELETE',
       });
     },
 
@@ -1584,7 +1694,7 @@ export const likhaLmsApi = {
 
     async withdrawSyllabus(courseId: string): Promise<void> {
       const allForCourse = await likhaRequest<any[]>(
-        `/items/syllabi?filter[course_id][_eq]=${encodeURIComponent(courseId)}`
+        `/items/syllabi?filter%5Bcourse_id%5D%5B_eq%5D=${encodeURIComponent(courseId)}`
       ).catch(() => []);
       if (allForCourse && allForCourse.length > 0) {
         for (const p of allForCourse) {
@@ -1593,9 +1703,43 @@ export const likhaLmsApi = {
           }).catch(() => undefined);
         }
       } else {
-        await likhaRequest(`/items/syllabi?filter[course_id][_eq]=${encodeURIComponent(courseId)}`, {
+        await likhaRequest(`/items/syllabi?filter%5Bcourse_id%5D%5B_eq%5D=${encodeURIComponent(courseId)}`, {
           method: 'DELETE',
         }).catch(() => undefined);
+      }
+    },
+
+    async clearSourceDocument(courseId: string): Promise<void> {
+      try {
+        const items = await likhaRequest<any[]>(
+          `/items/syllabi?filter%5Bcourse_id%5D%5B_eq%5D=${encodeURIComponent(courseId)}`
+        ).catch(() => []);
+        if (Array.isArray(items)) {
+          for (const item of items) {
+            let parsed = typeof item.content === 'string' ? JSON.parse(item.content) : item.content;
+            if (parsed && (parsed.sourceDocument !== undefined || 'sourceDocument' in parsed)) {
+              delete parsed.sourceDocument;
+              await likhaRequest(`/items/syllabi/${encodeURIComponent(item.id)}`, {
+                method: 'PATCH',
+                body: JSON.stringify({ content: JSON.stringify(parsed) }),
+              }).catch(() => undefined);
+            }
+          }
+        }
+        const course = await likhaRequest<any>(`/items/courses/${encodeURIComponent(courseId)}`).catch(() => null);
+        if (course?.syllabus) {
+          let parsedSyllabus = typeof course.syllabus === 'string' ? JSON.parse(course.syllabus) : course.syllabus;
+          if (parsedSyllabus && (parsedSyllabus.sourceDocument !== undefined || 'sourceDocument' in parsedSyllabus)) {
+            delete parsedSyllabus.sourceDocument;
+            await likhaRequest(`/items/courses/${encodeURIComponent(courseId)}`, {
+              method: 'PATCH',
+              body: JSON.stringify({ syllabus: JSON.stringify(parsedSyllabus) }),
+            }).catch(() => undefined);
+          }
+        }
+      } finally {
+        likhaCache.invalidate('/items/syllabi');
+        likhaCache.invalidate('/items/courses');
       }
     },
   },
@@ -1649,10 +1793,11 @@ export const likhaLmsApi = {
     if (!res.ok) throw new Error(`File upload to Likha failed: ${res.status}`);
     const json = await res.json();
     const fileData = json.data;
+    const assetUrl = `${LIKHA_URL === '/likha' ? '/likha' : 'https://gabay.zyberlab.com'}/assets/${fileData.id}`;
     return {
       id: fileData.id,
       filename_download: fileData.filename_download || file.name,
-      url: `https://gabay.zyberlab.com/assets/${fileData.id}`,
+      url: assetUrl,
       filesize: typeof fileData?.filesize === 'number' ? fileData.filesize : (file.size ?? 0),
     };
   },

@@ -118,6 +118,7 @@ const updateCourseFileMock = vi.fn(async (id: string, patch: any) => ({
   ...patch,
 }));
 const deleteCourseFileMock = vi.fn(async () => ({}));
+const clearSourceDocMock = vi.fn(async () => ({}));
 const uploadFileMock = vi.fn(async (file: File) => ({
   id: 'asset-uploaded',
   filename_download: file.name,
@@ -172,6 +173,9 @@ vi.mock('../api/client', () => ({
     grades: {
       getCourseGrades: (...args: any[]) => (getCourseGradesMock as any)(...args),
       getSPRConfig: (...args: any[]) => (getSPRConfigMock as any)(...args),
+    },
+    syllabus: {
+      clearSourceDocument: (...args: any[]) => (clearSourceDocMock as any)(...args),
     },
     files: {
       uploadFile: (...args: any[]) => (uploadFileMock as any)(...args),
@@ -371,6 +375,45 @@ describe('files and folders via Likha (Task 9)', () => {
     });
 
     expect(deleteCourseFileMock).not.toHaveBeenCalled();
+    expect((seenDb.courses || []).find((c: any) => c.id === 'c1')?.syllabus?.sourceDocument).toBeUndefined();
+  });
+
+  test('deleteCourseFile with physical syllabus file clears sourceDocument and calls clearSourceDocument on Likha', async () => {
+    clearSourceDocMock.mockClear();
+
+    getCoursesWithRelationsMock.mockResolvedValueOnce([
+      {
+        ...courseRow,
+        syllabus: {
+          sourceDocument: { fileName: 'CMSC131_Course_Orientation.pdf', fileSize: '1.0 MB', courseFileId: 'file-syl-1' },
+        },
+      },
+    ]);
+    seedFiles = [
+      {
+        id: 'file-syl-1',
+        course_id: 'c1',
+        name: 'CMSC131_Course_Orientation.pdf',
+        source_area: 'syllabus',
+        size: 1048576,
+        formatted_size: '1.0 MB',
+        type: 'pdf',
+        visibility: 'published',
+        date_updated: TS,
+      },
+    ];
+
+    await renderLoggedIn();
+    expect((seenDb.courseFiles || []).find((f: any) => f.id === 'file-syl-1')).toBeDefined();
+    expect((seenDb.courses || []).find((c: any) => c.id === 'c1')?.syllabus?.sourceDocument).toBeDefined();
+
+    await act(async () => {
+      await ctx.deleteCourseFile('file-syl-1');
+    });
+
+    expect(deleteCourseFileMock).toHaveBeenCalledWith('file-syl-1');
+    expect(clearSourceDocMock).toHaveBeenCalledWith('c1');
+    expect((seenDb.courseFiles || []).find((f: any) => f.id === 'file-syl-1')).toBeUndefined();
     expect((seenDb.courses || []).find((c: any) => c.id === 'c1')?.syllabus?.sourceDocument).toBeUndefined();
   });
 });

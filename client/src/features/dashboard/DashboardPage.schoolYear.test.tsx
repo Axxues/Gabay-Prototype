@@ -128,4 +128,29 @@ describe('DashboardPage Academic Scope Horizontal Scrollable Wheel', () => {
     expect(futureYearBtn).toBeDisabled();
     expect(futureYearBtn).toHaveAttribute('aria-disabled', 'true');
   });
+
+  test('marks 2026-2027 as Current when student courses are in 2026-2027', () => {
+    const originalCourses = mockCoursesState;
+    mockCoursesState = [
+      {
+        id: 'c-curr',
+        code: 'CSPC 112',
+        title: 'Software Engineering 2',
+        section: '4-E',
+        schoolYear: '2026-2027',
+        term: '1st Sem AY 2026-2027',
+        published: true,
+      } as any,
+    ];
+
+    try {
+      render(<DashboardPage onNavigateCourse={() => {}} onNavigateTab={() => {}} />);
+      const btn2627 = screen.getByRole('button', { name: /AY 2026-2027/i });
+      expect(btn2627).toHaveTextContent('Current');
+      expect(btn2627).not.toHaveTextContent('University A.Y.');
+      expect(screen.getByText('Software Engineering 2')).toBeInTheDocument();
+    } finally {
+      mockCoursesState = originalCourses;
+    }
+  });
 });

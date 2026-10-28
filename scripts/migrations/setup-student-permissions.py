@@ -145,6 +145,51 @@ def main():
     }
     ensure_permission(student_policy_id, "enrollment_requests", "update", permissions=enr_update_rule)
 
+    print("Step 2b: Configuring directus_users and directus_files permissions for Student policy...")
+    user_updatable_fields = [
+        "first_name",
+        "middle_name",
+        "last_name",
+        "avatar",
+        "banner",
+        "password",
+        "title",
+        "description",
+        "location",
+        "appearance",
+        "theme_dark",
+        "theme_light",
+        "email_notifications",
+        "tags",
+        "language",
+    ]
+    user_readable_fields = [
+        "id",
+        "first_name",
+        "middle_name",
+        "last_name",
+        "email",
+        "avatar",
+        "department",
+        "title",
+        "student_id",
+        "banner",
+        "role",
+        "user_role",
+        "status",
+        "location",
+        "description",
+        "appearance",
+        "theme_dark",
+        "theme_light",
+        "language",
+    ]
+    ensure_permission(student_policy_id, "directus_users", "read", fields=user_readable_fields, permissions={"status": {"_eq": "active"}})
+    ensure_permission(student_policy_id, "directus_users", "update", fields=user_updatable_fields, permissions={"id": {"_eq": "$CURRENT_USER"}})
+    ensure_permission(student_policy_id, "directus_files", "create")
+    ensure_permission(student_policy_id, "directus_files", "read")
+    ensure_permission(student_policy_id, "directus_files", "update", permissions={"uploaded_by": {"_eq": "$CURRENT_USER"}})
+
     print("Step 3: Decoupling Faculty policy from Student role in directus_access...")
     # Find directus_access record for student_role_id with faculty_policy_id
     access_list = api_request(f"/access?filter%5Brole%5D%5B_eq%5D={student_role_id}&limit=-1").get("data", [])

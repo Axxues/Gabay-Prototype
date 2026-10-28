@@ -375,6 +375,26 @@ describe('useCourseFiles area-specific auto-foldering', () => {
     expect(result.current.virtualFolders.some(f => f.id === 'vf-announcements' && f.name === 'Announcements')).toBe(true);
   });
 
+  test('does not fabricate phantom syllabus file when course syllabus has no sourceDocument', () => {
+    mocks.db.courseFiles = [];
+    mocks.db.courses = [
+      {
+        id: 'c1',
+        code: 'CSPC 112',
+        title: 'Software Engineering 2',
+        syllabus: {
+          courseInfo: { code: 'CSPC 112', title: 'Software Engineering 2' },
+          courseOutcomes: [],
+        },
+      },
+    ];
+
+    const { result } = renderHook(() => useCourseFiles('c1'));
+    const sylFiles = result.current.allFiles.filter(f => f.source === 'syllabus');
+    expect(sylFiles).toHaveLength(0);
+    expect(result.current.sourceCounts.syllabus).toBe(0);
+  });
+
   test('syllabus upload and course orientation PDF resolve into the syllabus folder', () => {
     mocks.db.courseFiles = [
       {

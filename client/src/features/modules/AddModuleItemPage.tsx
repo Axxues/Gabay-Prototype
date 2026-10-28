@@ -26,7 +26,7 @@ import {
   Presentation
 } from 'lucide-react';
 
-import { uploadFileToPublic, formatFileSize, FILE_UPLOAD_MAX_BYTES, toShortFileType, isFileTooLarge } from '../../shared/utils/fileUploader';
+import { uploadFileToPublic, formatFileSize, FILE_UPLOAD_MAX_BYTES, toShortFileType, isFileTooLarge, isImageFile } from '../../shared/utils/fileUploader';
 import { normalizeTermId } from '../../shared/utils/gradingTerms';
 import { UploadProgress } from '../../shared/components/common/UploadProgress';
 import { useSimulatedUpload } from '../../shared/hooks/useSimulatedUpload';
@@ -38,6 +38,7 @@ import {
   emptyActivityFormValue,
   validateActivityForm,
   type ActivityFormValue,
+  type ActivityAttachment,
   QuizBuilderFields,
   buildQuizPayload,
   emptyQuizBuilderValue,
@@ -63,6 +64,17 @@ import {
   buildPresentationPayload,
   type PresentationFormValue,
 } from '../assessments';
+
+export interface AttachedItemFile {
+  id: string;
+  name: string;
+  size: string;
+  type: string;
+  url?: string;
+  rawFile?: File;
+  fileId?: string;
+  directus_files_id?: string;
+}
 
 interface AddModuleItemPageProps {
   courseId: string;
@@ -160,21 +172,36 @@ const classicActivityToForm = (
   a: Activity,
   fallbackTitle: string,
   fallbackContent: string
-): ActivityFormValue => ({
-  title: a.title || fallbackTitle,
-  instructions: a.instructions || fallbackContent,
-  pointsPossible: a.pointsPossible ?? 100,
-  dueDate: toLocalDateTimeInput(a.dueDate) || emptyActivityFormValue().dueDate,
-  availableFrom: toLocalDateTimeInput(a.availableFrom),
-  availableUntil: toLocalDateTimeInput(a.availableUntil),
-  allowFileUpload: (a.submissionTypes || []).includes('file'),
-  allowOnlineText: (a.submissionTypes || []).includes('online_text'),
-  attachedFile: a.fileName
-    ? { name: a.fileName, size: a.fileSize || '', url: a.fileUrl || '' }
-    : null,
-  includeRubric: Array.isArray(a.rubric) && a.rubric.length > 0,
-  rubric: Array.isArray(a.rubric) ? a.rubric : []
-});
+): ActivityFormValue => {
+  const loadedAttachments: ActivityAttachment[] = (a.attachments && a.attachments.length > 0)
+    ? a.attachments.map((att, idx) => ({
+        id: att.fileId || att.directus_files_id || `att-${idx}`,
+        name: att.name,
+        size: att.size || '',
+        url: att.url || '',
+        type: att.type,
+        fileId: att.fileId,
+        directus_files_id: att.directus_files_id
+      }))
+    : a.fileName
+      ? [{ id: 'att-0', name: a.fileName, size: a.fileSize || '', url: a.fileUrl || '' }]
+      : [];
+
+  return {
+    title: a.title || fallbackTitle,
+    instructions: a.instructions || fallbackContent,
+    pointsPossible: a.pointsPossible ?? 100,
+    dueDate: toLocalDateTimeInput(a.dueDate) || emptyActivityFormValue().dueDate,
+    availableFrom: toLocalDateTimeInput(a.availableFrom),
+    availableUntil: toLocalDateTimeInput(a.availableUntil),
+    allowFileUpload: (a.submissionTypes || []).includes('file'),
+    allowOnlineText: (a.submissionTypes || []).includes('online_text'),
+    attachedFile: loadedAttachments[0] || (a.fileName ? { name: a.fileName, size: a.fileSize || '', url: a.fileUrl || '' } : null),
+    attachedFiles: loadedAttachments,
+    includeRubric: Array.isArray(a.rubric) && a.rubric.length > 0,
+    rubric: Array.isArray(a.rubric) ? a.rubric : []
+  };
+};
 
 const MC_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'];
 
@@ -412,12 +439,31 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Attachment State
-  const [attachedFileName, setAttachedFileName] = useState(editingItem?.fileName || '');
-  const [attachedFileSize, setAttachedFileSize] = useState(editingItem?.fileSize || '');
-  const [attachedFileType, setAttachedFileType] = useState(editingItem?.fileType || '');
-  const [attachedFileUrl, setAttachedFileUrl] = useState(editingItem?.fileUrl || '');
-  const [stagedRawFile, setStagedRawFile] = useState<File | null>(null);
+  // Multi-File Attachment State for direct module items (page, file)
+  const [attachedFiles, setAttachedFiles] = useState<AttachedItemFile[]>(() => {
+    if (editingItem?.attachments && editingItem.attachments.length > 0) {
+      return editingItem.attachments.map((att, idx) => ({
+        id: att.fileId || att.directus_files_id || `item-att-${idx}`,
+        name: att.name,
+        size: att.size || '',
+        type: att.type || toShortFileType(att.name),
+        url: att.url || '',
+        fileId: att.fileId,
+        directus_files_id: att.directus_files_id
+      }));
+    }
+    if (editingItem?.fileName) {
+      return [{
+        id: 'item-att-0',
+        name: editingItem.fileName,
+        size: editingItem.fileSize || '',
+        type: editingItem.fileType || toShortFileType(editingItem.fileName),
+        url: editingItem.fileUrl || ''
+      }];
+    }
+    return [];
+  });
+
   const [isDragging, setIsDragging] = useState(false);
   const upload = useSimulatedUpload();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -428,32 +474,45 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
   const selectedModule = courseModules.find(m => m.id === targetModuleId);
   const currentResourceType = RESOURCE_TYPES.find(r => r.type === itemType) || RESOURCE_TYPES[0];
 
-  const handleProcessFile = (file: globalThis.File) => {
-    if (isFileTooLarge(file.size)) {
-      showAlert({
-        title: 'File Too Large',
-        message: `Please attach a document or media file smaller than ${FILE_UPLOAD_MAX_BYTES / 1024 / 1024}MB.`,
-        type: 'warning'
+  const handleProcessFiles = (files: globalThis.File[]) => {
+    const newItems: AttachedItemFile[] = [];
+    const tooLargeFiles: string[] = [];
+
+    for (const file of files) {
+      if (isFileTooLarge(file.size)) {
+        tooLargeFiles.push(file.name);
+        continue;
+      }
+      newItems.push({
+        id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        name: file.name,
+        size: formatFileSize(file.size),
+        type: toShortFileType(file.name),
+        rawFile: file
       });
-      return;
     }
 
-    setStagedRawFile(file);
-    setAttachedFileName(file.name);
-    setAttachedFileSize(formatFileSize(file.size));
-    setAttachedFileType(toShortFileType(file.name));
-    setAttachedFileUrl('');
+    if (tooLargeFiles.length > 0) {
+      showAlert({
+        title: 'File Too Large',
+        message: `${tooLargeFiles.join(', ')} exceeded the limit of ${FILE_UPLOAD_MAX_BYTES / 1024 / 1024}MB and was not added.`,
+        type: 'warning'
+      });
+    }
 
-    if (!title.trim()) {
-      const stem = file.name.replace(/\.[^/.]+$/, '');
-      if (stem) setTitle(stem);
+    if (newItems.length > 0) {
+      setAttachedFiles(prev => [...prev, ...newItems]);
+      if (!title.trim() && newItems[0]) {
+        const stem = newItems[0].name.replace(/\.[^/.]+$/, '');
+        if (stem) setTitle(stem);
+      }
     }
   };
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      handleProcessFile(file);
+    const files = e.target.files ? Array.from(e.target.files) : [];
+    if (files.length > 0) {
+      handleProcessFiles(files);
     }
     e.target.value = '';
   };
@@ -462,29 +521,40 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
     e.preventDefault();
     setIsDragging(false);
     if (upload.isUploading) return;
-    const file = e.dataTransfer.files?.[0];
-    if (file) {
-      handleProcessFile(file);
+    const files = e.dataTransfer.files ? Array.from(e.dataTransfer.files) : [];
+    if (files.length > 0) {
+      handleProcessFiles(files);
     }
   };
 
-  const handleRemoveAttachment = () => {
-    setStagedRawFile(null);
-    setAttachedFileName('');
-    setAttachedFileSize('');
-    setAttachedFileType('');
-    setAttachedFileUrl('');
+  const handleRemoveAttachmentIndex = (index: number) => {
+    setAttachedFiles(prev => prev.filter((_, idx) => idx !== index));
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
   };
 
+  const handleClearAllAttachments = () => {
+    setAttachedFiles([]);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleRemoveAttachment = handleClearAllAttachments;
+
   const handleSelectExistingFile = (file: AggregatedCourseFile) => {
     const url = file.url || file.fileUrl || `/public/uploads/${file.name}`;
-    setAttachedFileUrl(url);
-    setAttachedFileName(file.name);
-    setAttachedFileSize(file.formattedSize || '');
-    setAttachedFileType(file.type || 'file');
+    const newFile: AttachedItemFile = {
+      id: file.id || (file as any).fileId || `course-file-${Date.now()}`,
+      name: file.name,
+      size: file.formattedSize || '',
+      type: file.type || toShortFileType(file.name),
+      url,
+      fileId: file.id,
+      directus_files_id: (file as any).directus_files_id
+    };
+    setAttachedFiles(prev => [...prev, newFile]);
 
     if (!title.trim()) {
       const nameWithoutExt = file.name.replace(/\.[^/.]+$/, '');
@@ -497,6 +567,66 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
       message: `"${file.name}" has been attached from your uploaded course files.`,
       type: 'success'
     });
+  };
+
+  // Helper to upload any staged raw files on assessment forms
+  const resolveActivityAttachments = async (
+    attachments: ActivityAttachment[],
+    targetArea: 'modules' | 'activities' | 'assignments' = 'modules'
+  ): Promise<ActivityAttachment[]> => {
+    const results: ActivityAttachment[] = [];
+    for (const att of attachments) {
+      if (att.rawFile) {
+        let fileUrl = '';
+        let fileName = att.name;
+        let fileSize = att.size;
+        let fileId = att.fileId;
+        let directus_files_id = att.directus_files_id;
+        try {
+          const saved = await uploadCourseFile({
+            courseId,
+            name: att.rawFile.name,
+            rawFile: att.rawFile,
+            size: att.rawFile.size,
+            formattedSize: fileSize,
+            area: targetArea as any,
+            moduleId: targetModuleId || moduleId,
+            moduleTitle: selectedModule?.title || courseModules.find(m => m.id === (targetModuleId || moduleId))?.title,
+            visibility: 'published',
+            silent: true
+          });
+          fileUrl = saved.fileUrl || saved.url || '';
+          fileName = saved.name || att.rawFile.name;
+          if (saved.formattedSize && saved.formattedSize !== '0 B') {
+            fileSize = saved.formattedSize;
+          }
+          fileId = (saved as any).fileId || saved.id;
+          directus_files_id = (saved as any).directus_files_id;
+        } catch {
+          fileUrl = '';
+        }
+        if (!fileUrl || fileUrl.startsWith('data:')) {
+          const viaVite = await uploadFileToPublic(att.rawFile);
+          if (!viaVite.url.startsWith('data:')) {
+            fileUrl = viaVite.url;
+            fileName = viaVite.name;
+            fileSize = viaVite.size;
+          }
+        }
+        results.push({
+          id: att.id,
+          name: fileName,
+          size: fileSize,
+          url: fileUrl,
+          type: att.type,
+          fileId,
+          directus_files_id
+        });
+      } else {
+        results.push(att);
+      }
+    }
+    return results;
   };
 
   // Question-set save: creates/updates the REAL activity row, then links it
@@ -632,22 +762,44 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
       const savedTitle = activityForm.title.trim();
       const savedContent =
         activityForm.instructions.trim() || 'Unit resource instructions aligned with syllabus requirements.';
+
+      const rawActFiles = (activityForm.attachedFiles && activityForm.attachedFiles.length > 0)
+        ? activityForm.attachedFiles
+        : activityForm.attachedFile
+          ? [activityForm.attachedFile]
+          : [];
+      const resolvedActFiles = await resolveActivityAttachments(rawActFiles, 'activities');
+      const primaryActFile = resolvedActFiles[0] || null;
+      const actFormToSave: ActivityFormValue = {
+        ...activityForm,
+        attachedFile: primaryActFile,
+        attachedFiles: resolvedActFiles
+      };
+
       const fileFields = {
-        fileName: activityForm.attachedFile?.name || undefined,
-        fileSize: activityForm.attachedFile?.size || undefined,
-        fileUrl: activityForm.attachedFile?.url || undefined
+        fileName: primaryActFile?.name || undefined,
+        fileSize: primaryActFile?.size || undefined,
+        fileUrl: primaryActFile?.url || undefined,
+        attachments: resolvedActFiles.length > 0 ? resolvedActFiles.map(f => ({
+          name: f.name,
+          size: f.size,
+          url: f.url,
+          type: f.type,
+          fileId: f.fileId,
+          directus_files_id: f.directus_files_id
+        })) : undefined
       };
 
       if (isEditing && editingItem) {
         try {
           let activityId = linkedClassicActivity?.id;
           if (linkedClassicActivity) {
-            const payload = buildClassicActivityPayload(courseId, activityForm, linkedClassicActivity.published);
+            const payload = buildClassicActivityPayload(courseId, actFormToSave, linkedClassicActivity.published);
             const { courseId: _courseId, ...updates } = payload;
             await updateActivity(linkedClassicActivity.id, { ...updates, assessmentType: 'activity', category: 'Activities' });
           } else {
             const created = await createActivity({
-              ...buildClassicActivityPayload(courseId, activityForm, editingItem.published),
+              ...buildClassicActivityPayload(courseId, actFormToSave, editingItem.published),
               assessmentType: 'activity',
               category: 'Activities'
             });
@@ -747,22 +899,44 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
         const savedTitle = assignmentForm.title.trim();
         const savedContent =
           assignmentForm.instructions.trim() || 'Unit resource instructions aligned with syllabus requirements.';
+
+        const rawAsgFiles = (assignmentForm.attachedFiles && assignmentForm.attachedFiles.length > 0)
+          ? assignmentForm.attachedFiles
+          : assignmentForm.attachedFile
+            ? [assignmentForm.attachedFile]
+            : [];
+        const resolvedAsgFiles = await resolveActivityAttachments(rawAsgFiles, 'assignments');
+        const primaryAsgFile = resolvedAsgFiles[0] || null;
+        const asgFormToSave: ActivityFormValue = {
+          ...assignmentForm,
+          attachedFile: primaryAsgFile,
+          attachedFiles: resolvedAsgFiles
+        };
+
         const fileFields = {
-          fileName: assignmentForm.attachedFile?.name || undefined,
-          fileSize: assignmentForm.attachedFile?.size || undefined,
-          fileUrl: assignmentForm.attachedFile?.url || undefined
+          fileName: primaryAsgFile?.name || undefined,
+          fileSize: primaryAsgFile?.size || undefined,
+          fileUrl: primaryAsgFile?.url || undefined,
+          attachments: resolvedAsgFiles.length > 0 ? resolvedAsgFiles.map(f => ({
+            name: f.name,
+            size: f.size,
+            url: f.url,
+            type: f.type,
+            fileId: f.fileId,
+            directus_files_id: f.directus_files_id
+          })) : undefined
         };
 
         if (isEditing && editingItem) {
           try {
             let activityId = linkedClassicActivity?.id;
             if (linkedClassicActivity) {
-              const payload = buildClassicActivityPayload(courseId, assignmentForm, linkedClassicActivity.published);
+              const payload = buildClassicActivityPayload(courseId, asgFormToSave, linkedClassicActivity.published);
               const { courseId: _courseId, ...updates } = payload;
               await updateActivity(linkedClassicActivity.id, { ...updates, assessmentType: 'assignment', category: 'Assignments' });
             } else {
               const created = await createActivity({
-                ...buildClassicActivityPayload(courseId, assignmentForm, editingItem.published),
+                ...buildClassicActivityPayload(courseId, asgFormToSave, editingItem.published),
                 assessmentType: 'assignment',
                 category: 'Assignments'
               });
@@ -1017,49 +1191,85 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
     const savedItemTitle = getPendingItemTitle();
 
     try {
-      let resolvedUrl = attachedFileUrl;
-      let resolvedName = attachedFileName;
-      let resolvedSize = attachedFileSize;
-      let resolvedType = attachedFileType;
+      const resolvedModuleFiles: Array<{
+        name: string;
+        size: string;
+        url?: string;
+        type?: string;
+        fileId?: string;
+        directus_files_id?: string;
+      }> = [];
 
-      if (stagedRawFile) {
-        try {
-          const saved = await uploadCourseFile({
-            courseId,
-            name: stagedRawFile.name,
-            rawFile: stagedRawFile,
-            area: 'modules',
-            moduleId: targetModuleId || moduleId,
-            moduleTitle: selectedModule?.title || courseModules.find(m => m.id === (targetModuleId || moduleId))?.title,
-            visibility: 'published',
-            silent: true
-          });
-          resolvedUrl = saved.fileUrl || saved.url || '';
-          resolvedName = saved.name || stagedRawFile.name;
-          if (saved.formattedSize && saved.formattedSize !== '0 B') {
-            resolvedSize = saved.formattedSize;
+      for (const item of attachedFiles) {
+        if (item.rawFile) {
+          let fileUrl = '';
+          let fileName = item.name;
+          let fileSize = item.size;
+          let fileId = item.fileId;
+          let directus_files_id = item.directus_files_id;
+          try {
+            const saved = await uploadCourseFile({
+              courseId,
+              name: item.rawFile.name,
+              rawFile: item.rawFile,
+              area: 'modules',
+              moduleId: targetModuleId || moduleId,
+              moduleTitle: selectedModule?.title || courseModules.find(m => m.id === (targetModuleId || moduleId))?.title,
+              visibility: 'published',
+              silent: true
+            });
+            fileUrl = saved.fileUrl || saved.url || '';
+            fileName = saved.name || item.rawFile.name;
+            if (saved.formattedSize && saved.formattedSize !== '0 B') {
+              fileSize = saved.formattedSize;
+            }
+            fileId = (saved as any).fileId || saved.id;
+            directus_files_id = (saved as any).directus_files_id;
+          } catch {
+            fileUrl = '';
           }
-        } catch {
-          resolvedUrl = '';
-        }
-        if (!resolvedUrl || resolvedUrl.startsWith('data:')) {
-          const viaVite = await uploadFileToPublic(stagedRawFile);
-          if (!viaVite.url.startsWith('data:')) {
-            resolvedUrl = viaVite.url;
-            resolvedName = viaVite.name;
-            resolvedSize = viaVite.size;
+          if (!fileUrl || fileUrl.startsWith('data:')) {
+            const viaVite = await uploadFileToPublic(item.rawFile);
+            if (!viaVite.url.startsWith('data:')) {
+              fileUrl = viaVite.url;
+              fileName = viaVite.name;
+              fileSize = viaVite.size;
+            }
           }
-        }
-        if (!resolvedUrl || resolvedUrl.startsWith('data:')) {
-          showAlert({
-            title: 'Upload Service Unavailable',
-            message: 'The file could not be stored on the server (upload service unreachable). Please ensure the backend is running and try again.',
-            type: 'error'
+          if (!fileUrl || fileUrl.startsWith('data:')) {
+            showAlert({
+              title: 'Upload Service Unavailable',
+              message: `The file "${fileName}" could not be stored on the server (upload service unreachable). Please ensure the backend is running and try again.`,
+              type: 'error'
+            });
+            setIsSaving(false);
+            return;
+          }
+          resolvedModuleFiles.push({
+            name: fileName,
+            size: fileSize,
+            url: fileUrl,
+            type: item.type || toShortFileType(fileName),
+            fileId,
+            directus_files_id
           });
-          setIsSaving(false);
-          return;
+        } else {
+          resolvedModuleFiles.push({
+            name: item.name,
+            size: item.size,
+            url: item.url,
+            type: item.type || toShortFileType(item.name),
+            fileId: item.fileId,
+            directus_files_id: item.directus_files_id
+          });
         }
       }
+
+      const primaryModuleFile = resolvedModuleFiles[0];
+      const resolvedUrl = primaryModuleFile?.url || undefined;
+      const resolvedName = primaryModuleFile?.name || undefined;
+      const resolvedSize = primaryModuleFile?.size || undefined;
+      const resolvedType = primaryModuleFile?.type || undefined;
 
       for (const targetId of targetCourseIds) {
         const destModId = await resolveTargetModuleId(targetId, parentTitle);
@@ -1077,15 +1287,35 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
               activityId: questionSetLinkOf(created.id)
             });
           } else {
+            const rawActFiles = (activityForm.attachedFiles && activityForm.attachedFiles.length > 0)
+              ? activityForm.attachedFiles
+              : activityForm.attachedFile
+                ? [activityForm.attachedFile]
+                : [];
+            const resolvedActFiles = await resolveActivityAttachments(rawActFiles, 'activities');
+            const primaryActFile = resolvedActFiles[0] || null;
+            const actFormToSave: ActivityFormValue = {
+              ...activityForm,
+              attachedFile: primaryActFile,
+              attachedFiles: resolvedActFiles
+            };
             const created = await createActivity({
-              ...buildClassicActivityPayload(targetId, activityForm, true),
+              ...buildClassicActivityPayload(targetId, actFormToSave, true),
               assessmentType: 'activity',
               category: 'Activities'
             });
             const fileFields = {
-              fileName: activityForm.attachedFile?.name || undefined,
-              fileSize: activityForm.attachedFile?.size || undefined,
-              fileUrl: activityForm.attachedFile?.url || undefined
+              fileName: primaryActFile?.name || undefined,
+              fileSize: primaryActFile?.size || undefined,
+              fileUrl: primaryActFile?.url || undefined,
+              attachments: resolvedActFiles.length > 0 ? resolvedActFiles.map(f => ({
+                name: f.name,
+                size: f.size,
+                url: f.url,
+                type: f.type,
+                fileId: f.fileId,
+                directus_files_id: f.directus_files_id
+              })) : undefined
             };
             await addModuleItem(destModId, {
               title: savedItemTitle,
@@ -1115,15 +1345,35 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
               activityId: questionSetLinkOf(created.id)
             });
           } else {
+            const rawAsgFiles = (assignmentForm.attachedFiles && assignmentForm.attachedFiles.length > 0)
+              ? assignmentForm.attachedFiles
+              : assignmentForm.attachedFile
+                ? [assignmentForm.attachedFile]
+                : [];
+            const resolvedAsgFiles = await resolveActivityAttachments(rawAsgFiles, 'assignments');
+            const primaryAsgFile = resolvedAsgFiles[0] || null;
+            const asgFormToSave: ActivityFormValue = {
+              ...assignmentForm,
+              attachedFile: primaryAsgFile,
+              attachedFiles: resolvedAsgFiles
+            };
             const created = await createActivity({
-              ...buildClassicActivityPayload(targetId, assignmentForm, true),
+              ...buildClassicActivityPayload(targetId, asgFormToSave, true),
               assessmentType: 'assignment',
               category: 'Assignments'
             });
             const fileFields = {
-              fileName: assignmentForm.attachedFile?.name || undefined,
-              fileSize: assignmentForm.attachedFile?.size || undefined,
-              fileUrl: assignmentForm.attachedFile?.url || undefined
+              fileName: primaryAsgFile?.name || undefined,
+              fileSize: primaryAsgFile?.size || undefined,
+              fileUrl: primaryAsgFile?.url || undefined,
+              attachments: resolvedAsgFiles.length > 0 ? resolvedAsgFiles.map(f => ({
+                name: f.name,
+                size: f.size,
+                url: f.url,
+                type: f.type,
+                fileId: f.fileId,
+                directus_files_id: f.directus_files_id
+              })) : undefined
             };
             await addModuleItem(destModId, {
               title: savedItemTitle,
@@ -1177,10 +1427,11 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
             published: true,
             required: false,
             completionCondition: 'view',
-            fileName: resolvedName || undefined,
-            fileSize: resolvedSize || undefined,
-            fileType: resolvedType || undefined,
-            fileUrl: resolvedUrl || undefined
+            fileName: resolvedName,
+            fileSize: resolvedSize,
+            fileType: resolvedType,
+            fileUrl: resolvedUrl,
+            attachments: resolvedModuleFiles.length > 0 ? resolvedModuleFiles : undefined
           });
         }
       }
@@ -1261,6 +1512,72 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
           });
           return;
         }
+        const resolvedModuleFiles: Array<{
+          name: string;
+          size: string;
+          url?: string;
+          type?: string;
+          fileId?: string;
+          directus_files_id?: string;
+        }> = [];
+
+        for (const item of attachedFiles) {
+          if (item.rawFile) {
+            let fileUrl = '';
+            let fileName = item.name;
+            let fileSize = item.size;
+            let fileId = item.fileId;
+            let directus_files_id = item.directus_files_id;
+            try {
+              const saved = await uploadCourseFile({
+                courseId,
+                name: item.rawFile.name,
+                rawFile: item.rawFile,
+                area: 'modules',
+                moduleId: targetModuleId || moduleId,
+                moduleTitle: selectedModule?.title || courseModules.find(m => m.id === (targetModuleId || moduleId))?.title,
+                visibility: 'published',
+                silent: true
+              });
+              fileUrl = saved.fileUrl || saved.url || '';
+              fileName = saved.name || item.rawFile.name;
+              if (saved.formattedSize && saved.formattedSize !== '0 B') {
+                fileSize = saved.formattedSize;
+              }
+              fileId = (saved as any).fileId || saved.id;
+              directus_files_id = (saved as any).directus_files_id;
+            } catch {
+              fileUrl = '';
+            }
+            if (!fileUrl || fileUrl.startsWith('data:')) {
+              const viaVite = await uploadFileToPublic(item.rawFile);
+              if (!viaVite.url.startsWith('data:')) {
+                fileUrl = viaVite.url;
+                fileName = viaVite.name;
+                fileSize = viaVite.size;
+              }
+            }
+            resolvedModuleFiles.push({
+              name: fileName,
+              size: fileSize,
+              url: fileUrl,
+              type: item.type || toShortFileType(fileName),
+              fileId,
+              directus_files_id
+            });
+          } else {
+            resolvedModuleFiles.push({
+              name: item.name,
+              size: item.size,
+              url: item.url,
+              type: item.type || toShortFileType(item.name),
+              fileId: item.fileId,
+              directus_files_id: item.directus_files_id
+            });
+          }
+        }
+
+        const primaryModFile = resolvedModuleFiles[0];
         const savedTitle = title.trim();
         await updateModuleItem(
           moduleId,
@@ -1269,10 +1586,11 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
             title: savedTitle,
             type: itemType,
             content: content.trim() || 'Unit resource instructions aligned with syllabus requirements.',
-            fileName: attachedFileName || undefined,
-            fileSize: attachedFileSize || undefined,
-            fileType: attachedFileType || undefined,
-            fileUrl: attachedFileUrl || undefined
+            fileName: primaryModFile?.name || undefined,
+            fileSize: primaryModFile?.size || undefined,
+            fileType: primaryModFile?.type || undefined,
+            fileUrl: primaryModFile?.url || undefined,
+            attachments: resolvedModuleFiles.length > 0 ? resolvedModuleFiles : undefined
           },
           targetModuleId
         );
@@ -1805,69 +2123,96 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
               <div className="flex items-center space-x-2">
                 <Paperclip className="w-4 h-4 text-muted-foreground" />
                 <h3 className="text-[12px] font-semibold text-muted-foreground">
-                  File attachment
+                  File attachments {attachedFiles.length > 0 && `(${attachedFiles.length})`}
                 </h3>
               </div>
-              {attachedFileName && (
+              {attachedFiles.length > 0 && (
                 <button
                   type="button"
-                  onClick={handleRemoveAttachment}
+                  onClick={handleClearAllAttachments}
                   className="text-[11px] text-rose-600 hover:text-rose-700 dark:text-rose-400 font-sans flex items-center space-x-1 cursor-pointer"
                 >
                   <X className="w-3.5 h-3.5" />
-                  <span>Remove File</span>
+                  <span>Clear all</span>
                 </button>
               )}
             </div>
 
             <p className="text-xs text-muted-foreground">
-              Attach syllabus documents, lecture slides, code archives, or lab manuals. Students can download or preview attached files directly from this module item.
+              Attach syllabus documents, lecture slides, code archives, images, or lab manuals. Students can download or preview attached files directly from this module item.
             </p>
 
-            {/* Attached File Preview Card */}
-            {attachedFileName ? (
-              <div className="p-4 bg-primary/5 border border-primary/20 rounded-2xl flex items-center justify-between gap-4">
-                <div className="flex items-center space-x-3 truncate">
-                  <div className="w-10 h-10 rounded-xl bg-card border border-border flex items-center justify-center shrink-0 ">
-                    {getFileIcon(attachedFileType, attachedFileName)}
-                  </div>
-                  <div className="truncate">
-                    <span className="font-bold text-xs text-foreground block truncate">
-                      {attachedFileName}
-                    </span>
-                    <div className="flex items-center space-x-2 text-[10px] font-sans text-muted-foreground mt-0.5">
-                      <span>{attachedFileSize || 'Document'}</span>
-                      <span>•</span>
-                      <span className="text-emerald-600 dark:text-emerald-400 font-bold flex items-center space-x-1">
-                        <Check className="w-3 h-3 inline" />
-                        <span>Ready to attach</span>
-                      </span>
-                    </div>
-                  </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              onChange={handleFileInputChange}
+              className="hidden"
+            />
+
+            {/* Attached Files List */}
+            {attachedFiles.length > 0 ? (
+              <div className="space-y-3">
+                <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                  {attachedFiles.map((file, idx) => {
+                    const isImg = isImageFile(file.name, file.type, file.url);
+                    return (
+                      <div
+                        key={file.id || idx}
+                        className="p-3 bg-muted/30 border border-border rounded-xl flex items-center justify-between gap-3 group hover:border-primary/30 transition-colors"
+                      >
+                        <div className="flex items-center space-x-3 overflow-hidden min-w-0">
+                          <div className="w-9 h-9 rounded-lg bg-card border border-border flex items-center justify-center shrink-0">
+                            {isImg ? (
+                              <ImageIcon className="w-4 h-4 text-pink-500" />
+                            ) : (
+                              getFileIcon(file.type, file.name)
+                            )}
+                          </div>
+                          <div className="truncate min-w-0">
+                            <span className="font-semibold text-xs text-foreground block truncate" title={file.name}>
+                              {file.name}
+                            </span>
+                            <div className="flex items-center space-x-2 text-[10px] text-muted-foreground mt-0.5">
+                              <span>{file.size || 'Document'}</span>
+                              <span>•</span>
+                              <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center space-x-1">
+                                <Check className="w-3 h-3 inline" />
+                                <span>Ready to attach</span>
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveAttachmentIndex(idx)}
+                          className="p-1.5 text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer shrink-0"
+                          title={`Remove ${file.name}`}
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
 
-                <div className="flex items-center space-x-2 shrink-0">
+                <div className="flex items-center gap-2 pt-1">
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="px-3 py-1.5 text-xs font-bold text-primary hover:bg-primary/10 rounded-lg transition-colors cursor-pointer"
+                    className="px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/10 rounded-lg transition-colors cursor-pointer flex items-center space-x-1.5 border border-primary/20"
                   >
-                    Change File
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add more files</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setIsFilePickerOpen(true)}
-                    className="px-3 py-1.5 text-xs font-bold text-primary hover:bg-primary/10 rounded-lg transition-colors cursor-pointer"
+                    className="px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors cursor-pointer flex items-center space-x-1.5 border border-border/70"
                   >
-                    Browse Uploaded
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleRemoveAttachment}
-                    className="p-1.5 text-muted-foreground hover:text-rose-600 rounded-lg hover:bg-rose-500/10 transition-colors cursor-pointer"
-                    title="Remove attachment"
-                  >
-                    <X className="w-4 h-4" />
+                    <FolderOpen className="w-3.5 h-3.5" />
+                    <span>Browse uploaded</span>
                   </button>
                 </div>
               </div>
@@ -1888,20 +2233,14 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
                     : 'border-border hover:border-primary/50 hover:bg-muted/30'
                     }${upload.isUploading ? ' opacity-60 cursor-wait pointer-events-none' : ''}`}
                 >
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    onChange={handleFileInputChange}
-                    className="hidden"
-                  />
                   <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center mx-auto mb-2.5">
                     <Upload className="w-5 h-5" />
                   </div>
                   <h4 className="font-bold text-xs text-foreground">
-                    Upload a file from your device
+                    Upload files or images from your device
                   </h4>
                   <p className="text-[11px] text-muted-foreground mt-1">
-                    Drag and drop file here, or click to browse (PDF, PPTX, DOCX, ZIP, Code, Media up to 50MB)
+                    Drag and drop files here, or click to browse (Select multiple PDFs, images, documents, or archives up to 50MB each)
                   </p>
                 </div>
 

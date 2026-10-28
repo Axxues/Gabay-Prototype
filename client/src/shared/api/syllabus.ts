@@ -56,6 +56,10 @@ export async function withdrawSyllabus(courseId: string): Promise<void> {
   return likhaLmsApi.syllabus.withdrawSyllabus(courseId);
 }
 
+export async function clearSourceDocument(courseId: string): Promise<void> {
+  return likhaLmsApi.syllabus.clearSourceDocument?.(courseId);
+}
+
 export const syllabusApi: SyllabusApi = {
   getPublished,
   getDraft,
@@ -64,4 +68,5 @@ export const syllabusApi: SyllabusApi = {
   createDraft,
   updateSection,
   publish,
+  clearSourceDocument,
 };

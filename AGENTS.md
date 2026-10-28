@@ -164,3 +164,22 @@ All agents and developers modifying the Likha ERP backend must strictly adhere t
    - **Targeted Edits:** ALWAYS use `edit_file` for targeted surgical replacements; never overwrite entire files with `write_file` for partial changes.
    - **Concise Command Output:** Filter console and test outputs (pipe to head/tail, use `--silent`, `--summary`, or `Select-String`) to avoid dumping hundreds of log lines into context history.
 
+---
+
+## 🚀 MANDATORY DIRECTIVE: PRODUCTION READINESS & PRESSURE TESTING
+
+**THE SYSTEM MUST ALWAYS BE PRODUCTION READY. ALL WORK AND VERIFICATIONS MUST PRESSURE-TEST THE SYSTEM UNDER REALISTIC AND ADVERSARIAL CONDITIONS.**
+
+1. **Always Production Ready:**
+   - Every commit and deliverable must leave the codebase in a deployable, zero-breakage state with zero unhandled runtime console errors, zero broken routes, and 100% green test suites.
+   - Code must not rely on unstable development assumptions, unhandled promises, or mock-only code paths that fail against live backends.
+
+2. **Pressure and Stress Testing Verification:**
+   - Whenever testing features, bugfixes, or refactors, always pressure-test under realistic and extreme conditions:
+     - High concurrency and rapid bursts (multiple simultaneous actions, fast tab/route switching, double-clicks).
+     - Network latency, simulated disconnections, expired JWT tokens, and gateway timeouts (500/502/504 errors).
+     - Heavy multi-entity data volumes (handling hundreds of records without memory leaks or UI thread lockup).
+     - Strict RBAC boundaries and unauthorized access attempts across roles (student, faculty, chair, dean, admin).
+   - Evidence before assertions: never claim a feature is fixed or optimized without executing tests and pressure verifications against actual behavior.
+
+

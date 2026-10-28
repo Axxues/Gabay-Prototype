@@ -1,11 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Loader2, UserCheck, ArrowRight } from 'lucide-react';
+import { Bell, UserCheck, ArrowRight, ChevronRight } from 'lucide-react';
 import { useLMS } from '../../context/LMSContext';
 import type { EnrollmentRequest } from '../../types/lms';
-import { canPickSection } from '../../utils/sections';
 import { isProfileComplete } from '../../utils/profileCompletion';
-import { useProcessing } from '../../hooks/useProcessing';
 import { UserAvatar } from './UserAvatar';
 
 interface NotificationBellProps {
@@ -37,18 +35,12 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
     getNotifications,
     markNotificationRead,
     markAllNotificationsRead,
-    getPendingRequestsForStudent,
-    approveEnrollmentRequests,
-    rejectEnrollmentRequests,
-    studentApproveInvitation,
-    studentDeclineInvitation,
-    showAlert
+    getPendingRequestsForStudent
   } = useLMS();
 
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const bellRef = useRef<HTMLDivElement>(null);
-  const { isProcessing, run } = useProcessing();
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -77,41 +69,6 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
   const sectionName = (sectionId?: string): string | null => {
     if (!sectionId) return null;
     return (db.courseSections || []).find(s => s.id === sectionId)?.name ?? null;
-  };
-
-  const handleApprove = (req: EnrollmentRequest) => {
-    if (req.type === 'section_switch' && req.targetSectionId) {
-      const target = (db.courseSections || []).find(s => s.id === req.targetSectionId);
-      if (target && !canPickSection(target)) {
-        showAlert({
-          title: 'Section Full',
-          message: `Cannot approve — ${target.name} is full. The request is still pending.`,
-          type: 'warning'
-        });
-        return;
-      }
-    }
-    void run(`approve:${req.id}`, async () => {
-      const ok = await approveEnrollmentRequests([req.id]);
-      if (ok) setOpen(false);
-    });
-  };
-
-  const handleReject = (req: EnrollmentRequest) => {
-    void run(`reject:${req.id}`, async () => {
-      const ok = await rejectEnrollmentRequests([req.id]);
-      if (ok) setOpen(false);
-    });
-  };
-
-  const handleStudentAction = (key: string, fn: () => Promise<boolean>, after?: () => void) => {
-    void run(key, async () => {
-      const ok = await fn();
-      if (ok) {
-        setOpen(false);
-        after?.();
-      }
-    });
   };
 
   return (
@@ -191,46 +148,27 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
                   const isId = req.studentName === req.studentId || /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(req.studentName || '');
                   const studentDisplayName = userName || (!isId && req.studentName ? req.studentName : (user?.email || req.studentName || 'Student'));
                   return (
-                    <div key={req.id} className="px-3 py-2 rounded-xl hover:bg-accent/60 transition-colors">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="text-xs font-bold text-foreground truncate">
-                            {course?.code ? `${course.code} — ` : ''}{studentDisplayName}
-                          </div>
-                          <div className="text-[11px] text-muted-foreground font-sans">
-                            {REQUEST_TYPE_LABELS[req.type]}
-                            {targetName ? ` → ${targetName}` : ''}
-                          </div>
+                    <button
+                      key={req.id}
+                      type="button"
+                      onClick={() => {
+                        setOpen(false);
+                        onNavigateCourse?.(req.courseId, 'people?tab=pending');
+                        navigate(`/courses/${req.courseId}/people?tab=pending`);
+                      }}
+                      className="w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl hover:bg-accent/60 transition-colors text-left group cursor-pointer"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-bold text-foreground truncate">
+                          {course?.code ? `${course.code} — ` : ''}{studentDisplayName}
                         </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          {req.type === 'faculty_enroll' ? (
-                            <span
-                              title="Invitation sent — waiting for the student to accept."
-                              className="px-2.5 py-1 text-[11px] font-bold bg-amber-500/10 text-amber-700 dark:text-amber-400 rounded-lg border border-amber-500/20"
-                            >
-                              Awaiting student
-                            </span>
-                          ) : (
-                          <button
-                            onClick={() => handleApprove(req)}
-                            disabled={isProcessing(`approve:${req.id}`) || isProcessing(`reject:${req.id}`)}
-                            className="px-2.5 py-1 text-[11px] font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20 rounded-lg transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-wait flex items-center gap-1"
-                          >
-                            {isProcessing(`approve:${req.id}`) && <Loader2 className="w-3 h-3 animate-spin" />}
-                            {isProcessing(`approve:${req.id}`) ? '...' : 'Approve'}
-                          </button>
-                          )}
-                          <button
-                            onClick={() => handleReject(req)}
-                            disabled={isProcessing(`approve:${req.id}`) || isProcessing(`reject:${req.id}`)}
-                            className="px-2.5 py-1 text-[11px] font-bold bg-red-500/10 text-red-700 dark:text-red-400 hover:bg-red-500/20 rounded-lg transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-wait flex items-center gap-1"
-                          >
-                            {isProcessing(`reject:${req.id}`) && <Loader2 className="w-3 h-3 animate-spin" />}
-                            {isProcessing(`reject:${req.id}`) ? '...' : 'Reject'}
-                          </button>
+                        <div className="text-[11px] text-muted-foreground font-sans">
+                          {REQUEST_TYPE_LABELS[req.type]}
+                          {targetName ? ` → ${targetName}` : ''}
                         </div>
                       </div>
-                    </div>
+                      <ChevronRight className="w-4 h-4 text-muted-foreground/50 group-hover:text-foreground shrink-0 transition-colors" />
+                    </button>
                   );
                 })
               )}
@@ -246,86 +184,39 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
               ) : (
                 studentPending.map(req => {
                   const course = db.courses.find(c => c.id === req.courseId);
+                  let subtitle = 'Awaiting approval';
                   if (req.type === 'section_switch') {
                     const targetName = sectionName(req.targetSectionId);
-                    return (
-                      <div key={req.id} className="px-3 py-2 rounded-xl hover:bg-accent/60 transition-colors">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <div className="text-xs font-bold text-foreground truncate">
-                              {course?.code ? `${course.code} — ` : ''}{course?.title ?? 'Course request'}
-                            </div>
-                            <div className="text-[11px] text-muted-foreground font-sans">
-                              Switch pending{targetName ? ` → ${targetName}` : ''}
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => handleStudentAction(`withdraw:${req.id}`, () => studentDeclineInvitation(req.id))}
-                            disabled={isProcessing(`withdraw:${req.id}`)}
-                            className="px-2.5 py-1 text-[11px] font-bold bg-red-500/10 text-red-600 hover:bg-red-500/20 rounded-lg transition-colors cursor-pointer shrink-0 disabled:opacity-60 disabled:cursor-wait flex items-center gap-1"
-                          >
-                            {isProcessing(`withdraw:${req.id}`) && <Loader2 className="w-3 h-3 animate-spin" />}
-                            {isProcessing(`withdraw:${req.id}`) ? '...' : 'Withdraw'}
-                          </button>
-                        </div>
-                      </div>
-                    );
+                    subtitle = `Switch pending${targetName ? ` → ${targetName}` : ''}`;
+                  } else if (req.type === 'faculty_enroll') {
+                    subtitle = `Invited by ${course?.instructorName ?? 'your instructor'}`;
                   }
-                  if (req.type === 'faculty_enroll') {
-                    return (
-                      <div key={req.id} className="px-3 py-2 rounded-xl hover:bg-accent/60 transition-colors">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <div className="text-xs font-bold text-foreground truncate">
-                              {course?.code ? `${course.code} — ` : ''}{course?.title ?? 'Course invitation'}
-                            </div>
-                            <div className="text-[11px] text-muted-foreground font-sans">
-                              Invited by {course?.instructorName ?? 'your instructor'}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <button
-                              onClick={() => handleStudentAction(`accept:${req.id}`, () => studentApproveInvitation(req.id), () => onNavigateCourse?.(req.courseId, 'section-selection'))}
-                              disabled={isProcessing(`accept:${req.id}`) || isProcessing(`decline:${req.id}`)}
-                              className="px-2.5 py-1 text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-wait flex items-center gap-1"
-                            >
-                              {isProcessing(`accept:${req.id}`) && <Loader2 className="w-3 h-3 animate-spin" />}
-                              {isProcessing(`accept:${req.id}`) ? '...' : 'Accept'}
-                            </button>
-                            <button
-                              onClick={() => handleStudentAction(`decline:${req.id}`, () => studentDeclineInvitation(req.id))}
-                              disabled={isProcessing(`accept:${req.id}`) || isProcessing(`decline:${req.id}`)}
-                              className="px-2.5 py-1 text-[11px] font-bold bg-red-500/10 text-red-600 hover:bg-red-500/20 rounded-lg transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-wait flex items-center gap-1"
-                            >
-                              {isProcessing(`decline:${req.id}`) && <Loader2 className="w-3 h-3 animate-spin" />}
-                              {isProcessing(`decline:${req.id}`) ? '...' : 'Decline'}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  }
+
+                  const title = req.type === 'faculty_enroll'
+                    ? (course?.title ?? 'Course invitation')
+                    : (course?.title ?? 'Course request');
+
                   return (
-                    <div key={req.id} className="px-3 py-2 rounded-xl hover:bg-accent/60 transition-colors">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="text-xs font-bold text-foreground truncate">
-                            {course?.code ? `${course.code} — ` : ''}{course?.title ?? 'Course request'}
-                          </div>
-                          <div className="text-[11px] text-muted-foreground font-sans">
-                            Request sent — awaiting instructor approval
-                          </div>
+                    <button
+                      key={req.id}
+                      type="button"
+                      onClick={() => {
+                        setOpen(false);
+                        onNavigateTab?.('dashboard');
+                        navigate('/dashboard');
+                      }}
+                      className="w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl hover:bg-accent/60 transition-colors text-left group cursor-pointer"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-bold text-foreground truncate">
+                          {title}
                         </div>
-                        <button
-                          onClick={() => handleStudentAction(`withdraw:${req.id}`, () => studentDeclineInvitation(req.id))}
-                          disabled={isProcessing(`withdraw:${req.id}`)}
-                          className="px-2.5 py-1 text-[11px] font-bold bg-red-500/10 text-red-600 hover:bg-red-500/20 rounded-lg transition-colors cursor-pointer shrink-0 disabled:opacity-60 disabled:cursor-wait flex items-center gap-1"
-                        >
-                          {isProcessing(`withdraw:${req.id}`) && <Loader2 className="w-3 h-3 animate-spin" />}
-                          {isProcessing(`withdraw:${req.id}`) ? '...' : 'Withdraw'}
-                        </button>
+                        <div className="text-[11px] text-muted-foreground font-sans">
+                          {subtitle}
+                        </div>
                       </div>
-                    </div>
+                      <ChevronRight className="w-4 h-4 text-muted-foreground/50 group-hover:text-foreground shrink-0 transition-colors" />
+                    </button>
                   );
                 })
               )}
