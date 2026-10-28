@@ -1,6 +1,19 @@
 import React from 'react';
 import type { OfficialSyllabusData } from '../../../../../shared/data/syllabusData';
+import { CustomDropdown } from '../../../../../shared/components/common/CustomDropdown';
 import { BookOpen, User, Calendar, MapPin, Clock } from 'lucide-react';
+
+const SEMESTER_OPTIONS = [
+  { value: 'First Semester', label: 'First Semester' },
+  { value: 'Second Semester', label: 'Second Semester' },
+  { value: 'Midyear', label: 'Midyear' },
+];
+
+const COURSE_TYPE_OPTIONS = [
+  { value: 'Lecture', label: 'Lecture' },
+  { value: 'Lecture and Laboratory', label: 'Lecture and Laboratory' },
+  { value: 'Laboratory', label: 'Laboratory' },
+];
 
 interface Step1CourseInfoProps {
   data: OfficialSyllabusData;
@@ -85,16 +98,13 @@ export const Step1CourseInfo: React.FC<Step1CourseInfoProps> = ({ data, onChange
           <label htmlFor="course-semester" className="text-xs font-semibold text-foreground">
             Academic Semester
           </label>
-          <select
+          <CustomDropdown
             id="course-semester"
             value={courseInfo.semester}
-            onChange={e => updateCourseInfo('semester', e.target.value)}
-            className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
-          >
-            <option value="First Semester">First Semester</option>
-            <option value="Second Semester">Second Semester</option>
-            <option value="Midyear">Midyear</option>
-          </select>
+            onChange={val => updateCourseInfo('semester', val)}
+            options={SEMESTER_OPTIONS}
+            placeholder="Select Semester"
+          />
         </div>
 
         <div className="space-y-1.5">
@@ -129,16 +139,13 @@ export const Step1CourseInfo: React.FC<Step1CourseInfoProps> = ({ data, onChange
           <label htmlFor="course-type" className="text-xs font-semibold text-foreground">
             Course Type
           </label>
-          <select
+          <CustomDropdown
             id="course-type"
             value={courseInfo.type}
-            onChange={e => updateCourseInfo('type', e.target.value)}
-            className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
-          >
-            <option value="Lecture">Lecture</option>
-            <option value="Lecture and Laboratory">Lecture and Laboratory</option>
-            <option value="Laboratory">Laboratory</option>
-          </select>
+            onChange={val => updateCourseInfo('type', val)}
+            options={COURSE_TYPE_OPTIONS}
+            placeholder="Select Course Type"
+          />
         </div>
 
         <div className="space-y-1.5">

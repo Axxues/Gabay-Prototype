@@ -6,14 +6,14 @@ import { SyllabusStarterModal } from './components/creator/SyllabusStarterModal'
 import { AttachToCourseModal } from './components/creator/AttachToCourseModal';
 import { scanSyllabusDocument } from '../../shared/utils/syllabusParser';
 import type { OfficialSyllabusData } from '../../shared/data/syllabusData';
+import { CustomDropdown } from '../../shared/components/common/CustomDropdown';
 import {
   Plus,
   Copy,
   Trash2,
   CheckCircle2,
   ShieldAlert,
-  Sparkles,
-  ChevronDown
+  Sparkles
 } from 'lucide-react';
 
 interface SyllabusCreatorPageProps {
@@ -108,20 +108,15 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
         {/* Draft Selection & Quick Actions */}
         <div className="flex flex-wrap items-center gap-2.5">
           {/* Active Draft Picker */}
-          <div className="relative">
-            <select
+          <div className="w-52">
+            <CustomDropdown
               value={activeDraftId}
-              onChange={e => selectDraft(e.target.value)}
-              className="appearance-none pl-3 pr-8 py-2 text-xs font-semibold rounded-xl border border-border bg-card hover:bg-muted text-foreground transition-all cursor-pointer shadow-xs focus:ring-1 focus:ring-primary outline-none max-w-[200px] truncate"
-              title="Select Active Draft"
-            >
-              {drafts.map(d => (
-                <option key={d.id} value={d.id}>
-                  {d.title}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
+              onChange={val => selectDraft(val)}
+              options={drafts.map(d => ({ value: d.id, label: d.title }))}
+              placeholder="Select Draft"
+              ariaLabel="Select Active Draft"
+              testId="active-draft-select"
+            />
           </div>
 
           {/* Clone Draft */}

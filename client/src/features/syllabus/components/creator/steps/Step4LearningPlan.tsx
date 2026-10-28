@@ -1,5 +1,6 @@
 import React from 'react';
 import type { OfficialSyllabusData, LearningPlanWeek } from '../../../../../shared/data/syllabusData';
+import { CustomDropdown } from '../../../../../shared/components/common/CustomDropdown';
 import { Plus, Trash2, Globe, Clock, Layers } from 'lucide-react';
 
 interface Step4LearningPlanProps {
@@ -15,6 +16,14 @@ const SDG_PRESETS: Array<{ goal: string; title: string; description: string }> =
   { goal: 'SDG 11', title: 'Sustainable Cities and Communities', description: 'Making cities and human settlements inclusive, safe, resilient, and sustainable.' },
   { goal: 'SDG 12', title: 'Responsible Consumption and Production', description: 'Ensuring sustainable consumption and production patterns in technology.' },
   { goal: 'SDG 16', title: 'Peace, Justice and Strong Institutions', description: 'Promoting peaceful and inclusive societies, access to justice, and effective institutions.' }
+];
+
+const SDG_OPTIONS = [
+  { value: '', label: 'No SDG Assigned' },
+  ...SDG_PRESETS.map(s => ({
+    value: s.goal,
+    label: `${s.goal}: ${s.title}`,
+  })),
 ];
 
 export const Step4LearningPlan: React.FC<Step4LearningPlanProps> = ({ data, onChange }) => {
@@ -186,18 +195,15 @@ export const Step4LearningPlan: React.FC<Step4LearningPlanProps> = ({ data, onCh
                   <Globe className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                   <span>SDG Coherence (Sustainable Development Goals)</span>
                 </label>
-                <select
-                  value={row.sdgCoherence?.goal || ''}
-                  onChange={e => handleSdgChange(idx, e.target.value)}
-                  className="px-2 py-1 text-xs rounded-lg border border-border bg-background font-medium focus:ring-1 focus:ring-primary focus:border-primary outline-none"
-                >
-                  <option value="">No SDG Assigned</option>
-                  {SDG_PRESETS.map(s => (
-                    <option key={s.goal} value={s.goal}>
-                      {s.goal}: {s.title}
-                    </option>
-                  ))}
-                </select>
+                <div className="w-64">
+                  <CustomDropdown
+                    value={row.sdgCoherence?.goal || ''}
+                    onChange={val => handleSdgChange(idx, val)}
+                    options={SDG_OPTIONS}
+                    variant="compact"
+                    placeholder="Select SDG"
+                  />
+                </div>
               </div>
 
               {row.sdgCoherence && (
