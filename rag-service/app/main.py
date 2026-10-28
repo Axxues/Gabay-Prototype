@@ -118,7 +118,11 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
     )
 
 
-from app.services.email_service import send_activation_email, send_leadership_code_email
+from app.services.email_service import (
+    send_activation_email,
+    send_leadership_code_email,
+    send_course_invitation_email,
+)
 
 
 class ActivationEmailRequest(BaseModel):
@@ -250,4 +254,66 @@ async def verify_leadership_code_endpoint(
         success=True,
         message="Leadership verification code confirmed successfully.",
     )
+
+
+class CourseInvitationItem(BaseModel):
+    recipient_email: str = Field(..., min_length=3, max_length=254)
+    recipient_name: Optional[str] = Field(None, max_length=150)
+    instructor_name: Optional[str] = Field("Your Instructor", max_length=150)
+    course_code: str = Field(..., max_length=50)
+    course_title: str = Field(..., max_length=200)
+    section: Optional[str] = Field("", max_length=50)
+    term: Optional[str] = Field("", max_length=100)
+    join_url: str = Field(..., min_length=1)
+    request_id: Optional[str] = None
+
+
+class CourseInvitationBatchRequest(BaseModel):
+    invitations: List[CourseInvitationItem]
+
+
+class CourseInvitationBatchResponse(BaseModel):
+    success: bool
+    total: int
+    sent: int
+    simulated: bool = False
+    message: str
+
+
+@app.post("/api/courses/send-course-invitations", response_model=CourseInvitationBatchResponse)
+async def send_course_invitations_endpoint(
+    request: CourseInvitationBatchRequest,
+    _auth: None = Depends(verify_client_key),
+) -> CourseInvitationBatchResponse:
+    """Send batch of course invitation emails to invited students."""
+    total = len(request.invitations)
+    sent = 0
+    simulated = False
+
+    for item in request.invitations:
+        if "@" not in item.recipient_email:
+            continue
+        res = send_course_invitation_email(
+            to_email=item.recipient_email,
+            recipient_name=item.recipient_name or "",
+            instructor_name=item.instructor_name or "Your Instructor",
+            course_code=item.course_code,
+            course_title=item.course_title,
+            section=item.section or "",
+            term=item.term or "",
+            join_url=item.join_url,
+        )
+        if res.get("success"):
+            sent += 1
+        if res.get("simulated"):
+            simulated = True
+
+    return CourseInvitationBatchResponse(
+        success=True,
+        total=total,
+        sent=sent,
+        simulated=simulated,
+        message=f"Dispatched {sent} of {total} course invitation emails.",
+    )
+
 

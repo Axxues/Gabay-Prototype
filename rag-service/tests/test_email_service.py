@@ -186,3 +186,41 @@ def test_send_course_invitation_email_simulates_when_unconfigured():
         assert res["recipient"] == "student@dmmmsu.edu.ph"
 
 
+def test_api_send_course_invitations_batch_success():
+    payload = {
+        "invitations": [
+            {
+                "recipient_email": "student1@dmmmsu.edu.ph",
+                "recipient_name": "Student One",
+                "instructor_name": "Engr. Turing",
+                "course_code": "CS 311",
+                "course_title": "Software Engineering",
+                "section": "BSCS 3A",
+                "term": "1st Sem 2026-2027",
+                "join_url": "http://localhost:5173/?action=join&courseId=c1&requestId=req-1",
+                "request_id": "req-1",
+            }
+        ]
+    }
+    response = client.post(
+        "/api/courses/send-course-invitations",
+        json=payload,
+        headers={"X-Gabay-Client-Key": "test-client-key"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert data["total"] == 1
+    assert data["sent"] == 1
+
+
+def test_api_send_course_invitations_rejects_missing_auth():
+    unauthenticated_client = TestClient(app)
+    response = unauthenticated_client.post(
+        "/api/courses/send-course-invitations",
+        json={"invitations": []},
+    )
+    assert response.status_code in (401, 403)
+
+
+
