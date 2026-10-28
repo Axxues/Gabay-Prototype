@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { Routes, Route, Navigate, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Routes, Route, Navigate, Outlet, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useLMS, LMSProvider } from './shared/context/LMSContext';
 import { GabayChatProvider } from './shared/context/GabayChatContext';
 import { AppRail } from './shared/components/layout/AppRail';
 import { LMSContextPanel } from './shared/components/layout/LMSContextPanel';
 import { Topbar } from './shared/components/layout/Topbar';
-import { LoginPage, RegisterPage } from './features/auth';
+import { LoginPage, RegisterPage, ProfilePage } from './features/auth';
+import { CourseInvitationAcceptModal } from './features/courses';
 import { RoleSwitcherModal } from './shared/components/common/RoleSwitcherModal';
 import { GlobalSearchDialog } from './shared/components/common/GlobalSearchDialog';
 import { PageTransition } from './shared/components/common/PageTransition';
@@ -20,7 +21,6 @@ const AssignedCoursesUploadView = React.lazy(() => import('./features/courses').
 const EditCoursePage = React.lazy(() => import('./features/courses').then(m => ({ default: m.EditCoursePage })));
 const CalendarPage = React.lazy(() => import('./features/calendar').then(m => ({ default: m.CalendarPage })));
 const InboxPage = React.lazy(() => import('./features/inbox').then(m => ({ default: m.InboxPage })));
-const ProfilePage = React.lazy(() => import('./features/auth').then(m => ({ default: m.ProfilePage })));
 const HistoryPage = React.lazy(() => import('./features/system').then(m => ({ default: m.HistoryPage })));
 const HelpPage = React.lazy(() => import('./features/system').then(m => ({ default: m.HelpPage })));
 const EmptyPage = React.lazy(() => import('./features/system').then(m => ({ default: m.EmptyPage })));
@@ -123,9 +123,15 @@ const RequireAdmin: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   return <>{children}</>;
 };
 
-const RequireSuperAdmin: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { activeRole } = useLMS();
-  if (activeRole !== 'superadmin') {
+export const isLeadershipCreator = (activeRole?: string, activeUser?: any): boolean => {
+  const isDean = activeRole === 'admin' && activeUser?.adminSubrole === 'dean';
+  const isChair = (activeRole === 'admin' && activeUser?.adminSubrole === 'chairperson') || isChairRole(activeUser, activeRole);
+  return (activeRole === 'superadmin' || activeRole === 'admin') && !isDean && !isChair;
+};
+
+const RequireLeadershipCreator: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { activeRole, activeUser } = useLMS();
+  if (!isLeadershipCreator(activeRole, activeUser)) {
     return <Navigate to="/dashboard" replace />;
   }
   return <>{children}</>;
@@ -155,9 +161,46 @@ export const LoginRoute: React.FC = () => {
   return <LoginPage />;
 };
 
+const preloadCourseSubTab = (subTab?: string) => {
+  const tab = subTab ? decodeURIComponent(subTab) : 'modules';
+  switch (tab) {
+    case 'people':
+      void import('./features/people');
+      break;
+    case 'modules':
+      void import('./features/modules');
+      break;
+    case 'syllabus':
+      void import('./features/syllabus');
+      break;
+    case 'announcements':
+      void import('./features/inbox');
+      break;
+    case 'files':
+      void import('./features/files');
+      break;
+    case 'activities':
+    case 'assignments':
+    case 'projects':
+    case 'presentations':
+    case 'quizzes':
+    case 'assessments':
+    case 'grades':
+      void import('./features/assessments');
+      break;
+    default:
+      void import('./features/modules');
+      break;
+  }
+};
+
 const CoursesRoute: React.FC = () => {
   const { courseId, subTab } = useParams<{ courseId?: string; subTab?: string }>();
+  const [searchParams] = useSearchParams();
   const { activeCourseId, setActiveCourseId } = useLMS();
+
+  // Eagerly preload subtab module chunk in parallel with CoursesPage to avoid sequential lazy waterfalls on refresh
+  preloadCourseSubTab(subTab);
 
   useEffect(() => {
     if (courseId && courseId !== activeCourseId) {
@@ -166,7 +209,14 @@ const CoursesRoute: React.FC = () => {
   }, [courseId, activeCourseId, setActiveCourseId]);
 
   const effectiveSubTab = subTab ? decodeURIComponent(subTab) : 'modules';
-  return <CoursesPage key={`${courseId ?? activeCourseId ?? 'none'}-${effectiveSubTab}`} initialSubTab={effectiveSubTab} />;
+  const peopleTab = searchParams.get('tab') === 'pending' ? 'pending' : undefined;
+  return (
+    <CoursesPage
+      key={`${courseId ?? activeCourseId ?? 'none'}-${effectiveSubTab}-${peopleTab ?? 'default'}`}
+      initialSubTab={effectiveSubTab}
+      initialPeopleTab={peopleTab}
+    />
+  );
 };
 
 const AssignedCoursesRoute: React.FC = () => {
@@ -224,13 +274,50 @@ const AccountProfileRoute: React.FC<{ nav: ReturnType<typeof useAppNavigation> }
 
 export const AppShell: React.FC = () => {
   const location = useLocation();
-  const { activeCourseId, setActiveCourseId, activeRole } = useLMS();
+  const { activeCourseId, setActiveCourseId, activeRole, activeUser, logout } = useLMS();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [invitationModalData, setInvitationModalData] = useState<{
+    courseId: string;
+    requestId?: string;
+    studentId?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    // 1. Direct query param on current route
+    const params = new URLSearchParams(location.search);
+    if (params.get('action') === 'join' && params.get('courseId')) {
+      const courseId = params.get('courseId')!;
+      const requestId = params.get('requestId') || undefined;
+      const studentId = params.get('studentId') || undefined;
+      setInvitationModalData({ courseId, requestId, studentId });
+      sessionStorage.removeItem('gabay_pending_join');
+      return;
+    }
+
+    // 2. Pending invitation stored from before sign-in
+    const pending = sessionStorage.getItem('gabay_pending_join');
+    if (pending) {
+      try {
+        const parsedJoin = JSON.parse(pending);
+        if (parsedJoin.courseId) {
+          setInvitationModalData(parsedJoin);
+        }
+      } catch {
+        // ignore parse error
+      }
+      sessionStorage.removeItem('gabay_pending_join');
+    }
+  }, [location.search]);
 
   const parsed = pathToTab(location.pathname);
   const currentTab = parsed.tab === 'login' ? 'dashboard' : parsed.tab;
   const courseSubTab = parsed.subTab ?? 'modules';
+
+  // Eagerly preload subtab module chunk in parallel as soon as AppShell renders on /courses
+  if (currentTab === 'courses') {
+    preloadCourseSubTab(courseSubTab);
+  }
 
   // Keep context activeCourseId in sync with the URL so refresh / deep-link / back-forward restore the course.
   useEffect(() => {
@@ -250,14 +337,14 @@ export const AppShell: React.FC = () => {
       if (!allowedStaffTabs.includes(currentTab)) {
         navigate('/inbox', { replace: true });
       }
-    } else if (currentTab === 'create-leadership' && (activeRole as string) !== 'superadmin') {
+    } else if (currentTab === 'create-leadership' && !isLeadershipCreator(activeRole, activeUser)) {
       navigate('/dashboard', { replace: true });
     } else if (activeRole !== 'admin' && (activeRole as string) !== 'superadmin') {
       if (currentTab === 'accounts' || currentTab === 'create-account' || currentTab === 'edit-account' || currentTab === 'account-profile' || currentTab === 'governance') {
         navigate('/dashboard', { replace: true });
       }
     }
-  }, [activeRole, currentTab, navigate]);
+  }, [activeRole, activeUser, currentTab, navigate]);
 
   // Global keyboard shortcut: Cmd+K / Ctrl+K opens search dialog
   useEffect(() => {
@@ -325,6 +412,23 @@ export const AppShell: React.FC = () => {
       <React.Suspense fallback={null}>
         <SpeedGraderModal />
       </React.Suspense>
+      {invitationModalData && (
+        <CourseInvitationAcceptModal
+          isOpen={Boolean(invitationModalData)}
+          onClose={() => setInvitationModalData(null)}
+          courseId={invitationModalData.courseId}
+          requestId={invitationModalData.requestId}
+          targetStudentId={invitationModalData.studentId}
+          onNavigateCourse={(id, sub) => {
+            nav.handleNavigateCourse(id, sub);
+            setInvitationModalData(null);
+          }}
+          onSwitchAccount={() => {
+            setInvitationModalData(null);
+            logout();
+          }}
+        />
+      )}
     </div>
   );
 };
@@ -336,6 +440,23 @@ function RouteWithNav({ element }: { element: (nav: ReturnType<typeof useAppNavi
 }
 
 export const AppContent: React.FC = () => {
+  const location = useLocation();
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('action') === 'join') {
+      const courseId = params.get('courseId');
+      const requestId = params.get('requestId') || '';
+      const studentId = params.get('studentId') || '';
+      if (courseId) {
+        sessionStorage.setItem(
+          'gabay_pending_join',
+          JSON.stringify({ courseId, requestId, studentId })
+        );
+      }
+    }
+  }, [location.search]);
+
   return (
     <Routes>
       <Route path="/login" element={<LoginRoute />} />
@@ -361,7 +482,7 @@ export const AppContent: React.FC = () => {
         <Route path="/governance/programs/:deptId" element={<RequireAdmin><RouteWithNav element={(nav) => <ProgramDetailsPage onNavigateTab={nav.handleNavigateTab} />} /></RequireAdmin>} />
         <Route path="/governance/departments/:deptId" element={<RequireAdmin><RouteWithNav element={(nav) => <ProgramDetailsPage onNavigateTab={nav.handleNavigateTab} />} /></RequireAdmin>} />
         <Route path="/accounts" element={<RequireAdmin><RouteWithNav element={(nav) => <ManageAccountsPage onNavigateTab={nav.handleNavigateTab} onEditAccount={nav.handleEditAccount} onViewAccount={nav.handleViewAccount} />} /></RequireAdmin>} />
-        <Route path="/accounts/create-leadership" element={<RequireSuperAdmin><RouteWithNav element={(nav) => <CreateLeadershipAccountPage onNavigateTab={nav.handleNavigateTab} />} /></RequireSuperAdmin>} />
+        <Route path="/accounts/create-leadership" element={<RequireLeadershipCreator><RouteWithNav element={(nav) => <CreateLeadershipAccountPage onNavigateTab={nav.handleNavigateTab} />} /></RequireLeadershipCreator>} />
         <Route path="/accounts/new" element={<Navigate to="/accounts" replace />} />
         <Route path="/accounts/:userId/view" element={<RequireAdmin><RouteWithNav element={(nav) => <AccountProfileRoute nav={nav} />} /></RequireAdmin>} />
         <Route path="/accounts/:userId" element={<RequireAdmin><RouteWithNav element={(nav) => <AccountProfileRoute nav={nav} />} /></RequireAdmin>} />
