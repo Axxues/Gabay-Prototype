@@ -15,6 +15,10 @@ export const ANNOUNCEMENTS_ROOT_FOLDER_ID = 'vf-announcements';
 export const SYLLABUS_ROOT_FOLDER_ID = 'vf-syllabus';
 export const MODULES_ROOT_FOLDER_ID = 'vf-modules';
 export const ACTIVITIES_ROOT_FOLDER_ID = 'vf-activities';
+export const ASSIGNMENTS_ROOT_FOLDER_ID = 'vf-assignments';
+export const QUIZZES_ROOT_FOLDER_ID = 'vf-quizzes';
+export const PROJECTS_ROOT_FOLDER_ID = 'vf-projects';
+export const PRESENTATIONS_ROOT_FOLDER_ID = 'vf-presentations';
 export const activitiesTermFolderId = (term: TermId): string => `vf-activities-${term}`;
 const TERM_ORDER: TermId[] = ['prelim', 'midterm', 'finals'];
 
@@ -71,24 +75,9 @@ export const useCourseFiles = (courseId?: string) => {
     if (!db) return { allFiles: [], virtualFolders: [] };
 
     const folders = db.courseFolders || [];
-    const scopeModules = isPersonal
-      ? db.modules || []
-      : (db.modules || []).filter((m: any) => m.courseId === courseId);
-
-    // Module item linkage (same conventions as AddModuleItemPage):
-    // classic activity -> item.activityId, question set -> the synthetic
-    // `asg-activity-<id>`, quiz -> item.quizId.
-    const findLinkedModuleId = (pred: (item: any) => boolean): string | null => {
-      for (const mod of scopeModules) {
-        for (const item of (mod as any).items || []) {
-          if (pred(item)) return (mod as any).id;
-        }
-      }
-      return null;
-    };
-
     const course = !isPersonal && courseId ? (db.courses || []).find((c: any) => c.id === courseId) : null;
 
+    // Real folder lookups hoisted to the top to prevent TDZ ReferenceErrors
     const realAnnouncementsFolder =
       findFolderByAutoKey(folders, effectiveScopeId as string, areaFolderAutoKey('announcements')) ||
       folders.find((f: any) => f.courseId === effectiveScopeId && f.name.toLowerCase() === 'announcements' && !f.parentId);
@@ -104,9 +93,31 @@ export const useCourseFiles = (courseId?: string) => {
       folders.find((f: any) => f.courseId === effectiveScopeId && f.name.toLowerCase() === 'modules' && !f.parentId);
     const modulesFolderId = realModulesFolder?.id ?? MODULES_ROOT_FOLDER_ID;
 
-    // Module-linked assessment entries live inside their source module's
-    // folder (module:<id>), falling back to the Modules area folder when
-    // the child folder isn't cached yet.
+    const realActivitiesFolder =
+      findFolderByAutoKey(folders, effectiveScopeId as string, areaFolderAutoKey('activities')) ||
+      folders.find((f: any) => f.courseId === effectiveScopeId && f.name.toLowerCase() === 'activities' && !f.parentId);
+    const activitiesFolderId = realActivitiesFolder?.id ?? ACTIVITIES_ROOT_FOLDER_ID;
+
+    const realAssignmentsFolder =
+      findFolderByAutoKey(folders, effectiveScopeId as string, areaFolderAutoKey('assignments')) ||
+      folders.find((f: any) => f.courseId === effectiveScopeId && f.name.toLowerCase() === 'assignments' && !f.parentId);
+    const assignmentsFolderId = realAssignmentsFolder?.id ?? ASSIGNMENTS_ROOT_FOLDER_ID;
+
+    const realQuizzesFolder =
+      findFolderByAutoKey(folders, effectiveScopeId as string, areaFolderAutoKey('quizzes')) ||
+      folders.find((f: any) => f.courseId === effectiveScopeId && f.name.toLowerCase() === 'quizzes' && !f.parentId);
+    const quizzesFolderId = realQuizzesFolder?.id ?? QUIZZES_ROOT_FOLDER_ID;
+
+    const realProjectsFolder =
+      findFolderByAutoKey(folders, effectiveScopeId as string, areaFolderAutoKey('projects')) ||
+      folders.find((f: any) => f.courseId === effectiveScopeId && f.name.toLowerCase() === 'projects' && !f.parentId);
+    const projectsFolderId = realProjectsFolder?.id ?? PROJECTS_ROOT_FOLDER_ID;
+
+    const realPresentationsFolder =
+      findFolderByAutoKey(folders, effectiveScopeId as string, areaFolderAutoKey('presentations')) ||
+      folders.find((f: any) => f.courseId === effectiveScopeId && f.name.toLowerCase() === 'presentations' && !f.parentId);
+    const presentationsFolderId = realPresentationsFolder?.id ?? PRESENTATIONS_ROOT_FOLDER_ID;
+
     const folderIdForModule = (moduleId: string | null): string | null => {
       if (!moduleId) return null;
       const scopeId = effectiveScopeId as string;
@@ -114,6 +125,14 @@ export const useCourseFiles = (courseId?: string) => {
       if (child) return (child as any).id;
       const area = findFolderByAutoKey(folders, scopeId, areaFolderAutoKey('modules'));
       return area ? (area as any).id : modulesFolderId;
+    };
+
+    const unlinkedTerms = new Set<TermId>();
+    const activityFolderId = (term: TermId | null | undefined): string => {
+      if (realActivitiesFolder) return realActivitiesFolder.id;
+      const resolved = term ?? 'midterm';
+      unlinkedTerms.add(resolved);
+      return activitiesTermFolderId(resolved);
     };
 
     // 1. Direct course files
@@ -124,41 +143,74 @@ export const useCourseFiles = (courseId?: string) => {
       .map(f => {
         const area = (f as CourseFile).sourceArea;
         const fileUrl = f.url || f.fileUrl;
+
         const matchedAnnouncement = (db.announcements || []).find(a =>
           (a.courseId === courseId || a.courseId === 'all') &&
           (a.attachments || []).some(att => att.name === f.name || (fileUrl && att.url === fileUrl))
         );
-        const isAnnouncement = area === 'announcements' || Boolean(matchedAnnouncement);
 
-        const matchedModule = (db.modules || []).find(m =>
-          (m.courseId === courseId) &&
-          (m.items || []).some(item =>
-            (item.fileName && item.fileName === f.name) ||
-            (fileUrl && item.fileUrl && (item.fileUrl === fileUrl))
-          )
-        );
-        const isModule = area === 'modules' || Boolean(matchedModule);
+        let matchedModule: any = null;
+        let matchedItem: any = null;
+        for (const m of (db.modules || [])) {
+          if (m.courseId !== courseId) continue;
+          for (const item of (m.items || [])) {
+            const atts = Array.isArray(item.attachments)
+              ? item.attachments
+              : (typeof item.attachments === 'string' ? (() => { try { return JSON.parse(item.attachments); } catch { return []; } })() : []);
+            const match =
+              (item.fileName && item.fileName === f.name) ||
+              (fileUrl && item.fileUrl && item.fileUrl === fileUrl) ||
+              atts.some((att: any) => att && (att.name === f.name || (fileUrl && att.url === fileUrl)));
+            if (match) {
+              matchedModule = m;
+              matchedItem = item;
+              break;
+            }
+          }
+          if (matchedModule) break;
+        }
 
         const isSyllabus = area === 'syllabus'
           || Boolean(course?.syllabus?.sourceDocument && (course.syllabus.sourceDocument.fileName === f.name || (course.syllabus.sourceDocument as any).courseFileId === f.id))
           || Boolean(/course[\s_-]*orientation|[\s_-]syllabus/i.test(f.name) && !area);
 
-        const resolvedSource = isAnnouncement
-          ? 'announcements'
-          : isModule
-          ? 'modules'
-          : area === 'activities'
-          ? 'activities'
-          : (isSyllabus ? 'syllabus' : 'uploads');
+        // Resolve source: assessment types take precedence over module membership
+        let resolvedSource: string;
+        if (area === 'announcements' || (!area && matchedAnnouncement)) {
+          resolvedSource = 'announcements';
+        } else if (isSyllabus) {
+          resolvedSource = 'syllabus';
+        } else if (area === 'activities' || (!area && matchedItem?.type === 'activity')) {
+          resolvedSource = 'activities';
+        } else if (area === 'assignments' || (!area && matchedItem?.type === 'assignment')) {
+          resolvedSource = 'assignments';
+        } else if (area === 'quizzes' || (!area && matchedItem?.type === 'quiz')) {
+          resolvedSource = 'quizzes';
+        } else if (area === 'projects' || (!area && matchedItem?.type === 'project')) {
+          resolvedSource = 'projects';
+        } else if (area === 'presentations' || (!area && matchedItem?.type === 'presentation')) {
+          resolvedSource = 'presentations';
+        } else if (area === 'modules' || (!area && matchedModule)) {
+          resolvedSource = 'modules';
+        } else {
+          resolvedSource = 'uploads';
+        }
 
-        const resolvedSourceId = f.sourceId || (isAnnouncement ? matchedAnnouncement?.id : (isModule ? matchedModule?.id : undefined));
+        const resolvedSourceId = f.sourceId || (
+          resolvedSource === 'announcements' ? matchedAnnouncement?.id :
+          resolvedSource === 'modules' ? matchedModule?.id : undefined
+        );
 
         let resolvedFolderId = f.folderId;
         if (!resolvedFolderId && !isPersonal) {
           if (resolvedSource === 'announcements') resolvedFolderId = announcementsFolderId;
           else if (resolvedSource === 'syllabus') resolvedFolderId = syllabusFolderId;
           else if (resolvedSource === 'modules') resolvedFolderId = (resolvedSourceId ? folderIdForModule(resolvedSourceId) : null) ?? modulesFolderId;
-          else if (resolvedSource === 'activities') resolvedFolderId = realActivitiesRootId ?? ACTIVITIES_ROOT_FOLDER_ID;
+          else if (resolvedSource === 'activities') resolvedFolderId = activitiesFolderId;
+          else if (resolvedSource === 'assignments') resolvedFolderId = assignmentsFolderId;
+          else if (resolvedSource === 'quizzes') resolvedFolderId = quizzesFolderId;
+          else if (resolvedSource === 'projects') resolvedFolderId = projectsFolderId;
+          else if (resolvedSource === 'presentations') resolvedFolderId = presentationsFolderId;
         }
 
         let effectiveFormattedSize = f.formattedSize;
@@ -186,7 +238,7 @@ export const useCourseFiles = (courseId?: string) => {
           ...f,
           size: effectiveSize,
           formattedSize: effectiveFormattedSize,
-          sourceArea: f.sourceArea || (isAnnouncement ? 'announcements' : (isModule ? 'modules' : (isSyllabus ? 'syllabus' : undefined))),
+          sourceArea: f.sourceArea || (resolvedSource !== 'uploads' ? (resolvedSource as any) : undefined),
           sourceId: resolvedSourceId
         };
 
@@ -232,13 +284,59 @@ export const useCourseFiles = (courseId?: string) => {
       }
     }
 
-    // 2. Module uploaded files and images
+    // 2. Module uploaded files and images (Lecture Notes / Reading Pages)
     const moduleFiles: AggregatedCourseFile[] = [];
     const relevantModules = isPersonal ? db.modules : (db.modules || []).filter(m => m.courseId === courseId);
     relevantModules.forEach(mod => {
       (mod.items || []).forEach(item => {
+        // Skip assessment items: activities, assignments, quizzes, projects, presentations.
+        // Their files belong to their respective assessment folders, not Modules folder.
+        const isAssessmentItem =
+          item.type === 'activity' ||
+          item.type === 'assignment' ||
+          item.type === 'quiz' ||
+          item.type === 'project' ||
+          item.type === 'presentation' ||
+          Boolean(item.activityId) ||
+          Boolean(item.quizId);
+        if (isAssessmentItem) return;
+
+        const itemAttachments: Array<{ name: string; url?: string; size?: string; type?: string }> = [];
+        let rawAttachments = item.attachments;
+        if (typeof rawAttachments === 'string') {
+          try {
+            rawAttachments = JSON.parse(rawAttachments);
+          } catch {
+            rawAttachments = [];
+          }
+        }
+        if (Array.isArray(rawAttachments) && rawAttachments.length > 0) {
+          rawAttachments.forEach((att: any) => {
+            if (att && (att.name || att.url)) {
+              itemAttachments.push({
+                name: att.name,
+                url: att.url,
+                size: att.size,
+                type: att.type,
+              });
+            }
+          });
+        }
         if (item.fileName || item.fileUrl) {
           const fName = item.fileName || item.title || 'Module_Asset.pdf';
+          const already = itemAttachments.some(att => att.name.trim().toLowerCase() === fName.trim().toLowerCase() || (item.fileUrl && att.url === item.fileUrl));
+          if (!already) {
+            itemAttachments.push({
+              name: fName,
+              url: item.fileUrl,
+              size: item.fileSize,
+              type: item.fileType,
+            });
+          }
+        }
+
+        itemAttachments.forEach((att, idx) => {
+          const fName = att.name;
           const fNameNorm = fName.trim().toLowerCase();
           const alreadyInDirect = directFiles.some(df =>
             df.name.trim().toLowerCase() === fNameNorm &&
@@ -246,14 +344,14 @@ export const useCourseFiles = (courseId?: string) => {
           );
           if (alreadyInDirect) return;
 
-          const fUrl = item.fileUrl || `/public/uploads/${fName}`;
+          const fUrl = att.url || `/public/uploads/${fName}`;
           moduleFiles.push({
-            id: `mod-file-${item.id}`,
+            id: `mod-file-${item.id}-${idx}`,
             courseId: mod.courseId,
             folderId: isPersonal ? null : (folderIdForModule(mod.id) ?? modulesFolderId),
             name: fName,
-            size: 1024 * 1024,
-            formattedSize: item.fileSize || '1.2 MB',
+            size: att.size ? parseFormattedSize(att.size) || 1024 * 1024 : 1024 * 1024,
+            formattedSize: att.size || '1.2 MB',
             type: detectFileType(fName || fUrl),
             visibility: item.published ? 'published' : 'unpublished',
             updatedAt: new Date().toISOString(),
@@ -265,7 +363,7 @@ export const useCourseFiles = (courseId?: string) => {
             source: 'modules',
             sourceLabel: `Module: ${mod.title}`
           });
-        }
+        });
       });
     });
 
@@ -275,8 +373,13 @@ export const useCourseFiles = (courseId?: string) => {
       ? db.announcements || []
       : (db.announcements || []).filter(a => a.courseId === courseId || a.courseId === 'all');
     relevantAnnouncements.forEach(ann => {
-      if (ann.attachments && ann.attachments.length > 0) {
-        ann.attachments.forEach((att, idx) => {
+      let rawAttachments = ann.attachments;
+      if (typeof rawAttachments === 'string') {
+        try { rawAttachments = JSON.parse(rawAttachments); } catch { rawAttachments = []; }
+      }
+      if (Array.isArray(rawAttachments) && rawAttachments.length > 0) {
+        rawAttachments.forEach((att: any, idx: number) => {
+          if (!att || (!att.name && !att.url)) return;
           const attNameNorm = (att.name || '').trim().toLowerCase();
           const alreadyInDirect = directFiles.some(df =>
             df.name.trim().toLowerCase() === attNameNorm &&
@@ -307,44 +410,82 @@ export const useCourseFiles = (courseId?: string) => {
       }
     });
 
-    // 4. Activities attached starter files and student file submissions
-    // (classic format rows live in db.activities after the merge).
+    // 4. Activities / Assignments / Projects / Presentations starter files and submissions
     const activityFiles: AggregatedCourseFile[] = [];
-    const relevantClassicActivities = (
+    const relevantActivities = (
       isPersonal ? db.activities || [] : (db.activities || []).filter(a => a.courseId === courseId)
-    ).filter(a => a.format === 'classic');
-    // Page-created (unlinked) activities file under Activities/{Term}.
-    // Module-linked ones keep their module-folder placement above.
-    // Once the server files real activity uploads, a real `area:activities`
-    // root exists: unlinked entries file flat under it instead of the
-    // virtual term folders (which then stay unsynthesized).
-    const unlinkedTerms = new Set<TermId>();
-    const realActivitiesRootId =
-      findFolderByAutoKey(folders, effectiveScopeId as string, areaFolderAutoKey('activities'))?.id ?? null;
-    const activityFolderId = (term: TermId | null | undefined, moduleId: string | null): string => {
-      if (moduleId) return folderIdForModule(moduleId) ?? realActivitiesRootId ?? activitiesTermFolderId(term ?? 'midterm');
-      if (realActivitiesRootId) return realActivitiesRootId;
-      const resolved = term ?? 'midterm';
-      unlinkedTerms.add(resolved);
-      return activitiesTermFolderId(resolved);
-    };
+    );
+
+    const relevantClassicActivities = relevantActivities.filter(a => a.format === 'classic');
 
     relevantClassicActivities.forEach(act => {
       const actTerm: TermId = normalizeTermId(act.term) ?? 'midterm';
-      const actFolderId = activityFolderId(
-        actTerm,
-        findLinkedModuleId(item => item.activityId === act.id)
+      const rawType = act.assessmentType || (
+        act.category?.toLowerCase() === 'assignments' ? 'assignment' :
+        act.category?.toLowerCase() === 'projects' ? 'project' :
+        act.category?.toLowerCase() === 'presentations' ? 'presentation' :
+        'activity'
       );
+
+      let targetFolderId: string;
+      let targetSource: string;
+      let targetLabelPrefix: string;
+
+      if (rawType === 'assignment') {
+        targetFolderId = assignmentsFolderId;
+        targetSource = 'assignments';
+        targetLabelPrefix = 'Assignment';
+      } else if (rawType === 'project') {
+        targetFolderId = projectsFolderId;
+        targetSource = 'projects';
+        targetLabelPrefix = 'Project';
+      } else if (rawType === 'presentation') {
+        targetFolderId = presentationsFolderId;
+        targetSource = 'presentations';
+        targetLabelPrefix = 'Presentation';
+      } else {
+        targetFolderId = activityFolderId(actTerm);
+        targetSource = 'activities';
+        targetLabelPrefix = 'Activity';
+      }
+
+      const actAttachments: Array<{ name: string; url?: string; size?: string }> = [];
+      let rawAttachments = act.attachments;
+      if (typeof rawAttachments === 'string') {
+        try { rawAttachments = JSON.parse(rawAttachments); } catch { rawAttachments = []; }
+      }
+      if (Array.isArray(rawAttachments) && rawAttachments.length > 0) {
+        rawAttachments.forEach((att: any) => {
+          if (att && (att.name || att.url)) {
+            actAttachments.push({ name: att.name, url: att.url, size: att.size });
+          }
+        });
+      }
       if (act.fileName || act.fileUrl) {
-        const actUrl = act.fileUrl || `/public/uploads/${act.fileName}`;
+        const name = act.fileName || `${act.title}_Handout.pdf`;
+        const already = actAttachments.some(a => a.name.trim().toLowerCase() === name.trim().toLowerCase());
+        if (!already) {
+          actAttachments.push({ name, url: act.fileUrl, size: act.fileSize });
+        }
+      }
+
+      actAttachments.forEach((att, idx) => {
+        const actUrl = att.url || `/public/uploads/${att.name}`;
+        const attNameNorm = att.name.trim().toLowerCase();
+        const alreadyInDirect = directFiles.some(df =>
+          df.name.trim().toLowerCase() === attNameNorm &&
+          (df.source === targetSource || df.sourceArea === targetSource || !df.sourceArea)
+        );
+        if (alreadyInDirect) return;
+
         activityFiles.push({
-          id: `act-file-${act.id}`,
+          id: `act-file-${act.id}-${idx}`,
           courseId: act.courseId,
-          folderId: actFolderId,
-          name: act.fileName || `${act.title}_Handout.pdf`,
-          size: 1024 * 1024,
-          formattedSize: act.fileSize || '1.5 MB',
-          type: detectFileType(act.fileName || actUrl),
+          folderId: targetFolderId,
+          name: att.name,
+          size: att.size ? parseFormattedSize(att.size) || 1024 * 1024 : 1024 * 1024,
+          formattedSize: att.size || '1.5 MB',
+          type: detectFileType(att.name || actUrl),
           visibility: act.published ? 'published' : 'unpublished',
           updatedAt: act.dueDate || new Date().toISOString(),
           uploadedBy: 'faculty',
@@ -352,19 +493,19 @@ export const useCourseFiles = (courseId?: string) => {
           url: actUrl,
           fileUrl: actUrl,
           content: act.instructions,
-          source: 'activities',
-          sourceLabel: `Activity: ${act.title}`
+          source: targetSource,
+          sourceLabel: `${targetLabelPrefix}: ${act.title}`
         });
-      }
+      });
 
       // Virtual entry so every classic activity counts in Files even with
-      // no starter file attached (e.g. created via Add module item).
-      if (!act.fileName && !act.fileUrl) {
+      // no starter file attached.
+      if (actAttachments.length === 0) {
         activityFiles.push({
           id: `asg-virtual-${act.id}`,
           courseId: act.courseId,
-          folderId: actFolderId,
-          name: (act.title || 'Untitled activity').trim() || 'Untitled activity',
+          folderId: targetFolderId,
+          name: (act.title || `Untitled ${targetSource}`).trim() || `Untitled ${targetSource}`,
           size: 0,
           formattedSize: 'Assessment',
           type: 'document',
@@ -375,8 +516,8 @@ export const useCourseFiles = (courseId?: string) => {
           url: undefined,
           fileUrl: undefined,
           content: act.instructions,
-          source: 'activities',
-          sourceLabel: `Activity: ${act.title}`
+          source: targetSource,
+          sourceLabel: `${targetLabelPrefix}: ${act.title}`
         });
       }
 
@@ -388,7 +529,7 @@ export const useCourseFiles = (courseId?: string) => {
         activityFiles.push({
           id: `sub-file-${sub.id}`,
           courseId: act.courseId,
-          folderId: null,
+          folderId: targetFolderId,
           name: sub.fileName || `${sub.studentName}_Submission.pdf`,
           size: 1024 * 1024,
           formattedSize: '1.8 MB',
@@ -400,27 +541,39 @@ export const useCourseFiles = (courseId?: string) => {
           url: subUrl,
           fileUrl: subUrl,
           content: sub.content,
-          source: 'activities',
+          source: targetSource,
           sourceLabel: `Student Submission (${sub.studentName})`
         });
       });
     });
 
-    // 4b. Question-set activities (non-classic db.activities rows) aggregate
-    // as virtual entries so the Files Activities tab counts quiz-style sets
-    // made via Add module item.
-    const relevantQuestionSets = (
-      isPersonal ? db.activities || [] : (db.activities || []).filter((a: any) => a.courseId === courseId)
-    ).filter((a: any) => a.format !== 'classic');
+    // 4b. Question-set activities (non-classic db.activities rows)
+    const relevantQuestionSets = relevantActivities.filter((a: any) => a.format !== 'classic');
     relevantQuestionSets.forEach((act: any) => {
       const actTerm: TermId = normalizeTermId(act.term) ?? 'midterm';
+      const rawType = act.assessmentType || (
+        act.category?.toLowerCase() === 'assignments' ? 'assignment' :
+        act.category?.toLowerCase() === 'projects' ? 'project' :
+        act.category?.toLowerCase() === 'presentations' ? 'presentation' :
+        'activity'
+      );
+      const targetFolderId = rawType === 'assignment' ? assignmentsFolderId :
+        rawType === 'project' ? projectsFolderId :
+        rawType === 'presentation' ? presentationsFolderId :
+        activityFolderId(actTerm);
+      const targetSource = rawType === 'assignment' ? 'assignments' :
+        rawType === 'project' ? 'projects' :
+        rawType === 'presentation' ? 'presentations' :
+        'activities';
+      const targetLabelPrefix = rawType === 'assignment' ? 'Assignment' :
+        rawType === 'project' ? 'Project' :
+        rawType === 'presentation' ? 'Presentation' :
+        'Activity';
+
       activityFiles.push({
         id: `act-virtual-${act.id}`,
         courseId: act.courseId,
-        folderId: activityFolderId(
-          actTerm,
-          findLinkedModuleId(item => item.activityId === `asg-activity-${act.id}`)
-        ),
+        folderId: targetFolderId,
         name: (act.title || 'Untitled question set').trim() || 'Untitled question set',
         size: 0,
         formattedSize: 'Assessment',
@@ -432,13 +585,10 @@ export const useCourseFiles = (courseId?: string) => {
         url: undefined,
         fileUrl: undefined,
         content: act.instructions,
-        source: 'activities',
-        sourceLabel: `Activity: ${act.title} (Question set)`
+        source: targetSource,
+        sourceLabel: `${targetLabelPrefix}: ${act.title} (Question set)`
       });
     });
-
-    // Quizzes save no files on the system, so nothing quiz-sourced is
-    // aggregated here (no Quizzes tab on the Files page).
 
     const nowIso = new Date().toISOString();
     const scopeId = (effectiveScopeId as string) ?? (courseId as string);
@@ -480,29 +630,80 @@ export const useCourseFiles = (courseId?: string) => {
           autoKey: 'area:modules',
         });
       }
-    }
 
-    if (unlinkedTerms.size > 0 && !realActivitiesRootId) {
-      virtualFolders.push(
-        {
+      const hasActivityFiles = activityFiles.some(f => f.source === 'activities') || directFiles.some(f => f.source === 'activities');
+      if (!realActivitiesFolder && hasActivityFiles) {
+        virtualFolders.push({
           id: ACTIVITIES_ROOT_FOLDER_ID,
           courseId: scopeId,
           parentId: null,
           name: 'Activities',
           updatedAt: nowIso,
           autoKey: 'area:activities',
-        },
-        ...TERM_ORDER.filter(t => unlinkedTerms.has(t)).map(
-          (t): CourseFolder => ({
-            id: activitiesTermFolderId(t),
-            courseId: scopeId,
-            parentId: ACTIVITIES_ROOT_FOLDER_ID,
-            name: TERM_LABELS[t],
-            updatedAt: nowIso,
-            autoKey: `activities-term:${t}`,
-          })
-        )
-      );
+        });
+        if (unlinkedTerms.size > 0) {
+          virtualFolders.push(
+            ...TERM_ORDER.filter(t => unlinkedTerms.has(t)).map(
+              (t): CourseFolder => ({
+                id: activitiesTermFolderId(t),
+                courseId: scopeId,
+                parentId: ACTIVITIES_ROOT_FOLDER_ID,
+                name: TERM_LABELS[t],
+                updatedAt: nowIso,
+                autoKey: `activities-term:${t}`,
+              })
+            )
+          );
+        }
+      }
+
+      const hasAssignmentFiles = activityFiles.some(f => f.source === 'assignments') || directFiles.some(f => f.source === 'assignments');
+      if (!realAssignmentsFolder && hasAssignmentFiles) {
+        virtualFolders.push({
+          id: ASSIGNMENTS_ROOT_FOLDER_ID,
+          courseId: scopeId,
+          parentId: null,
+          name: 'Assignments',
+          updatedAt: nowIso,
+          autoKey: 'area:assignments',
+        });
+      }
+
+      const hasQuizFiles = directFiles.some(f => f.source === 'quizzes');
+      if (!realQuizzesFolder && hasQuizFiles) {
+        virtualFolders.push({
+          id: QUIZZES_ROOT_FOLDER_ID,
+          courseId: scopeId,
+          parentId: null,
+          name: 'Quizzes',
+          updatedAt: nowIso,
+          autoKey: 'area:quizzes',
+        });
+      }
+
+      const hasProjectFiles = activityFiles.some(f => f.source === 'projects') || directFiles.some(f => f.source === 'projects');
+      if (!realProjectsFolder && hasProjectFiles) {
+        virtualFolders.push({
+          id: PROJECTS_ROOT_FOLDER_ID,
+          courseId: scopeId,
+          parentId: null,
+          name: 'Projects',
+          updatedAt: nowIso,
+          autoKey: 'area:projects',
+        });
+      }
+
+      const hasPresentationFiles = activityFiles.some(f => f.source === 'presentations') || directFiles.some(f => f.source === 'presentations');
+      if (!realPresentationsFolder && hasPresentationFiles) {
+        virtualFolders.push({
+          id: PRESENTATIONS_ROOT_FOLDER_ID,
+          courseId: scopeId,
+          parentId: null,
+          name: 'Presentations',
+          updatedAt: nowIso,
+          autoKey: 'area:presentations',
+        });
+      }
     }
 
     const combinedRawFiles = [
@@ -536,6 +737,9 @@ export const useCourseFiles = (courseId?: string) => {
       modules: allFiles.filter(f => f.source === 'modules').length,
       announcements: allFiles.filter(f => f.source === 'announcements').length,
       activities: allFiles.filter(f => f.source === 'activities').length,
+      assignments: allFiles.filter(f => f.source === 'assignments').length,
+      projects: allFiles.filter(f => f.source === 'projects').length,
+      presentations: allFiles.filter(f => f.source === 'presentations').length,
       syllabus: allFiles.filter(f => f.source === 'syllabus').length,
       uploads: allFiles.filter(f => f.source === 'uploads').length
     }),

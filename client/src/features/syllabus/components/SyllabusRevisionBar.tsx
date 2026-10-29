@@ -1,11 +1,13 @@
 import React from 'react';
-import { FileEdit, Globe, AlertCircle } from 'lucide-react';
+import { FileEdit, Globe, AlertCircle, Loader2 } from 'lucide-react';
 import type { SyllabusRevisionHeader } from '../../../shared/types/syllabusApi';
 
 export interface SyllabusRevisionBarProps {
   revision: SyllabusRevisionHeader | null;
   canEdit: boolean;
   isDirty: boolean;
+  isPublishing?: boolean;
+  isCreatingDraft?: boolean;
   onCreateDraft: () => void;
   onPublish: () => void;
 }
@@ -20,6 +22,8 @@ export const SyllabusRevisionBar: React.FC<SyllabusRevisionBarProps> = ({
   revision,
   canEdit,
   isDirty,
+  isPublishing = false,
+  isCreatingDraft = false,
   onCreateDraft,
   onPublish,
 }) => {
@@ -117,11 +121,21 @@ export const SyllabusRevisionBar: React.FC<SyllabusRevisionBarProps> = ({
             <button
               type="button"
               data-testid="revision-publish"
+              disabled={isPublishing || isCreatingDraft}
               onClick={onPublish}
-              className="px-4 py-2 text-xs font-bold bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl transition-all shadow-primary-sm cursor-pointer flex items-center gap-1.5 active:scale-98"
+              className="px-4 py-2 text-xs font-bold bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl transition-all shadow-primary-sm cursor-pointer flex items-center gap-1.5 active:scale-98 disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              <Globe className="w-3.5 h-3.5" />
-              <span>Publish</span>
+              {isPublishing ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Publishing...</span>
+                </>
+              ) : (
+                <>
+                  <Globe className="w-3.5 h-3.5" />
+                  <span>Publish</span>
+                </>
+              )}
             </button>
           )}
 
@@ -129,11 +143,21 @@ export const SyllabusRevisionBar: React.FC<SyllabusRevisionBarProps> = ({
             <button
               type="button"
               data-testid="revision-create-draft"
+              disabled={isCreatingDraft || isPublishing}
               onClick={onCreateDraft}
-              className="px-3.5 py-2 text-xs font-bold bg-card hover:bg-muted border border-border text-foreground rounded-xl transition-all shadow-2xs cursor-pointer flex items-center gap-1.5 active:scale-98"
+              className="px-3.5 py-2 text-xs font-bold bg-card hover:bg-muted border border-border text-foreground rounded-xl transition-all shadow-2xs cursor-pointer flex items-center gap-1.5 active:scale-98 disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              <FileEdit className="w-3.5 h-3.5 text-primary" />
-              <span>Create draft</span>
+              {isCreatingDraft ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
+                  <span>Creating draft...</span>
+                </>
+              ) : (
+                <>
+                  <FileEdit className="w-3.5 h-3.5 text-primary" />
+                  <span>Create draft</span>
+                </>
+              )}
             </button>
           )}
         </div>

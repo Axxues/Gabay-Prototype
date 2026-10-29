@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { describe, expect, test, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { describe, expect, test, vi, beforeEach, afterEach } from 'vitest';
+import { fireEvent, render, screen, waitFor, cleanup } from '@testing-library/react';
 import React from 'react';
 
 const mocks = vi.hoisted(() => ({
@@ -34,6 +34,7 @@ function fillRequiredTitle() {
 describe('CreateActivityPage publish loading', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    cleanup();
   });
 
   test('publish button shows loading while the request is in flight', async () => {

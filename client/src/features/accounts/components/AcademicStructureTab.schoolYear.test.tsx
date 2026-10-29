@@ -565,4 +565,28 @@ describe('AcademicStructureTab - Dean School Year Management', () => {
     expect(screen.queryByText('Available Years:')).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/available school years for/i)).not.toBeInTheDocument();
   });
+
+  test('Chairperson sees the college active school year aligned with Dean without conflict badge', () => {
+    mockActiveRole = 'admin';
+    mockActiveUser = {
+      id: 'u-chair-it',
+      name: 'Prof. Charlie IT',
+      email: 'charlie.it@dmmmsu.edu.ph',
+      role: 'admin',
+      adminSubrole: 'chairperson',
+      department: 'dept-it',
+    };
+
+    render(<AcademicStructureTab />);
+
+    // Chairperson view displays their owning college card (CET)
+    expect(screen.getByText('College of Engineering and Technology')).toBeInTheDocument();
+
+    // The Active School Year displays the active collegiate year
+    expect(screen.getByText('Active School Year:')).toBeInTheDocument();
+    expect(screen.getByText('2025-2026')).toBeInTheDocument();
+
+    // Chairperson cannot roll over the college school year
+    expect(screen.queryByRole('button', { name: /roll over/i })).not.toBeInTheDocument();
+  });
 });

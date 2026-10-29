@@ -82,6 +82,14 @@ describe('AddModuleItemPage assessment resource types', () => {
     expect(screen.queryByText(/Assessment quiz/i)).toBeNull();
     expect(screen.queryByText(/External reference link/i)).toBeNull();
     expect(screen.queryByText(/Web link/i)).toBeNull();
+    expect(screen.queryByText(/Course document \/ handout file/i)).toBeNull();
+  });
+
+  test('renders red asterisk on required Resource title for reading page', () => {
+    render(<AddModuleItemPage courseId="c1" moduleId="m1" onBack={() => {}} />);
+    const titleLabel = screen.getByText(/Resource title/i);
+    expect(titleLabel).toBeInTheDocument();
+    expect(titleLabel.querySelector('span.text-red-500')).toHaveTextContent('*');
   });
 
   test('selecting Assignment renders assessment form and saves with assessmentType assignment', async () => {

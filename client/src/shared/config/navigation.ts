@@ -6,7 +6,7 @@ export const NO_STAFF: UserRole[] = ['superadmin', 'admin', 'faculty', 'student'
 export const MAIN_NAV: NavItem[] = [
   { id: 'lms', label: 'Learning Management', icon: 'courses', roles: ALL },
   { id: 'gabay-rag', label: 'Gabay RAG', icon: 'gabay-rag', roles: ALL },
-  { id: 'page1', label: 'Syllabus Creator', icon: 'page1', roles: ['superadmin', 'admin', 'faculty'] },
+  { id: 'page1', label: 'Syllabus Development', icon: 'page1', roles: ['superadmin', 'admin', 'faculty'] },
   { id: 'page2', label: 'Page 2', icon: 'page2', roles: NO_STAFF },
   { id: 'page3', label: 'Page 3', icon: 'page3', roles: NO_STAFF },
   { id: 'governance', label: 'Academic Governance', icon: 'governance', roles: ['superadmin', 'admin'] },

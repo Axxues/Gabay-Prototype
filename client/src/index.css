@@ -141,13 +141,53 @@
   }
 
   input[type="checkbox"],
-  input[type="radio"] {
+  input[type="radio"],
+  input[type="date"],
+  input[type="datetime-local"],
+  input[type="time"],
+  input[type="month"],
+  input[type="week"] {
     color-scheme: light;
   }
 
   .dark input[type="checkbox"],
-  .dark input[type="radio"] {
+  .dark input[type="radio"],
+  .dark input[type="date"],
+  .dark input[type="datetime-local"],
+  .dark input[type="time"],
+  .dark input[type="month"],
+  .dark input[type="week"] {
     color-scheme: dark;
+  }
+
+  /* Date & Time Picker Global Styling */
+  input[type="date"],
+  input[type="datetime-local"],
+  input[type="time"],
+  input[type="month"],
+  input[type="week"] {
+    cursor: pointer;
+  }
+
+  input[type="date"]::-webkit-calendar-picker-indicator,
+  input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+  input[type="time"]::-webkit-calendar-picker-indicator,
+  input[type="month"]::-webkit-calendar-picker-indicator,
+  input[type="week"]::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+  }
+
+  input[type="date"]:disabled,
+  input[type="datetime-local"]:disabled,
+  input[type="time"]:disabled,
+  input[type="month"]:disabled,
+  input[type="week"]:disabled,
+  input[type="date"]:read-only,
+  input[type="datetime-local"]:read-only,
+  input[type="time"]:read-only,
+  input[type="month"]:read-only,
+  input[type="week"]:read-only {
+    cursor: not-allowed;
   }
 
   input::placeholder,

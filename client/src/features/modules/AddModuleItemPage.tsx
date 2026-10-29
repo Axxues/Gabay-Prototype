@@ -26,7 +26,7 @@ import {
   Presentation
 } from 'lucide-react';
 
-import { uploadFileToPublic, formatFileSize, FILE_UPLOAD_MAX_BYTES, toShortFileType, isFileTooLarge, isImageFile } from '../../shared/utils/fileUploader';
+import { uploadFileToPublic, formatFileSize, FILE_UPLOAD_MAX_BYTES, toShortFileType, isFileTooLarge, isImageFile, extractDirectusFileId } from '../../shared/utils/fileUploader';
 import { normalizeTermId } from '../../shared/utils/gradingTerms';
 import { UploadProgress } from '../../shared/components/common/UploadProgress';
 import { useSimulatedUpload } from '../../shared/hooks/useSimulatedUpload';
@@ -101,15 +101,6 @@ const RESOURCE_TYPES: Array<{
       badge: 'Page',
       description: 'Syllabus reading, lecture note, or markdown document',
       icon: FileText,
-      iconBg: 'bg-muted text-muted-foreground',
-      badgeColor: 'bg-muted text-muted-foreground border-border'
-    },
-    {
-      type: 'file',
-      label: 'Course document / handout file',
-      badge: 'Handout',
-      description: 'PDF document, slide deck, syllabus, or course asset file',
-      icon: File,
       iconBg: 'bg-muted text-muted-foreground',
       badgeColor: 'bg-muted text-muted-foreground border-border'
     },
@@ -441,8 +432,18 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
 
   // Multi-File Attachment State for direct module items (page, file)
   const [attachedFiles, setAttachedFiles] = useState<AttachedItemFile[]>(() => {
-    if (editingItem?.attachments && editingItem.attachments.length > 0) {
-      return editingItem.attachments.map((att, idx) => ({
+    let rawAttachments: any[] = [];
+    if (Array.isArray(editingItem?.attachments) && editingItem.attachments.length > 0) {
+      rawAttachments = editingItem.attachments;
+    } else if (typeof editingItem?.attachments === 'string') {
+      try {
+        const parsed = JSON.parse(editingItem.attachments);
+        if (Array.isArray(parsed)) rawAttachments = parsed;
+      } catch {}
+    }
+
+    if (rawAttachments.length > 0) {
+      return rawAttachments.map((att: any, idx: number) => ({
         id: att.fileId || att.directus_files_id || `item-att-${idx}`,
         name: att.name,
         size: att.size || '',
@@ -452,12 +453,13 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
         directus_files_id: att.directus_files_id
       }));
     }
-    if (editingItem?.fileName) {
+    if (editingItem?.fileName || editingItem?.fileUrl) {
+      const fName = editingItem.fileName || `${(editingItem.title || 'Attached_Asset').replace(/\s+/g, '_')}.pdf`;
       return [{
         id: 'item-att-0',
-        name: editingItem.fileName,
+        name: fName,
         size: editingItem.fileSize || '',
-        type: editingItem.fileType || toShortFileType(editingItem.fileName),
+        type: editingItem.fileType || toShortFileType(fName),
         url: editingItem.fileUrl || ''
       }];
     }
@@ -600,8 +602,9 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
           if (saved.formattedSize && saved.formattedSize !== '0 B') {
             fileSize = saved.formattedSize;
           }
-          fileId = (saved as any).fileId || saved.id;
-          directus_files_id = (saved as any).directus_files_id;
+          directus_files_id = (saved as any).directus_files_id || (saved as any).file || extractDirectusFileId(fileUrl) || undefined;
+          fileId = directus_files_id || (saved as any).fileId || saved.id;
+
         } catch {
           fileUrl = '';
         }
@@ -623,7 +626,11 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
           directus_files_id
         });
       } else {
-        results.push(att);
+        const resolvedDirectusId = att.directus_files_id || extractDirectusFileId(att.url) || undefined;
+        results.push({
+          ...att,
+          directus_files_id: resolvedDirectusId,
+        });
       }
     }
     return results;
@@ -786,7 +793,7 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
           url: f.url,
           type: f.type,
           fileId: f.fileId,
-          directus_files_id: f.directus_files_id
+          directus_files_id: f.directus_files_id || extractDirectusFileId(f.url) || undefined
         })) : undefined
       };
 
@@ -923,7 +930,7 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
             url: f.url,
             type: f.type,
             fileId: f.fileId,
-            directus_files_id: f.directus_files_id
+            directus_files_id: f.directus_files_id || extractDirectusFileId(f.url) || undefined
           })) : undefined
         };
 
@@ -1223,8 +1230,9 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
             if (saved.formattedSize && saved.formattedSize !== '0 B') {
               fileSize = saved.formattedSize;
             }
-            fileId = (saved as any).fileId || saved.id;
-            directus_files_id = (saved as any).directus_files_id;
+            directus_files_id = (saved as any).directus_files_id || (saved as any).file || extractDirectusFileId(fileUrl) || undefined;
+          fileId = directus_files_id || (saved as any).fileId || saved.id;
+  
           } catch {
             fileUrl = '';
           }
@@ -1314,7 +1322,7 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
                 url: f.url,
                 type: f.type,
                 fileId: f.fileId,
-                directus_files_id: f.directus_files_id
+                directus_files_id: f.directus_files_id || extractDirectusFileId(f.url) || undefined
               })) : undefined
             };
             await addModuleItem(destModId, {
@@ -1372,7 +1380,7 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
                 url: f.url,
                 type: f.type,
                 fileId: f.fileId,
-                directus_files_id: f.directus_files_id
+                directus_files_id: f.directus_files_id || extractDirectusFileId(f.url) || undefined
               })) : undefined
             };
             await addModuleItem(destModId, {
@@ -1544,8 +1552,9 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
               if (saved.formattedSize && saved.formattedSize !== '0 B') {
                 fileSize = saved.formattedSize;
               }
-              fileId = (saved as any).fileId || saved.id;
-              directus_files_id = (saved as any).directus_files_id;
+              directus_files_id = (saved as any).directus_files_id || (saved as any).file || extractDirectusFileId(fileUrl) || undefined;
+          fileId = directus_files_id || (saved as any).fileId || saved.id;
+    
             } catch {
               fileUrl = '';
             }
@@ -1928,7 +1937,7 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
               <>
                 <div>
                   <label className="block text-[12px] font-semibold text-muted-foreground mb-1.5">
-                    Resource title
+                    Resource title <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"

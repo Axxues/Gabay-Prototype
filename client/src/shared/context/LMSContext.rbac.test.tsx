@@ -52,6 +52,8 @@ vi.mock('../api/client', () => ({
     loginLikhaUser: (...args: any[]) => (loginLikhaMock as any)(...args),
     auth: {
       getMe: vi.fn(async () => null),
+      getPendingRegistrations: vi.fn(async () => []),
+      updatePendingRegistration: vi.fn(async () => ({})),
     },
     getCoursesWithRelations: (...args: any[]) => (getCoursesMock as any)(...args),
     getNotifications: (...args: any[]) => (getNotifsMock as any)(...args),
@@ -266,6 +268,63 @@ describe('LMSContext RBAC: Registration Staging, Verification Queue & Leadership
       loginRes = await ctx!.login('ereyes@dmmmsu.edu.ph', 'Password123!');
     });
     expect(loginRes.success).toBe(true);
+  });
+
+  test('login() refreshes remote pending registration status and unlocks login when account was verified remotely', async () => {
+    localStorage.setItem(
+      'gabay_pending_registrations',
+      JSON.stringify([
+        {
+          id: 'reg-remote-sync-test',
+          firstName: 'Remotely',
+          lastName: 'Approved',
+          email: 'remotely_approved@student.dmmmsu.edu.ph',
+          role: 'student',
+          collegeId: 'col-ccs',
+          department: 'Department of Computer Science',
+          studentId: '2026-99999',
+          emailVerified: true,
+          activationToken: 'remote-token',
+          registeredAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + 86400000).toISOString(),
+          status: 'pending',
+        },
+      ])
+    );
+
+    const clientMod = await import('../api/client');
+    vi.spyOn(clientMod.likhaLmsApi.auth, 'getPendingRegistrations').mockResolvedValue([
+      {
+        id: 'reg-remote-sync-test',
+        first_name: 'Remotely',
+        last_name: 'Approved',
+        email: 'remotely_approved@student.dmmmsu.edu.ph',
+        role: 'student',
+        college_id: 'col-ccs',
+        department: 'Department of Computer Science',
+        student_id: '2026-99999',
+        email_verified: true,
+        activation_token: 'remote-token',
+        registered_at: new Date().toISOString(),
+        expires_at: new Date(Date.now() + 86400000).toISOString(),
+        status: 'verified',
+      },
+    ]);
+
+    render(
+      <LMSProvider>
+        <ContextProbe />
+      </LMSProvider>
+    );
+
+    let loginRes: any;
+    await act(async () => {
+      loginRes = await ctx!.login('remotely_approved@student.dmmmsu.edu.ph', 'Password123!');
+    });
+
+    expect(loginRes.success).toBe(true);
+    expect(loginRes.message).toBeUndefined();
+    expect(ctx!.pendingRegistrations.find(r => r.id === 'reg-remote-sync-test')?.status).toBe('verified');
   });
 
   test('registerAccount() leaves employee applicants without a role until leadership decides', async () => {

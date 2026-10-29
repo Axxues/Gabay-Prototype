@@ -75,4 +75,17 @@ describe('SyllabusRevisionBar', () => {
     expect(screen.queryByTestId('revision-publish')).not.toBeInTheDocument();
     expect(screen.queryByTestId('revision-create-draft')).not.toBeInTheDocument();
   });
+  test('disables and shows loading indicator while publishing', () => {
+    render(<SyllabusRevisionBar {...baseProps} revision={draftRev()} isPublishing />);
+    const publishBtn = screen.getByTestId('revision-publish');
+    expect(publishBtn).toBeDisabled();
+    expect(publishBtn).toHaveTextContent(/publishing/i);
+  });
+
+  test('disables and shows loading indicator while creating draft', () => {
+    render(<SyllabusRevisionBar {...baseProps} revision={pubRev()} isCreatingDraft />);
+    const draftBtn = screen.getByTestId('revision-create-draft');
+    expect(draftBtn).toBeDisabled();
+    expect(draftBtn).toHaveTextContent(/creating draft/i);
+  });
 });

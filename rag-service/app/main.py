@@ -121,8 +121,9 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
 
 from app.services.email_service import (
     send_activation_email,
-    send_leadership_code_email,
     send_course_invitation_email,
+    send_leadership_code_email,
+    send_rejection_email,
 )
 
 
@@ -255,6 +256,46 @@ async def verify_leadership_code_endpoint(
         success=True,
         message="Leadership verification code confirmed successfully.",
     )
+
+
+class RejectionEmailRequest(BaseModel):
+    """Payload to send an account rejection notice with the reviewer's reason."""
+
+    email: str = Field(..., min_length=3, max_length=254)
+    recipient_name: Optional[str] = Field(None, max_length=150)
+    reason: str = Field(..., min_length=1, max_length=2000)
+    reviewer_name: Optional[str] = Field(None, max_length=150)
+    reviewer_role: Optional[str] = Field(None, max_length=100)
+
+
+class RejectionEmailResponse(BaseModel):
+    """Response returned when a rejection notification email is dispatched."""
+
+    success: bool
+    delivered: Optional[bool] = False
+    simulated: Optional[bool] = False
+    message: Optional[str] = None
+    recipient: Optional[str] = None
+    error: Optional[str] = None
+
+
+@app.post("/api/auth/send-rejection-email", response_model=RejectionEmailResponse)
+async def send_rejection_email_endpoint(
+    request: RejectionEmailRequest,
+    _auth: None = Depends(verify_client_key),
+) -> RejectionEmailResponse:
+    """Send a rejection notification email with the specified decision reason."""
+    if "@" not in request.email:
+        raise HTTPException(status_code=422, detail="Invalid email address.")
+
+    result = send_rejection_email(
+        to_email=request.email,
+        recipient_name=request.recipient_name or "",
+        reason=request.reason,
+        reviewer_name=request.reviewer_name,
+        reviewer_role=request.reviewer_role,
+    )
+    return RejectionEmailResponse(**result)
 
 
 class CourseInvitationItem(BaseModel):

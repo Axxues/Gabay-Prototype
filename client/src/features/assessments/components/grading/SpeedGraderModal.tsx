@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLMS } from '../../../../shared/context/LMSContext';
-import { X, ChevronLeft, ChevronRight, Award, MessageSquare, FileText, CheckCircle2, ExternalLink } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Award, MessageSquare, FileText, CheckCircle2, ExternalLink, Download } from 'lucide-react';
 import { ModalPortal, useModalAnimate } from '../../../../shared/components/common/ModalPortal';
 
 interface SpeedGraderContentProps {
@@ -382,13 +382,36 @@ const SpeedGraderContent: React.FC<SpeedGraderContentProps> = ({
                   );
                 })}
               </div>
+            ) : currentSubmission.fileUrl && /\.(jpg|jpeg|png|gif|webp)$/i.test(currentSubmission.fileName || currentSubmission.fileUrl) ? (
+              <div className="text-center py-4 space-y-3">
+                <img
+                  src={currentSubmission.fileUrl}
+                  alt={currentSubmission.fileName || 'Submission Image'}
+                  className="max-h-[500px] max-w-full rounded-xl mx-auto object-contain border border-border shadow-sm"
+                />
+                <div className="text-xs text-muted-foreground font-mono">{currentSubmission.fileName}</div>
+              </div>
             ) : currentSubmission.content ? (
               renderSubmissionContent(currentSubmission.content)
             ) : (
-              <div className="text-center py-12 text-muted-foreground">
-                [PDF Simulated Canvas DocViewer Markup Rendering]
-                <br />
-                File attached: {currentSubmission.fileName ?? 'none'}
+              <div className="text-center py-12 text-muted-foreground space-y-3">
+                <FileText className="w-10 h-10 mx-auto text-primary/60" />
+                <div className="font-semibold text-foreground">
+                  Attached Document: {currentSubmission.fileName ?? 'none'}
+                </div>
+                {currentSubmission.fileUrl && (
+                  <div>
+                    <a
+                      href={currentSubmission.fileUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center space-x-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-xl font-bold text-xs hover:opacity-90 shadow-sm transition-all"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Download {currentSubmission.fileName || 'Document'}</span>
+                    </a>
+                  </div>
+                )}
               </div>
             )}
           </div>

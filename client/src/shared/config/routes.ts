@@ -54,7 +54,7 @@ export function pathToTab(pathname: string): { tab: string; courseId?: string; s
   if (first === 'profile') return { tab: 'profile' };
   if (first === 'history') return { tab: 'history' };
   if (first === 'help') return { tab: 'help' };
-  if (first === 'page1') return { tab: 'page1' };
+  if (first === 'page1' || first === 'syllabus-creator' || first === 'syllabus-development') return { tab: 'page1' };
   if (first === 'page2') return { tab: 'page2' };
   if (first === 'page3') return { tab: 'page3' };
   if (first === 'governance') {

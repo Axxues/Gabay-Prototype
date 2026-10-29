@@ -17,15 +17,7 @@ vi.mock('react-router-dom', async () => {
   };
 });
 
-const mockSendLeadershipCodeEmail = vi.fn().mockResolvedValue({
-  success: true,
-  simulated: true,
-  delivered: false,
-});
 
-vi.mock('../../shared/api/emailApi', () => ({
-  sendLeadershipCodeEmail: (...args: any[]) => mockSendLeadershipCodeEmail(...args),
-}));
 
 const mockCreateUser = vi.fn();
 const mockAppointLeadership = vi.fn();
@@ -264,8 +256,6 @@ describe('CreateLeadershipAccountPage', () => {
       expect(within(modal).getByText('1099')).toBeDefined();
     });
 
-    // Email dispatch must NOT be triggered
-    expect(mockSendLeadershipCodeEmail).not.toHaveBeenCalled();
     // Verification OTP screen must NOT be displayed
     expect(screen.queryByText(/Verify Leadership Appointment/i)).toBeNull();
   });
@@ -362,8 +352,6 @@ describe('CreateLeadershipAccountPage', () => {
       expect(mockNavigate).toHaveBeenCalledWith('/accounts');
     });
 
-    // Ensure no email code was sent
-    expect(mockSendLeadershipCodeEmail).not.toHaveBeenCalled();
   });
 
   it('confirms chairperson appointment in confirmation modal and provisions chairperson', async () => {
@@ -426,7 +414,6 @@ describe('CreateLeadershipAccountPage', () => {
       expect(mockNavigate).toHaveBeenCalledWith('/accounts');
     });
 
-    expect(mockSendLeadershipCodeEmail).not.toHaveBeenCalled();
   });
 
   it('pre-fills role and unit from query parameters', () => {

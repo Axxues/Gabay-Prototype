@@ -38,98 +38,22 @@ export async function sendActivationEmail(
     });
 
     if (!res.ok) {
-      const err = await res.text().catch(() => '');
-      return { success: false, message: err || `Request failed (${res.status})` };
+      const errText = await res.text().catch(() => '');
+      let message = errText;
+      try {
+        const parsed = JSON.parse(errText);
+        if (parsed.detail) {
+          message = typeof parsed.detail === 'string' ? parsed.detail : JSON.stringify(parsed.detail);
+        } else if (parsed.message) {
+          message = parsed.message;
+        }
+      } catch {}
+      return { success: false, message: message || `Request failed (${res.status})` };
     }
 
     return await res.json();
   } catch (err: any) {
     return { success: false, message: err?.message || 'Failed to dispatch activation email' };
-  }
-}
-
-export interface SendLeadershipCodeEmailParams {
-  email: string;
-  recipientName?: string;
-  code?: string;
-  roleType?: 'dean' | 'chairperson';
-  unitName?: string;
-}
-
-export function getLeadershipCodeEmailApiUrl(): string {
-  const envUrl = import.meta.env.VITE_RAG_API_URL;
-  const baseUrl = (envUrl && typeof envUrl === 'string' && envUrl.trim()
-    ? envUrl.trim()
-    : 'http://localhost:8000').replace(/\/+$/, '');
-  return `${baseUrl}/api/auth/send-leadership-code`;
-}
-
-export async function sendLeadershipCodeEmail(
-  params: SendLeadershipCodeEmailParams
-): Promise<{ success: boolean; message?: string; delivered?: boolean; simulated?: boolean; code?: string }> {
-  try {
-    const res = await fetch(getLeadershipCodeEmailApiUrl(), {
-      method: 'POST',
-      headers: getEmailApiHeaders(),
-      body: JSON.stringify({
-        email: params.email,
-        recipient_name: params.recipientName,
-        role_type: params.roleType || 'dean',
-        unit_name: params.unitName || '',
-      }),
-    });
-
-    if (!res.ok) {
-      const err = await res.text().catch(() => '');
-      return { success: false, message: err || `Request failed (${res.status})` };
-    }
-
-    return await res.json();
-  } catch (err: any) {
-    // If backend RAG service is unreachable, fallback only in dev
-    if (import.meta.env.DEV) {
-      return {
-        success: true,
-        simulated: true,
-        delivered: false,
-        code: params.code,
-        message: 'Verification code simulated (service running in standalone mode).',
-      };
-    }
-    return {
-      success: false,
-      delivered: false,
-      message: err?.message || 'Failed to dispatch verification code email.',
-    };
-  }
-}
-
-export async function verifyLeadershipCode(
-  email: string,
-  code: string
-): Promise<{ success: boolean; message: string }> {
-  try {
-    const envUrl = import.meta.env.VITE_RAG_API_URL;
-    const baseUrl = (envUrl && typeof envUrl === 'string' && envUrl.trim()
-      ? envUrl.trim()
-      : 'http://localhost:8000').replace(/\/+$/, '');
-    const res = await fetch(`${baseUrl}/api/auth/verify-leadership-code`, {
-      method: 'POST',
-      headers: getEmailApiHeaders(),
-      body: JSON.stringify({ email, code }),
-    });
-
-    if (!res.ok) {
-      const err = await res.text().catch(() => '');
-      return { success: false, message: err || `Verification failed (${res.status})` };
-    }
-
-    return await res.json();
-  } catch (err: any) {
-    if (import.meta.env.DEV) {
-      return { success: true, message: 'Code verified (development fallback).' };
-    }
-    return { success: false, message: err?.message || 'Failed to verify leadership code.' };
   }
 }
 
@@ -202,5 +126,65 @@ export async function sendCourseInvitations(
       sent: 0,
       message: err?.message || 'Failed to dispatch course invitations.',
     };
+  }
+}
+
+export interface SendRejectionEmailParams {
+  email: string;
+  recipientName?: string;
+  reason: string;
+  reviewerName?: string;
+  reviewerRole?: string;
+}
+
+export function getRejectionEmailApiUrl(): string {
+  const envUrl = import.meta.env.VITE_RAG_API_URL;
+  const baseUrl = (envUrl && typeof envUrl === 'string' && envUrl.trim()
+    ? envUrl.trim()
+    : 'http://localhost:8000').replace(/\/+$/, '');
+  return `${baseUrl}/api/auth/send-rejection-email`;
+}
+
+export async function sendRejectionEmail(
+  params: SendRejectionEmailParams
+): Promise<{ success: boolean; message?: string; delivered?: boolean; simulated?: boolean }> {
+  try {
+    const res = await fetch(getRejectionEmailApiUrl(), {
+      method: 'POST',
+      headers: getEmailApiHeaders(),
+      body: JSON.stringify({
+        email: params.email,
+        recipient_name: params.recipientName,
+        reason: params.reason,
+        reviewer_name: params.reviewerName,
+        reviewer_role: params.reviewerRole,
+      }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      let message = errText;
+      try {
+        const parsed = JSON.parse(errText);
+        if (parsed.detail) {
+          message = typeof parsed.detail === 'string' ? parsed.detail : JSON.stringify(parsed.detail);
+        } else if (parsed.message) {
+          message = parsed.message;
+        }
+      } catch {}
+      return { success: false, message: message || `Request failed (${res.status})` };
+    }
+
+    return await res.json();
+  } catch (err: any) {
+    if (import.meta.env.DEV) {
+      return {
+        success: true,
+        simulated: true,
+        delivered: false,
+        message: 'Rejection email simulated (development fallback: RAG service unreachable).',
+      };
+    }
+    return { success: false, message: err?.message || 'Failed to dispatch rejection notification email' };
   }
 }

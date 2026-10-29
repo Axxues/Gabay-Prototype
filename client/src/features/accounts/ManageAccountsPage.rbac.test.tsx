@@ -91,6 +91,11 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
+const mockSendRejectionEmail = vi.fn().mockResolvedValue({ success: true, delivered: true });
+vi.mock('../../shared/api/emailApi', () => ({
+  sendRejectionEmail: (...args: any[]) => mockSendRejectionEmail(...args),
+}));
+
 vi.mock('../../shared/context/LMSContext', () => ({
   useLMS: () => ({
     activeRole: mocks.mockState.activeRole,
@@ -332,6 +337,70 @@ describe('ManageAccountsPage RBAC & Verification Queue', () => {
     expect(screen.queryByText('Charlie Elem Student')).not.toBeInTheDocument();
   });
 
+  it('3b. verifies Chairperson sees pending applicant when department names have Program in prefix or match via chairpersonId and code', () => {
+    mocks.mockState.activeRole = 'admin';
+    mocks.mockState.activeUser = {
+      id: 'chair-cs',
+      name: 'Marcus Brody',
+      email: 'chair1@dmmmsu.edu.ph',
+      role: 'admin',
+      adminSubrole: 'chairperson',
+      collegeId: '1766a9f8-8b43-432e-b6d2-fd1016b5b057',
+      collegeName: 'College of Computer Science',
+      department: 'Program in Computer Science',
+      title: 'Department Chairperson',
+      avatar: '',
+    };
+
+    const futureDate = new Date(Date.now() + 20 * 24 * 60 * 60 * 1000).toISOString();
+    mocks.mockState.pendingRegistrations = [
+      {
+        id: 'reg-live-jayvee',
+        firstName: 'Jayvee',
+        lastName: 'Reyes',
+        fullName: 'Jayvee Geneta Reyes',
+        email: 'jreyes23110823@student.dmmmsu.edu.ph',
+        role: 'student',
+        collegeId: '1766a9f8-8b43-432e-b6d2-fd1016b5b057',
+        collegeName: 'College of Computer Science',
+        department: 'Computer Science',
+        program: undefined,
+        studentId: '231-1082-3',
+        password: 'pw',
+        emailVerified: true,
+        activationToken: 'tok-live',
+        registeredAt: new Date().toISOString(),
+        expiresAt: futureDate,
+        status: 'pending',
+      },
+      {
+        id: 'reg-it-other',
+        firstName: 'Other',
+        lastName: 'IT',
+        fullName: 'Other IT Student',
+        email: 'other.it@dmmmsu.edu.ph',
+        role: 'student',
+        collegeId: '1766a9f8-8b43-432e-b6d2-fd1016b5b057',
+        collegeName: 'College of Computer Science',
+        department: 'Information Technology',
+        studentId: '231-9999-9',
+        password: 'pw',
+        emailVerified: true,
+        activationToken: 'tok-it',
+        registeredAt: new Date().toISOString(),
+        expiresAt: futureDate,
+        status: 'pending',
+      },
+    ];
+
+    render(<ManageAccountsPage />);
+    const queueTab = screen.getByRole('tab', { name: /pending verifications|verification queue/i });
+    fireEvent.click(queueTab);
+
+    expect(screen.getByText('Jayvee Geneta Reyes')).toBeInTheDocument();
+    expect(screen.queryByText('Other IT Student')).not.toBeInTheDocument();
+  });
+
   it('4. verifies Dean sees pending applicants across the college', () => {
     mocks.mockState.activeRole = 'admin';
     mocks.mockState.activeUser = {
@@ -414,6 +483,66 @@ describe('ManageAccountsPage RBAC & Verification Queue', () => {
     expect(screen.getByText('Bob IT Student')).toBeInTheDocument();
     // Education college student should NOT be visible
     expect(screen.queryByText('Charlie Elem Student')).not.toBeInTheDocument();
+  });
+
+  it('4b. verifies System Administrator sees pending applicants throughout the system across all colleges', () => {
+    mocks.mockState.activeRole = 'admin';
+    mocks.mockState.activeUser = {
+      id: 'admin-main',
+      name: 'Jayvee System Admin',
+      email: 'admin@dmmmsu.edu.ph',
+      role: 'admin',
+      title: 'System Administrator',
+      avatar: '',
+    };
+
+    const futureDate = new Date(Date.now() + 20 * 24 * 60 * 60 * 1000).toISOString();
+    mocks.mockState.pendingRegistrations = [
+      {
+        id: 'reg-ccs',
+        firstName: 'Alice',
+        lastName: 'CCS',
+        fullName: 'Alice CCS Student',
+        email: 'alice.ccs@dmmmsu.edu.ph',
+        role: 'student',
+        collegeId: 'col-ccs',
+        collegeName: 'College of Computer Science',
+        department: 'Department of Computer Science',
+        studentId: '2026-0001',
+        password: 'pw',
+        emailVerified: true,
+        activationToken: 'tok-1',
+        registeredAt: new Date().toISOString(),
+        expiresAt: futureDate,
+        status: 'pending',
+      },
+      {
+        id: 'reg-coe',
+        firstName: 'Charlie',
+        lastName: 'COE',
+        fullName: 'Charlie COE Student',
+        email: 'charlie.coe@dmmmsu.edu.ph',
+        role: 'student',
+        collegeId: 'col-coe',
+        collegeName: 'College of Education',
+        department: 'Department of Elementary Education',
+        studentId: '2026-0002',
+        password: 'pw',
+        emailVerified: true,
+        activationToken: 'tok-2',
+        registeredAt: new Date().toISOString(),
+        expiresAt: futureDate,
+        status: 'pending',
+      },
+    ];
+
+    render(<ManageAccountsPage />);
+    const queueTab = screen.getByRole('tab', { name: /pending verifications|verification queue/i });
+    fireEvent.click(queueTab);
+
+    // Both CCS and COE applicants should be visible to System Administrator
+    expect(screen.getByText('Alice CCS Student')).toBeInTheDocument();
+    expect(screen.getByText('Charlie COE Student')).toBeInTheDocument();
   });
 
   it('5. verifies clicking "Verify" opens verification modal and confirming triggers verifyRegistration()', async () => {
@@ -635,6 +764,58 @@ describe('ManageAccountsPage RBAC & Verification Queue', () => {
 
     await waitFor(() => {
       expect(mocks.rejectRegistration).toHaveBeenCalledWith('reg-to-reject', 'Incomplete credentials');
+      expect(mockSendRejectionEmail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          email: 'fake.user@dmmmsu.edu.ph',
+          reason: 'Incomplete credentials',
+        })
+      );
+    });
+  });
+
+  it('5c-2. does not dispatch rejection email when no reason is entered', async () => {
+    mockSendRejectionEmail.mockClear();
+    const futureDate = new Date(Date.now() + 20 * 24 * 60 * 60 * 1000).toISOString();
+    mocks.mockState.pendingRegistrations = [
+      {
+        id: 'reg-no-reason',
+        firstName: 'No',
+        lastName: 'Reason',
+        fullName: 'No Reason Applicant',
+        email: 'noreason@dmmmsu.edu.ph',
+        role: 'student',
+        collegeId: 'col-ccs',
+        collegeName: 'College of Computer Science',
+        department: 'Department of Computer Science',
+        studentId: '2026-99999',
+        password: 'pw',
+        emailVerified: true,
+        activationToken: 'tok-nr',
+        registeredAt: new Date().toISOString(),
+        expiresAt: futureDate,
+        status: 'pending',
+      },
+    ];
+
+    mocks.rejectRegistration.mockResolvedValueOnce({
+      success: true,
+      message: 'Registration has been rejected.',
+    });
+
+    render(<ManageAccountsPage />);
+    const queueTab = screen.getByRole('tab', { name: /pending verifications|verification queue/i });
+    fireEvent.click(queueTab);
+
+    const rejectButton = screen.getByRole('button', { name: /reject/i });
+    fireEvent.click(rejectButton);
+
+    const dialog = screen.getByRole('dialog');
+    const confirmRejectBtn = within(dialog).getByRole('button', { name: /reject registration/i });
+    fireEvent.click(confirmRejectBtn);
+
+    await waitFor(() => {
+      expect(mocks.rejectRegistration).toHaveBeenCalledWith('reg-no-reason', undefined);
+      expect(mockSendRejectionEmail).not.toHaveBeenCalled();
     });
   });
 

@@ -80,7 +80,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
     markTabVisited('files', courseId);
   }, [courseId, currentFolderId]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [sourceFilter, setSourceFilter] = useState<'all' | 'modules' | 'announcements' | 'activities' | 'syllabus' | 'uploads'>('all');
+  const [sourceFilter, setSourceFilter] = useState<'all' | 'modules' | 'announcements' | 'activities' | 'assignments' | 'quizzes' | 'projects' | 'presentations' | 'syllabus' | 'uploads'>('all');
 
   // Modals
   const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
@@ -119,6 +119,10 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
     modules: baseVisibleFiles.filter(f => (f as any).source === 'modules').length,
     announcements: baseVisibleFiles.filter(f => (f as any).source === 'announcements').length,
     activities: baseVisibleFiles.filter(f => (f as any).source === 'activities').length,
+    assignments: baseVisibleFiles.filter(f => (f as any).source === 'assignments').length,
+    quizzes: baseVisibleFiles.filter(f => (f as any).source === 'quizzes').length,
+    projects: baseVisibleFiles.filter(f => (f as any).source === 'projects').length,
+    presentations: baseVisibleFiles.filter(f => (f as any).source === 'presentations').length,
     syllabus: baseVisibleFiles.filter(f => (f as any).source === 'syllabus').length,
     uploads: baseVisibleFiles.filter(f => (f as any).source === 'uploads').length
   };
@@ -474,6 +478,10 @@ export const FilesView: React.FC<FilesViewProps> = ({ courseId }) => {
           { id: 'modules', label: 'Modules', count: sourceCounts.modules },
           { id: 'announcements', label: 'Announcements', count: sourceCounts.announcements },
           { id: 'activities', label: 'Activities', count: sourceCounts.activities },
+          ...(sourceCounts.assignments > 0 ? [{ id: 'assignments', label: 'Assignments', count: sourceCounts.assignments }] : []),
+          ...(sourceCounts.quizzes > 0 ? [{ id: 'quizzes', label: 'Quizzes', count: sourceCounts.quizzes }] : []),
+          ...(sourceCounts.projects > 0 ? [{ id: 'projects', label: 'Projects', count: sourceCounts.projects }] : []),
+          ...(sourceCounts.presentations > 0 ? [{ id: 'presentations', label: 'Presentations', count: sourceCounts.presentations }] : []),
           { id: 'syllabus', label: 'Syllabus', count: sourceCounts.syllabus },
           { id: 'uploads', label: 'Uploads', count: sourceCounts.uploads }
         ].map(tab => {

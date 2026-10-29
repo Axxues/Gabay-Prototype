@@ -17,6 +17,7 @@ import { useProcessing, useBusyFlag } from '../../shared/hooks/useProcessing';
 import { AnimatedModal } from '../../shared/components/common/ModalPortal';
 import { PageHeader } from '../../shared/components/common/PageHeader';
 import { UserAvatar } from '../../shared/components/common/UserAvatar';
+import { hasCustomAvatar } from '../../shared/utils/avatar';
 import { canPickSection } from '../../shared/utils/sections';
 import { getDisplayRoleLabel, isCourseAssignedInstructor } from '../../shared/utils/roles';
 import { sendCourseInvitations } from '../../shared/api/emailApi';
@@ -33,13 +34,33 @@ interface PeopleViewProps {
 }
 
 export const PeopleView: React.FC<PeopleViewProps> = ({ courseId, initialTab = 'roster' }) => {
-  const { db, activeRole, activeUser, isLoading, enrollStudentsInCourse, regenerateCourseJoinCode, getPendingRequestsForCourse, getApprovedRequestsForCourse, approveEnrollmentRequests, rejectEnrollmentRequests, removeStudentFromCourse, showAlert, showConfirm, markTabVisited } = useLMS();
+  const { db, activeRole, activeUser, isLoading, refreshUsers, enrollStudentsInCourse, regenerateCourseJoinCode, getPendingRequestsForCourse, getApprovedRequestsForCourse, approveEnrollmentRequests, rejectEnrollmentRequests, removeStudentFromCourse, showAlert, showConfirm, markTabVisited } = useLMS();
   const course = db.courses.find(c => c.id === courseId);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [copiedCode, setCopiedCode] = useState(false);
   const canManageEnrollments = activeRole === 'faculty' || activeRole === 'admin';
+
+  const resolveAvatarForUser = (userCandidate: any): string => {
+    if (!userCandidate) return '';
+    if (userCandidate.id === activeUser.id && activeUser.avatar) {
+      return activeUser.avatar;
+    }
+    const candidateAvatar = userCandidate.avatar || userCandidate.avatarUrl || userCandidate.avatar_url;
+    if (candidateAvatar && hasCustomAvatar(candidateAvatar)) {
+      return candidateAvatar;
+    }
+    const matchInDb = (db.users || []).find(u => u.id === userCandidate.id);
+    if (matchInDb?.avatar && hasCustomAvatar(matchInDb.avatar)) {
+      return matchInDb.avatar;
+    }
+    const stored = getCleanStoredAvatar(userCandidate.id);
+    if (stored && hasCustomAvatar(stored)) {
+      return stored;
+    }
+    return candidateAvatar || '';
+  };
   const getInitialActiveTab = (): 'roster' | 'pending' => {
     if (initialTab === 'pending') return 'pending';
     if (typeof window !== 'undefined' && window.location?.search) {
@@ -107,6 +128,12 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId, initialTab = '
 
   // Enroll modal state
   const [isEnrollModalOpen, setIsEnrollModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (isEnrollModalOpen) {
+      void refreshUsers?.();
+    }
+  }, [isEnrollModalOpen, refreshUsers]);
   const [modalSearchQuery, setModalSearchQuery] = useState('');
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
 
@@ -438,7 +465,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId, initialTab = '
                         <td className="px-4 py-3 flex items-center gap-3 font-semibold text-foreground">
                           <UserAvatar
                             name={u.name}
-                            src={u.id === activeUser.id ? (activeUser.avatar || u.avatar) : (u.avatar || getCleanStoredAvatar(u.id))}
+                            src={resolveAvatarForUser(u)}
                             className="w-8 h-8 rounded-full object-cover border border-border shrink-0"
                           />
                           <div className="min-w-0">
@@ -529,7 +556,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId, initialTab = '
                     <div className="flex items-center space-x-3">
                       <UserAvatar
                         name={student?.name || 'Student'}
-                        src={student?.id === activeUser.id ? (activeUser.avatar || student?.avatar) : (student?.avatar || getCleanStoredAvatar(student?.id))}
+                        src={resolveAvatarForUser(student || { id: req.studentId, name: req.studentName })}
                         className="w-10 h-10 rounded-full object-cover border border-border shrink-0"
                       />
                       <div>
@@ -677,7 +704,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId, initialTab = '
                     <div className="relative">
                       <UserAvatar
                         name={student.name}
-                        src={student.id === activeUser.id ? (activeUser.avatar || student.avatar) : (student.avatar || getCleanStoredAvatar(student.id))}
+                        src={resolveAvatarForUser(student)}
                         className="w-13 h-13 sm:w-14 sm:h-14 rounded-full object-cover border-2 border-border shadow-subtle group-hover:border-primary transition-colors"
                       />
                       <button
@@ -732,7 +759,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({ courseId, initialTab = '
                       <div className="flex items-center space-x-3.5 truncate flex-1 min-w-0">
                         <UserAvatar
                           name={student.name}
-                          src={student.id === activeUser.id ? (activeUser.avatar || student.avatar) : (student.avatar || getCleanStoredAvatar(student.id))}
+                          src={resolveAvatarForUser(student)}
                           className="w-10 h-10 rounded-full object-cover border border-border shrink-0 shadow-xs"
                         />
                         <div className="truncate">

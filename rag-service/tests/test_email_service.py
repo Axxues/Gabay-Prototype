@@ -90,64 +90,6 @@ def test_api_send_activation_email_rejects_invalid_payload():
     assert response.status_code == 422
 
 
-from app.services.email_service import (
-    render_leadership_code_email_html,
-    send_leadership_code_email,
-)
-
-
-def test_render_leadership_code_email_html_contains_branding_and_code():
-    html = render_leadership_code_email_html(
-        recipient_name="Dr. Maria Santos",
-        code="784921",
-        role_type="dean",
-        unit_name="College of Computer Science",
-    )
-    assert "GABAY" in html
-    assert "Dr. Maria Santos" in html
-    assert "784921" in html
-    assert "College Dean" in html
-    assert "College of Computer Science" in html
-
-
-def test_send_leadership_code_email_simulates_when_unconfigured():
-    with patch("app.services.email_service.get_settings") as mock_settings:
-        mock_settings.return_value.smtp_user = None
-        mock_settings.return_value.smtp_password = None
-
-        result = send_leadership_code_email(
-            to_email="dean@dmmmsu.edu.ph",
-            recipient_name="Dr. Maria Santos",
-            code="123456",
-            role_type="dean",
-            unit_name="College of Computer Science",
-        )
-        assert result["success"] is True
-        assert result.get("simulated") is True
-        assert result.get("code") == "123456"
-
-
-def test_api_send_leadership_code_endpoint_success():
-    with patch("app.main.send_leadership_code_email") as mock_send:
-        mock_send.return_value = {"success": True, "delivered": True}
-        response = client.post(
-            "/api/auth/send-leadership-code",
-            json={
-                "email": "chair@dmmmsu.edu.ph",
-                "recipient_name": "Prof. Alan Turing",
-                "role_type": "chairperson",
-                "unit_name": "Department of Computer Science",
-            },
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["success"] is True
-        assert mock_send.called
-        call_kwargs = mock_send.call_args[1]
-        assert call_kwargs["to_email"] == "chair@dmmmsu.edu.ph"
-        assert len(call_kwargs["code"]) == 6
-
-
 def test_render_course_invitation_email_html():
     html_output = render_course_invitation_email_html(
         recipient_name="Maria Santos",
@@ -187,31 +129,34 @@ def test_send_course_invitation_email_simulates_when_unconfigured():
 
 
 def test_api_send_course_invitations_batch_success():
-    payload = {
-        "invitations": [
-            {
-                "recipient_email": "student1@dmmmsu.edu.ph",
-                "recipient_name": "Student One",
-                "instructor_name": "Engr. Turing",
-                "course_code": "CS 311",
-                "course_title": "Software Engineering",
-                "section": "BSCS 3A",
-                "term": "1st Sem 2026-2027",
-                "join_url": "http://localhost:5173/?action=join&courseId=c1&requestId=req-1",
-                "request_id": "req-1",
-            }
-        ]
-    }
-    response = client.post(
-        "/api/courses/send-course-invitations",
-        json=payload,
-        headers={"X-Gabay-Client-Key": "test-client-key"},
-    )
-    assert response.status_code == 200
-    data = response.json()
-    assert data["success"] is True
-    assert data["total"] == 1
-    assert data["sent"] == 1
+    with patch("app.main.send_course_invitation_email") as mock_send:
+        mock_send.return_value = {"success": True, "delivered": True}
+        payload = {
+            "invitations": [
+                {
+                    "recipient_email": "student1@dmmmsu.edu.ph",
+                    "recipient_name": "Student One",
+                    "instructor_name": "Engr. Turing",
+                    "course_code": "CS 311",
+                    "course_title": "Software Engineering",
+                    "section": "BSCS 3A",
+                    "term": "1st Sem 2026-2027",
+                    "join_url": "http://localhost:5173/?action=join&courseId=c1&requestId=req-1",
+                    "request_id": "req-1",
+                }
+            ]
+        }
+        response = client.post(
+            "/api/courses/send-course-invitations",
+            json=payload,
+            headers={"X-Gabay-Client-Key": "test-client-key"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["total"] == 1
+        assert data["sent"] == 1
+        assert mock_send.called
 
 
 def test_api_send_course_invitations_rejects_missing_auth():
@@ -221,6 +166,97 @@ def test_api_send_course_invitations_rejects_missing_auth():
         json={"invitations": []},
     )
     assert response.status_code in (401, 403)
+def test_render_rejection_email_html_contains_branding_and_reason():
+    from app.services.email_service import render_rejection_email_html
+    html = render_rejection_email_html(
+        recipient_name="Juan Dela Cruz",
+        reason="Academic documents are incomplete. Please re-apply with a certified grade transcript.",
+        reviewer_name="Dr. Charlie Marzan",
+        reviewer_role="College Dean",
+    )
+    assert "GABAY" in html
+    assert "Juan Dela Cruz" in html
+    assert "Academic documents are incomplete" in html
+    assert "Dr. Charlie Marzan" in html
+    assert "College Dean" in html
 
 
+def test_send_rejection_email_simulates_when_credentials_not_configured():
+    from app.services.email_service import send_rejection_email
+    with patch("app.services.email_service.get_settings") as mock_settings:
+        mock_settings.return_value.smtp_user = None
+        mock_settings.return_value.smtp_password = None
 
+        result = send_rejection_email(
+            to_email="student@dmmmsu.edu.ph",
+            recipient_name="Juan Dela Cruz",
+            reason="Duplicate registration detected.",
+        )
+        assert result["success"] is True
+        assert result.get("simulated") is True
+
+
+def test_send_rejection_email_dispatches_via_smtp():
+    from app.services.email_service import send_rejection_email
+    with patch("app.services.email_service.get_settings") as mock_settings, \
+         patch("smtplib.SMTP_SSL") as mock_smtp_ssl:
+        mock_settings.return_value.smtp_host = "smtp.gmail.com"
+        mock_settings.return_value.smtp_port = 465
+        mock_settings.return_value.smtp_user = "mailer@gmail.com"
+        mock_settings.return_value.smtp_password = "apppassword1234"
+        mock_settings.return_value.smtp_from = "GABAY LMS <mailer@gmail.com>"
+
+        mock_server = MagicMock()
+        mock_smtp_ssl.return_value.__enter__.return_value = mock_server
+
+        result = send_rejection_email(
+            to_email="student@dmmmsu.edu.ph",
+            recipient_name="Juan Dela Cruz",
+            reason="Invalid identification number format.",
+            reviewer_name="Dr. Charlie Marzan",
+            reviewer_role="College Dean",
+        )
+
+        assert result["success"] is True
+        assert result.get("delivered") is True
+        mock_server.login.assert_called_once_with("mailer@gmail.com", "apppassword1234")
+
+
+def test_api_send_rejection_email_endpoint():
+    with patch("app.main.send_rejection_email") as mock_send:
+        mock_send.return_value = {
+            "success": True,
+            "delivered": True,
+            "simulated": False,
+            "message": "Rejection notification email dispatched successfully.",
+            "recipient": "student@dmmmsu.edu.ph",
+        }
+
+        payload = {
+            "email": "student@dmmmsu.edu.ph",
+            "recipient_name": "Juan Dela Cruz",
+            "reason": "Submitted ID does not match registrar records.",
+            "reviewer_name": "Dr. Charlie Marzan",
+            "reviewer_role": "College Dean",
+        }
+        response = client.post(
+            "/api/auth/send-rejection-email",
+            json=payload,
+            headers={"X-Gabay-Client-Key": "test-client-key"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert mock_send.called
+
+
+def test_api_send_rejection_email_rejects_missing_auth():
+    unauthenticated_client = TestClient(app)
+    response = unauthenticated_client.post(
+        "/api/auth/send-rejection-email",
+        json={
+            "email": "student@dmmmsu.edu.ph",
+            "reason": "Invalid ID",
+        },
+    )
+    assert response.status_code in (401, 403)

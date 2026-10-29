@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useLMS } from '../../../../shared/context/LMSContext';
-import { formatFileSize, FILE_UPLOAD_MAX_BYTES, isFileTooLarge, isImageFile } from '../../../../shared/utils/fileUploader';
+import { formatFileSize, FILE_UPLOAD_MAX_BYTES, isFileTooLarge, isImageFile, extractDirectusFileId } from '../../../../shared/utils/fileUploader';
 import {
   Award,
   Calendar,
@@ -173,7 +173,7 @@ export function buildActivityPayload(courseId: string, v: ActivityFormValue, pub
           url: f.url,
           type: f.type,
           fileId: f.fileId,
-          directus_files_id: f.directus_files_id || f.fileId,
+          directus_files_id: f.directus_files_id || extractDirectusFileId(f.url) || undefined,
         }))
       : (v.attachedFile ? [{
           name: v.attachedFile.name,
@@ -181,7 +181,7 @@ export function buildActivityPayload(courseId: string, v: ActivityFormValue, pub
           url: v.attachedFile.url,
           type: v.attachedFile.type,
           fileId: v.attachedFile.fileId,
-          directus_files_id: v.attachedFile.directus_files_id || v.attachedFile.fileId,
+          directus_files_id: v.attachedFile.directus_files_id || extractDirectusFileId(v.attachedFile.url) || undefined,
         }] : []),
   };
 }
@@ -285,7 +285,11 @@ export const ActivityFormFields: React.FC<{
       size: file.formattedSize || '',
       url: file.url || file.fileUrl || `/public/uploads/${file.name}`,
       type: file.type,
-      fileId: file.id
+      fileId: (file as any).directus_files_id || file.id,
+      directus_files_id: (file as any).directus_files_id ||
+        (typeof (file as any).file === 'string' ? (file as any).file : (file as any).file?.id) ||
+        extractDirectusFileId(file.url || file.fileUrl) ||
+        undefined,
     };
     const nextFiles = [...currentFiles, newAtt];
     onChange({

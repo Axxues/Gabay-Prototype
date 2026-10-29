@@ -406,6 +406,8 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
   const [gradingTermsOverride, setGradingTermsOverride] = useState<TermId[] | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [isCreatingDraft, setIsCreatingDraft] = useState(false);
   const upload = useSimulatedUpload();
 
   const cloneSyllabus = (s: OfficialSyllabusData): OfficialSyllabusData =>
@@ -481,7 +483,8 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
   };
 
   const handleCreateDraft = async () => {
-    if (!data) return;
+    if (!data || isCreatingDraft) return;
+    setIsCreatingDraft(true);
     setIsSaving(true);
     try {
       await updateCourseSyllabus(courseId, data);
@@ -492,16 +495,18 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
       });
     } catch {
     } finally {
+      setIsCreatingDraft(false);
       setIsSaving(false);
     }
   };
 
   const handlePublishDraft = () => {
-    if (!revision || revision.status !== 'draft') return;
+    if (!revision || revision.status !== 'draft' || isPublishing) return;
     showConfirm(
       `Publish revision ${revision.revisionNo} of this syllabus? Students will see the published version.`,
       () => {
         void (async () => {
+          setIsPublishing(true);
           try {
             await publishSyllabusDraft(courseId);
             showAlert({
@@ -510,6 +515,8 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               type: 'success'
             });
           } catch {
+          } finally {
+            setIsPublishing(false);
           }
         })();
       },
@@ -1493,6 +1500,8 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
             revision={revision}
             canEdit={isFacultyCreator}
             isDirty={editingSection !== null && draft !== null}
+            isPublishing={isPublishing}
+            isCreatingDraft={isCreatingDraft}
             onCreateDraft={() => {
               void handleCreateDraft();
             }}

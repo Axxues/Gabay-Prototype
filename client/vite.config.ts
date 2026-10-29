@@ -46,6 +46,14 @@ export default defineConfig({
         secure: true,
         agent: new https.Agent({ keepAlive: true, keepAliveMsecs: 30000, maxSockets: 50 }),
         rewrite: (path) => path.replace(/^\/likha/, ''),
+        configure: (proxy) => {
+          proxy.on('error', (err, _req, res) => {
+            if (res && 'writeHead' in res && !res.headersSent) {
+              res.writeHead(502, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'Gateway proxy error', details: err.message }));
+            }
+          });
+        },
       },
     },
   },

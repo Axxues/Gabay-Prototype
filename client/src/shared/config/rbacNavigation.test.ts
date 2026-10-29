@@ -78,10 +78,10 @@ describe('RBAC Navigation Permissions', () => {
     });
   });
 
-  it('configures Syllabus Creator on page1 for faculty, admin, and superadmin, hiding from students', () => {
+  it('configures Syllabus Development on page1 for faculty, admin, and superadmin, hiding from students', () => {
     const page1Item = MAIN_NAV.find(i => i.id === 'page1');
     expect(page1Item).toBeDefined();
-    expect(page1Item!.label).toBe('Syllabus Creator');
+    expect(page1Item!.label).toBe('Syllabus Development');
     expect(isVisible(page1Item!, 'faculty')).toBe(true);
     expect(isVisible(page1Item!, 'admin')).toBe(true);
     expect(isVisible(page1Item!, 'superadmin')).toBe(true);

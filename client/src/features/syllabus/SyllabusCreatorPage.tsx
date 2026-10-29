@@ -46,7 +46,7 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
           </div>
           <h2 className="text-lg font-bold text-foreground">Access Restricted</h2>
           <p className="text-xs text-muted-foreground leading-relaxed">
-            The Syllabus Creator is an academic authoring tool restricted to faculty and academic leadership. If you need access, please consult your department chairperson.
+            Syllabus Development is an academic authoring tool restricted to faculty and academic leadership. If you need access, please consult your department chairperson.
           </p>
         </div>
       </div>
@@ -98,7 +98,7 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
             <span>Academic Authoring Studio</span>
           </div>
           <h1 className="text-2xl font-black tracking-tight text-foreground">
-            Syllabus Creator
+            Syllabus Development
           </h1>
           <p className="text-xs text-muted-foreground mt-0.5">
             Design, standardize, and export official university course syllabi matching the DMMMSU-INS-F003 institutional standard.

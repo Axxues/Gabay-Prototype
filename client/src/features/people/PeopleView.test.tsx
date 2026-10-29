@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   activeUser: { id: 'u-fac-1', name: 'Prof', role: 'faculty', department: 'CS' },
   removeStudentFromCourse: vi.fn(),
   enrollStudentsInCourse: vi.fn(),
+  refreshUsers: vi.fn(),
   sendCourseInvitations: vi.fn(),
   showConfirm: vi.fn(),
   showAlert: vi.fn(),
@@ -22,7 +23,7 @@ const mocks = vi.hoisted(() => ({
       { id: 'u-fac-other', name: 'Other Prof', email: 'otherfac@school.edu', role: 'faculty', avatar: '', department: 'CS', title: 'Prof' },
       { id: 'u-dean-1', name: 'Dean Eleanor', email: 'dean@school.edu', role: 'admin', adminSubrole: 'dean', avatar: '', department: 'CS', title: 'College Dean' },
       { id: 'u-stu-1', name: 'Stu One', email: 'stu@school.edu', role: 'student', avatar: '', department: 'CS', title: '', studentId: '2021-00001', enrolledCourseIds: ['c1'] },
-      { id: 'u-stu-other', name: 'Stu Other Course', email: 'otherstu@school.edu', role: 'student', avatar: '', department: 'CS', title: '', studentId: '2021-00002', enrolledCourseIds: ['c2'] },
+      { id: 'u-stu-other', name: 'Stu Other Course', email: 'otherstu@school.edu', role: 'student', avatar: 'https://gabay.zyberlab.com/assets/custom-avatar-123', department: 'CS', title: '', studentId: '2021-00002', enrolledCourseIds: ['c2'] },
       { id: 'u-stu-pending', name: 'Stu Pending', email: 'stupending@school.edu', role: 'student', avatar: '', department: 'CS', title: '', studentId: '2021-00003', enrolledCourseIds: [] },
     ],
     enrollmentRequests: [
@@ -39,6 +40,7 @@ vi.mock('../../shared/context/LMSContext', () => ({
     activeUser: mocks.activeUser,
     isLoading: false,
     enrollStudentsInCourse: mocks.enrollStudentsInCourse,
+    refreshUsers: mocks.refreshUsers,
     regenerateCourseJoinCode: vi.fn(),
     getPendingRequestsForCourse: vi.fn().mockResolvedValue([]),
     approveEnrollmentRequests: vi.fn(),
@@ -203,4 +205,15 @@ describe('PeopleView remove student', () => {
       );
     });
   });
+  test('opening enroll modal triggers refreshUsers and renders custom avatar image for student', async () => {
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: /enroll person/i }));
+    expect(screen.getByText('Enroll Students in Course')).toBeInTheDocument();
+    expect(mocks.refreshUsers).toHaveBeenCalled();
+
+    const avatarImg = screen.getByRole('img', { name: 'Stu Other Course' });
+    expect(avatarImg.tagName.toLowerCase()).toBe('img');
+    expect(avatarImg).toHaveAttribute('src', expect.stringContaining('custom-avatar-123'));
+  });
 });
+

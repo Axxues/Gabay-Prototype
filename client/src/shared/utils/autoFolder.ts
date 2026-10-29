@@ -1,10 +1,14 @@
 // src/utils/autoFolder.ts
-export type FileSourceArea = 'announcements' | 'modules' | 'syllabus' | 'activities';
+export type FileSourceArea = 'announcements' | 'modules' | 'syllabus' | 'activities' | 'assignments' | 'quizzes' | 'projects' | 'presentations';
 
 export function areaFolderName(area: FileSourceArea): string {
   if (area === 'announcements') return 'Announcements';
   if (area === 'modules') return 'Modules';
   if (area === 'activities') return 'Activities';
+  if (area === 'assignments') return 'Assignments';
+  if (area === 'quizzes') return 'Quizzes';
+  if (area === 'projects') return 'Projects';
+  if (area === 'presentations') return 'Presentations';
   return 'Syllabus';
 }
 
@@ -71,6 +75,10 @@ export function resolveFiledSourceLabel(
   }
   if (file.sourceArea === 'syllabus') return 'Syllabus';
   if (file.sourceArea === 'activities') return 'Activities';
+  if (file.sourceArea === 'assignments') return 'Assignments';
+  if (file.sourceArea === 'quizzes') return 'Quizzes';
+  if (file.sourceArea === 'projects') return 'Projects';
+  if (file.sourceArea === 'presentations') return 'Presentations';
   return 'Direct Upload';
 }
 

@@ -142,11 +142,17 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         (activeUser?.department &&
           (d.name.toLowerCase() === activeUser.department.toLowerCase() ||
             d.id === activeUser.department ||
-            d.code.toLowerCase() === activeUser.department.toLowerCase())) ||
+            d.code.toLowerCase() === activeUser.department.toLowerCase() ||
+            normalizeProgramName(d.name) === normalizeProgramName(activeUser.department) ||
+            d.name.toLowerCase().includes(activeUser.department.toLowerCase()) ||
+            activeUser.department.toLowerCase().includes(d.name.toLowerCase()))) ||
         (activeUser?.program &&
           (d.name.toLowerCase() === activeUser.program.toLowerCase() ||
             d.id === activeUser.program ||
-            d.code.toLowerCase() === activeUser.program.toLowerCase()))
+            d.code.toLowerCase() === activeUser.program.toLowerCase() ||
+            normalizeProgramName(d.name) === normalizeProgramName(activeUser.program) ||
+            d.name.toLowerCase().includes(activeUser.program.toLowerCase()) ||
+            activeUser.program.toLowerCase().includes(d.name.toLowerCase())))
     );
   }, [isChair, activeUser, departments]);
 

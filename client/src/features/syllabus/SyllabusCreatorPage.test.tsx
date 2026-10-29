@@ -15,9 +15,9 @@ describe('SyllabusCreatorPage', () => {
     } as any);
   });
 
-  it('renders page header with Syllabus Creator title, draft controls, and wizard steps', () => {
+  it('renders page header with Syllabus Development title, draft controls, and wizard steps', () => {
     render(<SyllabusCreatorPage />);
-    expect(screen.getByRole('heading', { name: /Syllabus Creator/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Syllabus Development/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /New Syllabus/i })).toBeInTheDocument();
     expect(screen.getAllByText(/Course Info/i).length).toBeGreaterThan(0);
   });

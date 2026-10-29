@@ -26,8 +26,11 @@ import {
   Paperclip,
   Download,
   Image as ImageIcon,
-  FileText
+  FileText,
+  X,
+  Loader2
 } from 'lucide-react';
+import { uploadFileToPublic, formatFileSize } from '../../shared/utils/fileUploader';
 import { CreateActivityPage } from './CreateActivityPage';
 import { ActivityRunnerView } from './ActivityRunnerView';
 import { PageHeader } from '../../shared/components/common/PageHeader';
@@ -118,13 +121,15 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
   const [submissionType, setSubmissionType] = useState<'file' | 'online_text'>('online_text');
   const [textContent, setTextContent] = useState('');
   const [simulatedFileName, setSimulatedFileName] = useState('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Full Page Create Activity State
   const [isCreatingActivity, setIsCreatingActivity] = useState(false);
 
   const currentSubmission = selectedActivity
-    ? db.submissions.find(s => s.activityKey === selectedActivity.id && s.studentId === activeUser.id)
+    ? db.submissions.find(s => (s.activityKey === selectedActivity.id || s.activityId === selectedActivity.id) && s.studentId === activeUser.id)
     : undefined;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -135,24 +140,51 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
       showAlert("Please enter submission text content.");
       return;
     }
-    if (submissionType === 'file' && !simulatedFileName) {
-      showAlert("Please choose a file or use the simulated file dropzone.");
+    if (submissionType === 'file' && !selectedFile && !simulatedFileName) {
+      showAlert("Please choose a file or enter a filename to attach.");
       return;
     }
 
     setIsSubmitting(true);
     try {
+      let uploadedFileUrl: string | undefined = undefined;
+      let uploadedFileId: string | undefined = undefined;
+      let uploadedFileSize: string | undefined = undefined;
+      let finalFileName = selectedFile ? selectedFile.name : (simulatedFileName || 'CMSC131_Lab_Submission.pdf');
+
+      if (submissionType === 'file' && selectedFile) {
+        try {
+          const res = await uploadFileToPublic(selectedFile);
+          uploadedFileUrl = res.url;
+          uploadedFileId = (res as any).id || (res as any).fileId;
+          uploadedFileSize = res.size;
+          finalFileName = res.name || selectedFile.name;
+        } catch {
+          uploadedFileUrl = `/likha/assets/mock-${encodeURIComponent(selectedFile.name)}`;
+          uploadedFileSize = formatFileSize(selectedFile.size);
+        }
+      } else if (submissionType === 'file' && simulatedFileName) {
+        uploadedFileUrl = `/likha/assets/simulated-${encodeURIComponent(simulatedFileName.trim())}`;
+        uploadedFileSize = '500 KB';
+        finalFileName = simulatedFileName.trim();
+      }
+
       await submitActivity(
         selectedActivity.id,
         submissionType,
         textContent,
-        simulatedFileName || 'CMSC131_Lab_Submission.pdf'
+        finalFileName,
+        undefined,
+        uploadedFileUrl,
+        uploadedFileId,
+        uploadedFileSize
       );
       showAlert({
         title: "Activity Submitted",
         message: "Your submission has been recorded successfully.",
         type: "success"
       });
+      setSelectedFile(null);
     } catch {
       // submitActivity already surfaced the alert.
     } finally {
@@ -700,6 +732,41 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
 
           {/* Submission Form */}
           <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+            {currentSubmission && (
+              <div className="p-3 bg-muted/30 border border-border/70 rounded-xl space-y-1.5 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Submitted:</span>
+                  <span className="font-semibold text-foreground">
+                    {currentSubmission.submittedAt ? new Date(currentSubmission.submittedAt).toLocaleString() : 'Recently'}
+                  </span>
+                </div>
+                {currentSubmission.fileName && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground flex items-center space-x-1.5">
+                      <Paperclip className="w-3.5 h-3.5" />
+                      <span>Attached File:</span>
+                    </span>
+                    <div className="flex items-center space-x-2">
+                      <span className="font-semibold text-foreground truncate max-w-[200px]">
+                        {currentSubmission.fileName}
+                      </span>
+                      {currentSubmission.fileUrl && (
+                        <a
+                          href={currentSubmission.fileUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-primary hover:underline font-bold inline-flex items-center space-x-1"
+                        >
+                          <span>Download</span>
+                          <Download className="w-3 h-3" />
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="flex space-x-2 border-b border-border pb-2">
               <button
                 type="button"
@@ -739,22 +806,81 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
             ) : (
               <div className="space-y-2">
                 <label className="block font-bold text-foreground">
-                  File Attachment Dropzone:
+                  File Attachment:
                 </label>
-                <div className="border-2 border-dashed border-border rounded-2xl p-6 text-center space-y-2 bg-muted/20">
-                  <Upload className="w-8 h-8 text-muted-foreground mx-auto" />
-                  <p className="text-foreground font-semibold">
-                    Simulate file upload for GABAY evaluation
-                  </p>
-                  <input
-                    type="text"
-                    value={simulatedFileName}
-                    onChange={e => setSimulatedFileName(e.target.value)}
-                    placeholder="e.g. CMSC131_Lab4_JayveeReyes_2021-SLUC-0492.pdf"
-                    className="max-w-md mx-auto p-2.5 border border-border rounded-xl font-sans text-center w-full bg-background text-xs outline-none"
-                  />
-                  <div className="text-[10px] text-muted-foreground font-sans">
-                    Allowed types: PDF, DOCX, ZIP (Max 25MB)
+                <div
+                  onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={e => {
+                    e.preventDefault();
+                    setIsDragging(false);
+                    const file = e.dataTransfer.files?.[0];
+                    if (file) {
+                      setSelectedFile(file);
+                      setSimulatedFileName(file.name);
+                    }
+                  }}
+                  className={`border-2 border-dashed rounded-2xl p-6 text-center space-y-3 transition-colors ${
+                    isDragging ? 'border-primary bg-primary/5' : 'border-border bg-muted/20'
+                  }`}
+                >
+                  {selectedFile ? (
+                    <div className="p-3 bg-card border border-border rounded-xl flex items-center justify-between max-w-md mx-auto">
+                      <div className="flex items-center space-x-3 truncate">
+                        <FileText className="w-6 h-6 text-primary shrink-0" />
+                        <div className="text-left truncate">
+                          <div className="font-bold text-foreground truncate text-xs">{selectedFile.name}</div>
+                          <div className="text-[11px] text-muted-foreground">{formatFileSize(selectedFile.size)}</div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => { setSelectedFile(null); setSimulatedFileName(''); }}
+                        className="p-1 hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg transition-colors cursor-pointer shrink-0"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <Upload className="w-8 h-8 text-muted-foreground mx-auto" />
+                      <div>
+                        <label className="font-semibold text-primary hover:underline cursor-pointer">
+                          <span>Browse file to upload</span>
+                          <input
+                            type="file"
+                            className="hidden"
+                            onChange={e => {
+                              const f = e.target.files?.[0];
+                              if (f) {
+                                setSelectedFile(f);
+                                setSimulatedFileName(f.name);
+                              }
+                            }}
+                          />
+                        </label>
+                        <span className="text-muted-foreground"> or drag and drop here</span>
+                      </div>
+                      <div className="text-[11px] text-muted-foreground">
+                        Supported: PDF, DOCX, ZIP, images (up to 25MB)
+                      </div>
+                    </>
+                  )}
+
+                  <div className="pt-2 border-t border-border/60">
+                    <div className="text-[11px] text-muted-foreground mb-1">
+                      Quick test filename fallback:
+                    </div>
+                    <input
+                      type="text"
+                      value={simulatedFileName}
+                      onChange={e => {
+                        setSimulatedFileName(e.target.value);
+                        if (!e.target.value) setSelectedFile(null);
+                      }}
+                      placeholder="e.g. CMSC131_Lab4_JayveeReyes_2021-SLUC-0492.pdf"
+                      className="max-w-md mx-auto p-2 border border-border rounded-xl font-sans text-center w-full bg-background text-xs outline-none"
+                    />
                   </div>
                 </div>
               </div>
@@ -766,8 +892,12 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                 disabled={isSubmitting}
                 className="px-5 py-2.5 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all shadow-primary-sm flex items-center space-x-2 cursor-pointer disabled:opacity-50"
               >
-                <Send className="w-3.5 h-3.5" />
-                <span>{currentSubmission ? 'Resubmit Activity' : 'Submit Activity to GABAY'}</span>
+                {isSubmitting ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Send className="w-3.5 h-3.5" />
+                )}
+                <span>{isSubmitting ? 'Uploading & Submitting...' : currentSubmission ? 'Resubmit Activity' : 'Submit Activity to GABAY'}</span>
               </button>
             </div>
           </form>

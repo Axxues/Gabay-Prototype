@@ -403,4 +403,33 @@ describe('modules, items, comments via Likha (Task 5)', () => {
     const mod = (seenDb.modules || []).find((m: any) => m.id === 'm1');
     expect((mod.comments || []).some((c: any) => c.id === 'mc-new' && c.content === 'Great week!')).toBe(true);
   });
+
+  test('addModuleItem passes attachments to Likha createModuleItem and preserves attachments on mapped item', async () => {
+    await renderLoggedInAs('Faculty', 'u-fac-1', 'faculty1@dmmmsu.edu.ph');
+    createModuleItemMock.mockClear();
+    const testAttachments = [
+      { name: 'lecture.pdf', size: '1.2 MB', url: 'https://example.com/lecture.pdf', type: 'pdf' },
+    ];
+    await act(async () => {
+      await ctx.addModuleItem('m1', {
+        title: 'Slides and handout',
+        type: 'file',
+        attachments: testAttachments,
+        fileName: 'lecture.pdf',
+        fileUrl: 'https://example.com/lecture.pdf',
+      });
+    });
+    expect(createModuleItemMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        module_id: 'm1',
+        title: 'Slides and handout',
+        attachments: testAttachments,
+      })
+    );
+    const mod = (seenDb.modules || []).find((m: any) => m.id === 'm1');
+    const addedItem = (mod.items || []).find((it: any) => it.title === 'Slides and handout');
+    expect(addedItem).toBeDefined();
+    expect(addedItem.attachments).toEqual(testAttachments);
+    expect(addedItem.fileName).toBe('lecture.pdf');
+  });
 });

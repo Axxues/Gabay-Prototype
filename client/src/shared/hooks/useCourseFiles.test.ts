@@ -82,7 +82,23 @@ describe('useCourseFiles module-folder placement', () => {
     ];
   });
 
-  test('question-set activity linked via asg-activity-<id> resolves into that module folder', () => {
+  test('module lecture notes item resolves into that module folder', () => {
+    mocks.db.modules = [
+      {
+        id: 'mod-1',
+        courseId: 'c1',
+        title: 'Week 1',
+        items: [{ id: 'item-page', type: 'page', title: 'Lecture 1', fileName: 'lecture1.pdf', published: true }],
+      },
+    ];
+    const { result } = renderHook(() => useCourseFiles('c1'));
+    const entry = result.current.allFiles.find(f => f.name === 'lecture1.pdf');
+    expect(entry).toBeDefined();
+    expect(entry?.folderId).toBe('fld-mod-1');
+    expect(entry?.source).toBe('modules');
+  });
+
+  test('activity linked from a module item resolves into activities folder, not module folder', () => {
     mocks.db.activities = [
       {
         id: 'act-1',
@@ -90,6 +106,7 @@ describe('useCourseFiles module-folder placement', () => {
         courseId: 'c1',
         title: 'Activity 1',
         instructions: 'Do it.',
+        term: 'midterm',
         questions: [],
         pointsPossible: 8,
         published: true,
@@ -98,10 +115,11 @@ describe('useCourseFiles module-folder placement', () => {
     const { result } = renderHook(() => useCourseFiles('c1'));
     const entry = result.current.allFiles.find(f => f.id === 'act-virtual-act-1');
     expect(entry).toBeDefined();
-    expect(entry?.folderId).toBe('fld-mod-1');
+    expect(entry?.folderId).toBe('vf-activities-midterm');
+    expect(entry?.source).toBe('activities');
   });
 
-  test('classic activity linked from a module item resolves into that module folder', () => {
+  test('classic activity linked from a module item resolves into activities folder', () => {
     mocks.db.modules = [
       {
         id: 'mod-1',
@@ -117,6 +135,7 @@ describe('useCourseFiles module-folder placement', () => {
         courseId: 'c1',
         title: 'Lab 1',
         instructions: 'Do the lab.',
+        term: 'midterm',
         pointsPossible: 100,
         dueDate: new Date().toISOString(),
         submissionTypes: ['online_text'],
@@ -129,7 +148,53 @@ describe('useCourseFiles module-folder placement', () => {
     const { result } = renderHook(() => useCourseFiles('c1'));
     const entry = result.current.allFiles.find(f => f.id === 'asg-virtual-asg-1');
     expect(entry).toBeDefined();
-    expect(entry?.folderId).toBe('fld-mod-1');
+    expect(entry?.folderId).toBe('vf-activities-midterm');
+    expect(entry?.source).toBe('activities');
+  });
+
+  test('assignment linked from a module item resolves into assignments folder', () => {
+    mocks.db.modules = [
+      {
+        id: 'mod-1',
+        courseId: 'c1',
+        title: 'Week 1',
+        items: [{ id: 'item-asg', type: 'assignment', title: 'Homework 1', activityId: 'asg-hw-1', published: true }],
+      },
+    ];
+    mocks.db.activities = [
+      {
+        id: 'asg-hw-1',
+        format: 'classic',
+        assessmentType: 'assignment',
+        courseId: 'c1',
+        title: 'Homework 1',
+        instructions: 'Submit essay.',
+        published: true,
+      },
+    ];
+    const { result } = renderHook(() => useCourseFiles('c1'));
+    const entry = result.current.allFiles.find(f => f.id === 'asg-virtual-asg-hw-1');
+    expect(entry).toBeDefined();
+    expect(entry?.folderId).toBe('vf-assignments');
+    expect(entry?.source).toBe('assignments');
+    expect(result.current.virtualFolders.some(f => f.id === 'vf-assignments' && f.name === 'Assignments')).toBe(true);
+  });
+
+  test('direct file uploaded with area activities and moduleId resolves into activities folder', () => {
+    mocks.db.courseFiles = [
+      {
+        id: 'cf-act',
+        courseId: 'c1',
+        name: 'ActivityGuide.pdf',
+        sourceArea: 'activities',
+        sourceId: 'mod-1',
+      },
+    ];
+    const { result } = renderHook(() => useCourseFiles('c1'));
+    const entry = result.current.allFiles.find(f => f.id === 'cf-act');
+    expect(entry).toBeDefined();
+    expect(entry?.folderId).toBe('vf-activities');
+    expect(entry?.source).toBe('activities');
   });
 
   test('classic activity with no linked module files under its term folder, not root', () => {
@@ -231,7 +296,7 @@ describe('useCourseFiles Activities term folders', () => {
     ).toBeDefined();
   });
 
-  test('no virtual folders when every activity is module-linked', () => {
+  test('creates virtual Activities folder even when activity is module-linked', () => {
     mocks.db.courseFolders = [
       { id: 'fld-area', courseId: 'c1', parentId: null, name: 'Modules', autoKey: 'area:modules' },
       { id: 'fld-mod-1', courseId: 'c1', parentId: 'fld-area', name: 'Week 1', autoKey: 'module:mod-1' },
@@ -260,9 +325,9 @@ describe('useCourseFiles Activities term folders', () => {
       },
     ];
     const { result } = renderHook(() => useCourseFiles('c1'));
-    expect(result.current.virtualFolders).toHaveLength(0);
+    expect(result.current.virtualFolders.some(f => f.id === 'vf-activities' && f.name === 'Activities')).toBe(true);
     expect(result.current.allFiles.find(f => f.id === 'act-virtual-act-1')?.folderId).toBe(
-      'fld-mod-1'
+      'vf-activities-midterm'
     );
   });
 });
@@ -435,6 +500,39 @@ describe('useCourseFiles area-specific auto-foldering', () => {
     expect(entry?.folderId).toBe('vf-modules');
     expect(entry?.source).toBe('modules');
     expect(result.current.virtualFolders.some(f => f.id === 'vf-modules' && f.name === 'Modules')).toBe(true);
+  });
+
+  test('module item with attachments array aggregates all attached files into the modules folder', () => {
+    mocks.db.modules = [
+      {
+        id: 'mod-att',
+        courseId: 'c1',
+        title: 'Module with Attachments',
+        items: [
+          {
+            id: 'item-att-1',
+            title: 'Reading Material',
+            type: 'page',
+            published: true,
+            attachments: [
+              { name: 'Unit1_Notes.pdf', size: '2.5 MB', url: '/uploads/unit1.pdf' },
+              { name: 'Dataset.csv', size: '1.1 MB', url: '/uploads/data.csv' },
+            ],
+          },
+        ],
+      },
+    ];
+
+    const { result } = renderHook(() => useCourseFiles('c1'));
+    const notesFile = result.current.allFiles.find(f => f.name === 'Unit1_Notes.pdf');
+    const dataFile = result.current.allFiles.find(f => f.name === 'Dataset.csv');
+    expect(notesFile).toBeDefined();
+    expect(notesFile?.source).toBe('modules');
+    expect(notesFile?.folderId).toBe('vf-modules');
+    expect(dataFile).toBeDefined();
+    expect(dataFile?.source).toBe('modules');
+    expect(dataFile?.folderId).toBe('vf-modules');
+    expect(result.current.sourceCounts.modules).toBe(2);
   });
 
   test('does not duplicate announcement files uploaded to courseFiles and attached to announcements', () => {

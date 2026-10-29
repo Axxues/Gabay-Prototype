@@ -1863,7 +1863,7 @@ describe('Likha LMS Direct API Client', () => {
 
       await likhaLmsApi.saveActivity({
 
-        id: 'act-batch-1',
+
 
         title: 'Batch Activity',
 
@@ -1912,6 +1912,91 @@ describe('Likha LMS Direct API Client', () => {
       expect(Array.isArray(rubricBody)).toBe(true);
 
       expect(rubricBody).toHaveLength(2);
+    });
+
+    it('saveActivity maps directus_files_id and URL assets to junction records in attachments', async () => {
+      localStorage.setItem('gabay_token', 'test-token');
+      const fetchSpy = vi.spyOn(global, 'fetch')
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: { id: 'act-att-1', title: 'Activity with Files' } }),
+        } as any);
+
+      await likhaLmsApi.saveActivity({
+        id: 'act-att-1',
+        title: 'Activity with Files',
+        attachments: [
+          { name: 'DirectusAsset.pdf', directus_files_id: '3df55798-e25a-45c6-ab37-9ebd071b0327' },
+          { name: 'UrlAsset.pdf', url: '/likha/assets/cef73bc5-d004-44cc-bcaf-8bcaa24e07d6' }
+        ]
+      });
+
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      const call = fetchSpy.mock.calls[0];
+      const body = JSON.parse(call[1]?.body as string);
+      expect(body.attachments).toEqual([
+        { directus_files_id: '3df55798-e25a-45c6-ab37-9ebd071b0327' },
+        { directus_files_id: 'cef73bc5-d004-44cc-bcaf-8bcaa24e07d6' }
+      ]);
+      expect(body.metadata.attachments).toHaveLength(2);
+    });
+
+    it('saveActivity omits attachments junction when no Directus asset IDs exist, preventing invalid foreign keys', async () => {
+      localStorage.setItem('gabay_token', 'test-token');
+      const fetchSpy = vi.spyOn(global, 'fetch')
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: { id: 'act-att-2', title: 'Activity with Local File' } }),
+        } as any);
+
+      await likhaLmsApi.saveActivity({
+        id: 'act-att-2',
+        title: 'Activity with Local File',
+        attachments: [
+          { name: 'LocalOnly.pdf', fileId: '4e2628b1-b1df-4141-ad1a-72dde50e0263', url: '/public/uploads/LocalOnly.pdf' }
+        ]
+      });
+
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      const call = fetchSpy.mock.calls[0];
+      const body = JSON.parse(call[1]?.body as string);
+      expect(body.attachments).toBeUndefined();
+      expect(body.metadata.attachments).toEqual([
+        { name: 'LocalOnly.pdf', fileId: '4e2628b1-b1df-4141-ad1a-72dde50e0263', url: '/public/uploads/LocalOnly.pdf' }
+      ]);
+    });
+
+    it('saveActivity recovers gracefully if Likha rejects attachments relational payload', async () => {
+      localStorage.setItem('gabay_token', 'test-token');
+      const fetchSpy = vi.spyOn(global, 'fetch')
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 400,
+          json: async () => ({
+            errors: [{
+              message: 'Invalid foreign key "4e2628b1-b1df-4141-ad1a-72dde50e0263" for field "directus_files_id" in collection "activities_files".',
+              extensions: { code: 'INVALID_FOREIGN_KEY' }
+            }]
+          }),
+        } as any)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: { id: 'act-att-3', title: 'Recovered Activity' } }),
+        } as any);
+
+      const saved = await likhaLmsApi.saveActivity({
+        id: 'act-att-3',
+        title: 'Recovered Activity',
+        attachments: [
+          { name: 'FaultyAttachment.pdf', directus_files_id: '4e2628b1-b1df-4141-ad1a-72dde50e0263' }
+        ]
+      });
+
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+      expect(saved.id).toBe('act-att-3');
+      const retryBody = JSON.parse(fetchSpy.mock.calls[1][1]?.body as string);
+      expect(retryBody.attachments).toBeUndefined();
+      expect(retryBody.metadata.attachments).toHaveLength(1);
 
     });
 

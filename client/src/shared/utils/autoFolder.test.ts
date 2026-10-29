@@ -16,6 +16,10 @@ describe('area folders', () => {
     expect(areaFolderName('modules')).toBe('Modules');
     expect(areaFolderName('syllabus')).toBe('Syllabus');
     expect(areaFolderName('activities')).toBe('Activities');
+    expect(areaFolderName('assignments')).toBe('Assignments');
+    expect(areaFolderName('quizzes')).toBe('Quizzes');
+    expect(areaFolderName('projects')).toBe('Projects');
+    expect(areaFolderName('presentations')).toBe('Presentations');
   });
   it('builds stable auto keys', () => {
     expect(areaFolderAutoKey('announcements')).toBe('area:announcements');
@@ -86,6 +90,10 @@ describe('resolveFiledSourceLabel', () => {
   it('labels syllabus and direct uploads', () => {
     expect(resolveFiledSourceLabel({ sourceArea: 'syllabus', sourceId: 'c1' }, [], [])).toBe('Syllabus');
     expect(resolveFiledSourceLabel({ sourceArea: 'activities' }, [], [])).toBe('Activities');
+    expect(resolveFiledSourceLabel({ sourceArea: 'assignments' }, [], [])).toBe('Assignments');
+    expect(resolveFiledSourceLabel({ sourceArea: 'quizzes' }, [], [])).toBe('Quizzes');
+    expect(resolveFiledSourceLabel({ sourceArea: 'projects' }, [], [])).toBe('Projects');
+    expect(resolveFiledSourceLabel({ sourceArea: 'presentations' }, [], [])).toBe('Presentations');
     expect(resolveFiledSourceLabel({}, [], [])).toBe('Direct Upload');
   });
 });

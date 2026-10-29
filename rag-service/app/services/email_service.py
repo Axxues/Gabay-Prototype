@@ -5,7 +5,7 @@ import logging
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 from app.core.config import get_settings
 
@@ -832,5 +832,236 @@ def send_course_invitation_email(
             "recipient": to_email,
             "message": f"Failed to deliver course invitation email: {exc}",
         }
+def render_rejection_email_html(
+    recipient_name: str,
+    reason: str,
+    reviewer_name: Optional[str] = None,
+    reviewer_role: Optional[str] = None,
+) -> str:
+    """Generate HTML email template for account registration rejection notification."""
+    safe_name = html.escape(recipient_name or "Applicant")
+    safe_reason = html.escape(reason or "Your registration application did not meet institutional verification criteria.")
+    safe_reviewer = html.escape(reviewer_name) if reviewer_name else ""
+    safe_role = html.escape(reviewer_role) if reviewer_role else ""
+
+    reviewer_section = ""
+    if safe_reviewer:
+        role_text = f" ({safe_role})" if safe_role else ""
+        reviewer_section = f"""
+        <p style="font-size: 13px; color: #64748b; margin-top: 20px;">
+          <strong>Reviewed by:</strong> {safe_reviewer}{role_text}
+        </p>
+        """
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GABAY Registration Status Update</title>
+  <style>
+    body {{
+      margin: 0;
+      padding: 0;
+      background-color: #f1f5f9;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      color: #0f172a;
+      -webkit-font-smoothing: antialiased;
+    }}
+    .wrapper {{
+      width: 100%;
+      table-layout: fixed;
+      background-color: #f1f5f9;
+      padding: 40px 16px;
+    }}
+    .container {{
+      max-width: 580px;
+      margin: 0 auto;
+      background-color: #ffffff;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid #e2e8f0;
+      box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.05);
+    }}
+    .header {{
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+      padding: 36px 32px 28px;
+      text-align: center;
+      color: #ffffff;
+    }}
+    .logo-badge {{
+      display: inline-block;
+      font-size: 26px;
+      font-weight: 900;
+      letter-spacing: 2px;
+      color: #ef4444;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }}
+    .header-subtitle {{
+      font-size: 13px;
+      color: #94a3b8;
+      margin: 0;
+      letter-spacing: 0.5px;
+    }}
+    .content {{
+      padding: 36px 32px;
+    }}
+    h1 {{
+      font-size: 20px;
+      font-weight: 700;
+      color: #0f172a;
+      margin-top: 0;
+      margin-bottom: 16px;
+    }}
+    p {{
+      font-size: 14px;
+      line-height: 1.6;
+      color: #475569;
+      margin: 0 0 16px;
+    }}
+    .reason-box {{
+      background-color: #fef2f2;
+      border-left: 4px solid #ef4444;
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin: 24px 0;
+    }}
+    .reason-label {{
+      font-size: 11px;
+      font-weight: 700;
+      color: #991b1b;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }}
+    .reason-text {{
+      font-size: 14px;
+      color: #7f1d1d;
+      line-height: 1.5;
+      font-weight: 500;
+    }}
+    .footer {{
+      border-top: 1px solid #e2e8f0;
+      padding: 24px 32px;
+      text-align: center;
+      font-size: 12px;
+      color: #94a3b8;
+      background-color: #f8fafc;
+    }}
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="container">
+      <div class="header">
+        <div class="logo-badge">GABAY</div>
+        <div class="header-subtitle">Institutional Academic Administration</div>
+      </div>
+      <div class="content">
+        <h1>Registration Application Update</h1>
+        <p>Dear {safe_name},</p>
+        <p>
+          Thank you for applying for an account on GABAY LMS. After administrative review, we regret to inform you that your registration could not be approved at this time.
+        </p>
+
+        <div class="reason-box">
+          <div class="reason-label">Reason for Decision</div>
+          <div class="reason-text">{safe_reason}</div>
+        </div>
+
+        {reviewer_section}
+
+        <p style="font-size: 13px; color: #64748b; margin-top: 24px; margin-bottom: 0;">
+          If you have questions or need to provide corrected information, please reach out to your department chairperson or college administration office.
+        </p>
+      </div>
+      <div class="footer">
+        &copy; GABAY LMS &bull; Don Mariano Marcos Memorial State University<br>
+        Automated Institutional Notification &bull; Please do not reply to this email
+      </div>
+    </div>
+  </div>
+</body>
+</html>"""
 
 
+def send_rejection_email(
+    to_email: str,
+    recipient_name: str,
+    reason: str,
+    reviewer_name: Optional[str] = None,
+    reviewer_role: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Send registration rejection notification email with the specified reason via SMTP or simulate if unconfigured."""
+    settings = get_settings()
+
+    if not settings.smtp_user or not settings.smtp_password:
+        logger.info(
+            "SMTP credentials not configured. Simulating rejection email dispatch to %s (Reason: %s)",
+            to_email,
+            reason,
+        )
+        return {
+            "success": True,
+            "delivered": False,
+            "simulated": True,
+            "recipient": to_email,
+            "message": "Rejection email simulated (SMTP credentials not yet configured).",
+        }
+
+    html_content = render_rejection_email_html(
+        recipient_name=recipient_name,
+        reason=reason,
+        reviewer_name=reviewer_name,
+        reviewer_role=reviewer_role,
+    )
+    plain_content = (
+        f"Dear {recipient_name},\n\n"
+        "Thank you for applying for an account on GABAY LMS.\n"
+        "We regret to inform you that your registration could not be approved at this time.\n\n"
+        f"Reason for Decision:\n{reason}\n\n"
+        "If you have questions, please contact your department chairperson or college dean.\n\n"
+        "GABAY Institutional LMS"
+    )
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = "GABAY Registration Application Status Update"
+    msg["From"] = settings.smtp_from or settings.smtp_user
+    msg["To"] = to_email
+
+    msg.attach(MIMEText(plain_content, "plain", "utf-8"))
+    msg.attach(MIMEText(html_content, "html", "utf-8"))
+
+    try:
+        host = settings.smtp_host or "smtp.gmail.com"
+        port = settings.smtp_port or 465
+
+        if port == 465:
+            with smtplib.SMTP_SSL(host, port, timeout=15) as server:
+                server.login(settings.smtp_user, settings.smtp_password)
+                server.send_message(msg)
+        else:
+            with smtplib.SMTP(host, port, timeout=15) as server:
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+                server.login(settings.smtp_user, settings.smtp_password)
+                server.send_message(msg)
+
+        logger.info("Successfully sent rejection notification email to %s", to_email)
+        return {
+            "success": True,
+            "delivered": True,
+            "recipient": to_email,
+            "message": "Rejection notification email dispatched successfully.",
+        }
+    except Exception as exc:
+        logger.error("Failed to send rejection email to %s: %s", to_email, exc, exc_info=True)
+        return {
+            "success": False,
+            "delivered": False,
+            "error": str(exc),
+            "recipient": to_email,
+            "message": f"Failed to deliver rejection email: {exc}",
+        }

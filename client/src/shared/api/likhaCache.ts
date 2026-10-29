@@ -76,7 +76,10 @@ class LikhaCache {
         return data;
       })
       .catch((error: unknown) => {
-        this.failures.set(key, { until: Date.now() + LikhaCache.FAILURE_TTL_MS, error });
+        const status = (error as any)?.status;
+        if (status === 403 || status === 404 || status === undefined) {
+          this.failures.set(key, { until: Date.now() + LikhaCache.FAILURE_TTL_MS, error });
+        }
         throw error;
       })
       .finally(() => {

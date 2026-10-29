@@ -699,7 +699,7 @@ export const CreateEventPage: React.FC<CreateEventPageProps> = ({
                   Event date
                 </label>
                 <div className="relative">
-                  <Calendar className="w-4 h-4 text-muted-foreground absolute left-3.5 top-3.5" />
+                  <Calendar className="w-4 h-4 text-muted-foreground absolute left-3.5 top-3.5 pointer-events-none" />
                   <input
                     type="date"
                     required
@@ -716,7 +716,7 @@ export const CreateEventPage: React.FC<CreateEventPageProps> = ({
                     Start date & time
                   </label>
                   <div className="relative">
-                    <Clock className="w-4 h-4 text-muted-foreground absolute left-3.5 top-3.5" />
+                    <Clock className="w-4 h-4 text-muted-foreground absolute left-3.5 top-3.5 pointer-events-none" />
                     <input
                       type="datetime-local"
                       required
@@ -732,7 +732,7 @@ export const CreateEventPage: React.FC<CreateEventPageProps> = ({
                     End date & time
                   </label>
                   <div className="relative">
-                    <Clock className="w-4 h-4 text-muted-foreground absolute left-3.5 top-3.5" />
+                    <Clock className="w-4 h-4 text-muted-foreground absolute left-3.5 top-3.5 pointer-events-none" />
                     <input
                       type="datetime-local"
                       required

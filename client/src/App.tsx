@@ -14,6 +14,7 @@ import { AppSkeleton, ProfileSkeleton, PageSkeleton, AuthCardSkeleton } from './
 import { tabToPath, courseToPath, pathToTab } from './shared/config/routes';
 import { isProfileComplete } from './shared/utils/profileCompletion';
 import { isChairRole, canManageCourseContent } from './shared/utils/roles';
+import { setupDatePickerAutoOpen } from './shared/utils/datePickerAutoOpen';
 
 const DashboardPage = React.lazy(() => import('./features/dashboard').then(m => ({ default: m.DashboardPage })));
 const CoursesPage = React.lazy(() => import('./features/courses').then(m => ({ default: m.CoursesPage })));
@@ -362,6 +363,11 @@ export const AppShell: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // Global date picker auto-open: clicks anywhere on date inputs immediately display calendar
+  useEffect(() => {
+    return setupDatePickerAutoOpen();
+  }, []);
+
   const handleOpenSearch = React.useCallback(() => setSearchOpen(true), []);
   const handleOpenSidebar = React.useCallback(() => setSidebarOpen(true), []);
   const handleCloseSidebar = React.useCallback(() => setSidebarOpen(false), []);
@@ -496,6 +502,7 @@ export const AppContent: React.FC = () => {
         <Route path="/accounts/:userId/edit" element={<RequireAdmin><RouteWithNav element={(nav) => <EditAccountRoute nav={nav} />} /></RequireAdmin>} />
         <Route path="/page1" element={<RouteWithNav element={(nav) => <SyllabusCreatorPage onNavigateTab={nav.handleNavigateTab} />} />} />
         <Route path="/syllabus-creator" element={<RouteWithNav element={(nav) => <SyllabusCreatorPage onNavigateTab={nav.handleNavigateTab} />} />} />
+        <Route path="/syllabus-development" element={<RouteWithNav element={(nav) => <SyllabusCreatorPage onNavigateTab={nav.handleNavigateTab} />} />} />
         <Route path="/page2" element={<RouteWithNav element={(nav) => <EmptyPage title="Page 2" onNavigateTab={nav.handleNavigateTab} />} />} />
         <Route path="/page3" element={<RouteWithNav element={(nav) => <EmptyPage title="Page 3" onNavigateTab={nav.handleNavigateTab} />} />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

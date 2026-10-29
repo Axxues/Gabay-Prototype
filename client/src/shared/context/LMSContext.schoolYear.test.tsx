@@ -329,4 +329,42 @@ describe('School Year Management & Scoping State in LMSContext', () => {
     expect(activeYear?.year).toBe('2026-2027');
     expect(activeYear?.isActive).toBe(true);
   });
+
+  test('synchronizes active school year between Dean and Chairperson across college and department scoping', async () => {
+    let contextValues: any = null;
+    const Probe = () => {
+      contextValues = useLMS();
+      return null;
+    };
+
+    render(
+      <LMSProvider>
+        <Probe />
+      </LMSProvider>
+    );
+
+    // 1. Initial state has universal school years
+    await act(async () => {
+      await contextValues.addSchoolYear('2026-2027');
+      await contextValues.setBaselineSchoolYear('2026-2027');
+    });
+
+    // 2. Dean rolls over college col-ccs to 2026-2027
+    await act(async () => {
+      const res = await contextValues.setActiveSchoolYear('col-ccs', '2026-2027');
+      expect(res.success).toBe(true);
+    });
+
+    // 3. Dean checking col-ccs gets 2026-2027
+    const deanYear = contextValues.getActiveSchoolYearForCollege('col-ccs');
+    expect(deanYear?.year).toBe('2026-2027');
+
+    // 4. Chairperson checking via department ID (dept-cs) in that college gets the SAME 2026-2027
+    const chairYearByDept = contextValues.getActiveSchoolYearForCollege('dept-cs');
+    expect(chairYearByDept?.year).toBe('2026-2027');
+
+    // 5. Checking via college code CCS gets the SAME 2026-2027
+    const chairYearByCode = contextValues.getActiveSchoolYearForCollege('CCS');
+    expect(chairYearByCode?.year).toBe('2026-2027');
+  });
 });

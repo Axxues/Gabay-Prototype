@@ -24,7 +24,7 @@ import {
   buildActivityPayload as buildQuestionSetPayload,
   type QuestionSetValue
 } from './components/forms/QuestionSetFields';
-import { uploadFileToPublic } from '../../shared/utils/fileUploader';
+import { uploadFileToPublic, extractDirectusFileId } from '../../shared/utils/fileUploader';
 import { findMatchingSiblingCourses } from '../../shared/utils/crossSectionSync';
 import { CrossSectionPromptModal } from '../../shared/components/common/CrossSectionPromptModal';
 
@@ -106,8 +106,9 @@ export const CreateActivityPage: React.FC<CreateActivityPageProps> = ({
               if (saved.formattedSize && saved.formattedSize !== '0 B') {
                 size = saved.formattedSize;
               }
-              fileId = (saved as any).fileId || saved.id;
-              directus_files_id = (saved as any).directus_files_id;
+              directus_files_id = (saved as any).directus_files_id || (saved as any).file || extractDirectusFileId(url) || undefined;
+              fileId = directus_files_id || (saved as any).fileId || saved.id;
+
               if (targetCourseIds.length > 1) {
                 for (const siblingId of targetCourseIds) {
                   if (siblingId !== courseId) {
@@ -148,7 +149,11 @@ export const CreateActivityPage: React.FC<CreateActivityPageProps> = ({
               directus_files_id
             });
           } else {
-            processedAttachments.push(att);
+            const resolvedDirectusId = att.directus_files_id || extractDirectusFileId(att.url) || undefined;
+            processedAttachments.push({
+              ...att,
+              directus_files_id: resolvedDirectusId,
+            });
           }
         }
         formToSave = {

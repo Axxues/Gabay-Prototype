@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { sendActivationEmail, getEmailApiUrl } from './emailApi';
+import { sendActivationEmail, sendRejectionEmail, getEmailApiUrl } from './emailApi';
 
 describe('emailApi client', () => {
   const originalEnv = import.meta.env.VITE_RAG_API_URL;
@@ -75,6 +75,22 @@ describe('emailApi client', () => {
       expect(res.message).toBe('Internal server error');
     });
 
+    it('unwraps JSON detail error messages cleanly', async () => {
+      const fetchMock = vi.fn(async () => ({
+        ok: false,
+        text: async () => JSON.stringify({ detail: 'Service unavailable: RAG client authentication key is not configured.' }),
+      }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const res = await sendActivationEmail({
+        email: 'juan@dmmmsu.edu.ph',
+        activationUrl: 'http://localhost:5173/activate?token=test-token',
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.message).toBe('Service unavailable: RAG client authentication key is not configured.');
+    });
+
     it('attaches X-Gabay-Client-Key header when VITE_RAG_CLIENT_KEY is configured', async () => {
       import.meta.env.VITE_RAG_CLIENT_KEY = 'test-secret-key';
       const fetchMock = vi.fn(async () => ({
@@ -91,25 +107,6 @@ describe('emailApi client', () => {
       const [, init] = fetchMock.mock.calls[0] as unknown as [string, { headers: Record<string, string> }];
       expect(init.headers['X-Gabay-Client-Key']).toBe('test-secret-key');
       import.meta.env.VITE_RAG_CLIENT_KEY = '';
-    });
-  });
-
-  describe('verifyLeadershipCode', () => {
-    it('sends POST request to /api/auth/verify-leadership-code', async () => {
-      const { verifyLeadershipCode } = await import('./emailApi');
-      const fetchMock = vi.fn(async () => ({
-        ok: true,
-        json: async () => ({ success: true, message: 'Code confirmed' }),
-      }));
-      vi.stubGlobal('fetch', fetchMock);
-
-      const res = await verifyLeadershipCode('dean@dmmmsu.edu.ph', '123456');
-      expect(fetchMock).toHaveBeenCalledOnce();
-      const [url, init] = fetchMock.mock.calls[0] as unknown as [string, { method: string; body: string }];
-      expect(url).toBe('http://localhost:8000/api/auth/verify-leadership-code');
-      expect(init.method).toBe('POST');
-      expect(JSON.parse(init.body)).toEqual({ email: 'dean@dmmmsu.edu.ph', code: '123456' });
-      expect(res.success).toBe(true);
     });
   });
 
@@ -151,4 +148,55 @@ describe('emailApi client', () => {
       expect(res.sent).toBe(1);
     });
   });
+  describe('sendRejectionEmail', () => {
+    it('posts rejection payload with reason to /api/auth/send-rejection-email', async () => {
+      const fetchMock = vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          success: true,
+          delivered: true,
+          message: 'Rejection notification email dispatched successfully.',
+        }),
+      }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const res = await sendRejectionEmail({
+        email: 'applicant@student.dmmmsu.edu.ph',
+        recipientName: 'Juan Applicant',
+        reason: 'Identification document is unreadable.',
+        reviewerName: 'Dr. Charlie Marzan',
+        reviewerRole: 'College Dean',
+      });
+
+      expect(fetchMock).toHaveBeenCalledOnce();
+      const [url, init] = fetchMock.mock.calls[0] as unknown as [string, { method: string; headers: Record<string, string>; body: string }];
+      expect(url).toBe('http://localhost:8000/api/auth/send-rejection-email');
+      expect(init.method).toBe('POST');
+      const body = JSON.parse(init.body);
+      expect(body.email).toBe('applicant@student.dmmmsu.edu.ph');
+      expect(body.recipient_name).toBe('Juan Applicant');
+      expect(body.reason).toBe('Identification document is unreadable.');
+      expect(body.reviewer_name).toBe('Dr. Charlie Marzan');
+      expect(body.reviewer_role).toBe('College Dean');
+
+      expect(res.success).toBe(true);
+    });
+
+    it('unwraps JSON detail error messages cleanly on failure', async () => {
+      const fetchMock = vi.fn(async () => ({
+        ok: false,
+        text: async () => JSON.stringify({ detail: 'Failed to deliver rejection email: connection refused' }),
+      }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const res = await sendRejectionEmail({
+        email: 'applicant@student.dmmmsu.edu.ph',
+        reason: 'Invalid ID',
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.message).toBe('Failed to deliver rejection email: connection refused');
+    });
+  });
+
 });

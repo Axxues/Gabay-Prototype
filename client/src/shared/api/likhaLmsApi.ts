@@ -29,6 +29,26 @@ export interface LikhaUploadedFile {
   filesize?: number;
 }
 
+export function extractDirectusFileIdFromAttachment(att: any): string | null {
+  if (!att) return null;
+  if (att.directus_files_id) {
+    const fId = typeof att.directus_files_id === 'object' ? att.directus_files_id?.id : att.directus_files_id;
+    if (fId && typeof fId === 'string' && /^[0-9a-fA-F-]{36}$/.test(fId)) {
+      return fId;
+    }
+  }
+  const rawUrl = att.url || att.fileUrl || (typeof att === 'string' ? att : '');
+  const match = rawUrl ? String(rawUrl).match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i) : null;
+  if (match) return match[0];
+  if (att.file && typeof att.file === 'string' && /^[0-9a-fA-F-]{36}$/.test(att.file)) {
+    return att.file;
+  }
+  if (att.file && typeof att.file === 'object' && att.file.id) {
+    return String(att.file.id);
+  }
+  return null;
+}
+
 import { generateUuid } from '../utils/cryptoToken';
 import { likhaCache } from './likhaCache';
 
@@ -221,7 +241,7 @@ async function rawLikhaFetch<T = any>(
 function getPathTtl(path: string): number {
   if (path.includes('/items/courses')) return 60000;
   if (path.includes('/items/syllabi')) return 120000;
-  if (path.includes('/users')) return 300000;
+  if (path.includes('/users')) return 30000;
   if (path.includes('/items/calendar_events')) return 60000;
   if (path.includes('/notifications')) return 15000;
   if (path.includes('/items/colleges') || path.includes('/items/departments') || path.includes('/items/school_years')) return 120000;
@@ -417,11 +437,20 @@ export const likhaLmsApi = {
     },
 
     async login(email: string, password: string): Promise<{ token: string; user: any }> {
-      const res = await fetch(`${LIKHA_URL}/auth/login`, {
+      let res = await fetch(`${LIKHA_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password, mode: 'json' }),
       });
+      if (res.status === 502 || res.status === 503 || res.status === 504) {
+        // Transient backend gateway restart or socket reconnection
+        await new Promise(r => setTimeout(r, 800));
+        res = await fetch(`${LIKHA_URL}/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password, mode: 'json' }),
+        });
+      }
       if (!res.ok) {
         const err = new Error(`Likha authentication failed: ${res.status}`);
         (err as any).status = res.status;
@@ -648,7 +677,7 @@ export const likhaLmsApi = {
     async getCourseEnrollments(courseId?: string): Promise<any[]> {
       const query = courseId
         ? `filter%5Bcourse%5D%5B_eq%5D=${encodeURIComponent(courseId)}&fields=*,user.*,course.*`
-        : 'fields=*,user.*,course.*';
+        : 'fields=id,enrolled_at,user.id,user.first_name,user.last_name,course&limit=100';
       return likhaRequest<any[]>(`/items/Course_Enrollments?${query}`).catch(() => []);
     },
 
@@ -903,12 +932,38 @@ export const likhaLmsApi = {
       const isUpdate = Boolean(rootPayload.id);
       const quizId = rootPayload.id || generateUuid();
       const url = isUpdate ? `/items/quizzes/${encodeURIComponent(quizId)}` : '/items/quizzes';
+      const computedTotalPoints = typeof rootPayload.total_points === 'number'
+        ? rootPayload.total_points
+        : typeof rootPayload.totalPoints === 'number'
+          ? rootPayload.totalPoints
+          : Array.isArray(questions) && questions.length > 0
+            ? questions.reduce((sum: number, q: any) => sum + (Number(q.points) || 1), 0)
+            : undefined;
+
+      const payloadToSend = {
+        ...rootPayload,
+        id: quizId,
+        ...(computedTotalPoints !== undefined ? { total_points: computedTotalPoints } : {})
+      };
+
       const saved = await likhaRequest(url, {
         method: isUpdate ? 'PATCH' : 'POST',
-        body: JSON.stringify({ ...rootPayload, id: quizId }),
+        body: JSON.stringify(payloadToSend),
       });
 
       if (Array.isArray(questions) && questions.length > 0) {
+        if (isUpdate) {
+          try {
+            const existing = await likhaRequest(`/items/assessment_questions?filter[quiz_id][_eq]=${encodeURIComponent(quizId)}&fields=id`);
+            if (Array.isArray(existing) && existing.length > 0) {
+              await likhaRequest('/items/assessment_questions', {
+                method: 'DELETE',
+                body: JSON.stringify(existing.map((e: any) => e.id)),
+              });
+            }
+          } catch {}
+        }
+
         const questionsPayload = questions.map((q, idx) => ({
           id: q.id || `q-quiz-${quizId}-${idx}`,
           quiz_id: quizId,
@@ -941,12 +996,38 @@ export const likhaLmsApi = {
       const isUpdate = Boolean(rootPayload.id);
       const examId = rootPayload.id || generateUuid();
       const url = isUpdate ? `/items/exams/${encodeURIComponent(examId)}` : '/items/exams';
+      const computedTotalPoints = typeof rootPayload.total_points === 'number'
+        ? rootPayload.total_points
+        : typeof rootPayload.totalPoints === 'number'
+          ? rootPayload.totalPoints
+          : Array.isArray(questions) && questions.length > 0
+            ? questions.reduce((sum: number, q: any) => sum + (Number(q.points) || 1), 0)
+            : undefined;
+
+      const payloadToSend = {
+        ...rootPayload,
+        id: examId,
+        ...(computedTotalPoints !== undefined ? { total_points: computedTotalPoints } : {})
+      };
+
       const saved = await likhaRequest(url, {
         method: isUpdate ? 'PATCH' : 'POST',
-        body: JSON.stringify({ ...rootPayload, id: examId }),
+        body: JSON.stringify(payloadToSend),
       });
 
       if (Array.isArray(questions) && questions.length > 0) {
+        if (isUpdate) {
+          try {
+            const existing = await likhaRequest(`/items/assessment_questions?filter[exam_id][_eq]=${encodeURIComponent(examId)}&fields=id`);
+            if (Array.isArray(existing) && existing.length > 0) {
+              await likhaRequest('/items/assessment_questions', {
+                method: 'DELETE',
+                body: JSON.stringify(existing.map((e: any) => e.id)),
+              });
+            }
+          } catch {}
+        }
+
         const questionsPayload = questions.map((q, idx) => ({
           id: q.id || `q-exam-${examId}-${idx}`,
           exam_id: examId,
@@ -976,7 +1057,7 @@ export const likhaLmsApi = {
   submissions: {
     async getSubmissions(assessmentId: string, type: 'activity' | 'quiz' | 'exam' = 'activity'): Promise<any[]> {
       const field = type === 'quiz' ? 'quiz_id' : type === 'exam' ? 'exam_id' : 'activity_id';
-      const q = `/items/submissions?filter[${field}][_eq]=${encodeURIComponent(assessmentId)}&fields=*,answers.*`;
+      const q = `/items/submissions?filter[${field}][_eq]=${encodeURIComponent(assessmentId)}&fields=*,file.*,answers.*`;
       return likhaRequest(q);
     },
 
@@ -1161,15 +1242,8 @@ export const likhaLmsApi = {
       const attachmentsPayload = Array.isArray(data.attachments)
         ? data.attachments
             .map((att: any) => {
-              if (!att) return null;
-              if (att.directus_files_id) {
-                const fId = typeof att.directus_files_id === 'object' ? att.directus_files_id?.id : att.directus_files_id;
-                return fId ? { directus_files_id: String(fId) } : null;
-              }
-              const rawUrl = att.url || att.fileUrl || (typeof att === 'string' ? att : '');
-              const match = rawUrl ? String(rawUrl).match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i) : null;
-              const fId = att.fileId || att.file_id || att.file || (match ? match[0] : null);
-              return fId ? { directus_files_id: String(fId) } : null;
+              const fId = extractDirectusFileIdFromAttachment(att);
+              return fId ? { directus_files_id: fId } : null;
             })
             .filter((x: any): x is { directus_files_id: string } => Boolean(x))
         : undefined;
@@ -1201,15 +1275,8 @@ export const likhaLmsApi = {
       if (Array.isArray(patch.attachments)) {
         transformedPatch.attachments = patch.attachments
           .map((att: any) => {
-            if (!att) return null;
-            if (att.directus_files_id) {
-              const fId = typeof att.directus_files_id === 'object' ? att.directus_files_id?.id : att.directus_files_id;
-              return fId ? { directus_files_id: String(fId) } : null;
-            }
-            const rawUrl = att.url || att.fileUrl || (typeof att === 'string' ? att : '');
-            const match = rawUrl ? String(rawUrl).match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i) : null;
-            const fId = att.fileId || att.file_id || att.file || (match ? match[0] : null);
-            return fId ? { directus_files_id: String(fId) } : null;
+            const fId = extractDirectusFileIdFromAttachment(att);
+            return fId ? { directus_files_id: fId } : null;
           })
           .filter((x: any): x is { directus_files_id: string } => Boolean(x));
       }
@@ -1817,12 +1884,82 @@ export const likhaLmsApi = {
     const url = isUpdate
       ? `/items/activities/${encodeURIComponent(actId)}`
       : `/items/activities`;
-    const saved = await likhaRequest(url, {
-      method: isUpdate ? 'PATCH' : 'POST',
-      body: JSON.stringify({ ...rootPayload, id: actId }),
-    });
+
+    const totalPoints = typeof rootPayload.total_points === 'number'
+      ? rootPayload.total_points
+      : typeof rootPayload.points_possible === 'number'
+        ? rootPayload.points_possible
+        : typeof rootPayload.pointsPossible === 'number'
+          ? rootPayload.pointsPossible
+          : Array.isArray(questions) && questions.length > 0
+            ? questions.reduce((sum: number, q: any) => sum + (Number(q.points) || 10), 0)
+            : undefined;
+
+    const payloadToSend: Record<string, any> = {
+      ...rootPayload,
+      id: actId,
+      ...(totalPoints !== undefined ? { total_points: totalPoints, points_possible: totalPoints } : {}),
+    };
+
+    if (Array.isArray(rootPayload.attachments)) {
+      const fileJunctions = rootPayload.attachments
+        .map((att: any) => {
+          const directusId = extractDirectusFileIdFromAttachment(att);
+          return directusId ? { directus_files_id: directusId } : null;
+        })
+        .filter((x: any): x is { directus_files_id: string } => Boolean(x));
+
+      if (fileJunctions.length > 0) {
+        payloadToSend.attachments = fileJunctions;
+      } else {
+        delete payloadToSend.attachments;
+      }
+      payloadToSend.metadata = {
+        ...(rootPayload.metadata || {}),
+        attachments: rootPayload.attachments,
+      };
+      if (!payloadToSend.file_name && rootPayload.attachments[0]?.name) {
+        payloadToSend.file_name = rootPayload.attachments[0].name;
+      }
+      if (!payloadToSend.file_url && rootPayload.attachments[0]?.url) {
+        payloadToSend.file_url = rootPayload.attachments[0].url;
+      }
+      if (!payloadToSend.file_size && rootPayload.attachments[0]?.size) {
+        payloadToSend.file_size = rootPayload.attachments[0].size;
+      }
+    }
+
+    let saved: any;
+    try {
+      saved = await likhaRequest(url, {
+        method: isUpdate ? 'PATCH' : 'POST',
+        body: JSON.stringify(payloadToSend),
+      });
+    } catch (err: any) {
+      if (payloadToSend.attachments) {
+        const { attachments, ...stripped } = payloadToSend;
+        saved = await likhaRequest(url, {
+          method: isUpdate ? 'PATCH' : 'POST',
+          body: JSON.stringify(stripped),
+        });
+      } else {
+        throw err;
+      }
+    }
 
     if (Array.isArray(questions) && questions.length > 0) {
+      if (isUpdate) {
+        try {
+          const existing = await likhaRequest(`/items/assessment_questions?filter[activity_id][_eq]=${encodeURIComponent(actId)}&fields=id`);
+          if (Array.isArray(existing) && existing.length > 0) {
+            await likhaRequest('/items/assessment_questions', {
+              method: 'DELETE',
+              body: JSON.stringify(existing.map((e: any) => e.id)),
+            });
+          }
+        } catch {}
+      }
+
       const questionsPayload = questions.map((q, idx) => ({
         id: q.id || `q-${actId}-${idx}`,
         activity_id: actId,
@@ -1840,6 +1977,18 @@ export const likhaLmsApi = {
     }
 
     if (Array.isArray(rubric) && rubric.length > 0) {
+      if (isUpdate) {
+        try {
+          const existing = await likhaRequest(`/items/rubric_criteria?filter[activity_id][_eq]=${encodeURIComponent(actId)}&fields=id`);
+          if (Array.isArray(existing) && existing.length > 0) {
+            await likhaRequest('/items/rubric_criteria', {
+              method: 'DELETE',
+              body: JSON.stringify(existing.map((e: any) => e.id)),
+            });
+          }
+        } catch {}
+      }
+
       const rubricPayload = rubric.map((r, idx) => ({
         id: r.id || `rub-${actId}-${idx}`,
         activity_id: actId,
@@ -1854,7 +2003,7 @@ export const likhaLmsApi = {
       }).catch(() => {});
     }
 
-    return { ...saved, questions: questions || [], rubric: rubric || [] };
+    return { ...saved, questions: questions || [], rubric: rubric || [], attachments: rootPayload.attachments || saved.attachments };
   },
 
   async submitActivity(submission: any): Promise<any> {

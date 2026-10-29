@@ -7,6 +7,8 @@ export interface College {
   name: string;
   code: string;
   deanId?: string;
+  activeSchoolYear?: string;
+  activeSemester?: AcademicSemester;
 }
 
 export interface Program {
@@ -588,6 +590,8 @@ export interface CourseFile {
   sourceArea?: FileSourceArea;
   sourceId?: string;
   fileId?: string;
+  directus_files_id?: string;
+  file?: any;
 }
 
 export interface CourseFolder {
@@ -599,13 +603,15 @@ export interface CourseFolder {
   autoKey?: string;
 }
 
-export type FileSourceArea = 'announcements' | 'modules' | 'syllabus' | 'activities';
+export type FileSourceArea = 'announcements' | 'modules' | 'syllabus' | 'activities' | 'assignments' | 'quizzes' | 'projects' | 'presentations';
 
 export interface FileAreaInput {
   courseId: string;
   area: FileSourceArea;
   sourceId?: string;
   fileId?: string;
+  directus_files_id?: string;
+  file?: any;
   moduleId?: string;
   moduleTitle?: string;
   name: string;

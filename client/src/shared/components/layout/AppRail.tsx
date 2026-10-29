@@ -40,7 +40,19 @@ const AppRailComponent: React.FC<{ currentTab: string; onNavigateTab: (t: string
   const effectiveCollegeId =
     activeUser?.collegeId ||
     (isChair
-      ? (departments || []).find(d => d.id === activeUser?.department || d.name === activeUser?.department || d.id === activeUser?.program || d.name === activeUser?.program)?.collegeId || 'col-ccs'
+      ? (departments || []).find(d =>
+          d.chairpersonId === activeUser?.id ||
+          d.id === activeUser?.department ||
+          d.name?.toLowerCase() === activeUser?.department?.toLowerCase() ||
+          d.code?.toLowerCase() === activeUser?.department?.toLowerCase() ||
+          d.id === activeUser?.program ||
+          d.name?.toLowerCase() === activeUser?.program?.toLowerCase() ||
+          d.code?.toLowerCase() === activeUser?.program?.toLowerCase() ||
+          (activeUser?.department && (
+            d.name?.toLowerCase().includes(activeUser.department.toLowerCase()) ||
+            activeUser.department.toLowerCase().includes(d.name?.toLowerCase())
+          ))
+        )?.collegeId || 'col-ccs'
       : undefined);
   const baselineYear = getBaselineSchoolYear?.()?.year;
   const collegeYear = effectiveCollegeId ? getActiveSchoolYearForCollege?.(effectiveCollegeId)?.year : undefined;
