@@ -397,7 +397,7 @@ export const AppShell: React.FC = () => {
           <div className={
             currentTab === 'courses' || currentTab === 'inbox' || currentTab === 'gabay-rag'
               ? "flex h-full min-h-0 w-full min-w-0 flex-1 flex-col"
-              : currentTab === 'assigned-courses' || currentTab === 'chair-sheet'
+              : currentTab === 'assigned-courses' || currentTab === 'chair-sheet' || currentTab === 'page1'
               ? "flex min-h-full w-full min-w-0 flex-1 flex-col p-5 sm:p-8 lg:p-10"
               : currentTab === 'profile' || currentTab === 'account-profile' || currentTab === 'create-leadership'
               ? "flex min-h-full w-full min-w-0 flex-1 flex-col p-5 sm:p-8 lg:p-10"

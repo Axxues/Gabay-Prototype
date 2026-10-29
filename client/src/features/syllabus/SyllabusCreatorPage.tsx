@@ -159,7 +159,7 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
     const record = getRecord(previewingGroup.id);
     const previewData = record?.syllabusData || createBaselineSyllabus();
     return (
-      <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-4">
+      <div className="w-full space-y-4">
         <button
           onClick={() => setPreviewingGroup(null)}
           className="px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-xs font-semibold"
@@ -177,7 +177,7 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
   // If Studio is actively open for an assigned group
   if (activeGroupId && activeGroup) {
     return (
-      <div className="flex-1 min-h-screen p-4 md:p-8 max-w-7xl mx-auto space-y-6 animate-fade-in pb-16">
+      <div className="flex-1 w-full space-y-6 animate-fade-in pb-16">
         {/* Studio Navigation Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-border">
           <div>
@@ -259,7 +259,7 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
   }
 
   return (
-    <div className="flex-1 min-h-screen p-4 md:p-8 max-w-7xl mx-auto space-y-6 animate-fade-in pb-16">
+    <div className="flex-1 w-full space-y-6 animate-fade-in pb-16">
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-border/80">
         <div>
@@ -368,7 +368,7 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {myAssignedGroups.map(group => {
                 const isLocked = group.status === 'locked';
 
@@ -471,7 +471,7 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
             </span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {myEvaluationGroups.map(group => {
               const myReview = group.evaluators.find(e => e.evaluatorId === activeUser?.id);
               const canEvaluate = group.status === 'under_evaluation' && myReview?.status === 'pending';
