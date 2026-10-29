@@ -1,4 +1,4 @@
 export { SyllabusView } from './SyllabusView';
 export { SyllabusRevisionBar } from './components/SyllabusRevisionBar';
 export { SyllabusCreatorPage, SyllabusCreatorPage as SyllabusDevelopmentPage } from './SyllabusCreatorPage';
-
+export * from './types/lifecycle';
