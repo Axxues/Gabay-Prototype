@@ -5,3 +5,4 @@ export * from './types/lifecycle';
 export { useSyllabusLifecycle, makeSyllabusGroupId } from './hooks/useSyllabusLifecycle';
 export { useSyllabusCollaboration } from './hooks/useSyllabusCollaboration';
 export { DepartmentSyllabusTable } from './components/governance/DepartmentSyllabusTable';
+export { AssignEvaluatorsModal } from './components/governance/AssignEvaluatorsModal';
