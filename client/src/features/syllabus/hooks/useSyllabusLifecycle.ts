@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import type { Course } from '../../../shared/types/lms';
 import type { OfficialSyllabusData } from '../../../shared/data/syllabusData';
+import { normalizeAcademicSemester } from '../../../shared/utils/academicSemester';
 import { createBaselineSyllabus } from './useSyllabusDraftsStorage';
 import type {
   SyllabusGroup,
@@ -10,11 +11,45 @@ import type {
 
 const STORAGE_KEY = 'gabay_syllabus_lifecycle_records';
 
-export function makeSyllabusGroupId(course: Pick<Course, 'code' | 'title' | 'schoolYear' | 'semester'>): string {
-  const code = (course.code || 'UNKNOWN').trim().toUpperCase().replace(/\s+/g, '-');
-  const sy = (course.schoolYear || 'CURRENT').trim().replace(/\s+/g, '-');
-  const sem = (course.semester || 'TERM').trim().toUpperCase().replace(/\s+/g, '-');
-  return `SYL-${code}-${sy}-${sem}`;
+export function normalizeCourseCode(raw?: string | null): string {
+  if (!raw) return 'UNKNOWN';
+  return raw
+    .trim()
+    .toUpperCase()
+    .replace(/[\s\-_]+/g, '-')
+    .replace(/[^A-Z0-9-]/g, '');
+}
+
+export function makeSyllabusGroupId(course: Pick<Course, 'code' | 'title' | 'schoolYear' | 'semester'> & { term?: string }): string {
+  const code = normalizeCourseCode(course.code || course.title);
+  const sem = normalizeAcademicSemester(course.semester || (course as any)?.term).toUpperCase();
+  return `SYL-${code}-${sem}`;
+}
+
+function findMatchingRecord(
+  records: Record<string, SyllabusDevelopmentRecord>,
+  groupId: string,
+  courseCode?: string,
+  semester?: string
+): SyllabusDevelopmentRecord | undefined {
+  if (records[groupId]) return records[groupId];
+
+  const targetCode = normalizeCourseCode(courseCode || groupId.replace(/^SYL-/, '').replace(/-[^-]+$/, ''));
+  const targetSem = normalizeAcademicSemester(semester || groupId.split('-').pop());
+
+  const directMatch = Object.values(records).find(r => r.id === groupId);
+  if (directMatch) return directMatch;
+
+  for (const [key, rec] of Object.entries(records)) {
+    const rCode = normalizeCourseCode(rec.courseCode || key.replace(/^SYL-/, '').replace(/-[^-]+$/, ''));
+    const rSem = normalizeAcademicSemester(rec.semester || key.split('-').pop());
+
+    if (rCode === targetCode && rSem === targetSem) {
+      return rec;
+    }
+  }
+
+  return undefined;
 }
 
 export function useSyllabusLifecycle(courses: Course[] = [], userCollegeId?: string) {
@@ -66,13 +101,37 @@ export function useSyllabusLifecycle(courses: Course[] = [], userCollegeId?: str
     for (const c of relevantCourses) {
       const gId = makeSyllabusGroupId(c);
       let g = groupMap.get(gId);
+
+      // Check if any existing group matches this course by code & semester or title & semester
       if (!g) {
+        for (const existing of groupMap.values()) {
+          const codesMatch =
+            Boolean(c.code && existing.courseCode &&
+            normalizeCourseCode(c.code) === normalizeCourseCode(existing.courseCode));
+          const titlesMatch =
+            Boolean(c.title && existing.courseTitle &&
+            c.title.trim().toLowerCase() === existing.courseTitle.trim().toLowerCase());
+          const semsMatch =
+            normalizeAcademicSemester(c.semester || c.term) === normalizeAcademicSemester(existing.semester);
+
+          if ((codesMatch || titlesMatch) && semsMatch) {
+            g = existing;
+            break;
+          }
+        }
+      }
+
+      if (!g) {
+        const canonicalCode = (c.code || '').trim() || (c.title || '').trim();
+        const cleanSem = normalizeAcademicSemester(c.semester || c.term);
+        const sy = c.schoolYear || c.term?.match(/\b\d{4}[-–]\d{4}\b/)?.[0] || '2026-2027';
+
         g = {
           id: gId,
-          courseCode: c.code || '',
-          courseTitle: c.title || '',
-          schoolYear: c.schoolYear || '2026-2027',
-          semester: c.semester || 'First',
+          courseCode: canonicalCode,
+          courseTitle: (c.title || '').trim() || canonicalCode,
+          schoolYear: sy,
+          semester: cleanSem,
           collegeId: c.collegeId || userCollegeId || '',
           departmentId: c.departmentId,
           courseIds: [],
@@ -80,7 +139,22 @@ export function useSyllabusLifecycle(courses: Course[] = [], userCollegeId?: str
           instructorNames: [],
           sections: []
         };
-        groupMap.set(gId, g);
+        groupMap.set(g.id, g);
+      } else {
+        // Upgrade group fields if this course has better/more specific information
+        const incomingSy = c.schoolYear || c.term?.match(/\b\d{4}[-–]\d{4}\b/)?.[0];
+        if (incomingSy && (!g.schoolYear || g.schoolYear === 'CURRENT' || incomingSy > g.schoolYear)) {
+          g.schoolYear = incomingSy;
+        }
+        if (c.title && (!g.courseTitle || g.courseTitle.length < c.title.trim().length)) {
+          g.courseTitle = c.title.trim();
+        }
+        if (c.departmentId && !g.departmentId) {
+          g.departmentId = c.departmentId;
+        }
+        if (c.collegeId && !g.collegeId) {
+          g.collegeId = c.collegeId;
+        }
       }
 
       if (c.id && !g.courseIds.includes(c.id)) {
@@ -97,8 +171,13 @@ export function useSyllabusLifecycle(courses: Course[] = [], userCollegeId?: str
       }
     }
 
+    // Natural sort sections for each group (e.g. 4-A, 4-B, 4-E, 4-F)
+    for (const g of groupMap.values()) {
+      g.sections.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+    }
+
     return Array.from(groupMap.values()).map(g => {
-      const existingRecord = records[g.id];
+      const existingRecord = findMatchingRecord(records, g.id, g.courseCode, g.semester);
       const initialAgreements: Record<string, boolean> = {};
       for (const instId of g.instructorIds) {
         initialAgreements[instId] = false;
@@ -132,6 +211,27 @@ export function useSyllabusLifecycle(courses: Course[] = [], userCollegeId?: str
       const next = { ...prev };
 
       for (const g of groups) {
+        let existing = next[g.id];
+        if (!existing) {
+          // Check for legacy record to migrate forward
+          const legacy = findMatchingRecord(next, g.id, g.courseCode, g.semester);
+          if (legacy) {
+            existing = {
+              ...legacy,
+              id: g.id,
+              courseCode: g.courseCode,
+              courseTitle: g.courseTitle,
+              schoolYear: g.schoolYear,
+              semester: g.semester,
+              courseIds: g.courseIds,
+              instructorIds: g.instructorIds,
+              sections: g.sections
+            };
+            next[g.id] = existing;
+            changed = true;
+          }
+        }
+
         if (!next[g.id]) {
           const initialAgreements: Record<string, boolean> = {};
           for (const instId of g.instructorIds) {
@@ -155,6 +255,29 @@ export function useSyllabusLifecycle(courses: Course[] = [], userCollegeId?: str
             updatedAt: new Date().toISOString()
           };
           changed = true;
+        } else {
+          // Merge newly added course sections / instructors into the existing record
+          const record = next[g.id];
+          const hasNewSections = g.sections.some(s => !record.sections?.includes(s));
+          const hasNewInstructors = g.instructorIds.some(i => !record.instructorIds?.includes(i));
+          const hasNewCourseIds = g.courseIds.some(cId => !record.courseIds?.includes(cId));
+
+          if (hasNewSections || hasNewInstructors || hasNewCourseIds) {
+            const updatedAgreements = { ...(record.submissionAgreements || {}) };
+            for (const instId of g.instructorIds) {
+              if (updatedAgreements[instId] === undefined) {
+                updatedAgreements[instId] = false;
+              }
+            }
+            next[g.id] = {
+              ...record,
+              courseIds: Array.from(new Set([...(record.courseIds || []), ...g.courseIds])),
+              instructorIds: Array.from(new Set([...(record.instructorIds || []), ...g.instructorIds])),
+              sections: Array.from(new Set([...(record.sections || []), ...g.sections])),
+              submissionAgreements: updatedAgreements
+            };
+            changed = true;
+          }
         }
       }
 
@@ -163,7 +286,7 @@ export function useSyllabusLifecycle(courses: Course[] = [], userCollegeId?: str
   }, [groups, updateRecords]);
 
   const getRecord = useCallback((groupId: string): SyllabusDevelopmentRecord | undefined => {
-    return records[groupId];
+    return findMatchingRecord(records, groupId);
   }, [records]);
 
   // Chair releases courses for development

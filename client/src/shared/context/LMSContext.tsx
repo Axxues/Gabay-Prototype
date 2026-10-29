@@ -1830,7 +1830,7 @@ export const normalizeCourse = (raw: any): Course => {
     collegeId: raw?.college_id || raw?.collegeId || undefined,
     programId: raw?.program_id || raw?.programId || undefined,
     schoolYear: raw?.schoolYear || raw?.school_year || raw?.term?.match(/\b\d{4}-\d{4}\b/)?.[0] || undefined,
-    semester: raw?.semester || undefined,
+    semester: raw?.semester || (raw?.term ? normalizeAcademicSemester(raw.term) : undefined),
   };
 };
 
@@ -4174,7 +4174,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             : undefined) ||
           getActiveSchoolYearForCollege('col-ccs')?.year ||
           '2025-2026',
-        semester: courseData.semester || (row as any)?.semester || undefined,
+        semester: courseData.semester || (row as any)?.semester || (courseData.term ? normalizeAcademicSemester(courseData.term) : undefined),
         department: (row as any)?.department || courseData.department || undefined,
         departmentId: (row as any)?.department_id || (row as any)?.departmentId || courseData.departmentId || undefined,
         collegeId:

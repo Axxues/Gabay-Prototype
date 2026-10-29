@@ -177,4 +177,93 @@ describe('useSyllabusLifecycle', () => {
     expect(result.current.getRecord(cspc104.id)?.status).toBe('approved');
     expect(onPropagate).toHaveBeenCalledWith(cspc104.courseIds, expect.anything());
   });
+
+  it('unifies course sections created across different dates and metadata formats into a single syllabus group', () => {
+    // Simulates the exact user problem:
+    // Sections 4-B, 4-A, 4-F created via Chair-Sheet (SY 2026-2027, semester 'First')
+    // Section 4-E created on a separate date manually (SY undefined or '2025-2026', term 'First Term', semester undefined)
+    const heterogeneousCourses = [
+      {
+        id: 'c-4b',
+        code: 'CSPC 112',
+        title: 'Software Engineering 2',
+        section: '4-B',
+        instructorId: 'u-elena',
+        instructorName: 'Elena Reyes Santos',
+        schoolYear: '2026-2027',
+        semester: 'First',
+        term: '1st Sem AY 2026-2027',
+        collegeId: 'col-ccs'
+      },
+      {
+        id: 'c-4a',
+        code: 'CSPC 112',
+        title: 'Software Engineering 2',
+        section: '4-A',
+        instructorId: 'u-elena',
+        instructorName: 'Elena Reyes Santos',
+        schoolYear: '2026-2027',
+        semester: 'First',
+        term: '1st Sem AY 2026-2027',
+        collegeId: 'col-ccs'
+      },
+      {
+        id: 'c-4f',
+        code: 'CSPC-112', // slight hyphen variation
+        title: 'Software Engineering 2',
+        section: '4-F',
+        instructorId: 'u-raymund',
+        instructorName: 'Raymund Dilan',
+        schoolYear: '2026-2027',
+        semester: 'First',
+        term: '1st Sem AY 2026-2027',
+        collegeId: 'col-ccs'
+      },
+      {
+        id: 'c-4e',
+        code: 'CSPC 112',
+        title: 'Software Engineering 2',
+        section: '4-E',
+        instructorId: 'u-reymund',
+        instructorName: 'Reymund Ezekiel Dilan',
+        schoolYear: '2025-2026', // older baseline year or separate date creation
+        semester: undefined, // omitted semester from manual course shell
+        term: 'First Term',
+        collegeId: 'col-ccs'
+      }
+    ];
+
+    const { result } = renderHook(() => useSyllabusLifecycle(heterogeneousCourses as any, 'col-ccs'));
+
+    // MUST aggregate into exactly 1 syllabus group for CSPC 112
+    expect(result.current.groups).toHaveLength(1);
+    const unifiedGroup = result.current.groups[0];
+
+    expect(unifiedGroup.courseCode).toBe('CSPC 112');
+    expect(unifiedGroup.courseTitle).toBe('Software Engineering 2');
+    // All 4 sections natural-sorted
+    expect(unifiedGroup.sections).toEqual(['4-A', '4-B', '4-E', '4-F']);
+    // All course IDs unified
+    expect(unifiedGroup.courseIds).toEqual(['c-4b', 'c-4a', 'c-4f', 'c-4e']);
+    // All 3 instructors included
+    expect(unifiedGroup.instructorIds).toEqual(['u-elena', 'u-raymund', 'u-reymund']);
+    expect(unifiedGroup.instructorNames).toEqual([
+      'Elena Reyes Santos',
+      'Raymund Dilan',
+      'Reymund Ezekiel Dilan'
+    ]);
+    // Resolved latest school year
+    expect(unifiedGroup.schoolYear).toBe('2026-2027');
+    expect(unifiedGroup.semester).toBe('First');
+
+    // Releasing unlocks the unified group once for all sections and faculty
+    act(() => {
+      result.current.releaseCourses([unifiedGroup.id], 'chair-ccs');
+    });
+
+    const record = result.current.getRecord(unifiedGroup.id);
+    expect(record?.status).toBe('in_development');
+    expect(record?.sections).toEqual(['4-A', '4-B', '4-E', '4-F']);
+    expect(record?.instructorIds).toEqual(['u-elena', 'u-raymund', 'u-reymund']);
+  });
 });

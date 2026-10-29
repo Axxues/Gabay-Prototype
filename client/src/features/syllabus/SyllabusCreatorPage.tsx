@@ -57,8 +57,12 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
   // Faculty Assigned Courses (Filtered to current user)
   const myAssignedGroups = useMemo(() => {
     if (!activeUser?.id) return [];
-    return groups.filter(g => g.instructorIds.includes(activeUser.id!));
-  }, [groups, activeUser?.id]);
+    return groups.filter(
+      g =>
+        g.instructorIds.includes(activeUser.id!) ||
+        (activeUser.name && g.instructorNames.includes(activeUser.name))
+    );
+  }, [groups, activeUser?.id, activeUser?.name]);
 
   // Active view tab (Personal Sandbox is removed; authoring is strictly permitted through approved courses)
   const [activeTab, setActiveTab] = useState<'governance' | 'my-courses' | 'evaluations'>(() => {
@@ -122,17 +126,28 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
         prerequisite: '',
         description: (matchedCourse as any)?.description || (matchedCourse as any)?.syllabus?.courseInfo?.description || `${grp.courseCode} – ${grp.courseTitle}`
       },
-      facultyMembers: grp.instructorNames.map((name, idx) => ({
-        name,
-        sections: [
-          {
-            section: grp.sections[idx] || '',
-            schedule: '',
-            room: ''
-          }
-        ],
-        consultation: ''
-      }))
+      facultyMembers: grp.instructorNames.map(name => {
+        const instCourses = coursesList.filter(
+          c => grp.courseIds.includes(c.id) && (c.instructorName === name || c.instructorId === grp.instructorIds[grp.instructorNames.indexOf(name)])
+        );
+        const assignedSections = instCourses.map(c => c.section).filter(Boolean);
+        const uniqueSections = [...new Set(assignedSections)];
+        const sectionsData = uniqueSections.length > 0
+          ? uniqueSections.map(sec => ({
+              section: sec,
+              schedule: instCourses.find(c => c.section === sec)?.schedule || '',
+              room: instCourses.find(c => c.section === sec)?.room || ''
+            }))
+          : grp.sections.length > 0
+            ? [{ section: grp.sections.join(', '), schedule: '', room: '' }]
+            : [{ section: '', schedule: '', room: '' }];
+
+        return {
+          name,
+          sections: sectionsData,
+          consultation: ''
+        };
+      })
     });
   };
 
@@ -144,14 +159,17 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
     if (!activeGroup) return [];
     return activeGroup.instructorIds.map((id, index) => {
       const name = activeGroup.instructorNames[index] || 'Faculty Member';
-      const section = activeGroup.sections[index] || '';
+      const instCourses = coursesList.filter(
+        c => activeGroup.courseIds.includes(c.id) && (c.instructorId === id || c.instructorName === name)
+      );
+      const sections = [...new Set(instCourses.map(c => c.section).filter(Boolean))].join(', ');
       return {
         id,
-        name: section ? `${name} (${section})` : name,
+        name: sections ? `${name} (${sections})` : name,
         hasAgreed: Boolean(activeRecord?.submissionAgreements?.[id])
       };
     });
-  }, [activeGroup, activeRecord]);
+  }, [activeGroup, activeRecord, coursesList]);
 
   const allCoInstructorsAgreed =
     coInstructorAgreements.length > 0 && coInstructorAgreements.every(i => i.hasAgreed);

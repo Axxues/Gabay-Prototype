@@ -6,6 +6,7 @@ import { UploadProgress } from '../../shared/components/common/UploadProgress';
 import { UserAvatar } from '../../shared/components/common/UserAvatar';
 import { getAcademicTermOptions, getDefaultAcademicTerm } from '../../shared/utils/academicTerms';
 import { normalizeProgramName } from '../../shared/data/collegesData';
+import { normalizeAcademicSemester } from '../../shared/utils/academicSemester';
 import {
   ArrowLeft,
   BookOpen,
@@ -304,6 +305,7 @@ export const CreateCoursePage: React.FC<CreateCoursePageProps> = ({
         instructorId: activeUser.id,
         instructorName: activeUser.name,
         term: courseTerm,
+        semester: normalizeAcademicSemester(courseTerm),
         schoolYear: courseSchoolYear.trim() || defaultSchoolYear,
         collegeId: userCollegeId,
         department: activeUser.department,
