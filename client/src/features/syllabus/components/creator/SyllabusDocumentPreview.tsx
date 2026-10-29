@@ -3,16 +3,21 @@ import type { OfficialSyllabusData } from '../../../../shared/data/syllabusData'
 import { Printer } from 'lucide-react';
 
 interface SyllabusDocumentPreviewProps {
-  syllabus: OfficialSyllabusData;
+  syllabus?: OfficialSyllabusData;
+  data?: OfficialSyllabusData;
   onPrint?: () => void;
+  onBack?: () => void;
   className?: string;
 }
 
 export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = ({
   syllabus,
+  data,
   onPrint,
+  onBack: _onBack,
   className = ''
 }) => {
+  const activeData = data || syllabus || ({} as OfficialSyllabusData);
   const {
     institution = {
       university: 'Don Mariano Marcos Memorial State University',
@@ -33,7 +38,7 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
     courseMap = [],
     references = [],
     signatories
-  } = syllabus;
+  } = activeData;
 
   const handlePrint = () => {
     if (onPrint) {

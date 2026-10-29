@@ -9,6 +9,7 @@ import { Step5CourseMap } from './steps/Step5CourseMap';
 import { Step6GradingPolicies } from './steps/Step6GradingPolicies';
 import { Step7ReviewSignatories } from './steps/Step7ReviewSignatories';
 import { SyllabusDocumentPreview } from './SyllabusDocumentPreview';
+import type { CoInstructorAgreementItem } from './CoInstructorSubmissionPanel';
 import {
   ArrowLeft,
   ArrowRight,
@@ -18,18 +19,34 @@ import {
 } from 'lucide-react';
 
 interface SyllabusWizardProps {
-  syllabusData: OfficialSyllabusData;
+  data?: OfficialSyllabusData;
+  syllabusData?: OfficialSyllabusData;
   onChange: (updated: OfficialSyllabusData) => void;
-  onAttachCourse: () => void;
+  onSave?: () => void;
+  onAttachCourse?: () => void;
+  onAttachToCourse?: () => void;
+  coInstructors?: CoInstructorAgreementItem[];
+  currentUserId?: string;
+  allAgreed?: boolean;
+  onAgreeToSubmit?: () => void;
 }
 
 export const SyllabusWizard: React.FC<SyllabusWizardProps> = ({
-  syllabusData,
+  data,
+  syllabusData: legacySyllabusData,
   onChange,
-  onAttachCourse
+  onAttachCourse,
+  onAttachToCourse,
+  coInstructors,
+  currentUserId,
+  allAgreed,
+  onAgreeToSubmit
 }) => {
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [showPreview, setShowPreview] = useState(false);
+
+  const activeData = data || legacySyllabusData!;
+  const handleAttach = onAttachCourse || onAttachToCourse || (() => {});
 
   const currentStep = WIZARD_STEPS[currentStepIndex];
 
@@ -48,24 +65,28 @@ export const SyllabusWizard: React.FC<SyllabusWizardProps> = ({
   const renderActiveStep = () => {
     switch (currentStep.id) {
       case 'course-info':
-        return <Step1CourseInfo data={syllabusData} onChange={onChange} />;
+        return <Step1CourseInfo data={activeData} onChange={onChange} />;
       case 'outcomes':
-        return <Step2InstitutionalOutcomes data={syllabusData} onChange={onChange} />;
+        return <Step2InstitutionalOutcomes data={activeData} onChange={onChange} />;
       case 'outline':
-        return <Step3CourseOutline data={syllabusData} onChange={onChange} />;
+        return <Step3CourseOutline data={activeData} onChange={onChange} />;
       case 'learning-plan':
-        return <Step4LearningPlan data={syllabusData} onChange={onChange} />;
+        return <Step4LearningPlan data={activeData} onChange={onChange} />;
       case 'course-map':
-        return <Step5CourseMap data={syllabusData} onChange={onChange} />;
+        return <Step5CourseMap data={activeData} onChange={onChange} />;
       case 'grading':
-        return <Step6GradingPolicies data={syllabusData} onChange={onChange} />;
+        return <Step6GradingPolicies data={activeData} onChange={onChange} />;
       case 'review':
         return (
           <Step7ReviewSignatories
-            data={syllabusData}
+            data={activeData}
             onChange={onChange}
             onPrint={() => window.print()}
-            onAttachCourse={onAttachCourse}
+            onAttachCourse={handleAttach}
+            coInstructors={coInstructors}
+            currentUserId={currentUserId}
+            allAgreed={allAgreed}
+            onAgreeToSubmit={onAgreeToSubmit}
           />
         );
       default:
@@ -119,59 +140,94 @@ export const SyllabusWizard: React.FC<SyllabusWizardProps> = ({
 
       {/* Main Content Area (Form on Left, Optional Live Preview on Right) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        <div className={showPreview ? 'lg:col-span-6 space-y-6' : 'lg:col-span-12 space-y-6'}>
-          {/* Active Step Container */}
-          <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
-            {renderActiveStep()}
-          </div>
+        {/* Active Step Form Panel */}
+        <div className={showPreview ? 'lg:col-span-7' : 'lg:col-span-12'}>
+          <div className="bg-card border border-border rounded-2xl p-6 shadow-xs space-y-6">
+            <div className="flex items-center justify-between pb-4 border-b border-border/70">
+              <div>
+                <span className="text-[11px] font-bold text-primary uppercase tracking-wider">
+                  Step {currentStepIndex + 1} of {WIZARD_STEPS.length}
+                </span>
+                <h3 className="text-xl font-black text-foreground tracking-tight">
+                  {currentStep.label}
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {currentStep.description}
+                </p>
+              </div>
 
-          {/* Stepper Navigation Actions */}
-          <div className="flex items-center justify-between p-4 bg-card border border-border rounded-2xl shadow-xs">
-            <button
-              type="button"
-              disabled={currentStepIndex === 0}
-              onClick={goPrev}
-              className="flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-semibold border border-border hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span>Previous Step</span>
-            </button>
+              {/* Live Preview Toggle Pill */}
+              <button
+                type="button"
+                onClick={() => setShowPreview(!showPreview)}
+                className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                  showPreview
+                    ? 'bg-primary/10 text-primary border-primary/30'
+                    : 'bg-background border-border text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {showPreview ? (
+                  <>
+                    <EyeOff className="w-3.5 h-3.5" />
+                    <span>Hide Document</span>
+                  </>
+                ) : (
+                  <>
+                    <Eye className="w-3.5 h-3.5" />
+                    <span>Document Preview</span>
+                  </>
+                )}
+              </button>
+            </div>
 
-            <button
-              type="button"
-              onClick={() => setShowPreview(!showPreview)}
-              className="flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-muted/60 hover:bg-muted text-foreground transition-all cursor-pointer"
-            >
-              {showPreview ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              <span>{showPreview ? 'Hide Preview' : 'Document Preview'}</span>
-            </button>
+            {/* Current Step Component */}
+            <div className="min-h-[420px]">{renderActiveStep()}</div>
 
-            {currentStepIndex < WIZARD_STEPS.length - 1 ? (
+            {/* Step Navigation Controls */}
+            <div className="flex items-center justify-between pt-6 border-t border-border/70">
+              <button
+                type="button"
+                onClick={goPrev}
+                disabled={currentStepIndex === 0}
+                className="flex items-center space-x-1.5 px-4 py-2 rounded-xl border border-border bg-card text-foreground text-xs font-semibold disabled:opacity-30 disabled:cursor-not-allowed hover:bg-muted transition-all cursor-pointer active:scale-95"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Previous Step</span>
+              </button>
+
               <button
                 type="button"
                 onClick={goNext}
-                className="flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-semibold shadow-sm transition-all cursor-pointer active:scale-95"
+                disabled={currentStepIndex === WIZARD_STEPS.length - 1}
+                className="flex items-center space-x-1.5 px-5 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-semibold disabled:opacity-30 disabled:cursor-not-allowed hover:bg-primary/90 transition-all cursor-pointer shadow-xs active:scale-95"
               >
                 <span>Next Step</span>
-                <ArrowRight className="w-4 h-4" />
+                <ArrowRight className="w-3.5 h-3.5" />
               </button>
-            ) : (
-              <button
-                type="button"
-                onClick={onAttachCourse}
-                className="flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 text-xs font-semibold shadow-sm transition-all cursor-pointer active:scale-95"
-              >
-                <Check className="w-4 h-4" />
-                <span>Finish & Attach to Course</span>
-              </button>
-            )}
+            </div>
           </div>
         </div>
 
-        {/* Live Document Preview Panel */}
+        {/* Live DMMMSU Official Document Preview Panel */}
         {showPreview && (
-          <div className="lg:col-span-6 sticky top-6">
-            <SyllabusDocumentPreview syllabus={syllabusData} />
+          <div className="lg:col-span-5 sticky top-6">
+            <div className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-border">
+                <span className="text-xs font-bold text-foreground">
+                  Official Institutional Paper Preview
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowPreview(false)}
+                  className="text-muted-foreground hover:text-foreground text-xs"
+                >
+                  Close
+                </button>
+              </div>
+              <div className="max-h-[75vh] overflow-y-auto pr-1">
+                <SyllabusDocumentPreview data={activeData} onBack={() => setShowPreview(false)} />
+              </div>
+            </div>
           </div>
         )}
       </div>

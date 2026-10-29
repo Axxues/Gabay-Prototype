@@ -11,8 +11,7 @@ import {
   Search,
   Eye,
   FileCheck2,
-  ShieldAlert,
-  ArrowRight
+  ShieldAlert
 } from 'lucide-react';
 import { CustomDropdown } from '../../../../shared/components/common/CustomDropdown';
 

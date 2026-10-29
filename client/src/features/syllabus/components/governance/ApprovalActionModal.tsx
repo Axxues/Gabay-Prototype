@@ -1,6 +1,6 @@
 import React from 'react';
 import { AnimatedModal } from '../../../../shared/components/common/ModalPortal';
-import { CheckCircle2, ShieldCheck, FileCheck2, AlertCircle } from 'lucide-react';
+import { CheckCircle2, FileCheck2 } from 'lucide-react';
 import type { SyllabusGroup } from '../../types/lifecycle';
 
 interface ApprovalActionModalProps {
