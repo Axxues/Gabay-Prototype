@@ -1,10 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { useLMS } from '../../shared/context/LMSContext';
-import { useSyllabusDraftsStorage, createBaselineSyllabus } from './hooks/useSyllabusDraftsStorage';
+import { createBaselineSyllabus } from './hooks/useSyllabusDraftsStorage';
 import { useSyllabusLifecycle } from './hooks/useSyllabusLifecycle';
 import { useSyllabusCollaboration } from './hooks/useSyllabusCollaboration';
 import { SyllabusWizard } from './components/creator/SyllabusWizard';
-import { SyllabusStarterModal } from './components/creator/SyllabusStarterModal';
 import { AttachToCourseModal } from './components/creator/AttachToCourseModal';
 import { DepartmentSyllabusTable, STATUS_CONFIG } from './components/governance/DepartmentSyllabusTable';
 import { AssignEvaluatorsModal } from './components/governance/AssignEvaluatorsModal';
@@ -12,15 +11,9 @@ import { EvaluatorReviewModal } from './components/governance/EvaluatorReviewMod
 import { ApprovalActionModal } from './components/governance/ApprovalActionModal';
 import { RevisionRemarksBanner } from './components/creator/RevisionRemarksBanner';
 import { SyllabusDocumentPreview } from './components/creator/SyllabusDocumentPreview';
-import { scanSyllabusDocument } from '../../shared/utils/syllabusParser';
-import type { OfficialSyllabusData } from '../../shared/data/syllabusData';
 import type { SyllabusGroup } from './types/lifecycle';
-import { CustomDropdown } from '../../shared/components/common/CustomDropdown';
 import { isChairRole, isDeanRole } from '../../shared/utils/roles';
 import {
-  Plus,
-  Copy,
-  Trash2,
   ShieldAlert,
   Sparkles,
   BookOpen,
@@ -29,8 +22,7 @@ import {
   Lock,
   ArrowRight,
   Eye,
-  Radio,
-  FileText
+  Radio
 } from 'lucide-react';
 
 interface SyllabusCreatorPageProps {
@@ -47,18 +39,6 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
   const isChair = isChairRole(activeUser, activeRole) || activeRole === 'admin' || activeRole === 'superadmin';
   const isDean = isDeanRole(activeUser, activeRole) || activeRole === 'admin' || activeRole === 'superadmin';
   const isLeadership = isChair || isDean;
-
-  // Standalone Drafts storage
-  const {
-    drafts,
-    activeDraft,
-    activeDraftId,
-    selectDraft,
-    createDraft,
-    updateActiveDraft,
-    cloneDraft,
-    deleteDraft
-  } = useSyllabusDraftsStorage();
 
   // Lifecycle Governance Hook
   const {
@@ -79,18 +59,16 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
     return groups.filter(g => g.instructorIds.includes(activeUser.id!));
   }, [groups, activeUser?.id]);
 
-  // Active view tab
-  const [activeTab, setActiveTab] = useState<'governance' | 'my-courses' | 'evaluations' | 'sandbox'>(() => {
+  // Active view tab (Personal Sandbox is removed; authoring is strictly permitted through approved courses)
+  const [activeTab, setActiveTab] = useState<'governance' | 'my-courses' | 'evaluations'>(() => {
     if (isLeadership) return 'governance';
-    if (myAssignedGroups.length > 0) return 'my-courses';
-    return 'sandbox';
+    return 'my-courses';
   });
 
   // Active course group opened in Syllabus Studio
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
 
   // Modals state
-  const [isStarterOpen, setIsStarterOpen] = useState(false);
   const [isAttachOpen, setIsAttachOpen] = useState(false);
   const [evaluatorAssignGroup, setEvaluatorAssignGroup] = useState<SyllabusGroup | null>(null);
   const [evaluatorReviewGroup, setEvaluatorReviewGroup] = useState<SyllabusGroup | null>(null);
@@ -127,8 +105,8 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
   const activeGroup = groups.find(g => g.id === activeGroupId);
   const activeRecord = activeGroupId ? getRecord(activeGroupId) : undefined;
 
-  // Active syllabus data for the open group (or fallback)
-  const currentSyllabusData = activeRecord?.syllabusData || activeDraft?.data || createBaselineSyllabus();
+  // Active syllabus data for the open group (or baseline fallback)
+  const currentSyllabusData = activeRecord?.syllabusData || createBaselineSyllabus();
 
   // Co-instructors status for active group
   const coInstructorAgreements = useMemo(() => {
@@ -174,33 +152,6 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
   // Close Studio back to list
   const handleCloseStudio = () => {
     setActiveGroupId(null);
-  };
-
-  // Import existing file into draft
-  const handleImportFile = async (file: File) => {
-    const scanResult = await scanSyllabusDocument(file);
-    const baseline = createBaselineSyllabus();
-    const detectedInstructor = scanResult.detectedFacultyNames?.[0];
-
-    const mergedData: OfficialSyllabusData = {
-      ...baseline,
-      courseInfo: {
-        ...baseline.courseInfo,
-        code: scanResult.detectedCourseCode || baseline.courseInfo.code,
-        title: scanResult.detectedCourseTitle || baseline.courseInfo.title
-      },
-      facultyMembers: detectedInstructor
-        ? [
-            {
-              name: detectedInstructor,
-              sections: baseline.facultyMembers[0]?.sections || [],
-              consultation: baseline.facultyMembers[0]?.consultation || ''
-            }
-          ]
-        : baseline.facultyMembers
-    };
-
-    createDraft(mergedData, `${scanResult.detectedCourseCode || 'Imported'} Syllabus`);
   };
 
   // If a group's syllabus document preview is active
@@ -373,18 +324,6 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
               </span>
             </button>
           )}
-
-          <button
-            onClick={() => setActiveTab('sandbox')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-              activeTab === 'sandbox'
-                ? 'bg-card text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            <FileText className="w-3.5 h-3.5" />
-            <span>Personal Sandbox</span>
-          </button>
         </div>
       </div>
 
@@ -425,7 +364,7 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
               <BookOpen className="w-8 h-8 text-muted-foreground/40 mx-auto" />
               <p className="font-bold text-foreground text-sm">No Assigned Courses Found</p>
               <p className="text-xs text-muted-foreground max-w-md mx-auto">
-                Your department chairperson has not assigned any active courses to your faculty account yet.
+                Syllabus development is strictly tied to assigned courses approved and released by your Department Chairperson. No courses are currently assigned to your account.
               </p>
             </div>
           ) : (
@@ -597,78 +536,7 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
         </div>
       )}
 
-      {/* TAB 4: Personal Sandbox / Standalone Drafts */}
-      {activeTab === 'sandbox' && (
-        <div className="space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl bg-card border border-border">
-            <div>
-              <h3 className="text-sm font-bold text-foreground">Personal Sandbox & Template Drafts</h3>
-              <p className="text-xs text-muted-foreground">
-                Experiment freely or draft standalone syllabi outside live course rosters.
-              </p>
-            </div>
 
-            <div className="flex items-center gap-2">
-              <div className="w-48">
-                <CustomDropdown
-                  value={activeDraftId}
-                  onChange={val => selectDraft(val)}
-                  options={drafts.map(d => ({ value: d.id, label: d.title }))}
-                  placeholder="Select Draft"
-                  ariaLabel="Select Active Draft"
-                  testId="active-draft-select"
-                />
-              </div>
-
-              {activeDraft && (
-                <button
-                  type="button"
-                  onClick={() => cloneDraft(activeDraft.id)}
-                  className="p-2 rounded-xl border border-border bg-card hover:bg-muted text-muted-foreground hover:text-foreground transition-all cursor-pointer"
-                  title="Clone active draft"
-                >
-                  <Copy className="w-4 h-4" />
-                </button>
-              )}
-
-              {drafts.length > 1 && activeDraft && (
-                <button
-                  type="button"
-                  onClick={() => deleteDraft(activeDraft.id)}
-                  className="p-2 rounded-xl border border-destructive/20 bg-destructive/10 text-destructive hover:bg-destructive/20 transition-all cursor-pointer"
-                  title="Delete draft"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              )}
-
-              <button
-                type="button"
-                onClick={() => setIsStarterOpen(true)}
-                className="flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-semibold shadow-sm transition-all cursor-pointer active:scale-95"
-              >
-                <Plus className="w-4 h-4" />
-                <span>New Syllabus</span>
-              </button>
-            </div>
-          </div>
-
-          {activeDraft && (
-            <SyllabusWizard
-              data={activeDraft.data}
-              onChange={updateActiveDraft}
-              onSave={() => {
-                showAlert({
-                  title: 'Draft Saved',
-                  message: 'Your standalone syllabus draft has been saved to local storage.',
-                  type: 'success'
-                });
-              }}
-              onAttachToCourse={() => setIsAttachOpen(true)}
-            />
-          )}
-        </div>
-      )}
 
       {/* Evaluator Assignment Modal */}
       {evaluatorAssignGroup && (
@@ -749,15 +617,6 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
         />
       )}
 
-      {/* Starter Modal for Personal Sandbox */}
-      <SyllabusStarterModal
-        isOpen={isStarterOpen}
-        onClose={() => setIsStarterOpen(false)}
-        onSelectBlank={() => createDraft(undefined, 'New Standard Syllabus')}
-        onSelectClone={(source, title) => createDraft(source, `Copy of ${title}`)}
-        onImportFile={handleImportFile}
-        availableDrafts={drafts}
-      />
     </div>
   );
 };
