@@ -8,3 +8,5 @@ export { DepartmentSyllabusTable } from './components/governance/DepartmentSylla
 export { AssignEvaluatorsModal } from './components/governance/AssignEvaluatorsModal';
 export { EvaluatorReviewModal } from './components/governance/EvaluatorReviewModal';
 export { RevisionRemarksBanner } from './components/creator/RevisionRemarksBanner';
+export { CoInstructorSubmissionPanel } from './components/creator/CoInstructorSubmissionPanel';
+export { ApprovalActionModal } from './components/governance/ApprovalActionModal';

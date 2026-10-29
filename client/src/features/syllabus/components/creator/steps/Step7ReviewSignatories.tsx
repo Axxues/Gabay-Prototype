@@ -1,19 +1,28 @@
 import React from 'react';
 import type { OfficialSyllabusData } from '../../../../../shared/data/syllabusData';
 import { Printer, Link2, CheckCircle2, UserCheck } from 'lucide-react';
+import { CoInstructorSubmissionPanel, type CoInstructorAgreementItem } from '../CoInstructorSubmissionPanel';
 
 interface Step7ReviewSignatoriesProps {
   data: OfficialSyllabusData;
   onChange: (updated: OfficialSyllabusData) => void;
   onPrint: () => void;
   onAttachCourse: () => void;
+  coInstructors?: CoInstructorAgreementItem[];
+  currentUserId?: string;
+  allAgreed?: boolean;
+  onAgreeToSubmit?: () => void;
 }
 
 export const Step7ReviewSignatories: React.FC<Step7ReviewSignatoriesProps> = ({
   data,
   onChange,
   onPrint,
-  onAttachCourse
+  onAttachCourse,
+  coInstructors,
+  currentUserId,
+  allAgreed = false,
+  onAgreeToSubmit
 }) => {
   const { signatories, facultyMembers = [] } = data;
   const faculty = facultyMembers[0];
@@ -52,6 +61,16 @@ export const Step7ReviewSignatories: React.FC<Step7ReviewSignatoriesProps> = ({
         </p>
       </div>
 
+      {/* Multi-Instructor Submission Consensus Panel */}
+      {coInstructors && coInstructors.length > 0 && onAgreeToSubmit && (
+        <CoInstructorSubmissionPanel
+          currentUserId={currentUserId}
+          instructors={coInstructors}
+          allAgreed={allAgreed}
+          onAgreeToSubmit={onAgreeToSubmit}
+        />
+      )}
+
       {/* Signatories Configuration Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Prepared By (Faculty) */}
@@ -63,19 +82,19 @@ export const Step7ReviewSignatories: React.FC<Step7ReviewSignatoriesProps> = ({
             <label className="text-[11px] font-semibold text-foreground">Faculty Name</label>
             <input
               type="text"
-              value={signatories?.preparedBy?.[0]?.name || faculty?.name || ''}
+              value={signatories?.preparedBy?.[0]?.name ?? faculty?.name ?? ''}
               onChange={e => updateSignatory('preparedBy', 'name', e.target.value)}
-              placeholder="e.g. FLORIBETH P. CUISON"
+              placeholder="e.g. DR. JUAN DELA CRUZ"
               className="w-full px-2.5 py-1.5 text-xs font-medium rounded-lg border border-border bg-background focus:ring-1 focus:ring-primary focus:border-primary outline-none"
             />
           </div>
           <div className="space-y-1.5">
-            <label className="text-[11px] font-semibold text-foreground">Academic Designation</label>
+            <label className="text-[11px] font-semibold text-foreground">Designation</label>
             <input
               type="text"
               value={signatories?.preparedBy?.[0]?.title || 'Faculty Member'}
               onChange={e => updateSignatory('preparedBy', 'title', e.target.value)}
-              placeholder="Faculty Member"
+              placeholder="e.g. Assistant Professor II"
               className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-border bg-background"
             />
           </div>
@@ -84,15 +103,15 @@ export const Step7ReviewSignatories: React.FC<Step7ReviewSignatoriesProps> = ({
         {/* Recommending Approval (Chairperson) */}
         <div className="p-4 rounded-xl border border-border bg-card shadow-sm space-y-3">
           <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-            2. Recommending Approval
+            2. Recommending Approval (Chair)
           </div>
           <div className="space-y-1.5">
-            <label className="text-[11px] font-semibold text-foreground">Program Chairperson Name</label>
+            <label className="text-[11px] font-semibold text-foreground">Program Chairperson</label>
             <input
               type="text"
               value={signatories?.recommendingApproval?.name || ''}
               onChange={e => updateSignatory('recommendingApproval', 'name', e.target.value)}
-              placeholder="e.g. NEMA ROSE D. RIVERA"
+              placeholder="e.g. DR. MARIA SANTOS"
               className="w-full px-2.5 py-1.5 text-xs font-medium rounded-lg border border-border bg-background focus:ring-1 focus:ring-primary focus:border-primary outline-none"
             />
           </div>
@@ -100,9 +119,9 @@ export const Step7ReviewSignatories: React.FC<Step7ReviewSignatoriesProps> = ({
             <label className="text-[11px] font-semibold text-foreground">Designation</label>
             <input
               type="text"
-              value={signatories?.recommendingApproval?.title || 'Program Chairperson'}
+              value={signatories?.recommendingApproval?.title || 'Department Chairperson'}
               onChange={e => updateSignatory('recommendingApproval', 'title', e.target.value)}
-              placeholder="Program Chairperson"
+              placeholder="Department Chairperson"
               className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-border bg-background"
             />
           </div>
@@ -111,10 +130,10 @@ export const Step7ReviewSignatories: React.FC<Step7ReviewSignatoriesProps> = ({
         {/* Approved (Dean) */}
         <div className="p-4 rounded-xl border border-border bg-card shadow-sm space-y-3">
           <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-            3. Approved (College Dean)
+            3. Approved (Dean)
           </div>
           <div className="space-y-1.5">
-            <label className="text-[11px] font-semibold text-foreground">Dean / Director Name</label>
+            <label className="text-[11px] font-semibold text-foreground">College Dean</label>
             <input
               type="text"
               value={signatories?.approved?.name || ''}
