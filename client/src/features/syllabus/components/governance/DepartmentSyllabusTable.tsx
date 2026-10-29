@@ -18,6 +18,8 @@ import { CustomDropdown } from '../../../../shared/components/common/CustomDropd
 interface DepartmentSyllabusTableProps {
   groups: SyllabusGroup[];
   userRole?: string;
+  isChair?: boolean;
+  canRelease?: boolean;
   onReleaseCourses: (groupIds: string[]) => void;
   onAssignEvaluators: (group: SyllabusGroup) => void;
   onChairApprove: (group: SyllabusGroup) => void;
@@ -97,6 +99,8 @@ export const STATUS_CONFIG: Record<
 export const DepartmentSyllabusTable: React.FC<DepartmentSyllabusTableProps> = ({
   groups,
   userRole = 'chairperson',
+  isChair: propIsChair,
+  canRelease: propCanRelease,
   onReleaseCourses,
   onAssignEvaluators,
   onChairApprove,
@@ -150,6 +154,11 @@ export const DepartmentSyllabusTable: React.FC<DepartmentSyllabusTableProps> = (
   }, [groups]);
 
   const isDean = userRole?.toLowerCase().includes('dean');
+  const isAdmin = userRole?.toLowerCase() === 'admin' || userRole?.toLowerCase() === 'superadmin';
+  const isChair = propIsChair ?? (
+    Boolean(userRole?.toLowerCase().includes('chair')) && !isDean && !isAdmin
+  );
+  const canRelease = propCanRelease ?? isChair;
 
   return (
     <div className="space-y-4">
@@ -211,7 +220,7 @@ export const DepartmentSyllabusTable: React.FC<DepartmentSyllabusTableProps> = (
       </div>
 
       {/* Floating Bulk Action Bar */}
-      {selectedIds.length > 0 && (
+      {selectedIds.length > 0 && canRelease && (
         <div className="flex items-center justify-between p-3 px-4 bg-primary text-primary-foreground rounded-xl shadow-lg animate-fade-in">
           <div className="flex items-center gap-2 text-xs font-semibold">
             <span className="w-5 h-5 rounded-full bg-primary-foreground/20 flex items-center justify-center text-[10px]">
@@ -365,7 +374,7 @@ export const DepartmentSyllabusTable: React.FC<DepartmentSyllabusTableProps> = (
 
                       <td className="p-3 text-right">
                         <div className="flex items-center justify-end gap-1.5">
-                          {group.status === 'locked' && (
+                          {group.status === 'locked' && canRelease && (
                             <button
                               onClick={() => onReleaseCourses([group.id])}
                               className="px-2.5 py-1 rounded-lg bg-blue-600 text-white hover:bg-blue-700 text-xs font-semibold flex items-center gap-1"
@@ -375,7 +384,7 @@ export const DepartmentSyllabusTable: React.FC<DepartmentSyllabusTableProps> = (
                             </button>
                           )}
 
-                          {group.status === 'ready_for_evaluation' && (
+                          {group.status === 'ready_for_evaluation' && isChair && (
                             <button
                               onClick={() => onAssignEvaluators(group)}
                               aria-label={`Assign evaluators for ${group.courseCode}`}
@@ -386,7 +395,7 @@ export const DepartmentSyllabusTable: React.FC<DepartmentSyllabusTableProps> = (
                             </button>
                           )}
 
-                          {group.status === 'evaluator_approved' && (
+                          {group.status === 'evaluator_approved' && isChair && (
                             <button
                               onClick={() => onChairApprove(group)}
                               className="px-2.5 py-1 rounded-lg bg-teal-600 text-white hover:bg-teal-700 text-xs font-semibold flex items-center gap-1"

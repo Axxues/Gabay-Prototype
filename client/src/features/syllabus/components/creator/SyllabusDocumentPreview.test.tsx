@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
 import { SyllabusDocumentPreview } from './SyllabusDocumentPreview';
 import { OFFICIAL_SYLLABUS_CSPC112 } from '../../../../shared/data/syllabusData';
+import { createBaselineSyllabus } from '../../hooks/useSyllabusDraftsStorage';
 
 describe('SyllabusDocumentPreview', () => {
   it('renders institutional header, form code, and course descriptive title', () => {
@@ -70,5 +71,52 @@ describe('SyllabusDocumentPreview', () => {
     expect(screen.getAllByText(/PSU-FORM-001/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/Twelfth PO Specialization/i)).toBeInTheDocument();
     expect(screen.getByText('PO12')).toBeInTheDocument();
+  });
+
+  it('renders only the 9 default items on a baseline syllabus and leaves other parts blank', () => {
+    const baseline = createBaselineSyllabus({
+      courseInfo: {
+        code: 'CSPC 112',
+        title: 'Software Engineering 2',
+        semester: 'First Semester',
+        academicYear: '2026-2027',
+        type: '',
+        credit: '',
+        lectureHours: '',
+        labHours: '',
+        prerequisite: '',
+        description: 'Advanced software engineering methodologies and project development.'
+      },
+      facultyMembers: [{ name: 'Dr. Santos', sections: [], consultation: '' }]
+    });
+
+    render(<SyllabusDocumentPreview syllabus={baseline} />);
+
+    // 1. Course No. & Descriptive Title
+    expect(screen.getByText(/CSPC 112 – Software Engineering 2/i)).toBeInTheDocument();
+    // 2. Name of Faculty Member/s
+    expect(screen.getAllByText('Dr. Santos').length).toBeGreaterThanOrEqual(1);
+    // 3. Philosophy
+    expect(screen.getByText(/Total human development/i)).toBeInTheDocument();
+    // 4. Mission
+    expect(screen.getByText(/Excellence in instruction/i)).toBeInTheDocument();
+    // 5. Vision
+    expect(screen.getByText(/DMMMSU IS A globally ranked university/i)).toBeInTheDocument();
+    // 6. Goals
+    expect(screen.getByText(/To lead in transforming human resources into productive/i)).toBeInTheDocument();
+    // 7. Graduate Attributes
+    expect(screen.getByText(/Professionally competent/i)).toBeInTheDocument();
+    // 8. Core Values
+    expect(screen.getByText(/PRODUCTIVITY:/i)).toBeInTheDocument();
+    // 9. Course Description
+    expect(screen.getByText(/Advanced software engineering methodologies and project development./i)).toBeInTheDocument();
+
+    // Other non-default parts must be blank / absent
+    expect(screen.queryByText(/Upon graduation, successful graduates will attain the following program outcomes:/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/By the end of the course, students should be able to:/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Major Course Outputs/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Class Standing \(Quizzes/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Class attendance and punctuality must be observed/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Orientation & Foundations of Computing/i)).not.toBeInTheDocument();
   });
 });

@@ -87,4 +87,48 @@ describe('DepartmentSyllabusTable', () => {
     fireEvent.click(assignBtn);
     expect(onAssign).toHaveBeenCalledWith(mockGroups[1]);
   });
+
+  it('restricts release authority strictly to chairperson: dean cannot release locked courses or see bulk release', () => {
+    const onRelease = vi.fn();
+    render(
+      <DepartmentSyllabusTable
+        groups={mockGroups}
+        userRole="dean"
+        isChair={false}
+        canRelease={false}
+        onReleaseCourses={onRelease}
+        onAssignEvaluators={vi.fn()}
+        onChairApprove={vi.fn()}
+        onDeanApprove={vi.fn()}
+        onOpenPreview={vi.fn()}
+      />
+    );
+
+    // Row-level release button should NOT be rendered for locked courses
+    expect(screen.queryByRole('button', { name: /^Release$/i })).not.toBeInTheDocument();
+
+    // Selecting course row should NOT show "Release Selected for Development"
+    const checkbox = screen.getByRole('checkbox', { name: /select cspc 103/i });
+    fireEvent.click(checkbox);
+    expect(screen.queryByRole('button', { name: /release selected for development/i })).not.toBeInTheDocument();
+  });
+
+  it('restricts release authority strictly to chairperson: admin cannot release locked courses', () => {
+    const onRelease = vi.fn();
+    render(
+      <DepartmentSyllabusTable
+        groups={mockGroups}
+        userRole="admin"
+        isChair={false}
+        canRelease={false}
+        onReleaseCourses={onRelease}
+        onAssignEvaluators={vi.fn()}
+        onChairApprove={vi.fn()}
+        onDeanApprove={vi.fn()}
+        onOpenPreview={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByRole('button', { name: /^Release$/i })).not.toBeInTheDocument();
+  });
 });

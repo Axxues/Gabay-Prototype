@@ -35,10 +35,11 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
   const coursesList = db?.courses || (lms as any).courses || [];
   const usersList = db?.users || [];
 
-  // Role resolution
-  const isChair = isChairRole(activeUser, activeRole) || activeRole === 'admin' || activeRole === 'superadmin';
-  const isDean = isDeanRole(activeUser, activeRole) || activeRole === 'admin' || activeRole === 'superadmin';
-  const isLeadership = isChair || isDean;
+  // Role resolution - Strictly restrict release authority to Department Chairperson (not dean or admin)
+  const isChair = isChairRole(activeUser, activeRole);
+  const isDean = isDeanRole(activeUser, activeRole);
+  const isAdmin = activeRole === 'admin' || activeRole === 'superadmin';
+  const isLeadership = isChair || isDean || isAdmin;
 
   // Lifecycle Governance Hook
   const {
@@ -105,8 +106,38 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
   const activeGroup = groups.find(g => g.id === activeGroupId);
   const activeRecord = activeGroupId ? getRecord(activeGroupId) : undefined;
 
+  // Baseline syllabus generator tailored to a specific course group
+  const getBaselineForGroup = (grp: SyllabusGroup) => {
+    const matchedCourse = coursesList.find(c => grp.courseIds.includes(c.id));
+    return createBaselineSyllabus({
+      courseInfo: {
+        code: grp.courseCode,
+        title: grp.courseTitle,
+        semester: grp.semester,
+        academicYear: grp.schoolYear,
+        type: '',
+        credit: '',
+        lectureHours: '',
+        labHours: '',
+        prerequisite: '',
+        description: (matchedCourse as any)?.description || (matchedCourse as any)?.syllabus?.courseInfo?.description || `${grp.courseCode} – ${grp.courseTitle}`
+      },
+      facultyMembers: grp.instructorNames.map((name, idx) => ({
+        name,
+        sections: [
+          {
+            section: grp.sections[idx] || '',
+            schedule: '',
+            room: ''
+          }
+        ],
+        consultation: ''
+      }))
+    });
+  };
+
   // Active syllabus data for the open group (or baseline fallback)
-  const currentSyllabusData = activeRecord?.syllabusData || createBaselineSyllabus();
+  const currentSyllabusData = activeRecord?.syllabusData || (activeGroup ? getBaselineForGroup(activeGroup) : createBaselineSyllabus());
 
   // Co-instructors status for active group
   const coInstructorAgreements = useMemo(() => {
@@ -157,7 +188,7 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
   // If a group's syllabus document preview is active
   if (previewingGroup) {
     const record = getRecord(previewingGroup.id);
-    const previewData = record?.syllabusData || createBaselineSyllabus();
+    const previewData = record?.syllabusData || getBaselineForGroup(previewingGroup);
     return (
       <div className="w-full space-y-4">
         <button
@@ -333,7 +364,17 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
           <DepartmentSyllabusTable
             groups={groups}
             userRole={activeRole}
+            isChair={isChair}
+            canRelease={isChair}
             onReleaseCourses={ids => {
+              if (!isChair) {
+                showAlert({
+                  title: 'Unauthorized Action',
+                  message: 'Only the Department Chairperson has the authority to release courses for syllabus development.',
+                  type: 'error'
+                });
+                return;
+              }
               releaseCourses(ids, activeUser?.id || 'chair');
               showAlert({
                 title: 'Courses Released',

@@ -53,7 +53,7 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
 
   const activePOs = programOutcomes && programOutcomes.length > 0
     ? programOutcomes
-    : Array.from({ length: 11 }, (_, i) => ({ number: i + 1, description: '' }));
+    : [];
 
   return (
     <div className={`relative bg-card rounded-2xl border border-border overflow-hidden shadow-sm flex flex-col ${className}`}>
@@ -195,9 +195,9 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
                   Schedule &amp; Room Assignment:
                 </td>
                 <td className="p-1.5 border border-black w-[20%] align-top">
-                  {primarySection
-                    ? `${primarySection.section ? `${primarySection.section} ` : ''}${primarySection.schedule || 'TBA'} ${primarySection.room ? `(${primarySection.room})` : ''}`.trim()
-                    : 'TBA'}
+                  {primarySection && (primarySection.schedule || primarySection.room)
+                    ? `${primarySection.section ? `${primarySection.section} ` : ''}${primarySection.schedule || ''} ${primarySection.room ? `(${primarySection.room})` : ''}`.trim()
+                    : ''}
                 </td>
               </tr>
               <tr>
@@ -261,27 +261,31 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
               <tr>
                 <td className="w-[20%] p-1.5 font-bold border border-black align-top">Program Outcomes</td>
                 <td className="p-1.5 border border-black align-top space-y-1">
-                  <div>Upon graduation, successful graduates will attain the following program outcomes:</div>
-                  <ol className="list-decimal list-inside space-y-1 mt-1">
-                    {(programOutcomes || []).map((po, idx) => (
-                      <li key={idx} className="pl-1">
-                        <span className="font-semibold">PO{po.number}:</span> {po.description}
-                      </li>
-                    ))}
-                  </ol>
+                  {programOutcomes && programOutcomes.length > 0 ? (
+                    <>
+                      <div>Upon graduation, successful graduates will attain the following program outcomes:</div>
+                      <ol className="list-decimal list-inside space-y-1 mt-1">
+                        {programOutcomes.map((po, idx) => (
+                          <li key={idx} className="pl-1">
+                            <span className="font-semibold">PO{po.number}:</span> {po.description}
+                          </li>
+                        ))}
+                      </ol>
+                    </>
+                  ) : null}
                 </td>
               </tr>
               <tr>
                 <td className="w-[20%] p-1.5 font-bold border border-black align-top">Course Type</td>
-                <td className="p-1.5 border border-black align-top">{courseInfo.type || 'Lecture and Laboratory'}</td>
+                <td className="p-1.5 border border-black align-top">{courseInfo.type || ''}</td>
               </tr>
               <tr>
                 <td className="w-[20%] p-1.5 font-bold border border-black align-top">Course Credit</td>
-                <td className="p-1.5 border border-black align-top">{courseInfo.credit || '3 units'}</td>
+                <td className="p-1.5 border border-black align-top">{courseInfo.credit || ''}</td>
               </tr>
               <tr>
                 <td className="w-[20%] p-1.5 font-bold border border-black align-top">Course Description</td>
-                <td className="p-1.5 border border-black align-top leading-relaxed text-justify">{courseInfo.description}</td>
+                <td className="p-1.5 border border-black align-top leading-relaxed text-justify">{courseInfo.description || ''}</td>
               </tr>
               <tr>
                 <td className="w-[20%] p-1.5 font-bold border border-black align-top">Contact Hours/Week</td>
@@ -289,24 +293,28 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
                   {[
                     courseInfo.lectureHours && `Lecture – ${courseInfo.lectureHours}`,
                     courseInfo.labHours && `Laboratory – ${courseInfo.labHours}`
-                  ].filter(Boolean).join(' | ') || '3 hours/week'}
+                  ].filter(Boolean).join(' | ')}
                 </td>
               </tr>
               <tr>
                 <td className="w-[20%] p-1.5 font-bold border border-black align-top">Course Prerequisite/s</td>
-                <td className="p-1.5 border border-black align-top">{courseInfo.prerequisite || 'None'}</td>
+                <td className="p-1.5 border border-black align-top">{courseInfo.prerequisite || ''}</td>
               </tr>
               <tr>
                 <td className="w-[20%] p-1.5 font-bold border border-black align-top">Course Outcomes</td>
                 <td className="p-1.5 border border-black align-top space-y-1">
-                  <div>By the end of the course, students should be able to:</div>
-                  <ul className="list-disc list-inside space-y-1 mt-1">
-                    {(courseOutcomes || []).map((co, idx) => (
-                      <li key={idx} className="pl-1">
-                        <span className="font-semibold">CO{co.number}:</span> {co.statement}
-                      </li>
-                    ))}
-                  </ul>
+                  {courseOutcomes && courseOutcomes.length > 0 ? (
+                    <>
+                      <div>By the end of the course, students should be able to:</div>
+                      <ul className="list-disc list-inside space-y-1 mt-1">
+                        {courseOutcomes.map((co, idx) => (
+                          <li key={idx} className="pl-1">
+                            <span className="font-semibold">CO{co.number}:</span> {co.statement}
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  ) : null}
                 </td>
               </tr>
               <tr>
@@ -316,52 +324,52 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
                     courseRequirements.major.map((cr, idx) => (
                       <div key={idx}>{cr}</div>
                     ))
-                  ) : (
-                    <>
-                      <div>Major Course Outputs</div>
-                      <div>Class Standing (Quizzes; Seatwork; Assignment; Recitation/Reporting; Project)</div>
-                      <div>Major Examinations (Midterm &amp; Final)</div>
-                    </>
-                  )}
+                  ) : null}
                 </td>
               </tr>
               <tr>
                 <td className="w-[20%] p-1.5 font-bold border border-black align-top">Grading System</td>
                 <td className="p-1.5 border border-black align-top space-y-1">
-                  <div>Class Standing (Quizzes; Seatwork; Assignment; Recitation/Reporting; Project)</div>
-                  <div>Major Examinations (Midterm &amp; Final)</div>
-                  <div className="font-semibold mt-1">
-                    {gradingSystem?.termFormula || 'Midterm Grade/Final Tentative Grade = (60% Class Standing) + (40% Major Examination)'}
-                  </div>
-                  {gradingSystem?.finalFormula && (
-                    <div className="font-semibold">
-                      {gradingSystem.finalFormula}
-                    </div>
-                  )}
-                  {gradingSystem?.passingGrade && (
-                    <div>Passing Grade: {gradingSystem.passingGrade}</div>
-                  )}
+                  {gradingSystem && (gradingSystem.termFormula || gradingSystem.finalFormula || (gradingSystem.classStandingComponents && gradingSystem.classStandingComponents.length > 0) || gradingSystem.passingGrade) ? (
+                    <>
+                      {gradingSystem.classStandingComponents && gradingSystem.classStandingComponents.length > 0 && (
+                        <div className="space-y-0.5">
+                          {gradingSystem.classStandingComponents.map((c, idx) => (
+                            <div key={idx}>{c}</div>
+                          ))}
+                        </div>
+                      )}
+                      {gradingSystem.termFormula && (
+                        <div className="font-semibold mt-1">
+                          {gradingSystem.termFormula}
+                        </div>
+                      )}
+                      {gradingSystem.finalFormula && (
+                        <div className="font-semibold">
+                          {gradingSystem.finalFormula}
+                        </div>
+                      )}
+                      {gradingSystem.passingGrade && (
+                        <div>Passing Grade: {gradingSystem.passingGrade}</div>
+                      )}
+                    </>
+                  ) : null}
                 </td>
               </tr>
               <tr>
                 <td className="w-[20%] p-1.5 font-bold border border-black align-top">Classroom Policies</td>
                 <td className="p-1.5 border border-black align-top space-y-1">
-                  {(classroomPolicies && classroomPolicies.length > 0
-                    ? classroomPolicies
-                    : [
-                        'Class attendance and punctuality must be observed in accordance with the Revised Student Code of Discipline.',
-                        'Wear proper uniform and school ID card at all times.',
-                        'Academic integrity and honesty must be strictly observed in all class assessments.'
-                      ]
-                  ).map((pol, idx) => (
-                    <div key={idx} className="leading-normal">{pol}</div>
-                  ))}
+                  {classroomPolicies && classroomPolicies.length > 0 ? (
+                    classroomPolicies.map((pol, idx) => (
+                      <div key={idx} className="leading-normal">{pol}</div>
+                    ))
+                  ) : null}
                 </td>
               </tr>
               <tr>
                 <td className="w-[20%] p-1.5 font-bold border border-black align-top">Consultation Hours</td>
                 <td className="p-1.5 border border-black align-top">
-                  {primaryFaculty?.consultation || 'MWF – 01:00 PM - 03:00 PM'}
+                  {primaryFaculty?.consultation || ''}
                 </td>
               </tr>
             </tbody>
@@ -377,32 +385,39 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
               </tr>
             </thead>
             <tbody>
-              {(courseOutline || []).map((item, idx) => {
-                const isExam = item.title.toUpperCase().includes('EXAMINATION') || item.timeFrame.toLowerCase().includes('exam');
-                return (
-                  <tr key={idx} className="border-b border-black">
-                    <td className={`p-1.5 border border-black text-center align-top ${isExam ? 'font-bold' : ''}`}>
-                      {item.timeFrame}
-                    </td>
-                    <td className={`p-1.5 border border-black align-top ${isExam ? 'font-bold text-center' : ''}`}>
-                      {isExam ? (
-                        item.title.toUpperCase()
-                      ) : (
-                        <>
-                          <div className="font-bold">{item.title}</div>
-                          {item.topics && item.topics.length > 0 && (
-                            <div className="pl-4 mt-0.5 space-y-0.5">
-                              {item.topics.map((t, tIdx) => (
-                                <div key={tIdx}>{t}</div>
-                              ))}
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
+              {courseOutline && courseOutline.length > 0 ? (
+                courseOutline.map((item, idx) => {
+                  const isExam = item.title.toUpperCase().includes('EXAMINATION') || item.timeFrame.toLowerCase().includes('exam');
+                  return (
+                    <tr key={idx} className="border-b border-black">
+                      <td className={`p-1.5 border border-black text-center align-top ${isExam ? 'font-bold' : ''}`}>
+                        {item.timeFrame}
+                      </td>
+                      <td className={`p-1.5 border border-black align-top ${isExam ? 'font-bold text-center' : ''}`}>
+                        {isExam ? (
+                          item.title.toUpperCase()
+                        ) : (
+                          <>
+                            <div className="font-bold">{item.title}</div>
+                            {item.topics && item.topics.length > 0 && (
+                              <div className="pl-4 mt-0.5 space-y-0.5">
+                                {item.topics.map((t, tIdx) => (
+                                  <div key={tIdx}>{t}</div>
+                                ))}
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr className="border-b border-black h-8">
+                  <td className="p-1.5 border border-black text-center align-top">&nbsp;</td>
+                  <td className="p-1.5 border border-black align-top">&nbsp;</td>
+                </tr>
+              )}
             </tbody>
           </table>
 
@@ -421,73 +436,79 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
               </tr>
             </thead>
             <tbody>
-              {(learningPlan || []).map((plan, idx) => {
-                const isExam = plan.topics?.some(t => t.toUpperCase().includes('EXAM')) || plan.week.toUpperCase().includes('EXAM');
-                if (isExam) {
+              {learningPlan && learningPlan.length > 0 ? (
+                learningPlan.map((plan, idx) => {
+                  const isExam = plan.topics?.some(t => t.toUpperCase().includes('EXAM')) || plan.week.toUpperCase().includes('EXAM');
+                  if (isExam) {
+                    return (
+                      <tr key={idx} className="border-b border-black font-bold text-center">
+                        <td colSpan={7} className="p-2 border border-black">
+                          {plan.week} {plan.hoursLec ? `(${plan.hoursLec + plan.hoursLab} hours)` : ''}
+                        </td>
+                      </tr>
+                    );
+                  }
                   return (
-                    <tr key={idx} className="border-b border-black font-bold text-center">
-                      <td colSpan={7} className="p-2 border border-black">
-                        {plan.week} {plan.hoursLec ? `(${plan.hoursLec + plan.hoursLab} hours)` : ''}
+                    <tr key={idx} className="border-b border-black align-top">
+                      <td className="p-1.5 border border-black">
+                        <div className="space-y-1">
+                          {(plan.learningOutcomes || []).map((lo, lIdx) => (
+                            <div key={lIdx}>{lo}</div>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="p-1.5 border border-black">
+                        <div className="space-y-1">
+                          {(plan.topics || []).map((tp, tIdx) => (
+                            <div key={tIdx} className={tIdx === 0 ? 'font-bold' : 'pl-2'}>{tp}</div>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="p-1.5 border border-black">
+                        {plan.sdgCoherence ? (
+                          <div>
+                            <div className="font-bold">{plan.sdgCoherence.goal}: {plan.sdgCoherence.title}</div>
+                            <div className="text-[8pt] text-neutral-800 mt-0.5">{plan.sdgCoherence.description}</div>
+                          </div>
+                        ) : (
+                          <span className="italic text-neutral-500">None specified</span>
+                        )}
+                      </td>
+                      <td className="p-1.5 border border-black text-center font-semibold">
+                        <div>{plan.week}</div>
+                        <div className="text-[8pt] font-normal mt-0.5">
+                          {[plan.hoursLec ? `${plan.hoursLec} hrs lec` : '', plan.hoursLab ? `${plan.hoursLab} hrs lab` : ''].filter(Boolean).join(' / ') || `${(plan.hoursLec || 0) + (plan.hoursLab || 0)} hours`}
+                        </div>
+                      </td>
+                      <td className="p-1.5 border border-black">
+                        <div className="space-y-0.5">
+                          {(plan.methodology || []).map((m, mIdx) => (
+                            <div key={mIdx}>{m}</div>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="p-1.5 border border-black">
+                        <div className="space-y-0.5">
+                          {(plan.resources || []).map((r, rIdx) => (
+                            <div key={rIdx}>{r}</div>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="p-1.5 border border-black">
+                        <div className="space-y-0.5">
+                          {(plan.assessment || []).map((a, aIdx) => (
+                            <div key={aIdx}>{a}</div>
+                          ))}
+                        </div>
                       </td>
                     </tr>
                   );
-                }
-                return (
-                  <tr key={idx} className="border-b border-black align-top">
-                    <td className="p-1.5 border border-black">
-                      <div className="space-y-1">
-                        {(plan.learningOutcomes || []).map((lo, lIdx) => (
-                          <div key={lIdx}>{lo}</div>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="p-1.5 border border-black">
-                      <div className="space-y-1">
-                        {(plan.topics || []).map((tp, tIdx) => (
-                          <div key={tIdx} className={tIdx === 0 ? 'font-bold' : 'pl-2'}>{tp}</div>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="p-1.5 border border-black">
-                      {plan.sdgCoherence ? (
-                        <div>
-                          <div className="font-bold">{plan.sdgCoherence.goal}: {plan.sdgCoherence.title}</div>
-                          <div className="text-[8pt] text-neutral-800 mt-0.5">{plan.sdgCoherence.description}</div>
-                        </div>
-                      ) : (
-                        <span className="italic text-neutral-500">None specified</span>
-                      )}
-                    </td>
-                    <td className="p-1.5 border border-black text-center font-semibold">
-                      <div>{plan.week}</div>
-                      <div className="text-[8pt] font-normal mt-0.5">
-                        {[plan.hoursLec ? `${plan.hoursLec} hrs lec` : '', plan.hoursLab ? `${plan.hoursLab} hrs lab` : ''].filter(Boolean).join(' / ') || `${(plan.hoursLec || 0) + (plan.hoursLab || 0)} hours`}
-                      </div>
-                    </td>
-                    <td className="p-1.5 border border-black">
-                      <div className="space-y-0.5">
-                        {(plan.methodology || []).map((m, mIdx) => (
-                          <div key={mIdx}>{m}</div>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="p-1.5 border border-black">
-                      <div className="space-y-0.5">
-                        {(plan.resources || []).map((r, rIdx) => (
-                          <div key={rIdx}>{r}</div>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="p-1.5 border border-black">
-                      <div className="space-y-0.5">
-                        {(plan.assessment || []).map((a, aIdx) => (
-                          <div key={aIdx}>{a}</div>
-                        ))}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+                })
+              ) : (
+                <tr className="border-b border-black h-12">
+                  <td colSpan={7} className="p-1.5 border border-black text-center">&nbsp;</td>
+                </tr>
+              )}
             </tbody>
           </table>
 
@@ -499,35 +520,46 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
                 <th rowSpan={2} className="p-1.5 border border-black w-[35%] align-middle text-left">
                   Course Outcomes (CO)
                 </th>
-                <th colSpan={activePOs.length} className="p-1 border border-black">
+                <th colSpan={Math.max(activePOs.length, 1)} className="p-1 border border-black">
                   Program Outcomes
                 </th>
               </tr>
               <tr className="border-b border-black font-bold text-center">
-                {activePOs.map(po => (
-                  <th key={po.number} className="p-1 border border-black min-w-[28px]">
-                    PO{po.number}
-                  </th>
-                ))}
+                {activePOs.length > 0 ? (
+                  activePOs.map(po => (
+                    <th key={po.number} className="p-1 border border-black min-w-[28px]">
+                      PO{po.number}
+                    </th>
+                  ))
+                ) : (
+                  <th className="p-1 border border-black min-w-[28px]">&nbsp;</th>
+                )}
               </tr>
             </thead>
             <tbody>
-              {(courseMap || []).map((row, idx) => (
-                <tr key={idx} className="border-b border-black align-middle">
-                  <td className="p-1.5 border border-black text-left">
-                    <span className="font-bold">CO{row.coNumber}: </span>
-                    <span>{row.coStatement}</span>
-                  </td>
-                  {activePOs.map(po => {
-                    const alignment = row.poAlignments?.[po.number] || '';
-                    return (
-                      <td key={po.number} className="p-1 border border-black text-center font-bold">
-                        {alignment || ''}
-                      </td>
-                    );
-                  })}
+              {courseMap && courseMap.length > 0 && activePOs.length > 0 ? (
+                courseMap.map((row, idx) => (
+                  <tr key={idx} className="border-b border-black align-middle">
+                    <td className="p-1.5 border border-black text-left">
+                      <span className="font-bold">CO{row.coNumber}: </span>
+                      <span>{row.coStatement}</span>
+                    </td>
+                    {activePOs.map(po => {
+                      const alignment = row.poAlignments?.[po.number] || '';
+                      return (
+                        <td key={po.number} className="p-1 border border-black text-center font-bold">
+                          {alignment || ''}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))
+              ) : (
+                <tr className="border-b border-black h-8">
+                  <td className="p-1.5 border border-black">&nbsp;</td>
+                  <td className="p-1.5 border border-black">&nbsp;</td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
           <div className="font-bold text-[9pt] mb-3 mt-1 text-black">
@@ -537,11 +569,15 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
           {/* Part V: References */}
           <div className="font-bold text-[10pt] mb-1 text-black">Part V: References</div>
           <div className="space-y-1 mb-4 text-[9.5pt]">
-            {(references || []).map((ref, idx) => (
-              <div key={idx} className="pl-8 -indent-8 text-justify leading-relaxed">
-                {ref.citation} {ref.year ? `(${ref.year}).` : ''} {ref.doiOrPublisher}
-              </div>
-            ))}
+            {references && references.length > 0 ? (
+              references.map((ref, idx) => (
+                <div key={idx} className="pl-8 -indent-8 text-justify leading-relaxed">
+                  {ref.citation} {ref.year ? `(${ref.year}).` : ''} {ref.doiOrPublisher}
+                </div>
+              ))
+            ) : (
+              <div className="h-6"></div>
+            )}
           </div>
 
           {/* Signatories Table (Table 5) */}

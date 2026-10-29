@@ -85,7 +85,7 @@ export interface LMSContextType {
   currentUser: User | null;
   activeUser: User;
   activeRole: UserRole;
-  login: (emailOrId: string, password: string) => Promise<{ success: boolean; message?: string; user?: User }>;
+  login: (emailOrId: string, password: string, rememberMe?: boolean) => Promise<{ success: boolean; message?: string; user?: User }>;
   logout: () => void;
   switchRole: (role: UserRole) => void; // Keep for testing convenience if needed
   isLoading: boolean;
@@ -761,6 +761,22 @@ const mapLikhaModuleItemRow = (it: any): ModuleItem => {
       if (Array.isArray(p)) parsedAttachments = p;
     } catch {}
   }
+
+  const firstAtt = Array.isArray(parsedAttachments) && parsedAttachments.length > 0 ? parsedAttachments[0] : null;
+  const resolvedFileName = it.file_name ?? it.fileName ?? firstAtt?.name ?? undefined;
+  const resolvedFileUrl = it.file_url ?? it.fileUrl ?? it.url ?? firstAtt?.url ?? undefined;
+  const resolvedFileSize = it.file_size ?? it.fileSize ?? firstAtt?.size ?? undefined;
+  const resolvedFileType = it.file_type ?? it.fileType ?? (resolvedFileName ? toShortFileType(resolvedFileName) : undefined);
+
+  if ((!parsedAttachments || parsedAttachments.length === 0) && (resolvedFileName || resolvedFileUrl)) {
+    parsedAttachments = [{
+      name: resolvedFileName || 'Attached File',
+      url: resolvedFileUrl,
+      size: resolvedFileSize,
+      type: resolvedFileType || 'document',
+    }];
+  }
+
   return {
     id: String(it.id),
     title: it.title ?? 'Untitled item',
@@ -772,13 +788,14 @@ const mapLikhaModuleItemRow = (it: any): ModuleItem => {
     content: it.content ?? undefined,
     activityId: it.activity_id ?? it.activityId ?? undefined,
     quizId: it.quiz_id ?? it.quizId ?? undefined,
-    fileUrl: it.file_url ?? it.fileUrl ?? it.url ?? undefined,
-    fileName: it.file_name ?? it.fileName ?? undefined,
-    fileSize: it.file_size ?? it.fileSize ?? undefined,
-    fileType: it.file_type ?? it.fileType ?? undefined,
+    fileUrl: resolvedFileUrl,
+    fileName: resolvedFileName,
+    fileSize: resolvedFileSize,
+    fileType: resolvedFileType,
     completed: it.completed ?? undefined,
     authorId: it.author_id ?? it.authorId ?? undefined,
     authorName: it.author_name ?? it.authorName ?? undefined,
+    order: typeof it.order === 'number' ? it.order : (Number(it.order) || undefined),
     attachments: parsedAttachments,
   };
 };
@@ -808,7 +825,9 @@ const mapLikhaModuleRow = (m: any): Module => ({
   prerequisiteModuleId: m.prerequisite_module_id ?? m.prerequisiteModuleId ?? undefined,
   authorId: m.author_id ?? m.authorId ?? undefined,
   authorName: m.author_name ?? m.authorName ?? undefined,
-  items: Array.isArray(m.items) ? m.items.map(mapLikhaModuleItemRow) : [],
+  items: Array.isArray(m.items)
+    ? m.items.map(mapLikhaModuleItemRow).sort((a: any, b: any) => (Number(b.order) || 0) - (Number(a.order) || 0))
+    : [],
   comments: Array.isArray(m.comments)
     ? m.comments.map((c: any) => mapLikhaModuleCommentRow(c, String(m.id)))
     : [],
@@ -1189,21 +1208,57 @@ const mapLikhaActivityRow = (row: any): any => ({
   dueDate: row.due_date ?? row.dueDate ?? undefined,
   submissionTypes: Array.isArray(row.submission_types)
     ? row.submission_types
-    : row.submissionTypes,
+    : typeof row.submission_types === 'string'
+      ? (() => {
+          try {
+            const parsed = JSON.parse(row.submission_types);
+            if (Array.isArray(parsed)) return parsed;
+          } catch {}
+          return row.submission_types.split(',').map((s: string) => s.trim()).filter(Boolean);
+        })()
+      : Array.isArray(row.submissionTypes)
+        ? row.submissionTypes
+        : undefined,
   category: row.category ?? undefined,
   weight: typeof row.weight === 'number' ? row.weight : undefined,
-  rubric: Array.isArray(row.rubric)
-    ? row.rubric
-    : Array.isArray(row.rubric_criteria)
-      ? row.rubric_criteria.map((r: any) => ({
+  rubric: (() => {
+    const parsedRubric = Array.isArray(row.rubric)
+      ? row.rubric
+      : typeof row.rubric === 'string'
+        ? (() => {
+            try {
+              const p = JSON.parse(row.rubric);
+              return Array.isArray(p) ? p : undefined;
+            } catch {
+              return undefined;
+            }
+          })()
+        : undefined;
+    if (parsedRubric) {
+      return parsedRubric.map((r: any) => ({
+        ...r,
+        id: String(r.id || ''),
+        title: r.title ?? r.criterion ?? '',
+        description: r.description ?? '',
+        points: Number(r.max_points ?? r.points) || 0,
+        ratings: Array.isArray(r.ratings) ? r.ratings : [],
+      }));
+    }
+    if (Array.isArray(row.rubric_criteria)) {
+      return row.rubric_criteria.map((r: any) => ({
         ...r,
         id: String(r.id),
         title: r.title ?? r.criterion ?? '',
         description: r.description ?? '',
         points: Number(r.max_points ?? r.points) || 0,
-        ratings: Array.isArray(r.ratings) ? r.ratings : [],
-      }))
-      : undefined,
+        ratings: Array.isArray(r.ratings) && r.ratings.length > 0 ? r.ratings : [
+          { points: Number(r.max_points ?? r.points) || 10, description: 'Exemplary Mastery' },
+          { points: 0, description: 'Needs Revision' },
+        ],
+      }));
+    }
+    return undefined;
+  })(),
   fileName: row.file_name ?? row.fileName ?? undefined,
   fileUrl: row.file_url ?? row.fileUrl ?? undefined,
   fileSize: row.file_size ?? row.fileSize ?? undefined,
@@ -2608,6 +2663,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [currentUser]);
   const hydratedCourseIdsRef = useRef<Set<string>>(new Set());
   const hydratingCourseIdsRef = useRef<Set<string>>(new Set());
+  const showAlertRef = useRef<(options: string | AlertModalOptions, title?: string) => void>(() => {});
 
   // ponytail: two-phase bootstrap — essential paints the shell fast,
   // deferred fills per-course details in the background without blocking authReady.
@@ -3492,109 +3548,146 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // Alert & Confirmation Modal state
+  const [alertOptions, setAlertOptions] = useState<AlertModalOptions | null>(null);
+  const [isAlertOpen, setIsAlertOpen] = useState(false);
+
+  const showAlert = useCallback((options: string | AlertModalOptions, title?: string) => {
+    if (typeof options === 'string') {
+      setAlertOptions({
+        title: title || 'Notice',
+        message: options,
+        type: 'info'
+      });
+    } else {
+      setAlertOptions(options);
+    }
+    setIsAlertOpen(true);
+  }, []);
+  showAlertRef.current = showAlert;
+
   // Session restore: token -> check Likha ERP -> user + bootstrap
-  useEffect(() => {
+  const restoringRef = useRef(false);
+  const restoreSession = useCallback(async () => {
+    if (restoringRef.current) return;
     const token = getToken();
     if (!token) {
       setAuthReady(true);
       return;
     }
-    let cancelled = false;
-    (async () => {
-      try {
-        let user: User | null = null;
+    restoringRef.current = true;
+    try {
+      let user: User | null = null;
 
-        // 1. Try Likha ERP true backend first
-        if (likhaLmsApi?.auth?.getMe) {
-          try {
-            const me = await likhaLmsApi.auth.getMe();
-            if (me?.id) {
-              let mapped = mapDirectusRole(me.role, me.email, me.adminSubrole);
-              const meEmail = (me.email || '').trim().toLowerCase();
-              const pendingList = pendingRegistrationsRef.current || pendingRegistrations;
-              const knownReg = pendingList.find(r => r.email?.trim().toLowerCase() === meEmail);
-              if (knownReg?.role === 'student' && mapped.role !== 'student') {
-                mapped = { role: 'student', title: 'Undergraduate Student' };
-                likhaLmsApi.users.resolveRoleId('student').then(rId => {
-                  if (rId && me.id) {
-                    likhaLmsApi.users.updateUser(me.id, { role: rId }).catch(() => {});
-                  }
-                }).catch(() => {});
-              } else if (knownReg?.role === 'faculty' && mapped.role !== 'faculty' && mapped.role !== 'admin' && mapped.role !== 'superadmin') {
-                mapped = { role: 'faculty', title: 'Instructor' };
-              }
-              const rawMeUser: User = {
-                id: me.id,
-                name: resolveDirectusUserName(me, me.email),
-                firstName: me.first_name || undefined,
-                middleName: me.middle_name || undefined,
-                lastName: me.last_name || undefined,
-                email: me.email,
-                role: mapped.role,
-                adminSubrole: mapped.adminSubrole,
-                avatar: me.avatar
-                  ? resolveDirectusUserAvatar(me.avatar)
-                  : getCleanStoredAvatar(me.id),
-                banner: me.banner
-                  ? resolveDirectusUserBanner(me.banner)
-                  : getCleanStoredBanner(me.id),
-                department:
-                  me.department ||
-                  (mapped.role === 'superadmin' ? 'Office of the Chancellor' : 'Department of Computer Science'),
-                title: (mapped.role === 'student' ? 'Undergraduate Student' : (me.title || mapped.title)),
-                collegeId: me.college_id || me.collegeId,
-                collegeName: me.college_name || me.collegeName,
-                yearLevel: me.year_level !== undefined ? Number(me.year_level) : (me.yearLevel !== undefined ? Number(me.yearLevel) : undefined),
-                yearsOfTeaching: me.years_of_teaching !== undefined ? Number(me.years_of_teaching) : (me.yearsOfTeaching !== undefined ? Number(me.yearsOfTeaching) : undefined),
-              };
-              user = normalizeChancellorUser(applyStoredUserProfile(rawMeUser));
+      // 1. Try Likha ERP true backend first
+      if (likhaLmsApi?.auth?.getMe) {
+        try {
+          const me = await likhaLmsApi.auth.getMe();
+          if (me?.id) {
+            let mapped = mapDirectusRole(me.role, me.email, me.adminSubrole);
+            const meEmail = (me.email || '').trim().toLowerCase();
+            const pendingList = pendingRegistrationsRef.current || pendingRegistrations;
+            const knownReg = pendingList.find(r => r.email?.trim().toLowerCase() === meEmail);
+            if (knownReg?.role === 'student' && mapped.role !== 'student') {
+              mapped = { role: 'student', title: 'Undergraduate Student' };
+              likhaLmsApi.users.resolveRoleId('student').then(rId => {
+                if (rId && me.id) {
+                  likhaLmsApi.users.updateUser(me.id, { role: rId }).catch(() => {});
+                }
+              }).catch(() => {});
+            } else if (knownReg?.role === 'faculty' && mapped.role !== 'faculty' && mapped.role !== 'admin' && mapped.role !== 'superadmin') {
+              mapped = { role: 'faculty', title: 'Instructor' };
             }
-          } catch (likhaErr: any) {
-            // If Likha explicitly returns 401 Unauthorized, the stored token is expired/invalid.
-            if (likhaErr?.status === 401 || String(likhaErr?.message).includes('401')) {
-              clearToken();
-              setIsSessionExpired(true);
-              return;
-            }
+            const rawMeUser: User = {
+              id: me.id,
+              name: resolveDirectusUserName(me, me.email),
+              firstName: me.first_name || undefined,
+              middleName: me.middle_name || undefined,
+              lastName: me.last_name || undefined,
+              email: me.email,
+              role: mapped.role,
+              adminSubrole: mapped.adminSubrole,
+              avatar: me.avatar
+                ? resolveDirectusUserAvatar(me.avatar)
+                : getCleanStoredAvatar(me.id),
+              banner: me.banner
+                ? resolveDirectusUserBanner(me.banner)
+                : getCleanStoredBanner(me.id),
+              department:
+                me.department ||
+                (mapped.role === 'superadmin' ? 'Office of the Chancellor' : 'Department of Computer Science'),
+              title: (mapped.role === 'student' ? 'Undergraduate Student' : (me.title || mapped.title)),
+              collegeId: me.college_id || me.collegeId,
+              collegeName: me.college_name || me.collegeName,
+              yearLevel: me.year_level !== undefined ? Number(me.year_level) : (me.yearLevel !== undefined ? Number(me.yearLevel) : undefined),
+              yearsOfTeaching: me.years_of_teaching !== undefined ? Number(me.years_of_teaching) : (me.yearsOfTeaching !== undefined ? Number(me.yearsOfTeaching) : undefined),
+            };
+            user = normalizeChancellorUser(applyStoredUserProfile(rawMeUser));
+          }
+        } catch (likhaErr: any) {
+          // If Likha explicitly returns 401 Unauthorized, the stored token is expired/invalid.
+          if (likhaErr?.status === 401 || String(likhaErr?.message).includes('401')) {
+            clearToken();
+            setIsSessionExpired(true);
+            return;
           }
         }
-
-        // Likha-only restore: if Likha
-        // yields no user, the stored token is unusable.
-        if (!user) {
-          clearToken();
-          return;
-        }
-
-        if (cancelled) return;
-        setCurrentUser(user);
-        const { fresh, courses, run } = await refreshEssential(user);
-        if (cancelled) return;
-        setAuthReady(true);
-        await refreshDeferred(fresh, courses, run);
-      } catch (err: any) {
-        if (cancelled) return;
-        const isAuthError =
-          (err instanceof ApiError && err.status === 401) ||
-          err?.status === 401 ||
-          String(err?.message).includes('401');
-
-        if (isAuthError) {
-          clearToken();
-          setIsSessionExpired(true);
-        } else {
-          const message = err instanceof ApiError ? err.message : 'Failed to restore session.';
-          setLastError(message);
-          showAlert(message, 'Load Failed');
-        }
-      } finally {
-        if (!cancelled) setAuthReady(true);
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
+
+      // Likha-only restore: if Likha yields no user, the stored token is unusable.
+      if (!user) {
+        clearToken();
+        return;
+      }
+
+      setCurrentUser(user);
+      const { fresh, courses, run } = await refreshEssential(user);
+      setAuthReady(true);
+      await refreshDeferred(fresh, courses, run);
+    } catch (err: any) {
+      const isAuthError =
+        (err instanceof ApiError && err.status === 401) ||
+        err?.status === 401 ||
+        String(err?.message).includes('401');
+
+      if (isAuthError) {
+        clearToken();
+        setIsSessionExpired(true);
+      } else {
+        const message = err instanceof ApiError ? err.message : 'Failed to restore session.';
+        setLastError(message);
+        showAlertRef.current?.(message, 'Load Failed');
+      }
+    } finally {
+      restoringRef.current = false;
+      setAuthReady(true);
+    }
   }, []);
+
+  useEffect(() => {
+    void restoreSession();
+  }, [restoreSession]);
+
+  // Synchronize authentication changes across browser tabs
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'gabay_token') {
+        if (!e.newValue && currentUserRef.current) {
+          clearToken();
+          setCurrentUser(null);
+          try {
+            likhaLmsApi?.invalidateCache?.();
+          } catch {}
+        } else if (e.newValue && !currentUserRef.current) {
+          void restoreSession();
+        }
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, [restoreSession]);
 
   const isAuthenticated = currentUser !== null;
   const activeUser = currentUser || db.users[0];
@@ -3602,7 +3695,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   activeUserRef.current = activeUser;
   const activeRole: UserRole = currentUser?.role || 'student';
 
-  const login = async (emailOrId: string, password: string): Promise<{ success: boolean; message?: string; user?: User }> => {
+  const login = async (emailOrId: string, password: string, rememberMe = true): Promise<{ success: boolean; message?: string; user?: User }> => {
     const cleanEmail = emailOrId.trim().toLowerCase();
     let pendingList = pendingRegistrationsRef.current || pendingRegistrations;
     let pending = pendingList.find(
@@ -3718,7 +3811,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             yearsOfTeaching: likhaAuth.user.years_of_teaching !== undefined ? Number(likhaAuth.user.years_of_teaching) : (likhaAuth.user.yearsOfTeaching !== undefined ? Number(likhaAuth.user.yearsOfTeaching) : undefined),
           };
           const mappedUser = normalizeChancellorUser(applyStoredUserProfile(rawMappedUser));
-          setToken(likhaAuth.token);
+          setToken(likhaAuth.token, rememberMe);
           const essentialLikha = await refreshEssential(mappedUser);
           void refreshDeferred(essentialLikha.fresh, essentialLikha.courses, essentialLikha.run);
           const effectiveUser = essentialLikha.fresh.users.find(u => u.id === mappedUser.id) || mappedUser;
@@ -3948,10 +4041,6 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
   const [isUserProfileModalOpen, setIsUserProfileModalOpen] = useState(false);
 
-// Alert & Confirmation Modal state
-  const [alertOptions, setAlertOptions] = useState<AlertModalOptions | null>(null);
-  const [isAlertOpen, setIsAlertOpen] = useState(false);
-
   // Notifications state (mirrors db.notifications so badges survive reload)
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
@@ -3966,19 +4055,6 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
     }
   }, [db.notifications]);
-
-  const showAlert = (options: string | AlertModalOptions, title?: string) => {
-    if (typeof options === 'string') {
-      setAlertOptions({
-        title: title || 'Notice',
-        message: options,
-        type: 'info'
-      });
-    } else {
-      setAlertOptions(options);
-    }
-    setIsAlertOpen(true);
-  };
 
   const showConfirm = (message: string, onConfirm: () => void, title?: string) => {
     setAlertOptions({
@@ -4352,7 +4428,15 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addModuleItem = async (moduleId: string, itemData: Partial<ModuleItem>): Promise<void> => {
     // File fields pass through; the server files them (area/modules folders).
     // Likha ERP is the source of truth for module items (snake_case patch).
-    const body: Record<string, any> = {};
+    const currentModule = (db.modules || []).find(m => m.id === moduleId);
+    const existingOrders = (currentModule?.items || [])
+      .map(it => (typeof it.order === 'number' ? it.order : Number(it.order) || 0));
+    const maxOrder = existingOrders.length > 0 ? Math.max(...existingOrders, 0) : 0;
+    const computedOrder = itemData.order !== undefined && itemData.order !== null
+      ? Number(itemData.order)
+      : Math.max(maxOrder + 1, Math.floor(Date.now() / 1000));
+
+    const body: Record<string, any> = { order: computedOrder };
     if (itemData.title !== undefined) body.title = itemData.title;
     if (itemData.type !== undefined) body.type = itemData.type;
     if (itemData.published !== undefined) body.published = itemData.published;
@@ -4376,7 +4460,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setDb(prev => ({
         ...prev,
         modules: prev.modules.map(mod =>
-          mod.id === moduleId ? { ...mod, items: [...mod.items, item] } : mod
+          mod.id === moduleId
+            ? { ...mod, items: [item, ...mod.items].sort((a, b) => (Number(b.order) || 0) - (Number(a.order) || 0)) }
+            : mod
         )
       }));
     } catch (err) {
@@ -4409,6 +4495,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (updates.required !== undefined) body.required = updates.required;
       if (updates.minScore !== undefined) body.minScore = updates.minScore;
       if (updates.attachments !== undefined) body.attachments = updates.attachments;
+      if (updates.order !== undefined) body.order = updates.order;
       if (destModuleId !== currentModuleId) {
         // Cross-module move: single PATCH carrying the target FK — the item
         // id is PRESERVED server-side.
@@ -4429,7 +4516,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           return {
             ...prev,
             modules: withoutSource.map(mod =>
-              mod.id === destModuleId ? { ...mod, items: [...mod.items, moved] } : mod
+              mod.id === destModuleId
+                ? { ...mod, items: [moved, ...mod.items].sort((a, b) => (Number(b.order) || 0) - (Number(a.order) || 0)) }
+                : mod
             )
           };
         });
@@ -4440,7 +4529,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...prev,
         modules: (prev.modules || []).map(mod =>
           mod.id === currentModuleId
-            ? { ...mod, items: mod.items.map(it => (it.id === itemId ? mapLikhaModuleItemRow({ ...it, ...(row as any) }) : it)) }
+            ? {
+                ...mod,
+                items: mod.items
+                  .map(it => (it.id === itemId ? mapLikhaModuleItemRow({ ...it, ...(row as any) }) : it))
+                  .sort((a, b) => (Number(b.order) || 0) - (Number(a.order) || 0))
+              }
             : mod
         )
       }));
@@ -8801,10 +8895,18 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           size: resolvedBytes,
           formatted_size: resolvedFormatted,
         }, courseId);
-        setDb(prev => ({
-          ...prev,
-          courseFiles: [...(prev.courseFiles || []), file]
-        }));
+        setDb(prev => {
+          const normName = (file.name || '').trim().toLowerCase();
+          const filtered = (prev.courseFiles || []).filter(existing =>
+            !((existing.name || '').trim().toLowerCase() === normName &&
+              existing.courseId === file.courseId &&
+              (!file.sourceArea || existing.sourceArea === file.sourceArea))
+          );
+          return {
+            ...prev,
+            courseFiles: [...filtered, file]
+          };
+        });
         return file;
       } catch (err) {
         if (!fileData.silent) {
@@ -8850,10 +8952,18 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         size: res?.size ?? resolvedSize,
         formatted_size: res?.formatted_size ?? formattedSize,
       }, courseId);
-      setDb(prev => ({
-        ...prev,
-        courseFiles: [...(prev.courseFiles || []), file]
-      }));
+      setDb(prev => {
+        const normName = (file.name || '').trim().toLowerCase();
+        const filtered = (prev.courseFiles || []).filter(existing =>
+          !((existing.name || '').trim().toLowerCase() === normName &&
+            existing.courseId === file.courseId &&
+            (!file.sourceArea || existing.sourceArea === file.sourceArea))
+        );
+        return {
+          ...prev,
+          courseFiles: [...filtered, file]
+        };
+      });
       return file;
     } catch (err) {
       if (!fileData.silent) {
@@ -8874,13 +8984,26 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const allFiles = db.courseFiles || [];
       const target = allFiles.find(f => f.id === fileId);
       const targetName = (target?.name || '').trim().toLowerCase();
+      const targetCourseId = target?.courseId;
+      const targetSourceArea = target?.sourceArea;
       const affectedCourse = (db.courses || []).find(course => {
         const doc = course.syllabus?.sourceDocument;
         if (!doc) return false;
         return (targetName && (doc.fileName || '').trim().toLowerCase() === targetName) || (doc as any).courseFileId === fileId;
       });
+
+      // Find all duplicate records matching this file in the same course/area to prevent zombie files unmasking
+      const matchingFiles = allFiles.filter(f =>
+        f.id === fileId ||
+        (targetName &&
+          (!targetCourseId || f.courseId === targetCourseId) &&
+          (f.name || '').trim().toLowerCase() === targetName &&
+          (!targetSourceArea || !f.sourceArea || f.sourceArea === targetSourceArea))
+      );
+      const fileIdsToDelete = matchingFiles.length > 0 ? matchingFiles.map(f => f.id) : [fileId];
+
       try {
-        await likhaLmsApi.files.deleteCourseFile(fileId);
+        await Promise.all(fileIdsToDelete.map(id => likhaLmsApi.files.deleteCourseFile(id)));
         const clearFn1 = (likhaLmsApi.syllabus as any)?.clearSourceDocument || (likhaLmsApi.courses as any)?.clearSourceDocument;
         if (affectedCourse && clearFn1) {
           await clearFn1(affectedCourse.id).catch(() => {});
@@ -8893,40 +9016,144 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       setDb(prev => {
         const targetName = target?.name?.trim().toLowerCase();
-        const nextCourseFiles = (prev.courseFiles || []).filter(f => f.id !== fileId);
-        const nextAnnouncements = (prev.announcements || []).map(ann => {
-          if (!targetName) return ann;
-          const hasAtt = (ann.attachments || []).some(a => (a.name || '').trim().toLowerCase() === targetName);
-          if (!hasAtt) return ann;
-          const remaining = (ann.attachments || []).filter(a => (a.name || '').trim().toLowerCase() !== targetName);
-          saveStoredAnnouncementAttachments(ann.id, remaining);
-          return { ...ann, attachments: remaining };
-        });
-        const nextCourses = (prev.courses || []).map(c => {
-          const doc = c.syllabus?.sourceDocument;
-          if (!doc) return c;
-          const matchesName = targetName && (doc.fileName || '').trim().toLowerCase() === targetName;
-          const matchesFileId = (doc as any).courseFileId === fileId;
-          if (matchesName || matchesFileId) {
-            const clearFn2 = (likhaLmsApi.syllabus as any)?.clearSourceDocument || (likhaLmsApi.courses as any)?.clearSourceDocument;
-            if (clearFn2) {
-              clearFn2(c.id).catch(() => {});
-            }
-            return {
-              ...c,
-              syllabus: {
-                ...c.syllabus!,
-                sourceDocument: undefined,
-              },
-            };
-          }
-          return c;
-        });
+        const deletedIdsSet = new Set(fileIdsToDelete);
+        const nextCourseFiles = (prev.courseFiles || []).filter(f => !deletedIdsSet.has(f.id));
+
+        const isArea = (area: string) => !targetSourceArea || targetSourceArea === area;
+
+        // 1. Announcements
+        const nextAnnouncements = isArea('announcements')
+          ? (prev.announcements || []).map(ann => {
+              if (!targetName) return ann;
+              if (target?.sourceId && ann.id !== target.sourceId) return ann;
+              const hasAtt = (ann.attachments || []).some(a => (a.name || '').trim().toLowerCase() === targetName);
+              if (!hasAtt) return ann;
+              const remaining = (ann.attachments || []).filter(a => (a.name || '').trim().toLowerCase() !== targetName);
+              saveStoredAnnouncementAttachments(ann.id, remaining);
+              return { ...ann, attachments: remaining };
+            })
+          : (prev.announcements || []);
+
+        // 2. Syllabus
+        const nextCourses = isArea('syllabus')
+          ? (prev.courses || []).map(c => {
+              const doc = c.syllabus?.sourceDocument;
+              if (!doc) return c;
+              const matchesName = targetName && (doc.fileName || '').trim().toLowerCase() === targetName;
+              const matchesFileId = deletedIdsSet.has((doc as any).courseFileId);
+              if (matchesName || matchesFileId) {
+                const clearFn2 = (likhaLmsApi.syllabus as any)?.clearSourceDocument || (likhaLmsApi.courses as any)?.clearSourceDocument;
+                if (clearFn2) {
+                  clearFn2(c.id).catch(() => {});
+                }
+                return {
+                  ...c,
+                  syllabus: {
+                    ...c.syllabus!,
+                    sourceDocument: undefined,
+                  },
+                };
+              }
+              return c;
+            })
+          : (prev.courses || []);
+
+        // 3. Activities
+        const saveActivityFn = likhaLmsApi.assessments?.saveActivity || (likhaLmsApi as any).saveActivity;
+        const nextActivities = (isArea('activities') || isArea('assignments') || isArea('projects') || isArea('presentations'))
+          ? (prev.activities || []).map(act => {
+              if (!targetName || (targetCourseId && act.courseId !== targetCourseId)) return act;
+              if (target?.sourceId && act.id !== target.sourceId) return act;
+              let modified = false;
+              let nextAttachments = act.attachments;
+              if (Array.isArray(act.attachments)) {
+                const filtered = act.attachments.filter(att => (att.name || '').trim().toLowerCase() !== targetName);
+                if (filtered.length !== act.attachments.length) {
+                  nextAttachments = filtered;
+                  modified = true;
+                }
+              }
+              let nextFileName = act.fileName;
+              let nextFileUrl = act.fileUrl;
+              let nextFileSize = act.fileSize;
+              if ((act.fileName || '').trim().toLowerCase() === targetName) {
+                nextFileName = nextAttachments && nextAttachments.length > 0 ? nextAttachments[0].name : undefined;
+                nextFileUrl = nextAttachments && nextAttachments.length > 0 ? nextAttachments[0].url : undefined;
+                nextFileSize = nextAttachments && nextAttachments.length > 0 ? nextAttachments[0].size : undefined;
+                modified = true;
+              }
+              if (modified) {
+                const updatedAct = {
+                  ...act,
+                  attachments: nextAttachments,
+                  fileName: nextFileName,
+                  fileUrl: nextFileUrl,
+                  fileSize: nextFileSize,
+                };
+                if (saveActivityFn) {
+                  void saveActivityFn(updatedAct).catch(() => {});
+                }
+                return updatedAct;
+              }
+              return act;
+            })
+          : (prev.activities || []);
+
+        // 4. Modules
+        const nextModules = isArea('modules')
+          ? (prev.modules || []).map(m => {
+              if (!targetName || (targetCourseId && m.courseId !== targetCourseId)) return m;
+              if (target?.sourceId && m.id !== target.sourceId && !(m.items || []).some(it => it.id === target.sourceId)) return m;
+              let modModified = false;
+              const nextItems = (m.items || []).map(item => {
+                let itemModified = false;
+                let nextAtts = item.attachments;
+                if (Array.isArray(item.attachments)) {
+                  const filtered = item.attachments.filter(att => (att.name || '').trim().toLowerCase() !== targetName);
+                  if (filtered.length !== item.attachments.length) {
+                    nextAtts = filtered;
+                    itemModified = true;
+                  }
+                }
+                let nextFileName = item.fileName;
+                let nextFileUrl = item.fileUrl;
+                let nextFileSize = item.fileSize;
+                if ((item.fileName || '').trim().toLowerCase() === targetName) {
+                  nextFileName = nextAtts && nextAtts.length > 0 ? nextAtts[0].name : undefined;
+                  nextFileUrl = nextAtts && nextAtts.length > 0 ? nextAtts[0].url : undefined;
+                  nextFileSize = nextAtts && nextAtts.length > 0 ? nextAtts[0].size : undefined;
+                  itemModified = true;
+                }
+                if (itemModified) {
+                  modModified = true;
+                  const updatedItem = {
+                    ...item,
+                    attachments: nextAtts,
+                    fileName: nextFileName,
+                    fileUrl: nextFileUrl,
+                    fileSize: nextFileSize,
+                  };
+                  void likhaLmsApi.modules?.updateModuleItem?.(item.id, {
+                    attachments: nextAtts,
+                    file_name: nextFileName ?? null,
+                    file_url: nextFileUrl ?? null,
+                    file_size: nextFileSize ?? null,
+                  }).catch(() => {});
+                  return updatedItem;
+                }
+                return item;
+              });
+              return modModified ? { ...m, items: nextItems } : m;
+            })
+          : (prev.modules || []);
+
         return {
           ...prev,
           courseFiles: nextCourseFiles,
           announcements: nextAnnouncements,
           courses: nextCourses,
+          activities: nextActivities,
+          modules: nextModules,
         };
       });
       return;
@@ -8935,27 +9162,82 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // 1. Direct course files
       let updatedCourseFiles = (prev.courseFiles || []).filter(f => f.id !== fileId);
 
-      // 2. Module item file
+      // 2. Module item file (mod-file-- or mod-file-)
       let updatedModules = prev.modules;
       if (fileId.startsWith('mod-file-')) {
-        const itemId = fileId.replace('mod-file-', '');
-        updatedModules = (prev.modules || []).map(m => ({
-          ...m,
-          items: m.items
-            .map(item => {
-              if (item.id === itemId) {
-                return {
-                  ...item,
-                  fileName: undefined,
-                  fileUrl: undefined,
-                  fileSize: undefined,
-                  fileType: undefined
-                };
+        const remainder = fileId.replace(/^mod-file-/, '');
+        const lastDash = remainder.lastIndexOf('-');
+        let itemId = remainder;
+        let attIdx = -1;
+        if (lastDash > 0) {
+          const possibleIdx = remainder.substring(lastDash + 1);
+          if (/^\d+$/.test(possibleIdx)) {
+            itemId = remainder.substring(0, lastDash);
+            attIdx = Number(possibleIdx);
+          }
+        }
+        updatedModules = (prev.modules || []).map(m => {
+          let modModified = false;
+          const nextItems = (m.items || []).map(item => {
+            if (item.id === itemId || fileId.includes(item.id)) {
+              modModified = true;
+              let nextAttachments = item.attachments;
+              let removedName = '';
+              if (Array.isArray(item.attachments)) {
+                if (attIdx >= 0 && attIdx < item.attachments.length) {
+                  removedName = (item.attachments[attIdx]?.name || '').trim().toLowerCase();
+                  nextAttachments = item.attachments.filter((_, idx) => idx !== attIdx);
+                } else if (item.attachments.length === 1) {
+                  removedName = (item.attachments[0]?.name || '').trim().toLowerCase();
+                  nextAttachments = [];
+                }
               }
-              return item;
-            })
-            .filter(item => !(item.type === 'file' && item.id === itemId))
-        }));
+              let nextFileName = item.fileName;
+              let nextFileUrl = item.fileUrl;
+              let nextFileSize = item.fileSize;
+              if (!removedName && item.fileName) {
+                removedName = item.fileName.trim().toLowerCase();
+              }
+              if (removedName && (item.fileName || '').trim().toLowerCase() === removedName) {
+                nextFileName = nextAttachments && nextAttachments.length > 0 ? nextAttachments[0].name : undefined;
+                nextFileUrl = nextAttachments && nextAttachments.length > 0 ? nextAttachments[0].url : undefined;
+                nextFileSize = nextAttachments && nextAttachments.length > 0 ? nextAttachments[0].size : undefined;
+              }
+
+              if (removedName) {
+                const matchingCfs = (prev.courseFiles || []).filter(f =>
+                  (f.name || '').trim().toLowerCase() === removedName &&
+                  (f.sourceArea === 'modules' || f.courseId === m.courseId)
+                );
+                if (matchingCfs.length > 0) {
+                  matchingCfs.forEach(cf => {
+                    void likhaLmsApi.files.deleteCourseFile(cf.id).catch(() => {});
+                  });
+                  const delSet = new Set(matchingCfs.map(cf => cf.id));
+                  updatedCourseFiles = updatedCourseFiles.filter(f => !delSet.has(f.id));
+                }
+              }
+
+              const updatedItem = {
+                ...item,
+                attachments: nextAttachments,
+                fileName: nextFileName,
+                fileUrl: nextFileUrl,
+                fileSize: nextFileSize,
+                fileType: nextFileName ? item.fileType : undefined,
+              };
+              void likhaLmsApi.modules?.updateModuleItem?.(item.id, {
+                attachments: nextAttachments,
+                file_name: nextFileName ?? null,
+                file_url: nextFileUrl ?? null,
+                file_size: nextFileSize ?? null,
+              }).catch(() => {});
+              return updatedItem;
+            }
+            return item;
+          }).filter(item => !(item.type === 'file' && (item.id === itemId || fileId.includes(item.id))));
+          return modModified ? { ...m, items: nextItems } : m;
+        });
       }
 
       // 3. Announcement attachment
@@ -8988,18 +9270,71 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
       }
 
-      // 4. Classic activity handout file (link-key values preserved)
+      // 4. Classic activity handout file (act-file-- or act-file-)
+      const saveActivityFn = likhaLmsApi.assessments?.saveActivity || (likhaLmsApi as any).saveActivity;
       let updatedActivities = prev.activities;
       if (fileId.startsWith('act-file-')) {
-        const actId = fileId.replace('act-file-', '');
+        const remainder = fileId.replace(/^act-file-/, '');
+        const lastDash = remainder.lastIndexOf('-');
+        let actId = remainder;
+        let attIdx = -1;
+        if (lastDash > 0) {
+          const possibleIdx = remainder.substring(lastDash + 1);
+          if (/^\d+$/.test(possibleIdx)) {
+            actId = remainder.substring(0, lastDash);
+            attIdx = Number(possibleIdx);
+          }
+        }
         updatedActivities = (prev.activities || []).map(act => {
-          if (act.id === actId) {
-            return {
+          if (act.id === actId || fileId.includes(act.id)) {
+            let nextAttachments = act.attachments;
+            let removedName = '';
+            if (Array.isArray(act.attachments)) {
+              if (attIdx >= 0 && attIdx < act.attachments.length) {
+                removedName = (act.attachments[attIdx]?.name || '').trim().toLowerCase();
+                nextAttachments = act.attachments.filter((_, idx) => idx !== attIdx);
+              } else if (act.attachments.length === 1) {
+                removedName = (act.attachments[0]?.name || '').trim().toLowerCase();
+                nextAttachments = [];
+              }
+            }
+            let nextFileName = act.fileName;
+            let nextFileUrl = act.fileUrl;
+            let nextFileSize = act.fileSize;
+            if (!removedName && act.fileName) {
+              removedName = act.fileName.trim().toLowerCase();
+            }
+            if (removedName && (act.fileName || '').trim().toLowerCase() === removedName) {
+              nextFileName = nextAttachments && nextAttachments.length > 0 ? nextAttachments[0].name : undefined;
+              nextFileUrl = nextAttachments && nextAttachments.length > 0 ? nextAttachments[0].url : undefined;
+              nextFileSize = nextAttachments && nextAttachments.length > 0 ? nextAttachments[0].size : undefined;
+            }
+
+            if (removedName) {
+              const matchingCfs = (prev.courseFiles || []).filter(f =>
+                (f.name || '').trim().toLowerCase() === removedName &&
+                (f.sourceArea === 'activities' || f.courseId === act.courseId)
+              );
+              if (matchingCfs.length > 0) {
+                matchingCfs.forEach(cf => {
+                  void likhaLmsApi.files.deleteCourseFile(cf.id).catch(() => {});
+                });
+                const delSet = new Set(matchingCfs.map(cf => cf.id));
+                updatedCourseFiles = updatedCourseFiles.filter(f => !delSet.has(f.id));
+              }
+            }
+
+            const updatedAct = {
               ...act,
-              fileName: undefined,
-              fileUrl: undefined,
-              fileSize: undefined
+              attachments: nextAttachments,
+              fileName: nextFileName,
+              fileUrl: nextFileUrl,
+              fileSize: nextFileSize
             };
+            if (saveActivityFn) {
+              void saveActivityFn(updatedAct).catch(() => {});
+            }
+            return updatedAct;
           }
           return act;
         });
@@ -9062,6 +9397,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // 7. Virtual activity sets
       if (fileId.startsWith('asg-virtual-') || fileId.startsWith('act-virtual-')) {
         const actId = fileId.replace(/^(asg-virtual-|act-virtual-)/, '');
+        void likhaLmsApi.assessments?.deleteActivity?.(actId).catch(() => {});
         updatedActivities = (prev.activities || []).filter(act => act.id !== actId);
       }
 
