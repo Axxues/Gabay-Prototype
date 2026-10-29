@@ -135,25 +135,51 @@ The top-level route `/page1` acts as a role-adaptive command center:
 
 ## 3. Real-Time Collaboration & Synchronization Engine
 
-### 3.1 Web `BroadcastChannel` Live Sync (`gabay_syllabus_live_sync`)
-To ensure zero-latency synchronization between instructors editing different sections of the same course in separate tabs/windows without introducing brittle backend dependencies:
-- **Channel**: `new BroadcastChannel('gabay_syllabus_live_sync')`.
-- **Payload Events**:
-  1. `PRESENCE_PING`: Informs peer tabs of who is currently viewing/editing this syllabus and their active wizard step (e.g., `step: 'learning-plan'`).
-  2. `SECTION_UPDATE`: Broadcasts field or section changes with a monotonically increasing revision sequence and sender ID.
-  3. `SUBMISSION_UPDATE`: Broadcasts submission agreement toggle events in real time.
-- **Visual Presence UI**:
-  - Top bar of the Syllabus Wizard displays collaborator chips:
-    - *"🟢 Prof. Santos (BSCS 3A) is editing Part III (Learning Plan)"*.
-  - When peer changes are received, the local form state reflects them seamlessly, accompanied by an ephemeral sync indicator: *"Synced just now with Prof. Santos"*.
-
-### 3.2 Persistent Storage & Race-Free Auto-Save
-- The authoritative draft is written to persistent storage (`useSyllabusDraftsStorage` and Likha ERP syllabus storage).
-- A debounce mechanism (500ms) batches field keystrokes while maintaining instant local and broadcast responsiveness.
+### 3.1 Live Sync Architecture: Browser BroadcastChannel + Likha ERP Platform REST API
+Because we interact with Likha ERP solely via its standard platform APIs (without access or modifications to the underlying server codebase):
+1. **Cross-Tab / Multi-Window Sync (Browser-Native `BroadcastChannel`)**:
+   - `BroadcastChannel` is a standard web browser API that runs entirely on the client side. It requires **zero changes to the Likha ERP server codebase**.
+   - When multiple tabs or windows are open (e.g., simulating Instructor A and Instructor B during testing or local multi-account workflows), `BroadcastChannel` provides instant, sub-second typing and presence updates without hitting server rate limits.
+2. **Cross-Device Sync (Likha ERP Standard Platform REST API)**:
+   - For separate physical machines, live updates are persisted through Likha ERP's existing platform REST API (`/items/syllabi` or course syllabus data).
+   - An active collaboration heartbeat checks the latest `updatedAt` / `revisionNo` timestamp every few seconds while the authoring studio is open, pulling updates made by remote co-instructors.
+3. **Presence UI & Non-Blocking Merging**:
+   - Displays live chips: *"🟢 Prof. Santos (BSCS 3A) is editing Part III (Learning Plan)"*.
+   - Section-level updates avoid overwriting active input focus.
 
 ---
 
-## 4. Multi-Instructor Submission Consensus
+## 4. Multi-Instructor Submission Consensus & Revision Cycle
+
+1. **Unanimous Submission Gate**:
+   - In Step 7 (Review & Finalize), a **Co-Instructor Agreement Panel** shows each instructor's status (`Agreed ✓` or `Pending ⏳`).
+   - Only when **100% of assigned instructors** confirm agreement does the syllabus transition to `ready_for_evaluation`.
+2. **Revision Reset Semantics**:
+   - If an evaluator requests revisions (`revisions_required`), the submission agreements reset to `pending`.
+   - After revising, all co-instructors must re-confirm their agreement before the syllabus can be resubmitted.
+3. **Multi-Evaluator Re-review**:
+   - When multiple evaluators are assigned and revisions are submitted, **all assigned evaluators must re-review and approve** the updated syllabus before it moves to the Department Chairperson.
+
+---
+
+## 5. UI Structure on `/page1` (`Syllabus Development`)
+
+The `/page1` route serves as the unified academic authoring and governance portal:
+1. **Chairperson & Dean View**:
+   - Defaults to the **Department Syllabus Governance & Monitoring Table**:
+     - Course Code, Title, Instructors, Sections, Status Badge, Evaluators, Actions.
+     - Multi-select checkboxes + Bulk Action Bar ("Release Selected for Development", "Release All").
+     - Evaluator assignment modal (multi-select, scoped to collegiate faculty, excluding course instructors).
+     - Chair/Dean review & approval modals.
+2. **Faculty Instructor View**:
+   - **Primary Tab ("My Assigned Courses")**:
+     - Lists all courses assigned to the instructor via Chair-Sheet.
+     - Courses waiting for Chair approval show a locked state (*"Pending release by Department Chairperson"*).
+     - Released courses provide *"Open Syllabus Studio"* to collaborate on the shared draft.
+   - **Secondary Tab ("Personal Sandbox / Templates")**:
+     - Allows faculty to experiment, build standalone drafts, or test document uploads (.docx / .pdf) without affecting official university courses.
+   - **Evaluator Section ("Assigned for My Evaluation")**:
+     - Appears if the faculty member is selected as an evaluator for another department course.
 
 1. In the Syllabus Wizard (Step 7 Review & Finalize), when multiple instructors are attached to the course group:
    - A **Co-Instructor Submission Panel** is rendered:
