@@ -14,6 +14,7 @@ import type {
   CalendarEvent,
   Submission,
   SubmissionComment,
+  SubmissionAttachment,
   Message,
   AdvisingSlot,
   HistoryLog,
@@ -186,7 +187,8 @@ export interface LMSContextType {
     answers?: Record<string, string>,
     fileUrl?: string,
     fileId?: string,
-    fileSize?: string
+    fileSize?: string,
+    attachments?: SubmissionAttachment[]
   ) => Promise<void>;
   toggleModulePublish: (moduleId: string) => Promise<void>;
   toggleItemCompletion: (moduleId: string, itemId: string) => Promise<void>;
@@ -1355,6 +1357,11 @@ const mapLikhaSubmissionRow = (row: any, courseId?: string): any => {
       ? parsedContentData.note
       : row.content ?? undefined;
 
+  const attachments =
+    Array.isArray(parsedContentData?.attachments) && parsedContentData.attachments.length > 0
+      ? parsedContentData.attachments
+      : undefined;
+
   return {
     ...row,
     id: String(row.id),
@@ -1378,6 +1385,7 @@ const mapLikhaSubmissionRow = (row: any, courseId?: string): any => {
     fileName,
     fileUrl,
     fileSize,
+    ...(attachments !== undefined ? { attachments } : {}),
     grade: row.score ?? row.grade ?? undefined,
     gradedAt: row.graded_at ?? row.gradedAt ?? undefined,
     gradedBy: row.graded_by ?? row.gradedBy ?? undefined,
@@ -1606,6 +1614,8 @@ export const normalizeSubmission = (raw: any): Submission => {
     content: raw.content ?? undefined,
     fileUrl,
     fileName,
+    attachments:
+      Array.isArray(raw.attachments) && raw.attachments.length > 0 ? raw.attachments : undefined,
     grade: raw.grade ?? undefined,
     gradedAt: toOptionalIso(raw.gradedAt),
     gradedBy: raw.gradedBy ?? undefined,
@@ -2719,6 +2729,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               semester: c.semester || undefined,
               joinCode: c.join_code || c.joinCode || undefined,
               join_code: c.join_code || c.joinCode || undefined,
+              syllabusStatus: c.syllabus_status || c.syllabusStatus || undefined,
+              syllabusReleasedAt: c.syllabus_released_at || c.syllabusReleasedAt || undefined,
+              syllabusReleasedBy: c.syllabus_released_by || c.syllabusReleasedBy || undefined,
             })),
           })),
         Promise.resolve()
@@ -4196,6 +4209,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           (activeUser?.collegeId ? activeUser.collegeId : undefined) ||
           'col-ccs',
         programId: (row as any)?.program_id || (row as any)?.programId || courseData.programId || undefined,
+        syllabusStatus: (row as any)?.syllabus_status || courseData.syllabusStatus || 'locked',
       };
 
       setDb(prev => ({
@@ -7948,7 +7962,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     answers?: Record<string, string>,
     fileUrl?: string,
     fileId?: string,
-    fileSize?: string
+    fileSize?: string,
+    attachments?: SubmissionAttachment[]
   ): Promise<void> => {
     const cached = dbRef.current.activities?.find(a => a.id === activityId);
     const useQuestionSetPath = answers !== undefined || cached?.format !== 'classic';
@@ -7958,7 +7973,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             fileName: fileName || '',
             fileUrl: fileUrl || '',
             fileSize: fileSize || '',
-            note: content || ''
+            note: content || '',
+            ...(attachments && attachments.length > 0 ? { attachments } : {})
           })
         : content;
 
@@ -7990,6 +8006,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         fileSize: fileSize || saved.file_size,
         submission_type: submissionType,
         content: fileMetadata,
+        attachments,
       }, courseId));
       setDb(prev => {
         const idx = prev.submissions.findIndex(

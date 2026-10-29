@@ -212,18 +212,31 @@ export function useSyllabusLifecycle(
       }
 
       // Check if any course in this group has an active syllabusStatus from the backend
-      const groupCourses = relevantCourses.filter(c => g.courseIds.includes(c.id));
-      const backendCourseWithStatus = groupCourses.find(
-        c => c.syllabusStatus && c.syllabusStatus !== 'locked'
+      const groupCourses = relevantCourses.filter(
+        c =>
+          g.courseIds.includes(c.id) ||
+          (Boolean(c.code && g.courseCode) &&
+            normalizeCourseCode(c.code) === normalizeCourseCode(g.courseCode) &&
+            normalizeAcademicSemester(c.semester || c.term) === normalizeAcademicSemester(g.semester))
       );
-      const backendStatus = backendCourseWithStatus?.syllabusStatus;
+
+      let maxBackendStatus: string | undefined;
+      let maxBackendWeight = 0;
+      for (const c of groupCourses) {
+        if (c.syllabusStatus && c.syllabusStatus !== 'locked') {
+          const w = STATUS_WEIGHT[c.syllabusStatus] ?? 0;
+          if (w > maxBackendWeight) {
+            maxBackendWeight = w;
+            maxBackendStatus = c.syllabusStatus;
+          }
+        }
+      }
 
       let effectiveStatus = existingRecord?.status || 'locked';
-      if (backendStatus) {
+      if (maxBackendStatus) {
         const localWeight = STATUS_WEIGHT[effectiveStatus] ?? 0;
-        const backendWeight = STATUS_WEIGHT[backendStatus] ?? 0;
-        if (backendWeight > localWeight) {
-          effectiveStatus = backendStatus as any;
+        if (maxBackendWeight >= localWeight) {
+          effectiveStatus = maxBackendStatus as any;
         }
       }
 
@@ -267,6 +280,7 @@ export function useSyllabusLifecycle(
               courseTitle: g.courseTitle,
               schoolYear: g.schoolYear,
               semester: g.semester,
+              status: legacy.status === 'locked' && g.status !== 'locked' ? g.status : legacy.status,
               courseIds: g.courseIds,
               instructorIds: g.instructorIds,
               sections: g.sections
