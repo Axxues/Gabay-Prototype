@@ -135,17 +135,19 @@ The top-level route `/page1` acts as a role-adaptive command center:
 
 ## 3. Real-Time Collaboration & Synchronization Engine
 
-### 3.1 Live Sync Architecture: Browser BroadcastChannel + Likha ERP Platform REST API
-Because we interact with Likha ERP solely via its standard platform APIs (without access or modifications to the underlying server codebase):
-1. **Cross-Tab / Multi-Window Sync (Browser-Native `BroadcastChannel`)**:
-   - `BroadcastChannel` is a standard web browser API that runs entirely on the client side. It requires **zero changes to the Likha ERP server codebase**.
-   - When multiple tabs or windows are open (e.g., simulating Instructor A and Instructor B during testing or local multi-account workflows), `BroadcastChannel` provides instant, sub-second typing and presence updates without hitting server rate limits.
-2. **Cross-Device Sync (Likha ERP Standard Platform REST API)**:
-   - For separate physical machines, live updates are persisted through Likha ERP's existing platform REST API (`/items/syllabi` or course syllabus data).
-   - An active collaboration heartbeat checks the latest `updatedAt` / `revisionNo` timestamp every few seconds while the authoring studio is open, pulling updates made by remote co-instructors.
-3. **Presence UI & Non-Blocking Merging**:
-   - Displays live chips: *"🟢 Prof. Santos (BSCS 3A) is editing Part III (Learning Plan)"*.
-   - Section-level updates avoid overwriting active input focus.
+### 3.1 Collaboration Model: Section-Level Collaboration & Presence Sync (Option 3)
+To ensure 100% operational reliability without requiring additional external servers, third-party cloud services, or modifications to the Likha ERP codebase:
+1. **Zero External Infrastructure**:
+   - The entire collaboration lifecycle runs solely on the existing Vite React frontend and the standard Likha ERP platform REST API (`https://gabay.zyberlab.com`).
+   - Immune to campus network firewall blocks (uses standard HTTPS requests already approved for Likha ERP).
+2. **Section-Level Collaboration & Presence Notices**:
+   - Instead of unstable letter-by-letter peer streaming, co-instructors collaborate through **section-level presence**:
+     - When Instructor A is editing a wizard step (e.g., Step 4: Learning Plan), an active presence badge is visible to co-instructors: *"🟢 Prof. Santos (BSCS 3A) is currently editing Part III (Learning Plan)"*.
+     - Co-instructors can simultaneously work on distinct sections (e.g., Prof. Reyes works on Step 6: Grading & Policies, while Prof. Santos refines Step 4: Learning Plan) without overwriting each other.
+3. **Autosave & State Synchronization**:
+   - Changes are auto-saved to Likha ERP / local authoritative store upon section completion or debounced pause.
+   - When viewing a syllabus, peer clients periodically synchronize the latest revision timestamps, seamlessly pulling updated sections.
+   - **Local Multi-Tab Simulation**: When testing across tabs/windows on the same computer, the native browser `BroadcastChannel` (`gabay_syllabus_live_sync`) provides immediate cross-tab presence and updates with zero latency and zero server load.
 
 ---
 
