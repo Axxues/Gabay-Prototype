@@ -62,6 +62,7 @@ import { type AssetTransformOptions, hasCustomAvatar, isDefaultAvatarUrl } from 
 import { canPickSection } from '../utils/sections';
 import type { OfficialSyllabusData } from '../data/syllabusData';
 import { ApiError, getToken, setToken, clearToken, likhaLmsApi, LIKHA_URL } from '../api/client';
+import { likhaCache } from '../api/likhaCache';
 const SESSION_EXPIRED_EVENT = 'gabay:session-expired';
 import { syllabusApi, deleteDraft, withdrawSyllabus } from '../api/syllabus';
 import type { SyllabusRevisionHeader, SyllabusRevisionResponse, SyllabusSectionKey } from '../types/syllabusApi';
@@ -151,6 +152,7 @@ export interface LMSContextType {
   joinCourseByCode: (joinCode: string) => Promise<{ success: boolean; message: string; course?: Course }>;
   regenerateCourseJoinCode: (courseId: string) => Promise<string>;
   updateCourseSyllabus: (courseId: string, syllabus: OfficialSyllabusData) => Promise<void>;
+  updateCourseSyllabusStatus: (courseIds: string[], status: string, releasedBy?: string) => Promise<void>;
   removeCourseSyllabus: (courseId: string) => Promise<void>;
   syllabusRevisions: Record<string, SyllabusRevisionHeader>;
   refreshPublishedSyllabus: (courseId: string) => Promise<void>;
@@ -1835,6 +1837,9 @@ export const normalizeCourse = (raw: any): Course => {
     programId: raw?.program_id || raw?.programId || undefined,
     schoolYear: raw?.schoolYear || raw?.school_year || raw?.term?.match(/\b\d{4}-\d{4}\b/)?.[0] || undefined,
     semester: raw?.semester || (raw?.term ? normalizeAcademicSemester(raw.term) : undefined),
+    syllabusStatus: raw?.syllabus_status || raw?.syllabusStatus || undefined,
+    syllabusReleasedAt: raw?.syllabus_released_at || raw?.syllabusReleasedAt || undefined,
+    syllabusReleasedBy: raw?.syllabus_released_by || raw?.syllabusReleasedBy || undefined,
   };
 };
 
@@ -7575,6 +7580,48 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const updateCourseSyllabusStatus = async (
+    courseIds: string[],
+    status: string,
+    releasedBy?: string
+  ): Promise<void> => {
+    if (!courseIds || courseIds.length === 0) return;
+    const now = new Date().toISOString();
+
+    setDb(prev => ({
+      ...prev,
+      courses: (prev.courses || []).map(c =>
+        courseIds.includes(c.id)
+          ? {
+              ...c,
+              syllabusStatus: status,
+              ...(status === 'in_development'
+                ? {
+                    syllabusReleasedAt: now,
+                    syllabusReleasedBy: releasedBy,
+                  }
+                : {})
+            }
+          : c
+      )
+    }));
+
+    const patchPayload: Record<string, any> = { syllabus_status: status };
+    if (status === 'in_development') {
+      patchPayload.syllabus_released_at = now;
+      if (releasedBy) patchPayload.syllabus_released_by = releasedBy;
+    }
+
+    try {
+      await Promise.allSettled(
+        courseIds.map(id => likhaLmsApi.courses.updateCourse(id, patchPayload))
+      );
+      likhaCache.invalidate('/items/courses');
+    } catch (e) {
+      console.warn('Failed to persist syllabus_status to Likha ERP:', e);
+    }
+  };
+
   const publishSyllabusDraft = async (courseId: string): Promise<void> => {
     const active = syllabusRevisionsRef.current[courseId];
     if (!active || active.status !== 'draft') {
@@ -10620,6 +10667,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         joinCourseByCode,
         regenerateCourseJoinCode,
         updateCourseSyllabus,
+        updateCourseSyllabusStatus,
         removeCourseSyllabus,
         syllabusRevisions,
         refreshPublishedSyllabus,

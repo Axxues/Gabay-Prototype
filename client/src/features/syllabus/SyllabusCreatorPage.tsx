@@ -384,7 +384,7 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
             userRole={activeRole}
             isChair={isChair}
             canRelease={isChair}
-            onReleaseCourses={ids => {
+            onReleaseCourses={async ids => {
               if (!isChair) {
                 showAlert({
                   title: 'Unauthorized Action',
@@ -393,7 +393,15 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
                 });
                 return;
               }
-              releaseCourses(ids, activeUser?.id || 'chair');
+              const chairId = activeUser?.id || 'chair';
+              const targetCourseIds = groups
+                .filter(g => ids.includes(g.id))
+                .flatMap(g => g.courseIds);
+
+              releaseCourses(ids, chairId);
+              if (targetCourseIds.length > 0 && lms.updateCourseSyllabusStatus) {
+                await lms.updateCourseSyllabusStatus(targetCourseIds, 'in_development', chairId);
+              }
               showAlert({
                 title: 'Courses Released',
                 message: `${ids.length} course(s) unlocked for syllabus development. Instructors can now begin authoring.`,
@@ -648,6 +656,13 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
           onConfirm={() => {
             if (approvalModalConfig.type === 'chair') {
               chairApprove(approvalModalConfig.group.id, activeUser?.id || 'chair');
+              if (lms.updateCourseSyllabusStatus) {
+                void lms.updateCourseSyllabusStatus(
+                  approvalModalConfig.group.courseIds,
+                  'chair_approved',
+                  activeUser?.id || 'chair'
+                );
+              }
               showAlert({
                 title: 'Chairperson Endorsement Complete',
                 message: 'Syllabus endorsed and forwarded to the College Dean for final institutional approval.',
@@ -664,6 +679,9 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
                   if (targetCourse) {
                     targetCourse.syllabus = syllabus;
                   }
+                }
+                if (lms.updateCourseSyllabusStatus) {
+                  void lms.updateCourseSyllabusStatus(courseIds, 'approved', activeUser?.id || 'dean');
                 }
               });
               showAlert({

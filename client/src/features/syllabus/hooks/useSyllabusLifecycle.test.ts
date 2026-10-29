@@ -272,4 +272,86 @@ describe('useSyllabusLifecycle', () => {
     expect(record?.sections).toEqual(['4-A', '4-B', '4-E', '4-F']);
     expect(record?.instructorIds).toEqual(['u-elena', 'u-raymund']);
   });
+
+  it('inherits in_development status across sessions/browsers from backend course syllabusStatus', () => {
+    // Simulate another browser session: fresh localStorage, but backend course already released
+    const coursesFromBackend = [
+      {
+        id: 'c-released-1',
+        code: 'CSPC 112',
+        title: 'Software Engineering 2',
+        section: '4-E',
+        instructorId: 'u-raymund',
+        instructorName: 'Raymund Dilan',
+        schoolYear: '2026-2027',
+        semester: 'First',
+        collegeId: 'col-1',
+        syllabusStatus: 'in_development',
+        syllabusReleasedAt: '2026-10-29T08:00:00.000Z',
+        syllabusReleasedBy: 'chair-1'
+      }
+    ];
+
+    const { result } = renderHook(() => useSyllabusLifecycle(coursesFromBackend as any, 'col-1'));
+
+    const group = result.current.groups[0];
+    expect(group.status).toBe('in_development');
+
+    // Storage record was initialized as in_development (not locked)
+    const record = result.current.getRecord(group.id);
+    expect(record?.status).toBe('in_development');
+  });
+
+  it('upgrades stale local locked record when backend course arrives as in_development', () => {
+    // Seed local storage with an old locked record
+    localStorage.setItem(
+      'gabay_syllabus_lifecycle_records',
+      JSON.stringify({
+        'SYL-CSPC-112-FIRST': {
+          id: 'SYL-CSPC-112-FIRST',
+          courseCode: 'CSPC 112',
+          courseTitle: 'Software Engineering 2',
+          schoolYear: '2026-2027',
+          semester: 'First',
+          status: 'locked',
+          courseIds: ['c-1'],
+          instructorIds: ['u-1'],
+          sections: ['4-A']
+        }
+      })
+    );
+
+    const releasedCourses = [
+      {
+        id: 'c-1',
+        code: 'CSPC 112',
+        title: 'Software Engineering 2',
+        section: '4-A',
+        instructorId: 'u-1',
+        instructorName: 'Raymund Dilan',
+        schoolYear: '2026-2027',
+        semester: 'First',
+        collegeId: 'col-1',
+        syllabusStatus: 'in_development'
+      }
+    ];
+
+    const { result } = renderHook(() => useSyllabusLifecycle(releasedCourses as any, 'col-1'));
+
+    expect(result.current.groups[0].status).toBe('in_development');
+    expect(result.current.getRecord('SYL-CSPC-112-FIRST')?.status).toBe('in_development');
+  });
+
+  it('invokes onPersist callback with affected course IDs when releaseCourses is called', () => {
+    const onPersistMock = vi.fn();
+    const { result } = renderHook(() => useSyllabusLifecycle(mockCourses as any, 'col-1'));
+
+    const cspc103 = result.current.groups.find(g => g.courseCode === 'CSPC 103')!;
+
+    act(() => {
+      result.current.releaseCourses([cspc103.id], 'chair-1', onPersistMock);
+    });
+
+    expect(onPersistMock).toHaveBeenCalledWith(['c1', 'c2'], 'in_development');
+  });
 });

@@ -178,6 +178,9 @@ export interface Course {
   programId?: string;
   schedule?: string;
   room?: string;
+  syllabusStatus?: string;
+  syllabusReleasedAt?: string;
+  syllabusReleasedBy?: string;
 }
 
 export const Course = {} as unknown as Course;
@@ -229,6 +232,7 @@ export interface ModuleItem {
   completed?: boolean;
   authorId?: string;
   authorName?: string;
+  order?: number;
   attachments?: Array<{ name: string; size: string; url?: string; type?: string; directus_files_id?: string; fileId?: string }>;
 }
 
@@ -327,6 +331,8 @@ export interface Activity {
   availableUntil?: string;
   sectionRestriction?: string;
   attachments?: Array<{ name: string; size: string; url?: string; type?: string; directus_files_id?: string; fileId?: string }>;
+  createdAt?: string;
+  date_created?: string;
 }
 
 export interface SubmissionComment {
@@ -400,6 +406,8 @@ export interface Quiz {
   fileName?: string;
   fileUrl?: string;
   fileSize?: string;
+  createdAt?: string;
+  date_created?: string;
 }
 
 export interface Exam {
