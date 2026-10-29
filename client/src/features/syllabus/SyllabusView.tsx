@@ -3105,8 +3105,9 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                         </div>
                         <div>
                           <label className={labelCls}>Lec hrs</label>
-                          <input type="number" value={plan.hoursLec} onChange={e => {
-                            const v = Number(e.target.value) || 0;
+                          <input type="text" inputMode="decimal" value={plan.hoursLec === 0 ? '' : plan.hoursLec} placeholder="0" onChange={e => {
+                            const raw = e.target.value.replace(/[^0-9.]/g, '');
+                            const v = raw === '' ? 0 : Number(raw);
                             setDraft(prev => {
                               if (!prev) return prev;
                               const next = cloneSyllabus(prev);
@@ -3117,8 +3118,9 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                         </div>
                         <div>
                           <label className={labelCls}>Lab hrs</label>
-                          <input type="number" value={plan.hoursLab} onChange={e => {
-                            const v = Number(e.target.value) || 0;
+                          <input type="text" inputMode="decimal" value={plan.hoursLab === 0 ? '' : plan.hoursLab} placeholder="0" onChange={e => {
+                            const raw = e.target.value.replace(/[^0-9.]/g, '');
+                            const v = raw === '' ? 0 : Number(raw);
                             setDraft(prev => {
                               if (!prev) return prev;
                               const next = cloneSyllabus(prev);

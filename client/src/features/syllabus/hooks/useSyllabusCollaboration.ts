@@ -94,8 +94,15 @@ export function useSyllabusCollaboration(
     sendPing();
     const interval = setInterval(sendPing, 5000);
 
+    // Prune stale collaborators not seen within 15 seconds
+    const pruneInterval = setInterval(() => {
+      const cutoff = Date.now() - 15000;
+      setCollaborators(prev => prev.filter(c => c.lastSeen >= cutoff));
+    }, 5000);
+
     return () => {
       clearInterval(interval);
+      clearInterval(pruneInterval);
       try {
         channel?.close();
       } catch {

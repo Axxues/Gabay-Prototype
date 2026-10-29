@@ -6,7 +6,7 @@ import { useSyllabusCollaboration } from './hooks/useSyllabusCollaboration';
 import { SyllabusWizard } from './components/creator/SyllabusWizard';
 import { SyllabusStarterModal } from './components/creator/SyllabusStarterModal';
 import { AttachToCourseModal } from './components/creator/AttachToCourseModal';
-import { DepartmentSyllabusTable } from './components/governance/DepartmentSyllabusTable';
+import { DepartmentSyllabusTable, STATUS_CONFIG } from './components/governance/DepartmentSyllabusTable';
 import { AssignEvaluatorsModal } from './components/governance/AssignEvaluatorsModal';
 import { EvaluatorReviewModal } from './components/governance/EvaluatorReviewModal';
 import { ApprovalActionModal } from './components/governance/ApprovalActionModal';
@@ -39,7 +39,7 @@ interface SyllabusCreatorPageProps {
 
 export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavigateTab: _onNavigateTab }) => {
   const lms = useLMS();
-  const { activeUser, activeRole, db, showAlert } = lms;
+  const { activeUser, activeRole, db, showAlert, updateCourseSyllabus } = lms;
   const coursesList = db?.courses || (lms as any).courses || [];
   const usersList = db?.users || [];
 
@@ -163,6 +163,11 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
       });
       return;
     }
+    // If course is under evaluation or already approved, open in read-only document preview
+    if (group.status !== 'in_development' && group.status !== 'revisions_required') {
+      setPreviewingGroup(group);
+      return;
+    }
     setActiveGroupId(group.id);
   };
 
@@ -282,7 +287,10 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
               confirmAgreement(activeGroup.id, activeUser.id);
               showAlert({
                 title: 'Agreement Confirmed',
-                message: 'Your submission agreement has been recorded. Once all co-instructors agree, the syllabus will advance to Evaluation.',
+                message:
+                  coInstructorAgreements.length === 1
+                    ? 'Syllabus submitted for evaluation. Your department chairperson will now assign evaluators.'
+                    : 'Your submission agreement has been recorded. Once all co-instructors agree, the syllabus will advance to Evaluation.',
                 type: 'success'
               });
             }
@@ -478,13 +486,23 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
                           <Lock className="w-3.5 h-3.5" />
                           <span>Pending Chair Release</span>
                         </div>
-                      ) : (
+                      ) : group.status === 'in_development' || group.status === 'revisions_required' ? (
                         <button
                           onClick={() => handleOpenStudio(group)}
                           className="px-4 py-2 rounded-xl text-xs font-bold bg-primary text-primary-foreground hover:bg-primary/90 transition-all flex items-center gap-1.5"
                         >
                           <span>Open Syllabus Studio</span>
                           <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => setPreviewingGroup(group)}
+                          className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-muted text-foreground hover:bg-muted/80 transition-all flex items-center gap-1.5"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>
+                            {group.status === 'approved' ? 'View Certified Syllabus' : 'View Syllabus Document'}
+                          </span>
                         </button>
                       )}
 
@@ -515,47 +533,66 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {myEvaluationGroups.map(group => (
-              <div
-                key={group.id}
-                className="p-5 rounded-2xl border border-purple-500/20 bg-card hover:border-purple-500/40 shadow-sm flex flex-col justify-between space-y-4"
-              >
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-base font-black text-foreground">
-                      {group.courseCode}
-                    </span>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-600">
-                      Under Evaluation
-                    </span>
+            {myEvaluationGroups.map(group => {
+              const myReview = group.evaluators.find(e => e.evaluatorId === activeUser?.id);
+              const canEvaluate = group.status === 'under_evaluation' && myReview?.status === 'pending';
+              const cfg = STATUS_CONFIG[group.status] || STATUS_CONFIG.locked;
+
+              return (
+                <div
+                  key={group.id}
+                  className="p-5 rounded-2xl border border-purple-500/20 bg-card hover:border-purple-500/40 shadow-sm flex flex-col justify-between space-y-4"
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-base font-black text-foreground">
+                        {group.courseCode}
+                      </span>
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${cfg.bg} ${cfg.text} ${cfg.border}`}
+                      >
+                        {cfg.label}
+                      </span>
+                    </div>
+                    <h4 className="text-xs font-semibold text-foreground">
+                      {group.courseTitle}
+                    </h4>
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      Instructors: {group.instructorNames.join(', ')}
+                    </p>
+                    {myReview && (
+                      <p className="text-[11px] font-medium text-purple-600 dark:text-purple-400 mt-1">
+                        Your Evaluation Status: {myReview.status === 'approved' ? 'Approved ✓' : myReview.status === 'revisions_requested' ? 'Revisions Requested ⚠️' : 'Pending Review ⏳'}
+                      </p>
+                    )}
                   </div>
-                  <h4 className="text-xs font-semibold text-foreground">
-                    {group.courseTitle}
-                  </h4>
-                  <p className="text-[11px] text-muted-foreground mt-1">
-                    Instructors: {group.instructorNames.join(', ')}
-                  </p>
-                </div>
 
-                <div className="pt-3 border-t border-border flex items-center justify-between">
-                  <button
-                    onClick={() => setEvaluatorReviewGroup(group)}
-                    className="px-4 py-2 rounded-xl text-xs font-bold bg-purple-600 text-white hover:bg-purple-700 transition-all flex items-center gap-1.5"
-                  >
-                    <ClipboardCheck className="w-3.5 h-3.5" />
-                    <span>Evaluate Syllabus</span>
-                  </button>
+                  <div className="pt-3 border-t border-border flex items-center justify-between">
+                    {canEvaluate ? (
+                      <button
+                        onClick={() => setEvaluatorReviewGroup(group)}
+                        className="px-4 py-2 rounded-xl text-xs font-bold bg-purple-600 text-white hover:bg-purple-700 transition-all flex items-center gap-1.5"
+                      >
+                        <ClipboardCheck className="w-3.5 h-3.5" />
+                        <span>Evaluate Syllabus</span>
+                      </button>
+                    ) : (
+                      <span className="text-xs text-muted-foreground italic">
+                        {group.status === 'under_evaluation' ? 'Review submitted' : 'Evaluation not active'}
+                      </span>
+                    )}
 
-                  <button
-                    onClick={() => setPreviewingGroup(group)}
-                    className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted"
-                    title="Inspect Syllabus Document"
-                  >
-                    <Eye className="w-4 h-4" />
-                  </button>
+                    <button
+                      onClick={() => setPreviewingGroup(group)}
+                      className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted"
+                      title="Inspect Syllabus Document"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -691,9 +728,12 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
               });
             } else {
               deanApprove(approvalModalConfig.group.id, activeUser?.id || 'dean', (courseIds, syllabus) => {
-                // Propagate to LMS courses
+                // Propagate to LMS courses with persistent updateCourseSyllabus
                 for (const cId of courseIds) {
-                  const targetCourse = db.courses?.find(c => c.id === cId);
+                  if (updateCourseSyllabus) {
+                    void updateCourseSyllabus(cId, syllabus);
+                  }
+                  const targetCourse = db?.courses?.find(c => c.id === cId);
                   if (targetCourse) {
                     targetCourse.syllabus = syllabus;
                   }

@@ -17,9 +17,10 @@ describe('AssignEvaluatorsModal', () => {
     { id: 'u2', name: 'Prof. Reyes', role: 'faculty', collegeId: 'col-1' },   // Eligible
     { id: 'u3', name: 'Prof. Garcia', role: 'faculty', collegeId: 'col-1' },  // Eligible
     { id: 'u4', name: 'Prof. Lee', role: 'faculty', collegeId: 'col-2' },     // Different college (must be excluded)
+    { id: 'u5', name: 'Dr. Marzan', role: 'faculty', adminSubrole: 'chairperson', collegeId: 'col-1' }, // Chairperson (must be excluded from evaluator pool)
   ];
 
-  it('filters evaluators strictly to same college and excludes course instructors', () => {
+  it('filters evaluators strictly to same college, excludes course instructors, and excludes administrative chairs', () => {
     const onConfirm = vi.fn();
     render(
       <AssignEvaluatorsModal
@@ -35,6 +36,8 @@ describe('AssignEvaluatorsModal', () => {
     expect(screen.queryByText('Prof. Santos')).not.toBeInTheDocument();
     // Faculty from another college Lee must not appear
     expect(screen.queryByText('Prof. Lee')).not.toBeInTheDocument();
+    // Chairperson Marzan must not appear
+    expect(screen.queryByText('Dr. Marzan')).not.toBeInTheDocument();
     // Eligible faculty must appear
     expect(screen.getByText('Prof. Reyes')).toBeInTheDocument();
     expect(screen.getByText('Prof. Garcia')).toBeInTheDocument();

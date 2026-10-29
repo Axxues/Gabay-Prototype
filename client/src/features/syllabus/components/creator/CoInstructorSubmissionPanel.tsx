@@ -21,6 +21,7 @@ export const CoInstructorSubmissionPanel: React.FC<CoInstructorSubmissionPanelPr
   onAgreeToSubmit
 }) => {
   const currentUserAgreed = instructors.find(i => i.id === currentUserId)?.hasAgreed;
+  const isSolo = instructors.length === 1;
 
   return (
     <div className="p-5 rounded-2xl border border-primary/20 bg-primary/5 space-y-4">
@@ -31,10 +32,12 @@ export const CoInstructorSubmissionPanel: React.FC<CoInstructorSubmissionPanelPr
           </div>
           <div>
             <h4 className="text-sm font-bold text-foreground">
-              Co-Instructor Submission Consensus
+              {isSolo ? 'Instructor Submission Confirmation' : 'Co-Instructor Submission Consensus'}
             </h4>
             <p className="text-[11px] text-muted-foreground">
-              Multiple instructors share this syllabus. All assigned instructors must confirm agreement before this syllabus enters Evaluation.
+              {isSolo
+                ? 'Review and confirm that this syllabus is complete and ready for departmental evaluation.'
+                : 'Multiple instructors share this syllabus. All assigned instructors must confirm agreement before this syllabus enters Evaluation.'}
             </p>
           </div>
         </div>
@@ -42,12 +45,12 @@ export const CoInstructorSubmissionPanel: React.FC<CoInstructorSubmissionPanelPr
         {allAgreed ? (
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
             <CheckCircle2 className="w-3.5 h-3.5" />
-            <span>Unanimous Instructor Consensus Achieved</span>
+            <span>{isSolo ? 'Submission Confirmed' : 'Unanimous Instructor Consensus Achieved'}</span>
           </span>
         ) : (
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-600 border border-amber-500/20">
             <Clock className="w-3.5 h-3.5" />
-            <span>Awaiting Co-Instructor Consensus</span>
+            <span>{isSolo ? 'Awaiting Submission Confirmation' : 'Awaiting Co-Instructor Consensus'}</span>
           </span>
         )}
       </div>

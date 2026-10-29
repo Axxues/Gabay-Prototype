@@ -130,19 +130,27 @@ export const Step4LearningPlan: React.FC<Step4LearningPlanProps> = ({ data, onCh
                   <Clock className="w-3.5 h-3.5" />
                   <span>Lec:</span>
                   <input
-                    type="number"
-                    min={0}
-                    value={row.hoursLec}
-                    onChange={e => updatePlanRow(idx, 'hoursLec', Number(e.target.value))}
-                    className="w-12 px-1.5 py-0.5 text-xs rounded border border-border bg-background text-center"
+                    type="text"
+                    inputMode="decimal"
+                    value={row.hoursLec === 0 ? '' : row.hoursLec}
+                    placeholder="0"
+                    onChange={e => {
+                      const raw = e.target.value.replace(/[^0-9.]/g, '');
+                      updatePlanRow(idx, 'hoursLec', raw === '' ? 0 : Number(raw));
+                    }}
+                    className="w-12 px-1.5 py-0.5 text-xs rounded border border-border bg-background text-center outline-none focus:ring-1 focus:ring-primary"
                   />
                   <span>Lab:</span>
                   <input
-                    type="number"
-                    min={0}
-                    value={row.hoursLab}
-                    onChange={e => updatePlanRow(idx, 'hoursLab', Number(e.target.value))}
-                    className="w-12 px-1.5 py-0.5 text-xs rounded border border-border bg-background text-center"
+                    type="text"
+                    inputMode="decimal"
+                    value={row.hoursLab === 0 ? '' : row.hoursLab}
+                    placeholder="0"
+                    onChange={e => {
+                      const raw = e.target.value.replace(/[^0-9.]/g, '');
+                      updatePlanRow(idx, 'hoursLab', raw === '' ? 0 : Number(raw));
+                    }}
+                    className="w-12 px-1.5 py-0.5 text-xs rounded border border-border bg-background text-center outline-none focus:ring-1 focus:ring-primary"
                   />
                   <span>hrs</span>
                 </div>

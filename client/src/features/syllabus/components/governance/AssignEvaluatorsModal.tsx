@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import type { SyllabusGroup } from '../../types/lifecycle';
 import type { User } from '../../../../shared/types/lms';
+import { isFacultyRole } from '../../../../shared/utils/roles';
 import { AnimatedModal } from '../../../../shared/components/common/ModalPortal';
 import { Search, UserCheck, X, Users, AlertCircle } from 'lucide-react';
 
@@ -24,16 +25,16 @@ export const AssignEvaluatorsModal: React.FC<AssignEvaluatorsModalProps> = ({
 
   // Eligible Faculty Pool:
   // 1. Same college as the group/course
-  // 2. Faculty role
+  // 2. Pure Faculty role (strictly excludes administrative Deans, Chairs, Admins)
   // 3. EXCLUDES instructors assigned to this course (Conflict of interest gate)
   const eligibleFaculty = useMemo(() => {
     if (!group) return [];
     return users.filter(user => {
-      // Role check: must be faculty
-      if (user.role !== 'faculty') return false;
+      // Role check: must be strictly faculty (isFacultyRole checks subroles & titles)
+      if (!isFacultyRole(user)) return false;
 
-      // College check: must match course's college
-      if (group.collegeId && user.collegeId && user.collegeId !== group.collegeId) {
+      // College check: must strictly match course's college
+      if (group.collegeId && user.collegeId !== group.collegeId) {
         return false;
       }
 
