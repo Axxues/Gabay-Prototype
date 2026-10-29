@@ -6,3 +6,5 @@ export { useSyllabusLifecycle, makeSyllabusGroupId } from './hooks/useSyllabusLi
 export { useSyllabusCollaboration } from './hooks/useSyllabusCollaboration';
 export { DepartmentSyllabusTable } from './components/governance/DepartmentSyllabusTable';
 export { AssignEvaluatorsModal } from './components/governance/AssignEvaluatorsModal';
+export { EvaluatorReviewModal } from './components/governance/EvaluatorReviewModal';
+export { RevisionRemarksBanner } from './components/creator/RevisionRemarksBanner';
