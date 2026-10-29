@@ -212,8 +212,8 @@ describe('useSyllabusLifecycle', () => {
         code: 'CSPC-112', // slight hyphen variation
         title: 'Software Engineering 2',
         section: '4-F',
-        instructorId: 'u-raymund',
-        instructorName: 'Raymund Dilan',
+        instructorId: 'u-elena',
+        instructorName: 'Elena Reyes Santos',
         schoolYear: '2026-2027',
         semester: 'First',
         term: '1st Sem AY 2026-2027',
@@ -224,7 +224,7 @@ describe('useSyllabusLifecycle', () => {
         code: 'CSPC 112',
         title: 'Software Engineering 2',
         section: '4-E',
-        instructorId: 'u-reymund',
+        instructorId: 'u-raymund', // same instructor as 4-A/4-B, but had stale/typo string in course record
         instructorName: 'Reymund Ezekiel Dilan',
         schoolYear: '2025-2026', // older baseline year or separate date creation
         semester: undefined, // omitted semester from manual course shell
@@ -233,7 +233,14 @@ describe('useSyllabusLifecycle', () => {
       }
     ];
 
-    const { result } = renderHook(() => useSyllabusLifecycle(heterogeneousCourses as any, 'col-ccs'));
+    const mockUsers = [
+      { id: 'u-elena', name: 'Elena Reyes Santos' },
+      { id: 'u-raymund', name: 'Raymund Dilan' }
+    ];
+
+    const { result } = renderHook(() =>
+      useSyllabusLifecycle(heterogeneousCourses as any, 'col-ccs', mockUsers)
+    );
 
     // MUST aggregate into exactly 1 syllabus group for CSPC 112
     expect(result.current.groups).toHaveLength(1);
@@ -245,12 +252,11 @@ describe('useSyllabusLifecycle', () => {
     expect(unifiedGroup.sections).toEqual(['4-A', '4-B', '4-E', '4-F']);
     // All course IDs unified
     expect(unifiedGroup.courseIds).toEqual(['c-4b', 'c-4a', 'c-4f', 'c-4e']);
-    // All 3 instructors included
-    expect(unifiedGroup.instructorIds).toEqual(['u-elena', 'u-raymund', 'u-reymund']);
+    // Canonical instructors deduplicated to the 2 actual faculty in the system
+    expect(unifiedGroup.instructorIds).toEqual(['u-elena', 'u-raymund']);
     expect(unifiedGroup.instructorNames).toEqual([
       'Elena Reyes Santos',
-      'Raymund Dilan',
-      'Reymund Ezekiel Dilan'
+      'Raymund Dilan'
     ]);
     // Resolved latest school year
     expect(unifiedGroup.schoolYear).toBe('2026-2027');
@@ -264,6 +270,6 @@ describe('useSyllabusLifecycle', () => {
     const record = result.current.getRecord(unifiedGroup.id);
     expect(record?.status).toBe('in_development');
     expect(record?.sections).toEqual(['4-A', '4-B', '4-E', '4-F']);
-    expect(record?.instructorIds).toEqual(['u-elena', 'u-raymund', 'u-reymund']);
+    expect(record?.instructorIds).toEqual(['u-elena', 'u-raymund']);
   });
 });

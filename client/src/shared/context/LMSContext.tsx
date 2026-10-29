@@ -1082,6 +1082,7 @@ const normalizeActivity = (raw: any): Activity => ({
   availableFrom: toOptionalIso(raw.availableFrom),
   availableUntil: toOptionalIso(raw.availableUntil),
   sectionRestriction: raw.sectionRestriction ?? undefined,
+  createdAt: raw.createdAt ?? raw.date_created ?? raw.metadata?.createdAt ?? undefined,
   attachments: Array.isArray(raw.attachments)
     ? raw.attachments
     : (Array.isArray(raw.metadata?.attachments) ? raw.metadata.attachments : undefined),
@@ -1095,6 +1096,7 @@ const normalizeQuiz = (raw: any): Quiz => ({
   fileName: raw.fileName ?? undefined,
   fileUrl: raw.fileUrl ?? undefined,
   fileSize: raw.fileSize ?? undefined,
+  createdAt: raw.createdAt ?? raw.date_created ?? raw.metadata?.createdAt ?? undefined,
   questions: Array.isArray(raw.questions) ? raw.questions : [],
 });
 
@@ -1170,6 +1172,7 @@ const mapLikhaQuizRow = (row: any): any => ({
   fileName: row.file_name ?? row.fileName ?? undefined,
   fileUrl: row.file_url ?? row.fileUrl ?? undefined,
   fileSize: row.file_size ?? row.fileSize ?? undefined,
+  createdAt: row.created_at ?? row.date_created ?? row.createdAt ?? row.metadata?.createdAt ?? undefined,
   questions: mapLikhaQuestions(row),
 });
 
@@ -1283,6 +1286,7 @@ const mapLikhaActivityRow = (row: any): any => ({
   availableFrom: row.available_from ?? row.availableFrom ?? undefined,
   availableUntil: row.available_until ?? row.availableUntil ?? undefined,
   sectionRestriction: row.section_restriction ?? row.sectionRestriction ?? undefined,
+  createdAt: row.created_at ?? row.date_created ?? row.createdAt ?? row.metadata?.createdAt ?? undefined,
   questions: mapLikhaQuestions(row),
 });
 
@@ -2957,19 +2961,22 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       fresh.courses = coursesRes.courses.map(normalizeCourseSyllabus).map(c => {
-        if (c.schoolYear) return c;
-        const termYearMatch = c.term?.match(/\b\d{4}-\d{4}\b/)?.[0];
+        const inst = fresh.users?.find(u => u.id === (c.instructorId || (c as any).instructor_id));
+        const effectiveName = inst?.name || c.instructorName;
+        const baseCourse = effectiveName !== c.instructorName ? { ...c, instructorName: effectiveName } : c;
+
+        if (baseCourse.schoolYear) return baseCourse;
+        const termYearMatch = baseCourse.term?.match(/\b\d{4}-\d{4}\b/)?.[0];
         if (termYearMatch) {
           return {
-            ...c,
+            ...baseCourse,
             schoolYear: termYearMatch,
           };
         }
-        const inst = fresh.users?.find(u => u.id === (c.instructorId || (c as any).instructor_id));
-        const colId = (c as any).collegeId || (c as any).college_id || inst?.collegeId || 'col-ccs';
+        const colId = (baseCourse as any).collegeId || (baseCourse as any).college_id || inst?.collegeId || 'col-ccs';
         const activeSY = getActiveSchoolYearForCollege(colId) || getActiveSchoolYearForCollege('col-ccs');
         return {
-          ...c,
+          ...baseCourse,
           schoolYear: activeSY?.year || '2025-2026',
         };
       });
@@ -4603,7 +4610,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...(quizData.fileUrl !== undefined ? { file_url: quizData.fileUrl } : {}),
         ...(quizData.fileSize !== undefined ? { file_size: quizData.fileSize } : {})
       });
-      const merged = normalizeQuiz(mapLikhaQuizRow(saved));
+      const nowIso = new Date().toISOString();
+      const merged = normalizeQuiz({
+        ...mapLikhaQuizRow(saved),
+        createdAt: saved.createdAt || saved.created_at || saved.date_created || quizData.createdAt || nowIso,
+      });
       setDb(prev => ({
         ...prev,
         quizzes: [merged, ...prev.quizzes]
@@ -4854,8 +4865,18 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               format: 'questionset',
             };
       // Likha ERP is the source of truth for activities.
-      const saved = await likhaLmsApi.assessments.saveActivity(body);
-      const merged = normalizeActivity(mapLikhaActivityRow(saved));
+      const nowIso = new Date().toISOString();
+      const saved = await likhaLmsApi.assessments.saveActivity({
+        ...body,
+        metadata: {
+          ...((body.metadata as any) || {}),
+          createdAt: (body.metadata as any)?.createdAt || data.createdAt || nowIso,
+        },
+      });
+      const merged = normalizeActivity({
+        ...mapLikhaActivityRow(saved),
+        createdAt: saved.createdAt || saved.created_at || saved.date_created || data.createdAt || nowIso,
+      });
       setDb(prev => ({
         ...prev,
         activities: [merged, ...(prev.activities || [])]

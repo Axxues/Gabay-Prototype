@@ -52,7 +52,7 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
     chairApprove,
     deanApprove,
     updateSyllabusData
-  } = useSyllabusLifecycle(coursesList, activeUser?.collegeId);
+  } = useSyllabusLifecycle(coursesList, activeUser?.collegeId, db?.users);
 
   // Faculty Assigned Courses (Filtered to current user)
   const myAssignedGroups = useMemo(() => {

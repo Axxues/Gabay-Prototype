@@ -52,7 +52,11 @@ function findMatchingRecord(
   return undefined;
 }
 
-export function useSyllabusLifecycle(courses: Course[] = [], userCollegeId?: string) {
+export function useSyllabusLifecycle(
+  courses: Course[] = [],
+  userCollegeId?: string,
+  users: Array<{ id: string; name: string }> = []
+) {
   // 1. Load persisted records from localStorage
   const [records, setRecords] = useState<Record<string, SyllabusDevelopmentRecord>>(() => {
     try {
@@ -160,12 +164,24 @@ export function useSyllabusLifecycle(courses: Course[] = [], userCollegeId?: str
       if (c.id && !g.courseIds.includes(c.id)) {
         g.courseIds.push(c.id);
       }
-      if (c.instructorId && !g.instructorIds.includes(c.instructorId)) {
-        g.instructorIds.push(c.instructorId);
+
+      const matchedUser = users.find(u => u.id === c.instructorId);
+      const effectiveName = matchedUser?.name || c.instructorName || 'Faculty Member';
+
+      if (c.instructorId) {
+        if (!g.instructorIds.includes(c.instructorId)) {
+          g.instructorIds.push(c.instructorId);
+          g.instructorNames.push(effectiveName);
+        } else if (matchedUser?.name) {
+          const idx = g.instructorIds.indexOf(c.instructorId);
+          if (idx !== -1 && g.instructorNames[idx] !== matchedUser.name) {
+            g.instructorNames[idx] = matchedUser.name;
+          }
+        }
+      } else if (effectiveName && !g.instructorNames.includes(effectiveName)) {
+        g.instructorNames.push(effectiveName);
       }
-      if (c.instructorName && !g.instructorNames.includes(c.instructorName)) {
-        g.instructorNames.push(c.instructorName);
-      }
+
       if (c.section && !g.sections.includes(c.section)) {
         g.sections.push(c.section);
       }
@@ -202,7 +218,7 @@ export function useSyllabusLifecycle(courses: Course[] = [], userCollegeId?: str
         updatedAt: existingRecord?.updatedAt || new Date().toISOString()
       };
     });
-  }, [courses, userCollegeId, records]);
+  }, [courses, userCollegeId, records, users]);
 
   // Sync missing records into storage
   useEffect(() => {
