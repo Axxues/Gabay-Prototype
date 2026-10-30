@@ -1,9 +1,22 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
+import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SyllabusCreatorPage } from './SyllabusCreatorPage';
 import { makeSyllabusGroupId } from './hooks/useSyllabusLifecycle';
 import * as LMSContext from '../../shared/context/LMSContext';
+import * as collabApi from './api/syllabusCollaborationApi';
+
+vi.mock('./api/syllabusCollaborationApi', async importOriginal => {
+  const actual = await importOriginal<typeof import('./api/syllabusCollaborationApi')>();
+  return {
+    ...actual,
+    fetchRemoteDraft: vi.fn().mockResolvedValue(null),
+    saveRemoteDraft: vi.fn(),
+    sendRemotePresence: vi.fn().mockResolvedValue(undefined),
+    removeRemotePresence: vi.fn().mockResolvedValue(undefined)
+  };
+});
 
 describe('SyllabusCreatorPage', () => {
   const mockFacultyUser = { id: 'usr-1', name: 'Floribeth Cuison', role: 'faculty' };
@@ -27,6 +40,16 @@ describe('SyllabusCreatorPage', () => {
     vi.clearAllMocks();
   });
 
+  const renderWithRouter = (initialEntries = ['/syllabus-development']) =>
+    render(
+      <MemoryRouter initialEntries={initialEntries}>
+        <Routes>
+          <Route path="/syllabus-development" element={<SyllabusCreatorPage />} />
+          <Route path="/syllabus-development/studio/:groupId" element={<SyllabusCreatorPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
   it('renders page header and does NOT contain personal sandbox or standalone new syllabus buttons', () => {
     vi.spyOn(LMSContext, 'useLMS').mockReturnValue({
       activeUser: mockFacultyUser,
@@ -36,7 +59,7 @@ describe('SyllabusCreatorPage', () => {
       showAlert: vi.fn(),
     } as any);
 
-    render(<SyllabusCreatorPage />);
+    renderWithRouter();
     expect(screen.getByRole('heading', { name: /Syllabus Development/i })).toBeInTheDocument();
     // Personal sandbox must not exist
     expect(screen.queryByText(/Personal Sandbox/i)).not.toBeInTheDocument();
@@ -55,7 +78,7 @@ describe('SyllabusCreatorPage', () => {
       showAlert: vi.fn(),
     } as any);
 
-    render(<SyllabusCreatorPage />);
+    renderWithRouter();
     expect(screen.getByText('CSPC 101')).toBeInTheDocument();
     expect(screen.getByText(/Pending Chair Release/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Open Syllabus Studio/i })).not.toBeInTheDocument();
@@ -83,7 +106,11 @@ describe('SyllabusCreatorPage', () => {
       showAlert: vi.fn(),
     } as any);
 
-    render(<SyllabusCreatorPage />);
+    renderWithRouter();
+
+    // In-development cards read "Draft" on the hub.
+    expect(screen.getByText('DRAFT')).toBeInTheDocument();
+    expect(screen.queryByText(/IN DEVELOPMENT/i)).not.toBeInTheDocument();
 
     // Studio can now be opened
     const openStudioBtn = screen.getByRole('button', { name: /Open Syllabus Studio/i });
@@ -92,7 +119,7 @@ describe('SyllabusCreatorPage', () => {
 
     // Inside Studio, wizard steps are rendered
     expect(screen.getAllByText(/Course Info/i).length).toBeGreaterThan(0);
-    const nextBtn = screen.getByRole('button', { name: /Next Step/i });
+    const nextBtn = screen.getByRole('button', { name: /Next Section/i });
     fireEvent.click(nextBtn);
     expect(screen.getAllByText(/Outcomes/i).length).toBeGreaterThan(0);
 
@@ -109,8 +136,101 @@ describe('SyllabusCreatorPage', () => {
       courses: [],
       showAlert: vi.fn(),
     } as any);
-    render(<SyllabusCreatorPage />);
+    renderWithRouter();
     expect(screen.getByText(/Access Restricted/i)).toBeInTheDocument();
+  });
+
+  it('re-pushes a local draft that is newer than the server copy', async () => {
+    const groupId = makeSyllabusGroupId(mockReleasedCourse);
+    const localSyllabus: any = {
+      courseInfo: { code: 'CSPC 101', title: 'Intro to Computing (local edit)' }
+    };
+    localStorage.setItem(
+      'gabay_syllabus_lifecycle_records',
+      JSON.stringify({
+        [groupId]: {
+          id: groupId,
+          status: 'in_development',
+          syllabusData: localSyllabus,
+          updatedAt: new Date().toISOString(),
+          history: []
+        }
+      })
+    );
+
+    // Server still holds a much older copy (the earlier save never landed).
+    vi.mocked(collabApi.fetchRemoteDraft).mockResolvedValue({
+      id: 'syl-draft-c-101',
+      payload: {
+        syllabusData: { courseInfo: { code: 'CSPC 101', title: 'stale' } },
+        updatedAt: 1
+      }
+    });
+    vi.mocked(collabApi.saveRemoteDraft).mockResolvedValue('syl-draft-c-101');
+
+    vi.spyOn(LMSContext, 'useLMS').mockReturnValue({
+      activeUser: mockFacultyUser,
+      activeRole: 'faculty',
+      courses: [mockReleasedCourse],
+      db: { courses: [mockReleasedCourse] },
+      showAlert: vi.fn()
+    } as any);
+
+    renderWithRouter();
+    fireEvent.click(screen.getByRole('button', { name: /Open Syllabus Studio/i }));
+
+    await vi.waitFor(() => expect(collabApi.saveRemoteDraft).toHaveBeenCalledTimes(1));
+    expect(collabApi.saveRemoteDraft).toHaveBeenCalledWith(
+      'c-101',
+      localSyllabus,
+      'usr-1',
+      undefined,
+      expect.anything(),
+      'in_development',
+      undefined
+    );
+    // The stale server copy must not be pulled over the local edit.
+    expect(screen.queryByText(/stale/)).not.toBeInTheDocument();
+  });
+
+  it('adopts a server copy that is newer than anything local', async () => {
+    const groupId = makeSyllabusGroupId(mockReleasedCourse);
+    localStorage.setItem(
+      'gabay_syllabus_lifecycle_records',
+      JSON.stringify({
+        [groupId]: {
+          id: groupId,
+          status: 'in_development',
+          syllabusData: { courseInfo: { code: 'CSPC 101', title: 'old local' } },
+          updatedAt: new Date(0).toISOString(),
+          history: []
+        }
+      })
+    );
+
+    vi.mocked(collabApi.fetchRemoteDraft).mockResolvedValue({
+      id: 'syl-draft-c-101',
+      payload: {
+        syllabusData: { courseInfo: { code: 'CSPC 101', title: 'newer remote' } },
+        updatedAt: Date.now() + 60000
+      }
+    });
+
+    vi.spyOn(LMSContext, 'useLMS').mockReturnValue({
+      activeUser: mockFacultyUser,
+      activeRole: 'faculty',
+      courses: [mockReleasedCourse],
+      db: { courses: [mockReleasedCourse] },
+      showAlert: vi.fn()
+    } as any);
+
+    renderWithRouter();
+    fireEvent.click(screen.getByRole('button', { name: /Open Syllabus Studio/i }));
+
+    await act(async () => {
+      await vi.waitFor(() => expect(collabApi.fetchRemoteDraft).toHaveBeenCalled());
+    });
+    expect(collabApi.saveRemoteDraft).not.toHaveBeenCalled();
   });
 
   it('blocks opening studio and editing when syllabus development is locked', () => {
@@ -123,7 +243,7 @@ describe('SyllabusCreatorPage', () => {
       showAlert,
     } as any);
 
-    render(<SyllabusCreatorPage />);
+    renderWithRouter();
     expect(screen.getByText(/Pending Chair Release/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Open Syllabus Studio/i })).not.toBeInTheDocument();
   });

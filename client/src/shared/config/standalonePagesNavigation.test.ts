@@ -17,7 +17,7 @@ describe('standalone page navigation', () => {
 
   it('keeps the existing exclusions intact', () => {
     expect(isLmsSectionTab('gabay-rag')).toBe(false);
-    expect(isLmsSectionTab('page1')).toBe(false);
+    expect(isLmsSectionTab('syllabus-development')).toBe(false);
     expect(isLmsSectionTab('page2')).toBe(false);
     expect(isLmsSectionTab('page3')).toBe(false);
     expect(isLmsSectionTab('governance')).toBe(false);

@@ -54,7 +54,7 @@ export const STATUS_CONFIG: Record<
     icon: <Clock className="w-3.5 h-3.5 text-amber-500" />
   },
   ready_for_evaluation: {
-    label: 'Ready for Evaluation',
+    label: 'Submitted',
     bg: 'bg-purple-500/10',
     text: 'text-purple-600 dark:text-purple-400',
     border: 'border-purple-500/20',
@@ -218,7 +218,7 @@ export const DepartmentSyllabusTable: React.FC<DepartmentSyllabusTableProps> = (
                 { value: 'all', label: 'All Statuses' },
                 { value: 'locked', label: 'Locked' },
                 { value: 'in_development', label: 'In Development' },
-                { value: 'ready_for_evaluation', label: 'Ready for Evaluation' },
+                { value: 'ready_for_evaluation', label: 'Submitted' },
                 { value: 'under_evaluation', label: 'Under Evaluation' },
                 { value: 'revisions_required', label: 'Revisions Required' },
                 { value: 'evaluator_approved', label: 'Evaluator Approved' },
@@ -310,160 +310,182 @@ export const DepartmentSyllabusTable: React.FC<DepartmentSyllabusTableProps> = (
                 filteredGroups.map(group => {
                   const cfg = STATUS_CONFIG[group.status] || STATUS_CONFIG.locked;
                   const isChecked = selectedIds.includes(group.id);
+                  const hasMultipleInstructors = group.instructorNames.length > 1;
 
                   return (
-                    <tr
-                      key={group.id}
-                      className={`hover:bg-muted/30 transition-colors ${
-                        isChecked ? 'bg-primary/5' : ''
-                      }`}
-                    >
-                      <td className="p-3 text-center">
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={() => handleToggleSelectRow(group.id)}
-                          aria-label={`Select ${group.courseCode}`}
-                          className="rounded border-border text-primary focus:ring-0 cursor-pointer"
-                        />
-                      </td>
+                    <>
+                      {group.instructorNames.map((instructorName, instIdx) => {
+                        const instructorId = group.instructorIds[instIdx];
+                        const instructorSections = group.instructorSections?.[instructorId] || [];
 
-                      <td className="p-3">
-                        <div className="font-bold text-foreground flex items-center gap-1.5">
-                          <span>{group.courseCode}</span>
-                          <span className="text-[10px] font-medium px-1.5 py-0.2 rounded bg-muted text-muted-foreground">
-                            {group.semester} Term
-                          </span>
-                        </div>
-                        <p className="text-muted-foreground text-[11px] line-clamp-1 mt-0.5">
-                          {group.courseTitle}
-                        </p>
-                      </td>
-
-                      <td className="p-3">
-                        <div className="flex flex-col gap-0.5">
-                          {group.instructorNames.map((name, i) => (
-                            <span key={i} className="text-foreground font-medium">
-                              {name}
-                            </span>
-                          ))}
-                        </div>
-                      </td>
-
-                      <td className="p-3">
-                        <div className="flex flex-wrap gap-1">
-                          {group.sections.map((sec, i) => (
-                            <span
-                              key={i}
-                              className="px-1.5 py-0.5 rounded bg-muted/80 text-foreground font-semibold text-[10px]"
-                            >
-                              {sec}
-                            </span>
-                          ))}
-                        </div>
-                      </td>
-
-                      <td className="p-3">
-                        <span
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border ${cfg.bg} ${cfg.text} ${cfg.border}`}
-                        >
-                          {cfg.icon}
-                          <span>{cfg.label}</span>
-                        </span>
-                      </td>
-
-                      <td className="p-3">
-                        {group.evaluators.length > 0 ? (
-                          <div className="flex flex-col gap-0.5">
-                            {group.evaluators.map((e, idx) => (
-                              <div key={idx} className="flex items-center gap-1 text-[11px]">
-                                <span className="font-medium text-foreground">{e.evaluatorName}</span>
-                                <span
-                                  className={`text-[9px] px-1 py-0.2 rounded ${
-                                    e.status === 'approved'
-                                      ? 'bg-emerald-500/10 text-emerald-600'
-                                      : e.status === 'revisions_requested'
-                                      ? 'bg-destructive/10 text-destructive'
-                                      : 'bg-muted text-muted-foreground'
-                                  }`}
-                                >
-                                  {e.status === 'approved' ? 'Approved' : e.status === 'revisions_requested' ? 'Revisions' : 'Pending'}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground text-[11px]">None assigned</span>
-                        )}
-                      </td>
-
-                      <td className="p-3 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          {group.status === 'locked' && canRelease && (
-                            <button
-                              onClick={() => onReleaseCourses([group.id])}
-                              aria-label={`Release ${group.courseCode} for development`}
-                              className="px-2.5 py-1 rounded-lg bg-blue-600 text-white hover:bg-blue-700 text-xs font-semibold flex items-center gap-1 shadow-xs transition-colors"
-                            >
-                              <Unlock className="w-3 h-3" />
-                              <span>Release</span>
-                            </button>
-                          )}
-
-                          {(group.status === 'in_development' || group.status === 'submission_in_progress' || group.status === 'revisions_required') && isChair && onLockCourses && (
-                            <button
-                              onClick={() => onLockCourses([group.id])}
-                              aria-label={`Lock syllabus development for ${group.courseCode}`}
-                              className="px-2.5 py-1 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-white text-xs font-semibold flex items-center gap-1 shadow-xs transition-colors"
-                              title="Lock syllabus development"
-                            >
-                              <Lock className="w-3 h-3" />
-                              <span>Lock</span>
-                            </button>
-                          )}
-
-                          {group.status === 'ready_for_evaluation' && isChair && (
-                            <button
-                              onClick={() => onAssignEvaluators(group)}
-                              aria-label={`Assign evaluators for ${group.courseCode}`}
-                              className="px-2.5 py-1 rounded-lg bg-purple-600 text-white hover:bg-purple-700 text-xs font-semibold flex items-center gap-1"
-                            >
-                              <Users className="w-3 h-3" />
-                              <span>Assign Evaluators</span>
-                            </button>
-                          )}
-
-                          {group.status === 'evaluator_approved' && isChair && (
-                            <button
-                              onClick={() => onChairApprove(group)}
-                              className="px-2.5 py-1 rounded-lg bg-teal-600 text-white hover:bg-teal-700 text-xs font-semibold flex items-center gap-1"
-                            >
-                              <CheckCircle2 className="w-3 h-3" />
-                              <span>Chair Endorse</span>
-                            </button>
-                          )}
-
-                          {group.status === 'chair_approved' && isDean && (
-                            <button
-                              onClick={() => onDeanApprove(group)}
-                              className="px-2.5 py-1 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 text-xs font-semibold flex items-center gap-1"
-                            >
-                              <CheckCircle2 className="w-3 h-3" />
-                              <span>Dean Approve</span>
-                            </button>
-                          )}
-
-                          <button
-                            onClick={() => onOpenPreview(group)}
-                            aria-label={`Preview ${group.courseCode}`}
-                            className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted"
-                            title="Preview Document"
+                        return (
+                          <tr
+                            key={`${group.id}-${instIdx}`}
+                            className={`hover:bg-muted/30 transition-colors ${
+                              isChecked ? 'bg-primary/5' : ''
+                            }`}
                           >
-                            <Eye className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
+                            <td className="p-3 text-center">
+                              {instIdx === 0 && (
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => handleToggleSelectRow(group.id)}
+                                  aria-label={`Select ${group.courseCode}`}
+                                  className="rounded border-border text-primary focus:ring-0 cursor-pointer"
+                                />
+                              )}
+                            </td>
+
+                            <td className="p-3">
+                              {instIdx === 0 ? (
+                                <>
+                                  <div className="font-bold text-foreground flex items-center gap-1.5">
+                                    <span>{group.courseCode}</span>
+                                    <span className="text-[10px] font-medium px-1.5 py-0.2 rounded bg-muted text-muted-foreground">
+                                      {group.semester} Term
+                                    </span>
+                                  </div>
+                                  <p className="text-muted-foreground text-[11px] line-clamp-1 mt-0.5">
+                                    {group.courseTitle}
+                                  </p>
+                                </>
+                              ) : null}
+                            </td>
+
+                            <td className="p-3">
+                              <span className="text-foreground font-medium">
+                                {instructorName}
+                              </span>
+                            </td>
+
+                            <td className="p-3">
+                              {instructorSections.length > 0 ? (
+                                <div className="flex flex-wrap gap-1">
+                                  {instructorSections.map((sec, i) => (
+                                    <span
+                                      key={i}
+                                      className="px-1.5 py-0.5 rounded bg-muted/80 text-foreground font-semibold text-[10px]"
+                                    >
+                                      {sec}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span className="text-muted-foreground text-[11px] italic">—</span>
+                              )}
+                            </td>
+
+                            <td className="p-3">
+                              {instIdx === 0 ? (
+                                <span
+                                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border ${cfg.bg} ${cfg.text} ${cfg.border}`}
+                                >
+                                  {cfg.icon}
+                                  <span>{cfg.label}</span>
+                                </span>
+                              ) : null}
+                            </td>
+
+                            <td className="p-3">
+                              {instIdx === 0 ? (
+                                group.evaluators.length > 0 ? (
+                                  <div className="flex flex-col gap-0.5">
+                                    {group.evaluators.map((e, idx) => (
+                                      <div key={idx} className="flex items-center gap-1 text-[11px]">
+                                        <span className="font-medium text-foreground">{e.evaluatorName}</span>
+                                        <span
+                                          className={`text-[9px] px-1 py-0.2 rounded ${
+                                            e.status === 'approved'
+                                              ? 'bg-emerald-500/10 text-emerald-600'
+                                              : e.status === 'revisions_requested'
+                                              ? 'bg-destructive/10 text-destructive'
+                                              : 'bg-muted text-muted-foreground'
+                                          }`}
+                                        >
+                                          {e.status === 'approved' ? 'Approved' : e.status === 'revisions_requested' ? 'Revisions' : 'Pending'}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span className="text-muted-foreground text-[11px]">None assigned</span>
+                                )
+                              ) : null}
+                            </td>
+
+                            <td className="p-3 text-right">
+                              {instIdx === 0 ? (
+                                <div className="flex items-center justify-end gap-1.5">
+                                  {group.status === 'locked' && canRelease && (
+                                    <button
+                                      onClick={() => onReleaseCourses([group.id])}
+                                      aria-label={`Release ${group.courseCode} for development`}
+                                      className="px-2.5 py-1 rounded-lg bg-blue-600 text-white hover:bg-blue-700 text-xs font-semibold flex items-center gap-1 shadow-xs transition-colors"
+                                    >
+                                      <Unlock className="w-3 h-3" />
+                                      <span>Release</span>
+                                    </button>
+                                  )}
+
+                                  {(group.status === 'in_development' || group.status === 'submission_in_progress' || group.status === 'revisions_required') && isChair && onLockCourses && (
+                                    <button
+                                      onClick={() => onLockCourses([group.id])}
+                                      aria-label={`Lock syllabus development for ${group.courseCode}`}
+                                      className="px-2.5 py-1 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-white text-xs font-semibold flex items-center gap-1 shadow-xs transition-colors"
+                                      title="Lock syllabus development"
+                                    >
+                                      <Lock className="w-3 h-3" />
+                                      <span>Lock</span>
+                                    </button>
+                                  )}
+
+                                  {group.status === 'ready_for_evaluation' && isChair && (
+                                    <button
+                                      onClick={() => onAssignEvaluators(group)}
+                                      aria-label={`Assign evaluators for ${group.courseCode}`}
+                                      className="px-2.5 py-1 rounded-lg bg-purple-600 text-white hover:bg-purple-700 text-xs font-semibold flex items-center gap-1"
+                                    >
+                                      <Users className="w-3 h-3" />
+                                      <span>Assign Evaluators</span>
+                                    </button>
+                                  )}
+
+                                  {group.status === 'evaluator_approved' && isChair && (
+                                    <button
+                                      onClick={() => onChairApprove(group)}
+                                      className="px-2.5 py-1 rounded-lg bg-teal-600 text-white hover:bg-teal-700 text-xs font-semibold flex items-center gap-1"
+                                    >
+                                      <CheckCircle2 className="w-3 h-3" />
+                                      <span>Chair Endorse</span>
+                                    </button>
+                                  )}
+
+                                  {group.status === 'chair_approved' && isDean && (
+                                    <button
+                                      onClick={() => onDeanApprove(group)}
+                                      className="px-2.5 py-1 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 text-xs font-semibold flex items-center gap-1"
+                                    >
+                                      <CheckCircle2 className="w-3 h-3" />
+                                      <span>Dean Approve</span>
+                                    </button>
+                                  )}
+
+                                  <button
+                                    onClick={() => onOpenPreview(group)}
+                                    aria-label={`Preview ${group.courseCode}`}
+                                    className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted"
+                                    title="Preview Document"
+                                  >
+                                    <Eye className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              ) : null}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </>
                   );
                 })
               )}

@@ -1,10 +1,11 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useLMS } from '../../shared/context/LMSContext';
 import { createBaselineSyllabus } from './hooks/useSyllabusDraftsStorage';
 import { OFFICIAL_SYLLABUS_CSPC112, OFFICIAL_INSTITUTIONAL_STATEMENTS } from '../../shared/data/syllabusData';
 import { useSyllabusLifecycle, normalizeCourseCode } from './hooks/useSyllabusLifecycle';
 import { useSyllabusCollaboration } from './hooks/useSyllabusCollaboration';
-import { fetchRemoteDraft } from './api/syllabusCollaborationApi';
+import { fetchRemoteDraft, saveRemoteDraft } from './api/syllabusCollaborationApi';
 import { SyllabusWizard } from './components/creator/SyllabusWizard';
 import { AttachToCourseModal } from './components/creator/AttachToCourseModal';
 import { DepartmentSyllabusTable, STATUS_CONFIG } from './components/governance/DepartmentSyllabusTable';
@@ -25,7 +26,10 @@ import {
   Lock,
   ArrowRight,
   Eye,
-  Radio
+  Radio,
+  CheckCircle2,
+  Loader2,
+  CloudOff
 } from 'lucide-react';
 
 interface SyllabusCreatorPageProps {
@@ -34,7 +38,9 @@ interface SyllabusCreatorPageProps {
 
 export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavigateTab: _onNavigateTab }) => {
   const lms = useLMS();
+  const navigate = useNavigate();
   const { activeUser, activeRole, db, showAlert, updateCourseSyllabus } = lms;
+  const { groupId } = useParams<{ groupId?: string }>();
   const coursesList = db?.courses || (lms as any).courses || [];
   const usersList = db?.users || [];
 
@@ -47,10 +53,13 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
   // Lifecycle Governance Hook
   const {
     groups,
+    records,
     getRecord,
     releaseCourses,
     lockCourses,
     confirmAgreement,
+    retractAgreement,
+    syncRemoteAgreements,
     assignEvaluators,
     submitEvaluatorReview,
     chairApprove,
@@ -76,7 +85,10 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
 
   // Active course group opened in Syllabus Studio
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
-  const [activeStepId, setActiveStepId] = useState<string>('course-info');
+  const [activeStepId, setActiveStepId] = useState<string>(() => {
+    const saved = localStorage.getItem('syllabus_activeStepId');
+    return saved || 'course-info';
+  });
 
   // Modals state
   const [isAttachOpen, setIsAttachOpen] = useState(false);
@@ -88,29 +100,118 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
   } | null>(null);
   const [previewingGroup, setPreviewingGroup] = useState<SyllabusGroup | null>(null);
 
+  const hydratedGroupRef = useRef<string | null>(null);
+
+  // Sync URL with state: if groupId in URL changes, update activeGroupId
+  useEffect(() => {
+    if (groupId && groupId !== activeGroupId) {
+      setActiveGroupId(groupId);
+    } else if (!groupId && activeGroupId) {
+      setActiveGroupId(null);
+    }
+  }, [groupId, activeGroupId]);
+
+  // Hydrate remote draft agreements/evaluators once per opened studio group
+  useEffect(() => {
+    if (!groupId) {
+      hydratedGroupRef.current = null;
+      return;
+    }
+    if (hydratedGroupRef.current === groupId) {
+      return;
+    }
+
+    const targetGroup = groups.find(g => g.id === groupId);
+    const canonicalId = targetGroup?.courseIds[0];
+    if (canonicalId) {
+      hydratedGroupRef.current = groupId;
+      fetchRemoteDraft(canonicalId).then(remote => {
+        if (remote?.payload?.submissionAgreements || remote?.payload?.status || remote?.payload?.evaluators) {
+          syncRemoteAgreements(
+            groupId,
+            remote.payload.submissionAgreements || {},
+            remote.payload.status as any,
+            remote.payload.evaluators
+          );
+        }
+      }).catch(() => {});
+    }
+  }, [groupId, groups, syncRemoteAgreements]);
+
+  // Persist active studio state to localStorage (only when on studio route)
+  useEffect(() => {
+    if (activeGroupId && groupId) {
+      localStorage.setItem('syllabus_activeGroupId', activeGroupId);
+    } else if (!groupId) {
+      localStorage.removeItem('syllabus_activeGroupId');
+      localStorage.removeItem('syllabus_activeStepId');
+    }
+  }, [activeGroupId, groupId]);
+
+  useEffect(() => {
+    if (groupId) {
+      localStorage.setItem('syllabus_activeStepId', activeStepId);
+    }
+  }, [activeStepId, groupId]);
+
   // Active Group Details
   const activeGroup = groups.find(g => g.id === activeGroupId);
   const activeRecord = activeGroupId ? getRecord(activeGroupId) : undefined;
   const canonicalCourseId = activeGroup?.courseIds[0];
 
+  // Read through a ref so the remote-sync callback keeps a stable identity:
+  // it is a dependency of the collaboration WebSocket effect.
+  const recordsRef = useRef(records);
+  recordsRef.current = records;
+
+  // Compare remote timestamps here before trusting them. This keeps the
+  // "sometimes it doesn't save" moment from being re-triggered after a refresh.
+  const lastLocalTimestampRef = useRef<number>(0);
+
   // Real-time Collaboration Hook for the actively opened group
-  const handleRemoteUpdate = useCallback((remoteData: any) => {
-    if (activeGroupId) {
-      updateSyllabusData(activeGroupId, remoteData);
-    }
+  const handleRemoteUpdate = useCallback((remoteData: any, remoteUpdatedAt?: number) => {
+    if (!activeGroupId) return;
+
+    const localRecord = recordsRef.current[activeGroupId] as any;
+    const localUpdatedAt = localRecord?.updatedAt
+      ? new Date(localRecord.updatedAt).getTime()
+      : 0;
+
+    // Older-than-yours or equal-to-yours server states are ignored entirely:
+    // that is the case that made edits vanish after opening a course.
+    if (localUpdatedAt && (!remoteUpdatedAt || remoteUpdatedAt <= localUpdatedAt)) return;
+
+    // A co-editor whose payload lands at the exact same timestamp is from across
+    // the same button press; do not clobber your local form with it.
+    if (remoteData && remoteUpdatedAt === lastLocalTimestampRef.current) return;
+
+    updateSyllabusData(activeGroupId, remoteData);
+    lastLocalTimestampRef.current = remoteUpdatedAt ?? Date.now();
   }, [activeGroupId, updateSyllabusData]);
+
+  const handleRemoteConsensusUpdate = useCallback(
+    (agreements: Record<string, boolean>, status?: string, evaluators?: any[]) => {
+      if (!activeGroupId) return;
+      syncRemoteAgreements(activeGroupId, agreements, status as any, evaluators);
+    },
+    [activeGroupId, syncRemoteAgreements]
+  );
 
   const {
     activePresenceNotice,
     broadcastSectionUpdate,
     broadcastStepChange,
-    collaborators
+    broadcastConsensusUpdate,
+    collaborators,
+    syncStatus,
+    retrySave
   } = useSyllabusCollaboration(
     activeGroupId || undefined,
     activeUser,
     activeStepId,
     canonicalCourseId,
-    handleRemoteUpdate
+    handleRemoteUpdate,
+    handleRemoteConsensusUpdate
   );
 
   // RBAC Access Gate
@@ -164,16 +265,20 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
           ? uniqueSections.map(sec => ({
               section: sec,
               schedule: instCourses.find(c => c.section === sec)?.schedule || '',
-              room: instCourses.find(c => c.section === sec)?.room || ''
+              room: instCourses.find(c => c.section === sec)?.room || '',
+              lectureSchedule: '',
+              lectureRoom: '',
+              labSchedule: '',
+              labRoom: ''
             }))
           : grp.sections.length > 0
-            ? [{ section: grp.sections.join(', '), schedule: '', room: '' }]
-            : [{ section: '', schedule: '', room: '' }];
+            ? [{ section: grp.sections.join(', '), lectureSchedule: '', lectureRoom: '', labSchedule: '', labRoom: '' }]
+            : [{ section: '', lectureSchedule: '', lectureRoom: '', labSchedule: '', labRoom: '' }];
 
         return {
           name,
           sections: sectionsData,
-          consultation: ''
+          consultationSlots: [{ days: [], time: '' }]
         };
       })
     });
@@ -216,14 +321,18 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
               ? uniqueSections.map(sec => ({
                   section: sec,
                   schedule: instCourses.find(c => c.section === sec)?.schedule || '',
-                  room: instCourses.find(c => c.section === sec)?.room || ''
+                  room: instCourses.find(c => c.section === sec)?.room || '',
+                  lectureSchedule: '',
+                  lectureRoom: '',
+                  labSchedule: '',
+                  labRoom: ''
                 }))
-              : [{ section: activeGroup.sections[idx] || activeGroup.sections[0] || '', schedule: '', room: '' }];
+              : [{ section: activeGroup.sections[idx] || activeGroup.sections[0] || '', lectureSchedule: '', lectureRoom: '', labSchedule: '', labRoom: '' }];
 
           return {
             name: existing.name || name,
             sections,
-            consultation: existing.consultation || ''
+            consultationSlots: existing.consultationSlots || [{ days: [], time: '' }]
           };
         }
 
@@ -231,16 +340,20 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
           ? uniqueSections.map(sec => ({
               section: sec,
               schedule: instCourses.find(c => c.section === sec)?.schedule || '',
-              room: instCourses.find(c => c.section === sec)?.room || ''
+              room: instCourses.find(c => c.section === sec)?.room || '',
+              lectureSchedule: '',
+              lectureRoom: '',
+              labSchedule: '',
+              labRoom: ''
             }))
           : activeGroup.sections.length > 0
-            ? [{ section: activeGroup.sections[idx] || activeGroup.sections[0] || '', schedule: '', room: '' }]
-            : [{ section: '', schedule: '', room: '' }];
+            ? [{ section: activeGroup.sections[idx] || activeGroup.sections[0] || '', lectureSchedule: '', lectureRoom: '', labSchedule: '', labRoom: '' }]
+            : [{ section: '', lectureSchedule: '', lectureRoom: '', labSchedule: '', labRoom: '' }];
 
         return {
           name,
           sections: sectionsData,
-          consultation: ''
+          consultationSlots: [{ days: [], time: '' }]
         };
       });
     }
@@ -266,7 +379,9 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
     };
 
     // Auto-normalize Program Outcomes and Course Outcomes to strictly sequential 1..N
-    const rawPOs = rawData.programOutcomes || [];
+    const rawPOs = rawData.programOutcomes && rawData.programOutcomes.length > 0
+      ? rawData.programOutcomes
+      : [{ number: 1, description: '' }];
     const poNumberMap = new Map<number, number>();
     const normalizedPOs = rawPOs.map((po, idx) => {
       const newNum = idx + 1;
@@ -277,7 +392,9 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
       };
     });
 
-    const rawCOs = rawData.courseOutcomes || [];
+    const rawCOs = rawData.courseOutcomes && rawData.courseOutcomes.length > 0
+      ? rawData.courseOutcomes
+      : [{ number: 1, statement: '' }];
     const coNumberMap = new Map<number, number>();
     const normalizedCOs = rawCOs.map((co, idx) => {
       const newNum = idx + 1;
@@ -288,13 +405,17 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
       };
     });
 
-    const normalizedCourseMap = (rawData.courseMap || []).map((cm, idx) => {
+
+    const baseCourseMap = (rawData.courseMap && rawData.courseMap.length > 0)
+      ? rawData.courseMap
+      : normalizedCOs.map(co => ({ coNumber: co.number, coStatement: co.statement || '', poAlignments: {} }));
+    const normalizedCourseMap = baseCourseMap.map((cm, idx) => {
       const newCoNum = coNumberMap.get(cm.coNumber) ?? (idx + 1);
       const newAlignments: Record<number, 'I' | 'P' | 'D'> = {};
       Object.entries(cm.poAlignments || {}).forEach(([oldPoKey, val]) => {
         const oldPoNum = Number(oldPoKey);
         const newPoNum = poNumberMap.get(oldPoNum) ?? oldPoNum;
-        if (val) {
+        if (val === 'I' || val === 'P' || val === 'D') {
           newAlignments[newPoNum] = val;
         }
       });
@@ -359,27 +480,61 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
       });
       return;
     }
-    // If course is under evaluation or already approved, open in read-only document preview
-    if (group.status !== 'in_development' && group.status !== 'revisions_required') {
+    // If course is under evaluation, ready for evaluation, or already approved, open in read-only document preview
+    if (group.status !== 'in_development' && group.status !== 'submission_in_progress' && group.status !== 'revisions_required') {
       setPreviewingGroup(group);
       return;
     }
     setActiveGroupId(group.id);
+    navigate(`/syllabus-development/studio/${group.id}`);
     setActiveStepId('course-info');
 
     // Hydrate remote draft if present on Likha ERP
     const canonicalId = group.courseIds[0];
     if (canonicalId) {
+      // A slow fetch must not replace edits made while the studio was opening:
+      // only adopt the remote copy when there is no local one or it is newer.
+      const localRecord = getRecord(group.id);
+      const localUpdatedAt = (localRecord as any)?.updatedAt
+        ? new Date((localRecord as any).updatedAt).getTime()
+        : 0;
+      const localSyllabusData = localRecord?.syllabusData;
       fetchRemoteDraft(canonicalId).then(remote => {
-        if (remote?.payload?.syllabusData) {
-          updateSyllabusData(group.id, remote.payload.syllabusData);
+        const remoteData = remote?.payload?.syllabusData;
+        const remoteAgreements = remote?.payload?.submissionAgreements;
+        const remoteStatus = remote?.payload?.status as any;
+        const remoteEvaluators = remote?.payload?.evaluators;
+        const remoteUpdatedAt = Number(remote?.payload?.updatedAt) || 0;
+        const remoteMissing = !remote || !remoteData;
+
+        if (remoteAgreements || remoteStatus || remoteEvaluators) {
+          syncRemoteAgreements(group.id, remoteAgreements || {}, remoteStatus, remoteEvaluators);
         }
+
+        if (localSyllabusData && (remoteMissing || remoteUpdatedAt <= localUpdatedAt)) {
+          // Local copy is ahead of the server: an earlier save failed or the tab
+          // closed before it flushed. Push it up so the draft self-heals instead
+          // of staying stale on every other device.
+          saveRemoteDraft(
+            canonicalId,
+            localSyllabusData,
+            activeUser?.id,
+            undefined,
+            localRecord?.submissionAgreements,
+            localRecord?.status,
+            localRecord?.evaluators
+          ).catch(() => {});
+          return;
+        }
+        if (!remoteData) return;
+        updateSyllabusData(group.id, remoteData);
       }).catch(() => {});
     }
   };
 
   // Close Studio back to list
   const handleCloseStudio = () => {
+    navigate('/syllabus-development');
     setActiveGroupId(null);
     setActiveStepId('course-info');
   };
@@ -388,6 +543,19 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
   if (previewingGroup) {
     const record = getRecord(previewingGroup.id);
     const previewData = record?.syllabusData || getBaselineForGroup(previewingGroup);
+    if (!previewData) {
+      return (
+        <div className="w-full p-8 text-center">
+          <p className="text-sm text-muted-foreground">Unable to load syllabus preview. Please try again.</p>
+          <button
+            onClick={() => setPreviewingGroup(null)}
+            className="mt-4 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold"
+          >
+            ← Return to Syllabus Hub
+          </button>
+        </div>
+      );
+    }
     return (
       <div className="w-full space-y-4">
         <button
@@ -453,13 +621,38 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
             </p>
           </div>
 
-          {/* Real-Time Collaborator Presence Chip */}
+          {/* Save State + Real-Time Collaborator Presence Chip */}
+          <div className="flex flex-wrap items-center gap-2">
+          {syncStatus !== 'idle' && (
+            syncStatus === 'error' ? (
+              <button
+                type="button"
+                onClick={() => void retrySave()}
+                title="The last changes could not be saved to the server. Click to retry."
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-destructive/10 border border-destructive/30 text-destructive text-xs font-semibold cursor-pointer hover:bg-destructive/20"
+              >
+                <CloudOff className="w-3.5 h-3.5" />
+                <span>Not saved — retry</span>
+              </button>
+            ) : syncStatus === 'saving' ? (
+              <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-muted border border-border text-muted-foreground text-xs font-semibold">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>Saving…</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-semibold">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>All changes saved</span>
+              </span>
+            )
+          )}
           {activePresenceNotice && (
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-400 text-xs font-semibold animate-pulse">
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-400 text-xs font-semibold">
               <Radio className="w-3.5 h-3.5" />
               <span>{activePresenceNotice}</span>
             </div>
           )}
+          </div>
         </div>
 
         {/* Revision Remarks Banner if Revisions are Required */}
@@ -503,8 +696,35 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
           currentUserId={activeUser?.id}
           allAgreed={allCoInstructorsAgreed}
           onAgreeToSubmit={() => {
-            if (activeUser?.id) {
-              confirmAgreement(activeGroup.id, activeUser.id);
+            if (activeUser?.id && activeGroup) {
+              const instructors = activeRecord?.instructorIds || activeGroup.instructorIds || [activeUser.id];
+              const newAgreements: Record<string, boolean> = {
+                ...(activeRecord?.submissionAgreements || {}),
+                [activeUser.id]: true
+              };
+              const allAgreed = instructors.length > 0 && instructors.every(id => Boolean(newAgreements[id]));
+              const nextStatus = allAgreed ? 'ready_for_evaluation' : 'submission_in_progress';
+
+              confirmAgreement(activeGroup.id, activeUser.id, (courseIds, status) => {
+                if (lms.updateCourseSyllabusStatus && courseIds.length > 0) {
+                  void lms.updateCourseSyllabusStatus(courseIds, status, activeUser.id);
+                }
+              });
+
+              broadcastConsensusUpdate(newAgreements, nextStatus, currentSyllabusData);
+
+              if (canonicalCourseId) {
+                void saveRemoteDraft(
+                  canonicalCourseId,
+                  currentSyllabusData,
+                  activeUser.id,
+                  undefined,
+                  newAgreements,
+                  nextStatus,
+                  activeRecord?.evaluators
+                );
+              }
+
               showAlert({
                 title: 'Agreement Confirmed',
                 message:
@@ -512,6 +732,42 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
                     ? 'Syllabus submitted for evaluation. Your department chairperson will now assign evaluators.'
                     : 'Your submission agreement has been recorded. Once all co-instructors agree, the syllabus will advance to Evaluation.',
                 type: 'success'
+              });
+            }
+          }}
+          onRetractAgreement={() => {
+            if (activeUser?.id && activeGroup) {
+              const retractedAgreements: Record<string, boolean> = {
+                ...(activeRecord?.submissionAgreements || {}),
+                [activeUser.id]: false
+              };
+              const anyAgreed = Object.values(retractedAgreements).some(Boolean);
+              const nextStatus = anyAgreed ? 'submission_in_progress' : 'in_development';
+
+              retractAgreement(activeGroup.id, activeUser.id, (courseIds, status) => {
+                if (lms.updateCourseSyllabusStatus && courseIds.length > 0) {
+                  void lms.updateCourseSyllabusStatus(courseIds, status, activeUser.id);
+                }
+              });
+
+              broadcastConsensusUpdate(retractedAgreements, nextStatus, currentSyllabusData);
+
+              if (canonicalCourseId) {
+                void saveRemoteDraft(
+                  canonicalCourseId,
+                  currentSyllabusData,
+                  activeUser.id,
+                  undefined,
+                  retractedAgreements,
+                  nextStatus,
+                  activeRecord?.evaluators
+                );
+              }
+
+              showAlert({
+                title: 'Submission Agreement Retracted',
+                message: 'Your submission agreement has been retracted. You can continue editing the syllabus.',
+                type: 'info'
               });
             }
           }}
@@ -728,10 +984,16 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
                           className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                             isLocked
                               ? 'bg-muted text-muted-foreground'
+                              : group.status === 'ready_for_evaluation'
+                              ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400'
                               : 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
                           }`}
                         >
-                          {group.status.replace(/_/g, ' ').toUpperCase()}
+                          {group.status === 'in_development'
+                            ? 'DRAFT'
+                            : group.status === 'ready_for_evaluation'
+                              ? 'SUBMITTED'
+                              : group.status.replace(/_/g, ' ').toUpperCase()}
                         </span>
                       </div>
 
@@ -763,7 +1025,7 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
                           <Lock className="w-3.5 h-3.5" />
                           <span>Pending Chair Release</span>
                         </div>
-                      ) : group.status === 'in_development' || group.status === 'revisions_required' ? (
+                      ) : group.status === 'in_development' || group.status === 'submission_in_progress' || group.status === 'revisions_required' ? (
                         <button
                           onClick={() => handleOpenStudio(group)}
                           className="px-4 py-2 rounded-xl text-xs font-bold bg-primary text-primary-foreground hover:bg-primary/90 transition-all flex items-center gap-1.5"
@@ -839,7 +1101,7 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
                     </p>
                     {myReview && (
                       <p className="text-[11px] font-medium text-purple-600 dark:text-purple-400 mt-1">
-                        Your Evaluation Status: {myReview.status === 'approved' ? 'Approved ✓' : myReview.status === 'revisions_requested' ? 'Revisions Requested ⚠️' : 'Pending Review ⏳'}
+                        Your Evaluation Status: {myReview.status === 'approved' ? 'Approved âœ“' : myReview.status === 'revisions_requested' ? 'Revisions Requested âš ï¸' : 'Pending Review â³'}
                       </p>
                     )}
                   </div>
@@ -884,7 +1146,22 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
           users={usersList}
           onClose={() => setEvaluatorAssignGroup(null)}
           onConfirm={(groupId, evaluators) => {
-            assignEvaluators(groupId, evaluators);
+            assignEvaluators(groupId, evaluators, (courseIds, status) => {
+              if (lms.updateCourseSyllabusStatus && courseIds.length > 0) {
+                void lms.updateCourseSyllabusStatus(courseIds, status, activeUser?.id);
+              }
+            });
+            if (evaluatorAssignGroup.courseIds[0]) {
+              saveRemoteDraft(
+                evaluatorAssignGroup.courseIds[0],
+                evaluatorAssignGroup.syllabusData || ({} as any),
+                activeUser?.id,
+                undefined,
+                evaluatorAssignGroup.submissionAgreements,
+                'under_evaluation',
+                evaluators.map(e => ({ evaluatorId: e.id, evaluatorName: e.name, status: 'pending' }))
+              ).catch(() => {});
+            }
             showAlert({
               title: 'Evaluators Assigned',
               message: `${evaluators.length} evaluator(s) assigned to ${evaluatorAssignGroup.courseCode}.`,
@@ -903,7 +1180,21 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
           onClose={() => setEvaluatorReviewGroup(null)}
           onReview={(groupId, status, remarks) => {
             if (activeUser?.id) {
-              submitEvaluatorReview(groupId, activeUser.id, status, remarks);
+              submitEvaluatorReview(groupId, activeUser.id, status, remarks, (courseIds, nextStatus) => {
+                if (lms.updateCourseSyllabusStatus && courseIds.length > 0) {
+                  void lms.updateCourseSyllabusStatus(courseIds, nextStatus, activeUser.id);
+                }
+              });
+              if (evaluatorReviewGroup.courseIds[0]) {
+                saveRemoteDraft(
+                  evaluatorReviewGroup.courseIds[0],
+                  evaluatorReviewGroup.syllabusData || ({} as any),
+                  activeUser.id,
+                  undefined,
+                  evaluatorReviewGroup.submissionAgreements,
+                  status === 'approved' ? 'evaluator_approved' : 'revisions_required'
+                ).catch(() => {});
+              }
               showAlert({
                 title: status === 'approved' ? 'Evaluation Approved' : 'Revisions Requested',
                 message:

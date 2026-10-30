@@ -22,7 +22,7 @@ const ICONS: Record<NavIcon, React.ReactNode> = {
   projects: <BookOpen className="h-5 w-5" />,
   presentations: <BookOpen className="h-5 w-5" />,
   governance: <Landmark className="h-5 w-5" />,
-  accounts: <Users className="h-5 w-5" />, page1: <FileText className="h-5 w-5" />,
+  accounts: <Users className="h-5 w-5" />, 'syllabus-development': <FileText className="h-5 w-5" />,
   page2: <BarChart3 className="h-5 w-5" />, page3: <FileCheck2 className="h-5 w-5" />,
 };
 

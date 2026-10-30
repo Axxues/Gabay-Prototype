@@ -228,8 +228,8 @@ describe('extractTextFromDocx', () => {
     // Dynamic Faculty Schedule
     expect(result.detectedFacultyNames).toContain('Floribeth P. Cuison');
     expect(result.syllabus.facultyMembers[0]?.name).toBe('Floribeth P. Cuison');
-    expect(result.syllabus.facultyMembers[0]?.sections[0]?.schedule).toMatch(/01:30 PM/i);
-    expect(result.syllabus.facultyMembers[0]?.sections[0]?.room).toMatch(/LR\s*203/i);
+    expect(result.syllabus.facultyMembers[0]?.sections[0]?.lectureSchedule).toMatch(/01:30 PM/i);
+    expect(result.syllabus.facultyMembers[0]?.sections[0]?.lectureRoom).toMatch(/LR\s*203/i);
   }, 15000);
 
   test('dynamically extracts syllabus sections from CMSC131 PDF sample', async () => {
@@ -248,7 +248,7 @@ describe('extractTextFromDocx', () => {
     expect(result.detectedCourseTitle).toMatch(/Software Engineering 2/i);
     expect(result.detectedFacultyNames).toContain('Ezekiel O. Bacungan');
     expect(result.syllabus.facultyMembers[0]?.name).toBe('Ezekiel O. Bacungan');
-    expect(result.syllabus.facultyMembers[0]?.sections[0]?.schedule).toMatch(/08:00-09:00 MF/i);
-    expect(result.syllabus.facultyMembers[0]?.sections[0]?.room).toMatch(/LR114/i);
+    expect(result.syllabus.facultyMembers[0]?.sections[0]?.lectureSchedule).toMatch(/08:00-09:00 MF/i);
+    expect(result.syllabus.facultyMembers[0]?.sections[0]?.lectureRoom).toMatch(/LR114/i);
   }, 15000);
 });

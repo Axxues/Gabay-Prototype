@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import type { Course } from '../../../shared/types/lms';
 import type { OfficialSyllabusData } from '../../../shared/data/syllabusData';
 import { normalizeAcademicSemester } from '../../../shared/utils/academicSemester';
@@ -6,7 +6,8 @@ import { createBaselineSyllabus } from './useSyllabusDraftsStorage';
 import type {
   SyllabusGroup,
   SyllabusDevelopmentRecord,
-  EvaluatorReview
+  EvaluatorReview,
+  SyllabusLifecycleStatus
 } from '../types/lifecycle';
 
 const STORAGE_KEY = 'gabay_syllabus_lifecycle_records';
@@ -67,19 +68,21 @@ export function useSyllabusLifecycle(
     }
   });
 
+  const recordsRef = useRef(records);
+  recordsRef.current = records;
+
   // Atomic state updater that synchronously writes to localStorage and state
   const updateRecords = useCallback((
     fn: (prev: Record<string, SyllabusDevelopmentRecord>) => Record<string, SyllabusDevelopmentRecord>
   ) => {
-    setRecords(prev => {
-      const next = fn(prev);
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-      } catch (e) {
-        console.warn('Failed to persist syllabus lifecycle records:', e);
-      }
-      return next;
-    });
+    const next = fn(recordsRef.current);
+    recordsRef.current = next;
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    } catch (e) {
+      console.warn('Failed to persist syllabus lifecycle records:', e);
+    }
+    setRecords(next);
   }, []);
 
   // 2. Aggregate courses into groups
@@ -211,7 +214,9 @@ export function useSyllabusLifecycle(
         initialAgreements[instId] = false;
       }
 
-      // Check backend syllabus status from courses
+      // Build instructorSections mapping from course data
+      const instructorSections: Record<string, string[]> = {};
+      
       const groupCourses = relevantCourses.filter(
         c =>
           g.courseIds.some(id => String(id).trim() === String(c.id).trim()) ||
@@ -219,6 +224,18 @@ export function useSyllabusLifecycle(
             normalizeCourseCode(c.code) === normalizeCourseCode(g.courseCode) &&
             normalizeAcademicSemester(c.semester || c.term) === normalizeAcademicSemester(g.semester))
       );
+      
+      // Map instructors to their sections
+      for (const c of groupCourses) {
+        if (c.instructorId && c.section) {
+          if (!instructorSections[c.instructorId]) {
+            instructorSections[c.instructorId] = [];
+          }
+          if (!instructorSections[c.instructorId].includes(c.section)) {
+            instructorSections[c.instructorId].push(c.section);
+          }
+        }
+      }
 
       const hasBackendCourses = groupCourses.length > 0;
       const anyBackendLocked = hasBackendCourses && groupCourses.some(c => c.syllabusStatus === 'locked');
@@ -266,6 +283,7 @@ export function useSyllabusLifecycle(
         courseIds: g.courseIds,
         instructorIds: g.instructorIds,
         instructorNames: g.instructorNames,
+        instructorSections,
         sections: g.sections,
         status: effectiveStatus,
         submissionAgreements: existingRecord?.submissionAgreements || initialAgreements,
@@ -278,6 +296,17 @@ export function useSyllabusLifecycle(
 
   // Sync missing records into storage
   useEffect(() => {
+    const groupsNeedingSync = groups.filter(g => {
+      const rec = records[g.id];
+      if (!rec) return true;
+      if (rec.status !== g.status) return true;
+      if (g.sections.some(s => !rec.sections?.includes(s))) return true;
+      if (g.instructorIds.some(i => !rec.instructorIds?.includes(i))) return true;
+      if (g.courseIds.some(cId => !rec.courseIds?.includes(cId))) return true;
+      return false;
+    });
+    if (groupsNeedingSync.length === 0) return;
+
     updateRecords(prev => {
       let changed = false;
       const next = { ...prev };
@@ -359,7 +388,7 @@ export function useSyllabusLifecycle(
 
       return changed ? next : prev;
     });
-  }, [groups, updateRecords]);
+  }, [groups.map(g => g.id).join(','), updateRecords]);
 
   const getRecord = useCallback((groupId: string): SyllabusDevelopmentRecord | undefined => {
     return findMatchingRecord(records, groupId);
@@ -372,6 +401,12 @@ export function useSyllabusLifecycle(
     onPersist?: (courseIds: string[], status: string) => void
   ) => {
     const affectedCourseIds: string[] = [];
+    for (const id of groupIds) {
+      const existing = records[id];
+      const targetGroup = groups.find(g => g.id === id);
+      const cIds = existing?.courseIds || targetGroup?.courseIds || [];
+      affectedCourseIds.push(...cIds);
+    }
 
     updateRecords(prev => {
       const next = { ...prev };
@@ -380,8 +415,6 @@ export function useSyllabusLifecycle(
       for (const id of groupIds) {
         const existing = next[id];
         const targetGroup = groups.find(g => g.id === id);
-        const cIds = existing?.courseIds || targetGroup?.courseIds || [];
-        affectedCourseIds.push(...cIds);
 
         if (existing) {
           next[id] = {
@@ -420,7 +453,7 @@ export function useSyllabusLifecycle(
     if (onPersist && affectedCourseIds.length > 0) {
       onPersist(Array.from(new Set(affectedCourseIds)), 'in_development');
     }
-  }, [groups, updateRecords]);
+  }, [groups, records, updateRecords]);
 
   // Chair locks courses to halt syllabus development
   const lockCourses = useCallback((
@@ -429,6 +462,12 @@ export function useSyllabusLifecycle(
     onPersist?: (courseIds: string[], status: string) => void
   ) => {
     const affectedCourseIds: string[] = [];
+    for (const id of groupIds) {
+      const existing = records[id];
+      const targetGroup = groups.find(g => g.id === id);
+      const cIds = existing?.courseIds || targetGroup?.courseIds || [];
+      affectedCourseIds.push(...cIds);
+    }
 
     updateRecords(prev => {
       const next = { ...prev };
@@ -437,8 +476,6 @@ export function useSyllabusLifecycle(
       for (const id of groupIds) {
         const existing = next[id];
         const targetGroup = groups.find(g => g.id === id);
-        const cIds = existing?.courseIds || targetGroup?.courseIds || [];
-        affectedCourseIds.push(...cIds);
 
         if (existing) {
           next[id] = {
@@ -475,14 +512,22 @@ export function useSyllabusLifecycle(
     if (onPersist && affectedCourseIds.length > 0) {
       onPersist(Array.from(new Set(affectedCourseIds)), 'locked');
     }
-  }, [groups, updateRecords]);
+  }, [groups, records, updateRecords]);
 
   // Instructor confirms agreement to submit
-  const confirmAgreement = useCallback((groupId: string, instructorId: string) => {
+  const confirmAgreement = useCallback((
+    groupId: string,
+    instructorId: string,
+    onPersist?: (courseIds: string[], status: string) => void
+  ) => {
+    const targetGroup = groups.find(g => g.id === groupId);
+    let resolvedStatus: SyllabusLifecycleStatus = 'submission_in_progress';
+    let affectedCourseIds: string[] = targetGroup?.courseIds || [];
+
     updateRecords(prev => {
       const existing = prev[groupId];
-      const targetGroup = groups.find(g => g.id === groupId);
       const instructors = existing?.instructorIds || targetGroup?.instructorIds || [instructorId];
+      affectedCourseIds = existing?.courseIds || targetGroup?.courseIds || [];
 
       const agreements: Record<string, boolean> = {
         ...(existing?.submissionAgreements || {}),
@@ -490,7 +535,7 @@ export function useSyllabusLifecycle(
       };
 
       const allAgreed = instructors.length > 0 && instructors.every(id => Boolean(agreements[id]));
-      const nextStatus = allAgreed ? 'ready_for_evaluation' : 'submission_in_progress';
+      resolvedStatus = allAgreed ? 'ready_for_evaluation' : 'submission_in_progress';
       const now = new Date().toISOString();
 
       const updated: SyllabusDevelopmentRecord = {
@@ -507,7 +552,7 @@ export function useSyllabusLifecycle(
           sections: targetGroup?.sections || [],
           evaluators: []
         }),
-        status: nextStatus,
+        status: resolvedStatus,
         submissionAgreements: agreements,
         updatedAt: now
       };
@@ -517,21 +562,74 @@ export function useSyllabusLifecycle(
         [groupId]: updated
       };
     });
+
+    if (onPersist && affectedCourseIds.length > 0) {
+      onPersist(Array.from(new Set(affectedCourseIds)), resolvedStatus);
+    }
   }, [groups, updateRecords]);
 
-  // Chair assigns one or more evaluators
-  const assignEvaluators = useCallback((groupId: string, evaluators: Array<{ id: string; name: string }>) => {
+  // Instructor retracts agreement to edit syllabus (as long as consensus was not yet complete)
+  const retractAgreement = useCallback((
+    groupId: string,
+    instructorId: string,
+    onPersist?: (courseIds: string[], status: string) => void
+  ) => {
+    let affectedCourseIds: string[] = [];
+    let resolvedStatus: SyllabusLifecycleStatus | null = null;
+
     updateRecords(prev => {
       const existing = prev[groupId];
       if (!existing) return prev;
+      if (existing.status === 'under_evaluation' || existing.status === 'chair_approved' || existing.status === 'approved') {
+        return prev;
+      }
 
-      const evaluatorReviews: EvaluatorReview[] = evaluators.map(e => ({
-        evaluatorId: e.id,
-        evaluatorName: e.name,
-        status: 'pending'
-      }));
+      affectedCourseIds = existing.courseIds || [];
+      const agreements: Record<string, boolean> = {
+        ...(existing.submissionAgreements || {}),
+        [instructorId]: false
+      };
 
+      const anyAgreed = Object.values(agreements).some(Boolean);
+      const nextStatus: SyllabusLifecycleStatus = anyAgreed ? 'submission_in_progress' : 'in_development';
+      resolvedStatus = nextStatus;
       const now = new Date().toISOString();
+
+      return {
+        ...prev,
+        [groupId]: {
+          ...existing,
+          status: nextStatus,
+          submissionAgreements: agreements,
+          updatedAt: now
+        }
+      };
+    });
+
+    if (onPersist && resolvedStatus && affectedCourseIds.length > 0) {
+      onPersist(Array.from(new Set(affectedCourseIds)), resolvedStatus);
+    }
+  }, [updateRecords]);
+
+  // Chair assigns one or more evaluators
+  const assignEvaluators = useCallback((
+    groupId: string,
+    evaluators: Array<{ id: string; name: string }>,
+    onPersist?: (courseIds: string[], status: string) => void
+  ) => {
+    let affectedCourseIds: string[] = [];
+    const evaluatorReviews: EvaluatorReview[] = evaluators.map(e => ({
+      evaluatorId: e.id,
+      evaluatorName: e.name,
+      status: 'pending'
+    }));
+    const now = new Date().toISOString();
+
+    updateRecords(prev => {
+      const existing = prev[groupId];
+      if (!existing) return prev;
+      affectedCourseIds = existing.courseIds || [];
+
       return {
         ...prev,
         [groupId]: {
@@ -542,6 +640,10 @@ export function useSyllabusLifecycle(
         }
       };
     });
+
+    if (onPersist && affectedCourseIds.length > 0) {
+      onPersist(Array.from(new Set(affectedCourseIds)), 'under_evaluation');
+    }
   }, [updateRecords]);
 
   // Evaluator submits review (approve or request revisions)
@@ -549,14 +651,19 @@ export function useSyllabusLifecycle(
     groupId: string,
     evaluatorId: string,
     status: 'approved' | 'revisions_requested',
-    remarks?: string
+    remarks?: string,
+    onPersist?: (courseIds: string[], status: string) => void
   ) => {
+    let affectedCourseIds: string[] = [];
+    let resolvedStatus: SyllabusLifecycleStatus = 'under_evaluation';
+
     updateRecords(prev => {
       const existing = prev[groupId];
       if (!existing) return prev;
-
+      affectedCourseIds = existing.courseIds || [];
       const now = new Date().toISOString();
-      const nextReviews = existing.evaluators.map(r => {
+
+      const nextReviews = (existing.evaluators || []).map(r => {
         if (r.evaluatorId === evaluatorId) {
           return {
             ...r,
@@ -568,12 +675,12 @@ export function useSyllabusLifecycle(
         return r;
       });
 
-      let nextStatus = existing.status;
-      let nextAgreements = { ...existing.submissionAgreements };
+      let nextStatus = existing.status || 'under_evaluation';
+      let nextAgreements = { ...(existing.submissionAgreements || {}) };
 
       if (status === 'revisions_requested') {
         nextStatus = 'revisions_required';
-        for (const instId of existing.instructorIds) {
+        for (const instId of (existing.instructorIds || [])) {
           nextAgreements[instId] = false;
         }
       } else if (status === 'approved') {
@@ -584,6 +691,8 @@ export function useSyllabusLifecycle(
           nextStatus = 'under_evaluation';
         }
       }
+
+      resolvedStatus = nextStatus;
 
       return {
         ...prev,
@@ -596,7 +705,74 @@ export function useSyllabusLifecycle(
         }
       };
     });
+
+    if (onPersist && affectedCourseIds.length > 0) {
+      onPersist(Array.from(new Set(affectedCourseIds)), resolvedStatus);
+    }
   }, [updateRecords]);
+
+  // Synchronize remote agreements, status and evaluators from Likha ERP draft / WebSocket / peers
+  const syncRemoteAgreements = useCallback((
+    groupId: string,
+    agreements: Record<string, boolean>,
+    status?: SyllabusLifecycleStatus,
+    evaluators?: EvaluatorReview[]
+  ) => {
+    updateRecords(prev => {
+      const existing = prev[groupId];
+      const targetGroup = groups.find(g => g.id === groupId);
+      const instructors = existing?.instructorIds || targetGroup?.instructorIds || [];
+      const mergedAgreements = {
+        ...(existing?.submissionAgreements || {}),
+        ...agreements
+      };
+      const allAgreed = instructors.length > 0 && instructors.every(id => Boolean(mergedAgreements[id]));
+      const anyAgreed = Object.values(mergedAgreements).some(Boolean);
+      const calculatedStatus: SyllabusLifecycleStatus = allAgreed
+        ? 'ready_for_evaluation'
+        : anyAgreed
+        ? 'submission_in_progress'
+        : (existing?.status || 'in_development');
+
+      const nextStatus = status || calculatedStatus;
+      const nextEvaluators = evaluators || existing?.evaluators || [];
+
+      // NO-OP guard: avoid loop / redundant state write if state hasn't changed
+      if (existing) {
+        const statusSame = existing.status === nextStatus;
+        const agreementsSame = JSON.stringify(existing.submissionAgreements || {}) === JSON.stringify(mergedAgreements);
+        const evaluatorsSame = JSON.stringify(existing.evaluators || []) === JSON.stringify(nextEvaluators);
+        if (statusSame && agreementsSame && evaluatorsSame) {
+          return prev;
+        }
+      }
+
+      const now = new Date().toISOString();
+
+      return {
+        ...prev,
+        [groupId]: {
+          ...(existing || {
+            id: groupId,
+            courseCode: targetGroup?.courseCode || '',
+            courseTitle: targetGroup?.courseTitle || '',
+            schoolYear: targetGroup?.schoolYear || '',
+            semester: targetGroup?.semester || '',
+            collegeId: targetGroup?.collegeId || '',
+            departmentId: targetGroup?.departmentId,
+            courseIds: targetGroup?.courseIds || [],
+            instructorIds: instructors,
+            sections: targetGroup?.sections || [],
+            evaluators: []
+          }),
+          submissionAgreements: mergedAgreements,
+          status: nextStatus,
+          evaluators: nextEvaluators,
+          updatedAt: now
+        }
+      };
+    });
+  }, [groups, updateRecords]);
 
   // Chair approval
   const chairApprove = useCallback((groupId: string, chairId: string) => {
@@ -624,34 +800,34 @@ export function useSyllabusLifecycle(
     deanId: string,
     onPropagate?: (courseIds: string[], syllabus: OfficialSyllabusData) => void
   ) => {
-    let targetRecord: SyllabusDevelopmentRecord | undefined;
+    const existingRec = records[groupId];
+    const targetGroup = groups.find(g => g.id === groupId);
+    const affectedCourseIds = existingRec?.courseIds || targetGroup?.courseIds || [];
+    const syllabus = existingRec?.syllabusData || createBaselineSyllabus();
 
     updateRecords(prev => {
       const existing = prev[groupId];
       if (!existing) return prev;
 
       const now = new Date().toISOString();
-      const syllabus = existing.syllabusData || createBaselineSyllabus();
-
-      targetRecord = {
-        ...existing,
-        status: 'approved',
-        deanApprovedAt: now,
-        deanApprovedBy: deanId,
-        syllabusData: syllabus,
-        updatedAt: now
-      };
 
       return {
         ...prev,
-        [groupId]: targetRecord
+        [groupId]: {
+          ...existing,
+          status: 'approved',
+          deanApprovedAt: now,
+          deanApprovedBy: deanId,
+          syllabusData: syllabus,
+          updatedAt: now
+        }
       };
     });
 
-    if (onPropagate && targetRecord && targetRecord.courseIds.length > 0) {
-      onPropagate(targetRecord.courseIds, targetRecord.syllabusData || createBaselineSyllabus());
+    if (onPropagate && affectedCourseIds.length > 0) {
+      onPropagate(affectedCourseIds, syllabus);
     }
-  }, [updateRecords]);
+  }, [groups, records, updateRecords]);
 
   // Update syllabus draft content for this group
   const updateSyllabusData = useCallback((groupId: string, syllabusData: OfficialSyllabusData) => {
@@ -691,6 +867,8 @@ export function useSyllabusLifecycle(
     releaseCourses,
     lockCourses,
     confirmAgreement,
+    retractAgreement,
+    syncRemoteAgreements,
     assignEvaluators,
     submitEvaluatorReview,
     chairApprove,

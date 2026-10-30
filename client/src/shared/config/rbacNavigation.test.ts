@@ -78,14 +78,14 @@ describe('RBAC Navigation Permissions', () => {
     });
   });
 
-  it('configures Syllabus Development on page1 for faculty, admin, and superadmin, hiding from students', () => {
-    const page1Item = MAIN_NAV.find(i => i.id === 'page1');
-    expect(page1Item).toBeDefined();
-    expect(page1Item!.label).toBe('Syllabus Development');
-    expect(isVisible(page1Item!, 'faculty')).toBe(true);
-    expect(isVisible(page1Item!, 'admin')).toBe(true);
-    expect(isVisible(page1Item!, 'superadmin')).toBe(true);
-    expect(isVisible(page1Item!, 'student')).toBe(false);
-    expect(isVisible(page1Item!, 'staff')).toBe(false);
+  it('configures Syllabus Development on syllabus-development for faculty, admin, and superadmin, hiding from students', () => {
+    const syllabusDevItem = MAIN_NAV.find(i => i.id === 'syllabus-development');
+    expect(syllabusDevItem).toBeDefined();
+    expect(syllabusDevItem!.label).toBe('Syllabus Development');
+    expect(isVisible(syllabusDevItem!, 'faculty')).toBe(true);
+    expect(isVisible(syllabusDevItem!, 'admin')).toBe(true);
+    expect(isVisible(syllabusDevItem!, 'superadmin')).toBe(true);
+    expect(isVisible(syllabusDevItem!, 'student')).toBe(false);
+    expect(isVisible(syllabusDevItem!, 'staff')).toBe(false);
   });
 });

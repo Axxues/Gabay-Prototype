@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { useLMS } from '../../../../shared/context/LMSContext';
 import type { OfficialSyllabusData } from '../../../../shared/data/syllabusData';
 import type { Course } from '../../../../shared/types/lms';
@@ -62,8 +62,12 @@ export const AttachToCourseModal: React.FC<AttachToCourseModalProps> = ({
                     sections: [
                       {
                         section: targetCourse?.section || fm.sections?.[0]?.section || 'BSCS',
-                        schedule: targetCourse?.schedule || fm.sections?.[0]?.schedule || 'TBA',
-                        room: (targetCourse as any)?.room || fm.sections?.[0]?.room || 'TBA'
+                        schedule: (targetCourse as any)?.schedule || (fm.sections?.[0] as any)?.schedule || 'TBA',
+                        room: (targetCourse as any)?.room || (fm.sections?.[0] as any)?.room || 'TBA',
+                        lectureSchedule: (targetCourse as any)?.schedule || fm.sections?.[0]?.lectureSchedule || 'TBA',
+                        lectureRoom: (targetCourse as any)?.room || fm.sections?.[0]?.lectureRoom || 'TBA',
+                        labSchedule: fm.sections?.[0]?.labSchedule || '',
+                        labRoom: fm.sections?.[0]?.labRoom || ''
                       }
                     ]
                   };
@@ -76,11 +80,13 @@ export const AttachToCourseModal: React.FC<AttachToCourseModalProps> = ({
                   sections: [
                     {
                       section: targetCourse?.section || 'BSCS',
-                      schedule: targetCourse?.schedule || 'TBA',
-                      room: (targetCourse as any)?.room || 'TBA'
+                      lectureSchedule: (targetCourse as any)?.schedule || 'TBA',
+                      lectureRoom: (targetCourse as any)?.room || 'TBA',
+                      labSchedule: '',
+                      labRoom: ''
                     }
                   ],
-                  consultation: 'MWF 01:00 PM - 03:00 PM'
+                  consultationSlots: [{ days: ['M', 'W', 'F'], time: '01:00PM–03:00PM' }]
                 }
               ]
         };

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useLMS } from '../../shared/context/LMSContext';
-import { createDefaultSyllabusForCourse, type OfficialSyllabusData, type FacultySchedule } from '../../shared/data/syllabusData';
+import { createDefaultSyllabusForCourse, type OfficialSyllabusData, type FacultySchedule, normalizeRubricLevels, createEmptyRubricRow, type RubricLevel } from '../../shared/data/syllabusData';
 import { scanSyllabusDocument, type ScanResult } from '../../shared/utils/syllabusParser';
 import { parseFormattedSize, formatFileSize } from '../../shared/utils/fileUploader';
 import { resolveSPRWeights } from '../../shared/utils/spr';
@@ -46,6 +46,7 @@ import {
 import { FilePickerModal } from '../../shared/components/common/FilePickerModal';
 import { UploadProgress } from '../../shared/components/common/UploadProgress';
 import { CustomDropdown, type DropdownOption } from '../../shared/components/common/CustomDropdown';
+import { TimeRangePicker, RichTextEditor } from '../../shared/components/common';
 import { SyllabusRevisionBar } from './components/SyllabusRevisionBar';
 import type { SyllabusSectionKey } from '../../shared/types/syllabusApi';
 import { useSimulatedUpload } from '../../shared/hooks/useSimulatedUpload';
@@ -727,14 +728,15 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
   };
 
   // Only the faculty creator of the course is shown in the syllabus
-  const facultyListToDisplay = useMemo(() => {
+  const facultyListToDisplay = useMemo((): FacultySchedule[] => {
     if (!data?.facultyMembers || data.facultyMembers.length === 0) {
       return [{
         name: currentCourse?.instructorName || activeUser.name || 'Faculty Instructor',
         sections: [
-          { section: currentCourse?.section || '', schedule: currentCourse?.schedule || 'TBA', room: currentCourse?.room || 'TBA' }
+          { section: currentCourse?.section || '', lectureSchedule: currentCourse?.schedule || 'TBA', lectureRoom: currentCourse?.room || 'TBA', labSchedule: '', labRoom: '' }
         ],
-        consultation: 'TBA'
+        consultation: 'TBA',
+        consultationSlots: []
       }];
     }
 
@@ -783,11 +785,13 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
       sections: [
         {
           section: currentCourse.section || fallbackSched?.sections?.[0]?.section || '',
-          schedule: currentCourse.schedule || fallbackSched?.sections?.[0]?.schedule || 'TBA',
-          room: currentCourse.room || fallbackSched?.sections?.[0]?.room || 'TBA'
+          lectureSchedule: currentCourse.schedule || fallbackSched?.sections?.[0]?.lectureSchedule || 'TBA',
+          lectureRoom: currentCourse.room || fallbackSched?.sections?.[0]?.lectureRoom || 'TBA',
+          labSchedule: '',
+          labRoom: ''
         }
       ],
-      consultation: fallbackSched?.consultation || 'TBA'
+      consultationSlots: fallbackSched?.consultationSlots || [{ days: [], time: 'TBA' }]
     };
 
     const boundSyllabus: OfficialSyllabusData = {
@@ -824,7 +828,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               {
                 ...boundFacultySchedule,
                 sections: [
-                  { section: targetCourse?.section || boundFacultySchedule.sections?.[0]?.section || '', schedule: boundFacultySchedule.sections?.[0]?.schedule || '', room: boundFacultySchedule.sections?.[0]?.room || '' }
+                  { section: targetCourse?.section || boundFacultySchedule.sections?.[0]?.section || '', lectureSchedule: boundFacultySchedule.sections?.[0]?.lectureSchedule || '', lectureRoom: boundFacultySchedule.sections?.[0]?.lectureRoom || '', labSchedule: '', labRoom: '' }
                 ]
               }
             ]
@@ -954,7 +958,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
         (item.learningOutcomes || []).some(lo => (lo || '').toLowerCase().includes(q)) ||
         (item.methodology || []).some(m => (m || '').toLowerCase().includes(q)) ||
         (item.assessment || []).some(a => (a || '').toLowerCase().includes(q)) ||
-        (item.sdgCoherence && (item.sdgCoherence.title || '').toLowerCase().includes(q))
+        (item.sdgCoherence || []).some(s => (s.title || '').toLowerCase().includes(q))
     );
   }, [searchQuery, activeWeekTab, data]);
 
@@ -1371,14 +1375,18 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                 <div className="flex items-baseline justify-between gap-4 py-2.5">
                   <dt className="text-muted-foreground shrink-0">Term formula</dt>
                   <dd className="font-semibold text-foreground text-right">
-                    {scanResult.syllabus.gradingSystem.termFormula}
+                    {typeof scanResult.syllabus.gradingSystem.termFormula === 'object'
+                      ? `Class Standing ${scanResult.syllabus.gradingSystem.termFormula.classStandingPercent}% + Exam ${scanResult.syllabus.gradingSystem.termFormula.examPercent}%`
+                      : scanResult.syllabus.gradingSystem.termFormula}
                   </dd>
                 </div>
 
                 <div className="flex items-baseline justify-between gap-4 py-2.5">
                   <dt className="text-muted-foreground shrink-0">Final grade</dt>
                   <dd className="font-semibold text-foreground text-right">
-                    {scanResult.syllabus.gradingSystem.finalFormula}
+                    {typeof scanResult.syllabus.gradingSystem.finalFormula === 'object'
+                      ? `Midterm ${scanResult.syllabus.gradingSystem.finalFormula.midtermPercent}% + Final ${scanResult.syllabus.gradingSystem.finalFormula.finalPercent}%`
+                      : scanResult.syllabus.gradingSystem.finalFormula}
                   </dd>
                 </div>
               </dl>
@@ -1754,22 +1762,27 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                             </div>
                             <div>
                               <label className={labelCls}>Schedule</label>
-                              <input type="text" value={sec.schedule} onChange={e => {
-                                setDraft(prev => {
-                                  if (!prev) return prev;
-                                  const next = cloneSyllabus(prev);
-                                  next.facultyMembers[idx].sections[sIdx].schedule = e.target.value;
-                                  return next;
-                                });
-                              }} className={inputCls} />
+                              <TimeRangePicker
+                                value={sec.lectureSchedule}
+                                onChange={val => {
+                                  setDraft(prev => {
+                                    if (!prev) return prev;
+                                    const next = cloneSyllabus(prev);
+                                    next.facultyMembers[idx].sections[sIdx].lectureSchedule = val;
+                                    return next;
+                                  });
+                                }}
+                                includeDays={true}
+                                placeholder="Click to select schedule"
+                              />
                             </div>
                             <div>
                               <label className={labelCls}>Room</label>
-                              <input type="text" value={sec.room} onChange={e => {
+                              <input type="text" value={sec.lectureRoom} onChange={e => {
                                 setDraft(prev => {
                                   if (!prev) return prev;
                                   const next = cloneSyllabus(prev);
-                                  next.facultyMembers[idx].sections[sIdx].room = e.target.value;
+                                  next.facultyMembers[idx].sections[sIdx].lectureRoom = e.target.value;
                                   return next;
                                 });
                               }} className={inputCls} />
@@ -1798,7 +1811,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                               if (!prev) return prev;
                               const next = cloneSyllabus(prev);
                               if (!next.facultyMembers[idx]) return prev;
-                              next.facultyMembers[idx].sections.push({ section: '', schedule: '', room: '' });
+                              next.facultyMembers[idx].sections.push({ section: '', lectureSchedule: '', lectureRoom: '', labSchedule: '', labRoom: '' });
                               return next;
                             });
                           }}
@@ -1811,15 +1824,8 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                         <label className={labelCls}>Consultation hours</label>
                         <input
                           type="text"
-                          value={fac.consultation}
-                          onChange={e => {
-                            setDraft(prev => {
-                              if (!prev) return prev;
-                              const next = cloneSyllabus(prev);
-                              next.facultyMembers[idx].consultation = e.target.value;
-                              return next;
-                            });
-                          }}
+                          value={(fac.consultationSlots || []).map(s => [s.days.join(','), s.time].filter(Boolean).join(' ')).filter(Boolean).join('; ') || ''}
+                          readOnly
                           className={inputCls}
                         />
                       </div>
@@ -1864,7 +1870,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                         <Clock className="w-3.5 h-3.5 text-primary" />
                         <span>Consultation:</span>
                       </span>
-                      <span className="font-bold text-foreground text-[11px]">{fac.consultation}</span>
+                      <span className="font-bold text-foreground text-[11px]">{(fac.consultationSlots || []).map(s => [s.days.join(','), s.time].filter(Boolean).join(' ')).filter(Boolean).join('; ') || 'Not set'}</span>
                     </div>
                   </div>
                   </div>
@@ -2447,37 +2453,67 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                   {editBar('gradingSystem')}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className={labelCls}>Term formula</label>
-                      <input type="text" value={draft.gradingSystem.termFormula} onChange={e => {
+                      <label className={labelCls}>Term formula (Class Standing %)</label>
+                      <input type="text" value={typeof draft.gradingSystem.termFormula === 'object' ? draft.gradingSystem.termFormula.classStandingPercent : ''} onChange={e => {
                         const v = e.target.value;
                         setDraft(prev => {
                           if (!prev) return prev;
                           const next = cloneSyllabus(prev);
-                          next.gradingSystem.termFormula = v;
+                          const current = typeof next.gradingSystem.termFormula === 'object' ? next.gradingSystem.termFormula : { classStandingPercent: '', examPercent: '' };
+                          next.gradingSystem.termFormula = { ...current, classStandingPercent: v };
                           return next;
                         });
                       }} className={inputCls} />
                     </div>
                     <div>
-                      <label className={labelCls}>Final formula</label>
-                      <input type="text" value={draft.gradingSystem.finalFormula} onChange={e => {
+                      <label className={labelCls}>Term formula (Exam %)</label>
+                      <input type="text" value={typeof draft.gradingSystem.termFormula === 'object' ? draft.gradingSystem.termFormula.examPercent : ''} onChange={e => {
                         const v = e.target.value;
                         setDraft(prev => {
                           if (!prev) return prev;
                           const next = cloneSyllabus(prev);
-                          next.gradingSystem.finalFormula = v;
+                          const current = typeof next.gradingSystem.termFormula === 'object' ? next.gradingSystem.termFormula : { classStandingPercent: '', examPercent: '' };
+                          next.gradingSystem.termFormula = { ...current, examPercent: v };
                           return next;
                         });
                       }} className={inputCls} />
                     </div>
                     <div>
-                      <label className={labelCls}>Class standing components (comma-separated)</label>
-                      <input type="text" value={draft.gradingSystem.classStandingComponents.join(', ')} onChange={e => {
+                      <label className={labelCls}>Final formula (Midterm %)</label>
+                      <input type="text" value={typeof draft.gradingSystem.finalFormula === 'object' ? draft.gradingSystem.finalFormula.midtermPercent : ''} onChange={e => {
                         const v = e.target.value;
                         setDraft(prev => {
                           if (!prev) return prev;
                           const next = cloneSyllabus(prev);
-                          next.gradingSystem.classStandingComponents = v.split(',').map(s => s.trim()).filter(Boolean);
+                          const current = typeof next.gradingSystem.finalFormula === 'object' ? next.gradingSystem.finalFormula : { midtermPercent: '', finalPercent: '' };
+                          next.gradingSystem.finalFormula = { ...current, midtermPercent: v };
+                          return next;
+                        });
+                      }} className={inputCls} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Final formula (Final %)</label>
+                      <input type="text" value={typeof draft.gradingSystem.finalFormula === 'object' ? draft.gradingSystem.finalFormula.finalPercent : ''} onChange={e => {
+                        const v = e.target.value;
+                        setDraft(prev => {
+                          if (!prev) return prev;
+                          const next = cloneSyllabus(prev);
+                          const current = typeof next.gradingSystem.finalFormula === 'object' ? next.gradingSystem.finalFormula : { midtermPercent: '', finalPercent: '' };
+                          next.gradingSystem.finalFormula = { ...current, finalPercent: v };
+                          return next;
+                        });
+                      }} className={inputCls} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Class standing components (comma-separated titles)</label>
+                      <input type="text" value={Array.isArray(draft.gradingSystem.classStandingComponents) 
+                        ? draft.gradingSystem.classStandingComponents.map(c => typeof c === 'string' ? c : c.title).join(', ')
+                        : ''} onChange={e => {
+                        const v = e.target.value;
+                        setDraft(prev => {
+                          if (!prev) return prev;
+                          const next = cloneSyllabus(prev);
+                          next.gradingSystem.classStandingComponents = v.split(',').map(s => ({ title: s.trim(), percentage: '' })).filter(c => c.title);
                           return next;
                         });
                       }} className={inputCls} />
@@ -2634,10 +2670,14 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                       Term Grade (Midterm & Final Term)
                     </span>
                     <div className="font-sans font-bold text-sm text-foreground">
-                      {data.gradingSystem.termFormula}
+                      {typeof data.gradingSystem.termFormula === 'object'
+                        ? `Class Standing ${data.gradingSystem.termFormula.classStandingPercent}% + Exam ${data.gradingSystem.termFormula.examPercent}%`
+                        : data.gradingSystem.termFormula}
                     </div>
                     <span className="text-[10px] text-muted-foreground block">
-                      Class Standing: {data.gradingSystem.classStandingComponents.join(', ')}
+                      Class Standing: {Array.isArray(data.gradingSystem.classStandingComponents)
+                        ? data.gradingSystem.classStandingComponents.map(c => typeof c === 'string' ? c : c.title).join(', ')
+                        : String(data.gradingSystem.classStandingComponents)}
                     </span>
                   </div>
 
@@ -2646,7 +2686,9 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                       Semestral Final Grade
                     </span>
                     <div className="font-sans font-bold text-sm text-foreground">
-                      {data.gradingSystem.finalFormula}
+                      {typeof data.gradingSystem.finalFormula === 'object'
+                        ? `Midterm ${data.gradingSystem.finalFormula.midtermPercent}% + Final ${data.gradingSystem.finalFormula.finalPercent}%`
+                        : data.gradingSystem.finalFormula}
                     </div>
                     <span className="text-[10px] text-muted-foreground block">
                       Minimum passing mark: {data.gradingSystem.passingGrade}
@@ -2727,52 +2769,72 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               {editingSection === 'projectRubrics' && draft ? (
                 <div className="space-y-4">
                   {editBar('projectRubrics')}
-                  {draft.projectRubrics.map((r, i) => (
-                    <div key={i} className="p-3 rounded-xl border border-border bg-muted/20 space-y-2">
-                      <div className="flex items-center gap-2">
-                        <input type="text" value={r.category} onChange={e => {
-                          const v = e.target.value;
-                          setDraft(prev => {
-                            if (!prev) return prev;
-                            const next = cloneSyllabus(prev);
-                            next.projectRubrics[i].category = v;
-                            return next;
-                          });
-                        }} className={inputCls} placeholder="Category" />
-                        <button type="button" onClick={() => {
-                          setDraft(prev => {
-                            if (!prev) return prev;
-                            const next = cloneSyllabus(prev);
-                            next.projectRubrics = next.projectRubrics.filter((_, x) => x !== i);
-                            return next;
-                          });
-                        }} className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg cursor-pointer" title="Remove row">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {([1, 2, 3, 4] as const).map(lv => (
-                          <div key={lv}>
-                            <label className={labelCls}>Level {lv}</label>
-                            <textarea rows={2} value={r.levels[lv]} onChange={e => {
-                              const v = e.target.value;
-                              setDraft(prev => {
-                                if (!prev) return prev;
-                                const next = cloneSyllabus(prev);
-                                next.projectRubrics[i].levels[lv] = v;
-                                return next;
-                              });
-                            }} className={`${inputCls} min-h-[52px] resize-y`} />
+                  {draft.projectRubrics.map((r, i) => {
+                    const levels = normalizeRubricLevels(r.levels);
+                    return (
+                      <div key={i} className="p-3 rounded-xl border border-border bg-muted/20 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <input type="text" value={r.category} onChange={e => {
+                            const v = e.target.value;
+                            setDraft(prev => {
+                              if (!prev) return prev;
+                              const next = cloneSyllabus(prev);
+                              next.projectRubrics[i].category = v;
+                              return next;
+                            });
+                          }} className={inputCls} placeholder="Category" />
+                          <button type="button" onClick={() => {
+                            setDraft(prev => {
+                              if (!prev) return prev;
+                              const next = cloneSyllabus(prev);
+                              next.projectRubrics = next.projectRubrics.filter((_, x) => x !== i);
+                              return next;
+                            });
+                          }} className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg cursor-pointer" title="Remove row">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        <div className="space-y-2">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                            Performance Levels ({levels.length})
+                          </span>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {levels.map((lv: RubricLevel, lvIdx) => (
+                              <div key={lvIdx} className="space-y-1.5 p-2 rounded-lg border border-border bg-background">
+                                <input type="text" value={lv.title} onChange={e => {
+                                  const v = e.target.value;
+                                  setDraft(prev => {
+                                    if (!prev) return prev;
+                                    const next = cloneSyllabus(prev);
+                                    const arr = Array.isArray(next.projectRubrics[i].levels) ? next.projectRubrics[i].levels as any : [];
+                                    arr[lvIdx] = { ...arr[lvIdx], title: v };
+                                    next.projectRubrics[i].levels = arr;
+                                    return next;
+                                  });
+                                }} className="px-2 py-1 text-[11px] font-bold rounded border border-border bg-muted/40 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" placeholder="Level title" />
+                                <textarea rows={2} value={lv.description} onChange={e => {
+                                  const v = e.target.value;
+                                  setDraft(prev => {
+                                    if (!prev) return prev;
+                                    const next = cloneSyllabus(prev);
+                                    const arr = Array.isArray(next.projectRubrics[i].levels) ? next.projectRubrics[i].levels as any : [];
+                                    arr[lvIdx] = { ...arr[lvIdx], description: v };
+                                    next.projectRubrics[i].levels = arr;
+                                    return next;
+                                  });
+                                }} className={`${inputCls} min-h-[52px] resize-y`} placeholder="Describe performance..." />
+                              </div>
+                            ))}
                           </div>
-                        ))}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                   <button type="button" onClick={() => {
                     setDraft(prev => {
                       if (!prev) return prev;
                       const next = cloneSyllabus(prev);
-                      next.projectRubrics.push({ category: '', levels: { 1: '', 2: '', 3: '', 4: '' } });
+                      next.projectRubrics.push(createEmptyRubricRow(4));
                       return next;
                     });
                   }} className="text-[11px] font-bold text-primary hover:underline cursor-pointer">+ Add rubric row</button>
@@ -2780,7 +2842,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
               ) : (
               <>
               <p className="text-xs text-muted-foreground font-medium">
-                Teams are evaluated across 10 core engineering and presentation criteria scored from 1 (Beginning) to 4 (Exemplary):
+                Teams are evaluated across core engineering and presentation criteria scored on performance levels:
               </p>
 
               <div className="overflow-x-auto rounded-xl border border-border">
@@ -2788,32 +2850,29 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                   <thead>
                     <tr className="bg-muted/40 border-b border-border">
                       <th className="px-4 py-3 min-w-[200px] text-[11.5px] font-semibold text-muted-foreground text-left">Evaluation criteria</th>
-                      <th className="px-4 py-3 min-w-[160px] text-[11.5px] font-semibold text-muted-foreground text-left">Level 1 (Beginning)</th>
-                      <th className="px-4 py-3 min-w-[160px] text-[11.5px] font-semibold text-muted-foreground text-left">Level 2 (Developing)</th>
-                      <th className="px-4 py-3 min-w-[180px] text-[11.5px] font-semibold text-muted-foreground text-left">Level 3 (Proficient)</th>
-                      <th className="px-4 py-3 min-w-[200px] text-[11.5px] font-semibold text-muted-foreground text-left">Level 4 (Exemplary)</th>
+                      {data.projectRubrics[0]?.levels
+                        ? normalizeRubricLevels(data.projectRubrics[0].levels).map((lv, idx) => (
+                            <th key={idx} className="px-4 py-3 min-w-[160px] text-[11.5px] font-semibold text-muted-foreground text-left">{lv.title || `Level ${idx + 1}`}</th>
+                          ))
+                        : null}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {data.projectRubrics.map((r, i) => (
-                      <tr key={i} className="hover:bg-muted/40 transition-colors">
-                        <td className="px-4 py-3 font-semibold text-foreground align-top">
-                          {r.category}
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground text-[11px] leading-relaxed align-top">
-                          {r.levels[1]}
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground text-[11px] leading-relaxed align-top">
-                          {r.levels[2]}
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground text-[11px] leading-relaxed align-top">
-                          {r.levels[3]}
-                        </td>
-                        <td className="px-4 py-3 text-foreground text-[11px] leading-relaxed align-top font-medium">
-                          {r.levels[4]}
-                        </td>
-                      </tr>
-                    ))}
+                    {data.projectRubrics.map((r, i) => {
+                      const levels = normalizeRubricLevels(r.levels);
+                      return (
+                        <tr key={i} className="hover:bg-muted/40 transition-colors">
+                          <td className="px-4 py-3 font-semibold text-foreground align-top">
+                            {r.category}
+                          </td>
+                          {levels.map((lv, idx) => (
+                            <td key={idx} className="px-4 py-3 text-muted-foreground text-[11px] leading-relaxed align-top">
+                              {lv.description}
+                            </td>
+                          ))}
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -3014,16 +3073,19 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                         </div>
                       </div>
                       <div>
-                        <label className={labelCls}>Topics (one per line)</label>
-                        <textarea rows={3} value={item.topics.join('\n')} onChange={e => {
-                          const v = e.target.value;
-                          setDraft(prev => {
-                            if (!prev) return prev;
-                            const next = cloneSyllabus(prev);
-                            next.courseOutline[idx].topics = v.split('\n').map(s => s.trim()).filter(Boolean);
-                            return next;
-                          });
-                        }} className={`${inputCls} min-h-[68px] resize-y`} />
+                        <label className={labelCls}>Topics</label>
+                        <RichTextEditor
+                          content={(item.topics || [])[0] || ''}
+                          onChange={(html: string) => {
+                            setDraft(prev => {
+                              if (!prev) return prev;
+                              const next = cloneSyllabus(prev);
+                              next.courseOutline[idx].topics = [html];
+                              return next;
+                            });
+                          }}
+                          className="min-h-[100px]"
+                        />
                       </div>
                       <button type="button" onClick={() => {
                         setDraft(prev => {
@@ -3173,121 +3235,136 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div>
-                          <label className={labelCls}>Topics (one per line)</label>
-                          <textarea rows={3} value={(plan.topics || []).join('\n')} onChange={e => {
-                            const v = e.target.value;
-                            setDraft(prev => {
-                              if (!prev) return prev;
-                              const next = cloneSyllabus(prev);
-                              next.learningPlan[idx].topics = v.split('\n').map(s => s.trim()).filter(Boolean);
-                              return next;
-                            });
-                          }} className={`${inputCls} min-h-[68px] resize-y`} />
+                          <label className={labelCls}>Topics</label>
+                          <RichTextEditor
+                            content={(plan.topics || [])[0] || ''}
+                            onChange={html => {
+                              setDraft(prev => {
+                                if (!prev) return prev;
+                                const next = cloneSyllabus(prev);
+                                next.learningPlan[idx].topics = [html];
+                                return next;
+                              });
+                            }}
+                            className="min-h-[100px]"
+                          />
                         </div>
                         <div>
-                          <label className={labelCls}>Learning outcomes (one per line)</label>
-                          <textarea rows={3} value={(plan.learningOutcomes || []).join('\n')} onChange={e => {
-                            const v = e.target.value;
-                            setDraft(prev => {
-                              if (!prev) return prev;
-                              const next = cloneSyllabus(prev);
-                              next.learningPlan[idx].learningOutcomes = v.split('\n').map(s => s.trim()).filter(Boolean);
-                              return next;
-                            });
-                          }} className={`${inputCls} min-h-[68px] resize-y`} />
+                          <label className={labelCls}>Learning Outcomes</label>
+                          <RichTextEditor
+                            content={(plan.learningOutcomes || [])[0] || ''}
+                            onChange={html => {
+                              setDraft(prev => {
+                                if (!prev) return prev;
+                                const next = cloneSyllabus(prev);
+                                next.learningPlan[idx].learningOutcomes = [html];
+                                return next;
+                              });
+                            }}
+                            className="min-h-[100px]"
+                          />
                         </div>
                         <div>
-                          <label className={labelCls}>Methodology (one per line)</label>
-                          <textarea rows={2} value={(plan.methodology || []).join('\n')} onChange={e => {
-                            const v = e.target.value;
-                            setDraft(prev => {
-                              if (!prev) return prev;
-                              const next = cloneSyllabus(prev);
-                              next.learningPlan[idx].methodology = v.split('\n').map(s => s.trim()).filter(Boolean);
-                              return next;
-                            });
-                          }} className={`${inputCls} min-h-[52px] resize-y`} />
+                          <label className={labelCls}>Methodology</label>
+                          <RichTextEditor
+                            content={(plan.methodology || [])[0] || ''}
+                            onChange={html => {
+                              setDraft(prev => {
+                                if (!prev) return prev;
+                                const next = cloneSyllabus(prev);
+                                next.learningPlan[idx].methodology = [html];
+                                return next;
+                              });
+                            }}
+                            className="min-h-[80px]"
+                          />
                         </div>
                         <div>
-                          <label className={labelCls}>Assessment (one per line)</label>
-                          <textarea rows={2} value={(plan.assessment || []).join('\n')} onChange={e => {
-                            const v = e.target.value;
-                            setDraft(prev => {
-                              if (!prev) return prev;
-                              const next = cloneSyllabus(prev);
-                              next.learningPlan[idx].assessment = v.split('\n').map(s => s.trim()).filter(Boolean);
-                              return next;
-                            });
-                          }} className={`${inputCls} min-h-[52px] resize-y`} />
+                          <label className={labelCls}>Assessment</label>
+                          <RichTextEditor
+                            content={(plan.assessment || [])[0] || ''}
+                            onChange={html => {
+                              setDraft(prev => {
+                                if (!prev) return prev;
+                                const next = cloneSyllabus(prev);
+                                next.learningPlan[idx].assessment = [html];
+                                return next;
+                              });
+                            }}
+                            className="min-h-[80px]"
+                          />
                         </div>
                         <div>
-                          <label className={labelCls}>Resources (one per line)</label>
-                          <textarea rows={2} value={(plan.resources || []).join('\n')} onChange={e => {
-                            const v = e.target.value;
-                            setDraft(prev => {
-                              if (!prev) return prev;
-                              const next = cloneSyllabus(prev);
-                              next.learningPlan[idx].resources = v.split('\n').map(s => s.trim()).filter(Boolean);
-                              return next;
-                            });
-                          }} className={`${inputCls} min-h-[52px] resize-y`} />
+                          <label className={labelCls}>Resources</label>
+                          <RichTextEditor
+                            content={(plan.resources || [])[0] || ''}
+                            onChange={html => {
+                              setDraft(prev => {
+                                if (!prev) return prev;
+                                const next = cloneSyllabus(prev);
+                                next.learningPlan[idx].resources = [html];
+                                return next;
+                              });
+                            }}
+                            className="min-h-[80px]"
+                          />
                         </div>
                         <div>
-                          <label className={labelCls}>SDG goal (e.g. SDG 4)</label>
-                          <input type="text" value={plan.sdgCoherence?.goal || ''} onChange={e => {
-                            const v = e.target.value;
-                            setDraft(prev => {
-                              if (!prev) return prev;
-                              const next = cloneSyllabus(prev);
-                              const cur = next.learningPlan[idx].sdgCoherence;
-                              next.learningPlan[idx].sdgCoherence = {
-                                goal: v,
-                                title: cur?.title || '',
-                                description: cur?.description || '',
-                                target: cur?.target
-                              };
-                              if (!v && !cur?.title && !cur?.description) next.learningPlan[idx].sdgCoherence = undefined;
-                              return next;
-                            });
-                          }} className={inputCls} />
+                          <label className={labelCls}>SDG Coherence</label>
+                          <div className="text-xs text-muted-foreground mb-2">Updated in Syllabus Studio with multiple SDG selection and explanations</div>
+                          {(plan.sdgCoherence || []).length > 0 ? (
+                            <div className="space-y-1">
+                              {plan.sdgCoherence.map((sdg, sdgIdx) => (
+                                <div key={sdgIdx} className="p-1.5 rounded-sm bg-muted/20 border border-border/60">
+                                  <div className="font-bold text-xs">{sdg.goal}: {sdg.title}</div>
+                                  <div className="text-[11px] text-muted-foreground mt-0.5">{sdg.description}</div>
+                                  {sdg.explanation && (
+                                    <div className="text-[11px] italic mt-0.5 text-foreground/70">→ {sdg.explanation}</div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-xs text-muted-foreground italic">No SDGs assigned</div>
+                          )}
                         </div>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div>
                           <label className={labelCls}>SDG title</label>
-                          <input type="text" value={plan.sdgCoherence?.title || ''} onChange={e => {
+                          <input type="text" value={plan.sdgCoherence?.[0]?.title || ''} onChange={e => {
                             const v = e.target.value;
                             setDraft(prev => {
                               if (!prev) return prev;
                               const next = cloneSyllabus(prev);
-                              const cur = next.learningPlan[idx].sdgCoherence;
-                              next.learningPlan[idx].sdgCoherence = {
-                                goal: cur?.goal || '',
-                                title: v,
-                                description: cur?.description || '',
-                                target: cur?.target
-                              };
+                              const cur = next.learningPlan[idx].sdgCoherence?.[0];
+                              if (cur) {
+                                next.learningPlan[idx].sdgCoherence = [{
+                                  ...cur,
+                                  title: v
+                                }];
+                              }
                               return next;
                             });
                           }} className={inputCls} />
                         </div>
                         <div>
                           <label className={labelCls}>SDG description</label>
-                          <textarea rows={2} value={plan.sdgCoherence?.description || ''} onChange={e => {
+                          <textarea rows={2} value={plan.sdgCoherence?.[0]?.description || ''} onChange={e => {
                             const v = e.target.value;
                             setDraft(prev => {
                               if (!prev) return prev;
                               const next = cloneSyllabus(prev);
-                              const cur = next.learningPlan[idx].sdgCoherence;
-                              next.learningPlan[idx].sdgCoherence = {
-                                goal: cur?.goal || '',
-                                title: cur?.title || '',
-                                description: v,
-                                target: cur?.target
-                              };
+                              const cur = next.learningPlan[idx].sdgCoherence?.[0];
+                              if (cur) {
+                                next.learningPlan[idx].sdgCoherence = [{
+                                  ...cur,
+                                  description: v
+                                }];
+                              }
                               return next;
                             });
-                          }} className={`${inputCls} min-h-[52px] resize-y`} />
+                          }} className={inputCls} />
                         </div>
                       </div>
                     </div>
@@ -3359,17 +3436,21 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                           </ul>
                         </div>
 
-                        {plan.sdgCoherence && (
-                          <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-950 dark:text-emerald-300 text-[11px] space-y-0.5">
-                            <span className="font-bold uppercase tracking-wider block text-[10px]">
-                              {plan.sdgCoherence.goal}: {plan.sdgCoherence.title}
-                            </span>
-                            <p>{plan.sdgCoherence.description}</p>
-                            {plan.sdgCoherence.target && (
-                              <span className="font-sans text-[10px] block opacity-85">
-                                {plan.sdgCoherence.target}
-                              </span>
-                            )}
+                        {(plan.sdgCoherence || []).length > 0 && (
+                          <div className="space-y-1.5">
+                            {plan.sdgCoherence.map((sdg, i) => (
+                              <div key={i} className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-950 dark:text-emerald-300 text-[11px] space-y-0.5">
+                                <span className="font-bold uppercase tracking-wider block text-[10px]">
+                                  {sdg.goal}: {sdg.title}
+                                </span>
+                                <p>{sdg.description}</p>
+                                {sdg.explanation && (
+                                  <span className="font-sans text-[10px] block opacity-85 italic">
+                                    → {sdg.explanation}
+                                  </span>
+                                )}
+                              </div>
+                            ))}
                           </div>
                         )}
                       </div>

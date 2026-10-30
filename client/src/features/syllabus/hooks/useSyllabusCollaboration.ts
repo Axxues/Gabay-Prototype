@@ -11,7 +11,7 @@ import {
 } from '../api/syllabusCollaborationApi';
 
 export interface PeerMessage {
-  type: 'PRESENCE_PING' | 'SECTION_UPDATE';
+  type: 'PRESENCE_PING' | 'SECTION_UPDATE' | 'CONSENSUS_UPDATE';
   sessionId?: string;
   groupId: string;
   senderId: string;
@@ -19,6 +19,9 @@ export interface PeerMessage {
   activeStep: string;
   sectionTitle?: string;
   syllabusData?: OfficialSyllabusData;
+  submissionAgreements?: Record<string, boolean>;
+  status?: string;
+  evaluators?: any[];
   timestamp: number;
 }
 
@@ -38,31 +41,95 @@ export const STEP_LABELS: Record<string, string> = {
   'learning-plan': 'Learning Plan',
   'course-map': 'Course Map',
   'grading': 'Grading Policies',
-  'review': 'Review & Signatories'
+  'review': 'Submit'
 };
 
 const CHANNEL_NAME = 'gabay_syllabus_live_sync';
+const OWN_SESSION_STORAGE_KEY = 'gabay_syllabus_session_ids';
+const MAX_REMEMBERED_SESSIONS = 20;
+
+const sessionStorageKey = (userId?: string) => `${OWN_SESSION_STORAGE_KEY}:${userId || 'anon'}`;
+
+/**
+ * Session ids this tab has already used. Presence is keyed by session id, so
+ * after a remount (reload, route change, HMR) the server still holds the row
+ * written by the previous mount. Recognising those ids keeps the tab from
+ * reporting its own leftover presence as "<Name> (Other Session)".
+ */
+export function getOwnSessionIds(userId?: string): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.sessionStorage.getItem(sessionStorageKey(userId));
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
+  } catch {
+    // Private mode / storage disabled.
+    return [];
+  }
+}
+
+function rememberSessionId(userId: string | undefined, sessionId: string) {
+  if (typeof window === 'undefined') return;
+  try {
+    const ids = getOwnSessionIds(userId).filter(id => id !== sessionId);
+    ids.push(sessionId);
+    window.sessionStorage.setItem(
+      sessionStorageKey(userId),
+      JSON.stringify(ids.slice(-MAX_REMEMBERED_SESSIONS))
+    );
+  } catch {
+    // Storage disabled: presence still works, the tab just can't recognise its old rows.
+  }
+}
+
+export type SyllabusSaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+
+interface PendingSave {
+  courseId: string;
+  data: OfficialSyllabusData;
+  userId: string;
+  sessionId: string;
+}
 
 export function useSyllabusCollaboration(
   groupId: string | undefined,
   activeUser: { id?: string; name?: string } | null | undefined,
   activeStep: string = 'course-info',
   canonicalCourseId?: string,
-  onRemoteUpdate?: (syllabusData: OfficialSyllabusData) => void
+  onRemoteUpdate?: (syllabusData: OfficialSyllabusData, updatedAt?: number) => void,
+  onRemoteConsensusUpdate?: (agreements: Record<string, boolean>, status?: string, evaluators?: any[]) => void
 ) {
   const [collaborators, setCollaborators] = useState<CollaboratorInfo[]>([]);
+  const [syncStatus, setSyncStatus] = useState<SyllabusSaveStatus>('idle');
   const lastRemoteTimestampRef = useRef<number>(0);
+  // A remote snapshot older than the newest local edit must never be applied:
+  // that is how edits made just before a slow poll/save used to disappear.
+  const lastLocalEditRef = useRef<number>(0);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The newest document that has not reached the server yet.
+  const pendingSaveRef = useRef<PendingSave | null>(null);
 
-  // Generate a unique per-tab/per-desktop session ID to differentiate multiple devices using the same user account
+  // Unique per-tab session ID that still differentiates multiple tabs/devices
+  // using the same user account.
   const clientSessionId = useMemo(() => {
-    return 'sess_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36);
-  }, []);
+    const id = 'sess_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36);
+    rememberSessionId(activeUser?.id, id);
+    return id;
+  }, [activeUser?.id]);
+
+  // Same tab across remounts, not a second co-editor.
+  const isOwnSession = useCallback(
+    (sessionId?: string) => {
+      if (!sessionId) return false;
+      return sessionId === clientSessionId || getOwnSessionIds(activeUser?.id).includes(sessionId);
+    },
+    [clientSessionId, activeUser?.id]
+  );
 
   const handlePeerMessage = useCallback((msg: PeerMessage) => {
     if (!groupId || msg.groupId !== groupId) return;
-    // Ignore echos from the same session
-    if (msg.sessionId && msg.sessionId === clientSessionId) return;
+    // Ignore echos from this tab, including rows left by an earlier mount.
+    if (msg.sessionId && isOwnSession(msg.sessionId)) return;
     if (!msg.sessionId && activeUser?.id && msg.senderId === activeUser.id) return;
 
     setCollaborators(prev => {
@@ -83,9 +150,13 @@ export function useSyllabusCollaboration(
 
     if (msg.syllabusData && onRemoteUpdate && msg.timestamp > lastRemoteTimestampRef.current) {
       lastRemoteTimestampRef.current = msg.timestamp;
-      onRemoteUpdate(msg.syllabusData);
+      onRemoteUpdate(msg.syllabusData, msg.timestamp);
     }
-  }, [groupId, activeUser?.id, clientSessionId, onRemoteUpdate]);
+
+    if (onRemoteConsensusUpdate && (msg.submissionAgreements || msg.status || msg.evaluators)) {
+      onRemoteConsensusUpdate(msg.submissionAgreements || {}, msg.status, msg.evaluators);
+    }
+  }, [groupId, activeUser?.id, clientSessionId, isOwnSession, onRemoteUpdate, onRemoteConsensusUpdate]);
 
   // 1. Same-origin BroadcastChannel for multi-tab sync
   useEffect(() => {
@@ -181,7 +252,7 @@ export function useSyllabusCollaboration(
               ws?.send(JSON.stringify({
                 type: 'subscribe',
                 collection: 'syllabi',
-                query: { fields: ['id', 'course_id', 'status', 'content', 'version'] }
+                query: { fields: ['id', 'course_id', 'status', 'content', 'presence', 'version'] }
               }));
             } else if (
               msg.type === 'subscription' &&
@@ -201,14 +272,18 @@ export function useSyllabusCollaboration(
                     ? JSON.parse(relevant.content)
                     : relevant.content;
 
-                // Sync remote presence
-                if (parsed.presence && typeof parsed.presence === 'object') {
+                // Sync remote presence (own column; legacy drafts keep it in content)
+                const rawPresence = (relevant as any)?.presence ?? parsed.presence;
+                const presenceMap =
+                  typeof rawPresence === 'string'
+                    ? (() => { try { return JSON.parse(rawPresence); } catch { return null; } })()
+                    : rawPresence;
+                if (presenceMap && typeof presenceMap === 'object') {
                   const cutoff = Date.now() - 15000;
-                  const remotePeers: CollaboratorInfo[] = Object.values(parsed.presence)
+                  const remotePeers: CollaboratorInfo[] = Object.values(presenceMap)
                     .filter((p: any) => {
                       if (!p || (!p.senderId && !p.sessionId)) return false;
-                      const isMe = p.sessionId === clientSessionId;
-                      return !isMe && (p.lastSeen || 0) >= cutoff;
+                      return !isOwnSession(p.sessionId) && (p.lastSeen || 0) >= cutoff;
                     })
                     .map((p: any) => ({
                       sessionId: p.sessionId || p.senderId,
@@ -227,13 +302,18 @@ export function useSyllabusCollaboration(
                   (parsed.lastUpdatedBySessionId && parsed.lastUpdatedBySessionId !== clientSessionId) ||
                   (!parsed.lastUpdatedBySessionId && parsed.lastUpdatedBy && parsed.lastUpdatedBy !== activeUser?.id);
 
+                const remoteUpdatedAt = parsed.updatedAt || 0;
                 if (
                   isOtherSession &&
                   parsed.syllabusData &&
-                  (parsed.updatedAt || 0) > lastRemoteTimestampRef.current
+                  remoteUpdatedAt > Math.max(lastRemoteTimestampRef.current, lastLocalEditRef.current)
                 ) {
-                  lastRemoteTimestampRef.current = parsed.updatedAt || Date.now();
-                  onRemoteUpdate?.(parsed.syllabusData);
+                  lastRemoteTimestampRef.current = remoteUpdatedAt || Date.now();
+                  onRemoteUpdate?.(parsed.syllabusData, remoteUpdatedAt);
+                }
+
+                if (onRemoteConsensusUpdate && (parsed.submissionAgreements || parsed.status || parsed.evaluators)) {
+                  onRemoteConsensusUpdate(parsed.submissionAgreements || {}, parsed.status, parsed.evaluators);
                 }
               }
             }
@@ -280,7 +360,7 @@ export function useSyllabusCollaboration(
             if (presence) {
               const cutoff = Date.now() - 15000;
               const peers = Object.values(presence).filter(
-                p => p.sessionId !== clientSessionId && (p.lastSeen || 0) >= cutoff
+                p => !isOwnSession(p.sessionId) && (p.lastSeen || 0) >= cutoff
               );
               setCollaborators(peers);
             }
@@ -288,13 +368,22 @@ export function useSyllabusCollaboration(
               (lastUpdatedBySessionId && lastUpdatedBySessionId !== clientSessionId) ||
               (!lastUpdatedBySessionId && lastUpdatedBy && lastUpdatedBy !== activeUser.id);
 
+            const remoteUpdatedAt = updatedAt || 0;
             if (
               isOtherSession &&
               syllabusData &&
-              (updatedAt || 0) > lastRemoteTimestampRef.current
+              remoteUpdatedAt > Math.max(lastRemoteTimestampRef.current, lastLocalEditRef.current)
             ) {
-              lastRemoteTimestampRef.current = updatedAt || Date.now();
-              onRemoteUpdate?.(syllabusData);
+              lastRemoteTimestampRef.current = remoteUpdatedAt || Date.now();
+              onRemoteUpdate?.(syllabusData, remoteUpdatedAt);
+            }
+
+            if (onRemoteConsensusUpdate && (remote.payload.submissionAgreements || remote.payload.status || remote.payload.evaluators)) {
+              onRemoteConsensusUpdate(
+                remote.payload.submissionAgreements || {},
+                remote.payload.status,
+                remote.payload.evaluators
+              );
             }
           }
         } catch {
@@ -320,7 +409,52 @@ export function useSyllabusCollaboration(
         removeRemotePresence(canonicalCourseId, clientSessionId).catch(() => {});
       }
     };
-  }, [canonicalCourseId, groupId, activeUser?.id, activeUser?.name, activeStep, clientSessionId, onRemoteUpdate]);
+  }, [canonicalCourseId, groupId, activeUser?.id, activeUser?.name, activeStep, clientSessionId, isOwnSession, onRemoteUpdate]);
+
+  /**
+   * Writes the newest document that has not reached the server yet. Ordering is
+   * handled inside saveRemoteDraft, so a flush can never lose to an older write.
+   */
+  const flushPendingSave = useCallback(async (): Promise<boolean> => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
+
+    const pending = pendingSaveRef.current;
+    if (!pending) return true;
+    pendingSaveRef.current = null;
+
+    setSyncStatus('saving');
+    const savedId = await saveRemoteDraft(
+      pending.courseId,
+      pending.data,
+      pending.userId,
+      pending.sessionId
+    );
+
+    if (savedId) {
+      // A newer edit may already be queued; let its own save report the status.
+      if (!pendingSaveRef.current) setSyncStatus('saved');
+      return true;
+    }
+
+    // Keep the newest document so the user can retry without editing again.
+    if (!pendingSaveRef.current) pendingSaveRef.current = pending;
+    setSyncStatus('error');
+    return false;
+  }, []);
+
+  // Leaving the studio (or the page) must not drop the last debounced edit.
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
+      }
+      void flushPendingSave();
+    };
+  }, [flushPendingSave]);
 
   const broadcastStepChange = useCallback((stepId: string) => {
     if (!groupId || !activeUser?.id) return;
@@ -344,6 +478,9 @@ export function useSyllabusCollaboration(
     }
 
     if (canonicalCourseId) {
+      // Moving to another step is a natural checkpoint: push the last edit now
+      // instead of leaving it in a timer that a reload could drop.
+      void flushPendingSave();
       sendRemotePresence(canonicalCourseId, {
         sessionId: clientSessionId,
         senderId: activeUser.id,
@@ -352,7 +489,7 @@ export function useSyllabusCollaboration(
         lastSeen: Date.now()
       }).catch(() => {});
     }
-  }, [groupId, canonicalCourseId, activeUser?.id, activeUser?.name, clientSessionId]);
+  }, [groupId, canonicalCourseId, activeUser?.id, activeUser?.name, clientSessionId, flushPendingSave]);
 
   const broadcastSectionUpdate = useCallback((
     stepId: string,
@@ -362,6 +499,8 @@ export function useSyllabusCollaboration(
     if (!groupId || !activeUser?.id) return;
 
     const now = Date.now();
+    // Marks the local copy as newer than anything the server had before this edit.
+    lastLocalEditRef.current = now;
 
     // 1. Local BroadcastChannel
     if (typeof window !== 'undefined' && typeof window.BroadcastChannel !== 'undefined') {
@@ -386,35 +525,68 @@ export function useSyllabusCollaboration(
 
     // 2. Debounced save to remote Likha draft to trigger real-time WebSocket push across all desktops
     if (canonicalCourseId && updatedData) {
+      // Content only; presence is heartbeated separately into its own column.
+      pendingSaveRef.current = {
+        courseId: canonicalCourseId,
+        data: updatedData,
+        userId: activeUser.id,
+        sessionId: clientSessionId
+      };
+      setSyncStatus('saving');
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
       }
       saveTimeoutRef.current = setTimeout(() => {
-        const userId = activeUser.id!;
-        const currentPresenceMap: Record<string, CollaboratorInfo> = {};
-        for (const c of collaborators) {
-          const key = c.sessionId || c.senderId;
-          currentPresenceMap[key] = c;
-        }
-        currentPresenceMap[clientSessionId] = {
-          sessionId: clientSessionId,
-          senderId: userId,
-          senderName: activeUser.name || 'Co-Instructor',
-          activeStep: stepId,
-          sectionTitle,
-          lastSeen: Date.now()
-        };
-
-        saveRemoteDraft(
-          canonicalCourseId,
-          updatedData,
-          currentPresenceMap,
-          userId,
-          clientSessionId
-        ).catch(() => {});
+        void flushPendingSave();
       }, 350);
     }
-  }, [groupId, canonicalCourseId, activeUser?.id, activeUser?.name, clientSessionId, collaborators]);
+  }, [groupId, canonicalCourseId, activeUser?.id, activeUser?.name, clientSessionId, flushPendingSave]);
+
+  const broadcastConsensusUpdate = useCallback((
+    agreements: Record<string, boolean>,
+    status?: string,
+    updatedData?: OfficialSyllabusData
+  ) => {
+    if (!groupId || !activeUser?.id) return;
+    const now = Date.now();
+
+    // 1. Local BroadcastChannel for other tabs
+    if (typeof window !== 'undefined' && typeof window.BroadcastChannel !== 'undefined') {
+      try {
+        const channel = new BroadcastChannel(CHANNEL_NAME);
+        channel.postMessage({
+          type: 'CONSENSUS_UPDATE',
+          sessionId: clientSessionId,
+          groupId,
+          senderId: activeUser.id,
+          senderName: activeUser.name || 'Co-Instructor',
+          activeStep,
+          submissionAgreements: agreements,
+          status,
+          syllabusData: updatedData,
+          timestamp: now
+        } satisfies PeerMessage);
+        channel.close();
+      } catch {
+        // Ignore
+      }
+    }
+
+    // 2. Persist directly to remote Likha draft row
+    if (canonicalCourseId) {
+      const dataToSave = updatedData || pendingSaveRef.current?.data;
+      if (dataToSave) {
+        saveRemoteDraft(
+          canonicalCourseId,
+          dataToSave,
+          activeUser.id,
+          clientSessionId,
+          agreements,
+          status
+        ).catch(() => {});
+      }
+    }
+  }, [groupId, canonicalCourseId, activeUser?.id, activeUser?.name, clientSessionId, activeStep]);
 
   const activePresenceNotice = useMemo(() => {
     if (collaborators.length === 0) return undefined;
@@ -441,6 +613,9 @@ export function useSyllabusCollaboration(
     activePresenceNotice,
     handlePeerMessage,
     broadcastStepChange,
-    broadcastSectionUpdate
+    broadcastSectionUpdate,
+    broadcastConsensusUpdate,
+    syncStatus,
+    retrySave: flushPendingSave
   };
 }

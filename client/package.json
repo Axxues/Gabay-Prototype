@@ -12,6 +12,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tiptap/extension-underline": "^3.32.1",
+    "@tiptap/react": "^3.32.1",
+    "@tiptap/starter-kit": "^3.32.1",
     "lucide-react": "^1.43.0",
     "mammoth": "^1.12.3",
     "pdfjs-dist": "^4.10.38",

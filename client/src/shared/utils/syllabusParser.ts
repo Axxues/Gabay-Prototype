@@ -1,5 +1,6 @@
-import {
+﻿import {
   OFFICIAL_SYLLABUS_CSPC112,
+  normalizeRubricLevels,
   type OfficialSyllabusData,
   type CourseOutcome,
   type ProgramOutcome,
@@ -29,13 +30,13 @@ export interface SyllabusValidation {
  * program/course outcomes, learning plan, grading system, rubrics, references.
  */
 const SYLLABUS_MARKERS: Array<{ keyword: string; weight: number; label: string }> = [
-  // Critical — unique to the official syllabus format
+  // Critical â€” unique to the official syllabus format
   { keyword: 'syllabus', weight: 15, label: 'syllabus' },
   { keyword: 'dmmmsu', weight: 15, label: 'dmmmsu' },
   { keyword: 'ins-f003', weight: 15, label: 'ins-f003 form code' },
   { keyword: 'course outcomes', weight: 10, label: 'course outcomes' },
   { keyword: 'learning plan', weight: 10, label: 'learning plan' },
-  // Strong — expected in almost every syllabus
+  // Strong â€” expected in almost every syllabus
   { keyword: 'program outcomes', weight: 7, label: 'program outcomes' },
   { keyword: 'grading system', weight: 7, label: 'grading system' },
   { keyword: 'course outline', weight: 6, label: 'course outline' },
@@ -46,7 +47,7 @@ const SYLLABUS_MARKERS: Array<{ keyword: string; weight: number; label: string }
   { keyword: 'methodology', weight: 4, label: 'methodology' },
   { keyword: 'vision', weight: 4, label: 'vision' },
   { keyword: 'mission', weight: 4, label: 'mission' },
-  // Supporting — common but not decisive alone
+  // Supporting â€” common but not decisive alone
   { keyword: 'course code', weight: 3, label: 'course code' },
   { keyword: 'course description', weight: 3, label: 'course description' },
   { keyword: 'course title', weight: 2, label: 'course title' },
@@ -56,7 +57,7 @@ const SYLLABUS_MARKERS: Array<{ keyword: string; weight: number; label: string }
   { keyword: 'ched', weight: 2, label: 'ched' },
   { keyword: 'curriculum', weight: 2, label: 'curriculum' },
   { keyword: 'assessment', weight: 2, label: 'assessment' },
-  // Generic-syllabus aliases — non-DMMMSU syllabi use these section names
+  // Generic-syllabus aliases â€” non-DMMMSU syllabi use these section names
   // instead of the official "course outcomes / learning plan / course outline".
   { keyword: 'learning outcomes', weight: 8, label: 'learning outcomes' },
   { keyword: 'course objectives', weight: 6, label: 'course objectives' },
@@ -200,7 +201,7 @@ export function validateSyllabusContent(
     matchedKeywords.push('CO/PO mapping');
   }
 
-  // Filename signal (weak — never enough on its own)
+  // Filename signal (weak â€” never enough on its own)
   if (fileName.toLowerCase().includes('syllabus')) {
     score += 8;
     matchedKeywords.push('filename contains "syllabus"');
@@ -210,7 +211,7 @@ export function validateSyllabusContent(
   }
 
   // Detect scanned-image PDF: has embedded images but almost no extractable text.
-  // Example: CMSC131_Course_Orientation.pdf is a Google-Docs-rendered image PDF —
+  // Example: CMSC131_Course_Orientation.pdf is a Google-Docs-rendered image PDF â€”
   // text extraction yields mostly PDF operators / binary image noise, so we fall
   // back to PDF metadata (Title/Subject) which is already inside rawText/rawPdfSource.
   // NOTE: meaningfulChars must be measured from real Tj text when available,
@@ -252,7 +253,7 @@ export function validateSyllabusContent(
   const hasFormCode = matchedKeywords.includes('ins-f003 form code');
   // Core-section groups. The official DMMMSU format uses "course outcomes /
   // learning plan", but other schools use "learning outcomes / course
-  // objectives / course plan" — either family counts as real evidence.
+  // objectives / course plan" â€” either family counts as real evidence.
   const hasOutcomes =
     matchedKeywords.includes('course outcomes') ||
     matchedKeywords.includes('learning outcomes') ||
@@ -271,7 +272,7 @@ export function validateSyllabusContent(
   // Decision: require real syllabus evidence. The DMMMSU fast path
   // (institution + form code) still applies, but a document with the word
   // "syllabus", two core-section families, or an overwhelming score is also
-  // a syllabus — filename alone is never enough.
+  // a syllabus â€” filename alone is never enough.
   const threshold = isScannedImage ? SCANNED_IMAGE_THRESHOLD : SYLLABUS_THRESHOLD;
   const hasEnoughEvidence =
     score >= threshold &&
@@ -331,7 +332,7 @@ export const formatBytes = (bytes: number): string => {
  * Extracts plain text from a DOCX file buffer.
  *
  * DOCX parts are DEFLATE-compressed inside the zip, so scanning the raw
- * bytes for `<w:t>` runs finds nothing — use mammoth (the same extractor
+ * bytes for `<w:t>` runs finds nothing â€” use mammoth (the same extractor
  * as the quiz scanner) which unzips and joins runs correctly.
  */
 export async function extractTextFromDocx(arrayBuffer: ArrayBuffer): Promise<string> {
@@ -389,7 +390,7 @@ function legacyExtractTextFromDocx(arrayBuffer: ArrayBuffer): string {
 
 /**
  * Extracts printable ASCII text strings from a PDF buffer.
- * Legacy fallback only — the main scanner prefers pdf.js (which handles
+ * Legacy fallback only â€” the main scanner prefers pdf.js (which handles
  * FlateDecode-compressed streams); this is used when pdf.js is unavailable.
  */
 function legacyExtractTextFromPdf(arrayBuffer: ArrayBuffer): string {
@@ -472,7 +473,7 @@ function scoreCodeLine(line: string): number {
 }
 
 export function detectCourseCode(text: string): string | null {
-  const normalized = text.replace(/[–—]/g, '-');
+  const normalized = text.replace(/[–â€”]/g, '-');
   let best: string | null = null;
   let bestScore = -1;
   for (const rawLine of normalized.split(/\r?\n/)) {
@@ -810,12 +811,7 @@ export function detectRubrics(text: string, base?: RubricRow[]): RubricRow[] {
       const desc4 = lines[i + 4] || '';
       rubrics.push({
         category,
-        levels: {
-          4: desc1,
-          3: desc2,
-          2: desc3,
-          1: desc4
-        }
+        levels: normalizeRubricLevels({ 4: desc1, 3: desc2, 2: desc3, 1: desc4 })
       });
       i += 4;
     }
@@ -921,11 +917,35 @@ export function detectLearningPlan(
         currentWeek.topics.push(line);
       } else if (/^sdg\s*(\d+)[:.]?\s*(.+)/i.test(line)) {
         const sdgM = line.match(/^sdg\s*(\d+)[:.]?\s*(.+)/i)!;
-        currentWeek.sdgCoherence = {
-          goal: `SDG ${sdgM[1]}`,
-          title: sdgM[2]?.trim() || '',
-          description: lines[i + 1] || ''
-        };
+        const sdgGoal = `SDG ${sdgM[1]}`;
+        const sdgTitle = sdgM[2]?.trim() || '';
+        const sdgDescription = lines[i + 1] || '';
+        
+        // Add to array if it exists, or create new array
+        if (!currentWeek.sdgCoherence) {
+          currentWeek.sdgCoherence = [];
+        }
+        
+        // Check if this SDG already exists in the array
+        const existingIndex = currentWeek.sdgCoherence.findIndex(s => s.goal === sdgGoal);
+        if (existingIndex >= 0) {
+          // Update existing
+          currentWeek.sdgCoherence[existingIndex] = {
+            goal: sdgGoal,
+            title: sdgTitle,
+            description: sdgDescription,
+            explanation: ''
+          };
+        } else {
+          // Add new
+          currentWeek.sdgCoherence.push({
+            goal: sdgGoal,
+            title: sdgTitle,
+            description: sdgDescription,
+            explanation: ''
+          });
+        }
+        i++; // Skip the description line
       } else if (/^(explain|differentiate|identify|analyze|compare|illustrate|demonstrate|use|implement)\b/i.test(line)) {
         currentWeek.learningOutcomes = currentWeek.learningOutcomes || [];
         currentWeek.learningOutcomes.push(line);
@@ -1106,11 +1126,15 @@ export function detectFacultySchedule(
       sections: [
         {
           section,
-          schedule: schedule !== 'TBA' ? schedule : (base?.[0]?.sections?.[0]?.schedule || 'TBA'),
-          room: room !== 'TBA' ? room : (base?.[0]?.sections?.[0]?.room || 'TBA')
+          lectureSchedule: schedule !== 'TBA' ? schedule : (base?.[0]?.sections?.[0]?.lectureSchedule || 'TBA'),
+          lectureRoom: room !== 'TBA' ? room : (base?.[0]?.sections?.[0]?.lectureRoom || 'TBA'),
+          labSchedule: base?.[0]?.sections?.[0]?.labSchedule || '',
+          labRoom: base?.[0]?.sections?.[0]?.labRoom || ''
         }
       ],
-      consultation: consultation !== 'TBA' ? consultation : (base?.[0]?.consultation || 'TBA')
+      consultationSlots: consultation !== 'TBA'
+        ? [{ days: [], time: consultation }]
+        : (base?.[0]?.consultationSlots || [{ days: [], time: 'TBA' }])
     }
   ];
 }
@@ -1135,7 +1159,7 @@ export async function scanSyllabusDocument(
   // Step 2: Extract text based on file format.
   // Uses the same pdf.js / mammoth extractors as the quiz scanner so
   // compressed PDFs and DOCXs decode correctly. Scanned-image PDFs have no
-  // extractable text — those fall through with empty text and validate via
+  // extractable text â€” those fall through with empty text and validate via
   // PDF metadata + filename signals instead.
   onProgress?.(35, `Decoding ${fileType.toUpperCase()} document content streams...`);
   let rawText = '';

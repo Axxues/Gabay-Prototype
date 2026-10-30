@@ -5,6 +5,9 @@ import type { CollaboratorInfo } from '../hooks/useSyllabusCollaboration';
 export interface GroupDraftPayload {
   syllabusData?: OfficialSyllabusData;
   presence?: Record<string, CollaboratorInfo>;
+  submissionAgreements?: Record<string, boolean>;
+  status?: string;
+  evaluators?: any[];
   lastUpdatedBy?: string;
   lastUpdatedBySessionId?: string;
   updatedAt?: number;
@@ -31,6 +34,20 @@ export function makeDraftId(canonicalCourseId: string): string {
   return `syl-draft-${canonicalCourseId}`;
 }
 
+/** Presence lives in its own column now; legacy drafts kept it inside content. */
+function parsePresence(value: any): Record<string, CollaboratorInfo> | undefined {
+  if (!value) return undefined;
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === 'object' ? parsed : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+  return typeof value === 'object' ? value : undefined;
+}
+
 export async function fetchRemoteDraft(canonicalCourseId: string): Promise<{
   id: string;
   payload: GroupDraftPayload;
@@ -40,7 +57,9 @@ export async function fetchRemoteDraft(canonicalCourseId: string): Promise<{
 
   try {
     const draftId = makeDraftId(canonicalCourseId);
-    const row = await likhaRequest<any>(`/items/syllabi/${encodeURIComponent(draftId)}`).catch(() => null);
+    const row = await likhaRequest<any>(
+      `/items/syllabi/${encodeURIComponent(draftId)}?fields=id,content,presence`
+    ).catch(() => null);
 
     if (row?.content) {
       try {
@@ -48,6 +67,10 @@ export async function fetchRemoteDraft(canonicalCourseId: string): Promise<{
         const payload: GroupDraftPayload = parsed?.syllabusData
           ? parsed
           : { syllabusData: parsed };
+        payload.presence = parsePresence(row.presence) || payload.presence;
+        if (parsed?.submissionAgreements) payload.submissionAgreements = parsed.submissionAgreements;
+        if (parsed?.status) payload.status = parsed.status;
+        if (parsed?.evaluators) payload.evaluators = parsed.evaluators;
         return { id: row.id || draftId, payload };
       } catch {
         return null;
@@ -58,15 +81,19 @@ export async function fetchRemoteDraft(canonicalCourseId: string): Promise<{
     const items = await likhaRequest<any[]>(
       `/items/syllabi?filter%5Bcourse_id%5D%5B_eq%5D=${encodeURIComponent(
         canonicalCourseId
-      )}&filter%5Bstatus%5D%5B_eq%5D=draft&sort=-version&limit=1`
+      )}&filter%5Bstatus%5D%5B_eq%5D=draft&sort=-version&limit=1&fields=id,content,presence`
     ).catch(() => []);
 
     if (Array.isArray(items) && items.length > 0) {
       const first = items[0];
-      const parsed = typeof first.content === 'string' ? JSON.parse(first.content) : first.content;
+      const parsed = typeof first.content === 'string' && first.content ? JSON.parse(first.content) : first.content;
       const payload: GroupDraftPayload = parsed?.syllabusData
         ? parsed
         : { syllabusData: parsed };
+      payload.presence = parsePresence(first.presence) || payload.presence;
+      if (parsed?.submissionAgreements) payload.submissionAgreements = parsed.submissionAgreements;
+      if (parsed?.status) payload.status = parsed.status;
+      if (parsed?.evaluators) payload.evaluators = parsed.evaluators;
       return { id: first.id, payload };
     }
 
@@ -77,60 +104,105 @@ export async function fetchRemoteDraft(canonicalCourseId: string): Promise<{
   }
 }
 
-export async function saveRemoteDraft(
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+/** Network drops, gateway restarts and rate limits are worth another try; 4xx are not. */
+function isRetryableSaveError(err: any): boolean {
+  const status = Number(err?.status);
+  if (!status) return true;
+  return status >= 500 || status === 408 || status === 429;
+}
+
+async function writeDraftContent(
+  draftId: string,
+  canonicalCourseId: string,
+  contentJson: string
+): Promise<void> {
+  try {
+    await likhaRequest(`/items/syllabi/${encodeURIComponent(draftId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ content: contentJson })
+    });
+  } catch (err: any) {
+    // 403 is how Directus reports a missing item under restricted permissions,
+    // so the row is created on first save; other errors are rethrown for retry.
+    const status = Number(err?.status);
+    if (status !== 404 && status !== 403) throw err;
+    await likhaRequest('/items/syllabi', {
+      method: 'POST',
+      body: JSON.stringify({
+        id: draftId,
+        course_id: canonicalCourseId,
+        version: 1,
+        status: 'draft',
+        content: contentJson
+      })
+    });
+  }
+}
+
+// One in-flight write per draft: two saves racing could otherwise land out of
+// order and leave the older document on the server ("it didn't save my edit").
+const draftSaveQueues = new Map<string, Promise<string | null>>();
+
+async function persistDraft(
+  canonicalCourseId: string,
+  contentJson: string
+): Promise<string | null> {
+  const draftId = makeDraftId(canonicalCourseId);
+  const maxAttempts = 3;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const token = await getValidToken();
+    if (!token) return null;
+    try {
+      await writeDraftContent(draftId, canonicalCourseId, contentJson);
+      return draftId;
+    } catch (err) {
+      if (attempt === maxAttempts || !isRetryableSaveError(err)) {
+        console.warn('[syllabusCollaborationApi] saveRemoteDraft failed:', err);
+        return null;
+      }
+      await sleep(400 * attempt + Math.random() * 200);
+    }
+  }
+
+  return null;
+}
+
+export function saveRemoteDraft(
   canonicalCourseId: string,
   syllabusData: OfficialSyllabusData,
-  presenceMap: Record<string, CollaboratorInfo>,
   lastUpdatedBy?: string,
-  lastUpdatedBySessionId?: string
+  lastUpdatedBySessionId?: string,
+  submissionAgreements?: Record<string, boolean>,
+  status?: string,
+  evaluators?: any[]
 ): Promise<string | null> {
-  const token = await getValidToken();
-  if (!token) return null;
-
   const draftId = makeDraftId(canonicalCourseId);
+  // Only `content` is written here. Presence has its own column, so a
+  // heartbeat can never overwrite syllabus content with a stale copy.
   const payload: GroupDraftPayload = {
     syllabusData,
-    presence: presenceMap,
     lastUpdatedBy,
     lastUpdatedBySessionId,
+    submissionAgreements,
+    status,
+    evaluators,
     updatedAt: Date.now()
   };
 
-  try {
-    // 1. Try PATCH first via likhaRequest
-    const updated = await likhaRequest<any>(`/items/syllabi/${encodeURIComponent(draftId)}`, {
-      method: 'PATCH',
-      body: JSON.stringify({
-        content: JSON.stringify(payload)
-      })
-    }).catch(async (err) => {
-      // 2. If 404 or 403 (item not found yet), create with POST
-      const isNotFound =
-        err?.status === 404 ||
-        err?.status === 403 ||
-        String(err?.message || err).includes('404') ||
-        String(err?.message || err).includes('not_found');
+  const previous = draftSaveQueues.get(draftId) || Promise.resolve(null);
+  const next = previous
+    .catch(() => null)
+    .then(() => persistDraft(canonicalCourseId, JSON.stringify(payload)));
 
-      if (isNotFound) {
-        return likhaRequest<any>('/items/syllabi', {
-          method: 'POST',
-          body: JSON.stringify({
-            id: draftId,
-            course_id: canonicalCourseId,
-            version: 1,
-            status: 'draft',
-            content: JSON.stringify(payload)
-          })
-        }).catch(() => null);
-      }
-      return null;
-    });
+  draftSaveQueues.set(draftId, next);
+  void next.finally(() => {
+    if (draftSaveQueues.get(draftId) === next) draftSaveQueues.delete(draftId);
+  });
 
-    return updated ? draftId : null;
-  } catch (err) {
-    console.warn('[syllabusCollaborationApi] saveRemoteDraft error:', err);
-    return null;
-  }
+  return next;
 }
 
 export async function sendRemotePresence(
@@ -142,8 +214,12 @@ export async function sendRemotePresence(
 
   const draftId = makeDraftId(canonicalCourseId);
   try {
-    const current = await fetchRemoteDraft(canonicalCourseId);
-    const existingPresence = current?.payload?.presence || {};
+    // Reads and writes only the presence column: heartbeat traffic must never
+    // rewrite syllabus content.
+    const row = await likhaRequest<any>(
+      `/items/syllabi/${encodeURIComponent(draftId)}?fields=id,presence`
+    ).catch(() => null);
+    const existingPresence = parsePresence(row?.presence) || {};
     const cutoff = Date.now() - 15000;
 
     const mergedPresence: Record<string, CollaboratorInfo> = {};
@@ -155,18 +231,12 @@ export async function sendRemotePresence(
     const presenceKey = presenceItem.sessionId || presenceItem.senderId;
     mergedPresence[presenceKey] = presenceItem;
 
-    const payload: GroupDraftPayload = {
-      ...(current?.payload || {}),
-      presence: mergedPresence,
-      updatedAt: Date.now()
-    };
-
     await likhaRequest(`/items/syllabi/${encodeURIComponent(draftId)}`, {
       method: 'PATCH',
-      body: JSON.stringify({
-        content: JSON.stringify(payload)
-      })
+      body: JSON.stringify({ presence: mergedPresence })
     }).catch(async () => {
+      // Draft row not created yet: make a presence-only row. Content stays
+      // empty until the first real save, so readers fall back to the baseline.
       await likhaRequest('/items/syllabi', {
         method: 'POST',
         body: JSON.stringify({
@@ -174,7 +244,8 @@ export async function sendRemotePresence(
           course_id: canonicalCourseId,
           version: 1,
           status: 'draft',
-          content: JSON.stringify(payload)
+          content: null,
+          presence: mergedPresence
         })
       }).catch(() => null);
     });
@@ -192,28 +263,24 @@ export async function removeRemotePresence(
 
   const draftId = makeDraftId(canonicalCourseId);
   try {
-    const current = await fetchRemoteDraft(canonicalCourseId);
-    if (!current?.payload?.presence) return;
+    const row = await likhaRequest<any>(
+      `/items/syllabi/${encodeURIComponent(draftId)}?fields=id,presence`
+    ).catch(() => null);
+    const presence = parsePresence(row?.presence);
+    if (!presence) return;
 
-    const presence = { ...current.payload.presence };
-    delete presence[sessionIdOrSenderId];
-    for (const [k, v] of Object.entries(presence)) {
+    const next = { ...presence };
+    delete next[sessionIdOrSenderId];
+    for (const [k, v] of Object.entries(next)) {
       if (v?.sessionId === sessionIdOrSenderId || v?.senderId === sessionIdOrSenderId) {
-        delete presence[k];
+        delete next[k];
       }
     }
 
-    const payload: GroupDraftPayload = {
-      ...current.payload,
-      presence,
-      updatedAt: Date.now()
-    };
-
+    // Presence-only write; content is untouched on unmount.
     await likhaRequest(`/items/syllabi/${encodeURIComponent(draftId)}`, {
       method: 'PATCH',
-      body: JSON.stringify({
-        content: JSON.stringify(payload)
-      })
+      body: JSON.stringify({ presence: next })
     }).catch(() => null);
   } catch {
     // Ignore cleanup errors on unmount

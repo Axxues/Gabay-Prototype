@@ -397,7 +397,7 @@ export const AppShell: React.FC = () => {
           <div className={
             currentTab === 'courses' || currentTab === 'inbox' || currentTab === 'gabay-rag'
               ? "flex h-full min-h-0 w-full min-w-0 flex-1 flex-col"
-              : currentTab === 'assigned-courses' || currentTab === 'chair-sheet' || currentTab === 'page1'
+              : currentTab === 'assigned-courses' || currentTab === 'chair-sheet' || currentTab === 'syllabus-development'
               ? "flex min-h-full w-full min-w-0 flex-1 flex-col p-5 sm:p-8 lg:p-10"
               : currentTab === 'profile' || currentTab === 'account-profile' || currentTab === 'create-leadership'
               ? "flex min-h-full w-full min-w-0 flex-1 flex-col p-5 sm:p-8 lg:p-10"
@@ -500,9 +500,8 @@ export const AppContent: React.FC = () => {
         <Route path="/accounts/:userId/view" element={<RequireAdmin><RouteWithNav element={(nav) => <AccountProfileRoute nav={nav} />} /></RequireAdmin>} />
         <Route path="/accounts/:userId" element={<RequireAdmin><RouteWithNav element={(nav) => <AccountProfileRoute nav={nav} />} /></RequireAdmin>} />
         <Route path="/accounts/:userId/edit" element={<RequireAdmin><RouteWithNav element={(nav) => <EditAccountRoute nav={nav} />} /></RequireAdmin>} />
-        <Route path="/page1" element={<RouteWithNav element={(nav) => <SyllabusCreatorPage onNavigateTab={nav.handleNavigateTab} />} />} />
-        <Route path="/syllabus-creator" element={<RouteWithNav element={(nav) => <SyllabusCreatorPage onNavigateTab={nav.handleNavigateTab} />} />} />
         <Route path="/syllabus-development" element={<RouteWithNav element={(nav) => <SyllabusCreatorPage onNavigateTab={nav.handleNavigateTab} />} />} />
+        <Route path="/syllabus-development/studio/:groupId" element={<RouteWithNav element={(nav) => <SyllabusCreatorPage onNavigateTab={nav.handleNavigateTab} />} />} />
         <Route path="/page2" element={<RouteWithNav element={(nav) => <EmptyPage title="Page 2" onNavigateTab={nav.handleNavigateTab} />} />} />
         <Route path="/page3" element={<RouteWithNav element={(nav) => <EmptyPage title="Page 3" onNavigateTab={nav.handleNavigateTab} />} />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

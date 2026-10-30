@@ -55,9 +55,9 @@ export const WIZARD_STEPS: WizardStepDefinition[] = [
   },
   {
     id: 'review',
-    label: 'Signatories, Review & Finalize',
-    shortTitle: 'Review & Sign',
-    description: 'Official signatories, preview, print export, and LMS course attachment.'
+    label: 'Submit',
+    shortTitle: 'Submit',
+    description: 'Submit syllabus for review.'
   }
 ];
 

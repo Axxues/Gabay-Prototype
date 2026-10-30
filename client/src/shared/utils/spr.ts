@@ -15,12 +15,19 @@ export function round2(n: number): number {
 }
 
 export function resolveSPRWeights(
-  syllabusGrading: { termFormula?: string; finalFormula?: string } | null | undefined,
+  syllabusGrading: { termFormula?: string | { classStandingPercent?: string; examPercent?: string }; finalFormula?: string | { midtermPercent?: string; finalPercent?: string } } | null | undefined,
 ): SPRWeights {
   const fallback = (): SPRWeights => ({ csWeight: 60, examWeight: 40, mtWeight: 40, ftWeight: 60, formulaLabel: 'Term 60% CS + 40% Exam · Final 40% MT + 60% FT', parseError: true });
   if (!syllabusGrading) return { csWeight: 60, examWeight: 40, mtWeight: 40, ftWeight: 60, formulaLabel: 'Term 60% CS + 40% Exam · Final 40% MT + 60% FT' };
-  const term = syllabusGrading.termFormula ?? '';
-  const fin = syllabusGrading.finalFormula ?? '';
+  
+  // Handle new object format
+  const term = typeof syllabusGrading.termFormula === 'object' 
+    ? `${syllabusGrading.termFormula.classStandingPercent || 0}% + ${syllabusGrading.termFormula.examPercent || 0}%`
+    : syllabusGrading.termFormula ?? '';
+  const fin = typeof syllabusGrading.finalFormula === 'object'
+    ? `${syllabusGrading.finalFormula.midtermPercent || 0}% + ${syllabusGrading.finalFormula.finalPercent || 0}%`
+    : syllabusGrading.finalFormula ?? '';
+  
   const nums = (s: string) => [...s.matchAll(/(\d+(?:\.\d+)?)\s*%/g)].map(m => Number(m[1]));
   const tn = nums(term), fn = nums(fin);
   const sumOk = (a: number[]) => a.length >= 2 && Math.abs(a[0] + a[1] - 100) < 0.01;

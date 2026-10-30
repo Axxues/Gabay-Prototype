@@ -1,22 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import type { OfficialSyllabusData, CourseOutcome, ProgramOutcome, RubricRow } from '../../../../../shared/data/syllabusData';
-import { OFFICIAL_SYLLABUS_CSPC112, OFFICIAL_INSTITUTIONAL_STATEMENTS } from '../../../../../shared/data/syllabusData';
-import { CustomDropdown } from '../../../../../shared/components/common/CustomDropdown';
+import { OFFICIAL_SYLLABUS_CSPC112, OFFICIAL_INSTITUTIONAL_STATEMENTS, normalizeRubricLevels, createEmptyRubricRow } from '../../../../../shared/data/syllabusData';
+import { CustomDropdown, PercentageInput, PercentageSplitInput } from '../../../../../shared/components/common';
+import { RequiredMark } from '../RequiredMark';
 import {
   Landmark,
-  Award,
   Plus,
   Trash2,
   ChevronDown,
+  ChevronUp,
   ChevronRight,
   RotateCcw,
   Compass,
   HeartHandshake,
   BookOpen,
   ShieldCheck,
-  Clock,
-  Layers
+  Layers,
+  AlertTriangle
 } from 'lucide-react';
+import { analyzeSectionSchedules } from '../../../utils/scheduleHours';
 
 const COURSE_TYPE_OPTIONS = [
   { value: 'Lecture', label: 'Lecture' },
@@ -24,13 +26,29 @@ const COURSE_TYPE_OPTIONS = [
   { value: 'Laboratory', label: 'Laboratory' },
 ];
 
+/**
+ * Give every rubric criterion exactly `count` performance levels, keeping the
+ * titles/descriptions already entered and filling new slots with defaults.
+ */
+const resizeRubricLevels = (rows: RubricRow[], count: number): RubricRow[] =>
+  (rows || []).map(row => {
+    const levels = normalizeRubricLevels(row.levels).slice(0, count);
+    while (levels.length < count) {
+      levels.push({
+        title: '',
+        description: ''
+      });
+    }
+    return { ...row, levels };
+  });
+
 interface Step2InstitutionalOutcomesProps {
   data: OfficialSyllabusData;
   onChange: (updated: OfficialSyllabusData) => void;
 }
 
 export const Step2InstitutionalOutcomes: React.FC<Step2InstitutionalOutcomesProps> = ({ data, onChange }) => {
-  const [showInstitutional, setShowInstitutional] = useState(true);
+  const [showInstitutional, setShowInstitutional] = useState(false);
   const [showCoreValues, setShowCoreValues] = useState(false);
   const [showGraduateAttributes, setShowGraduateAttributes] = useState(false);
 
@@ -40,8 +58,7 @@ export const Step2InstitutionalOutcomes: React.FC<Step2InstitutionalOutcomesProp
     courseOutcomes = [],
     gradingSystem,
     projectRubrics = [],
-    classroomPolicies = [],
-    facultyMembers = []
+    classroomPolicies = []
   } = data;
 
   const effectiveInstitutional = {
@@ -70,19 +87,43 @@ export const Step2InstitutionalOutcomes: React.FC<Step2InstitutionalOutcomesProp
     description: ''
   };
 
-  const primaryFaculty = facultyMembers[0];
+  // Number of performance levels every criterion shares. Seeded from the
+  // loaded rubrics so the control always matches what is on screen.
+  const [newRowLevelCount, setNewRowLevelCount] = useState<number>(() =>
+    projectRubrics.length > 0
+      ? Math.max(1, Math.min(10, normalizeRubricLevels(projectRubrics[0].levels).length))
+      : 4
+  );
 
-  const restoreBaseline = () => {
-    onChange({
-      ...data,
-      institutionalStatements: {
-        ...OFFICIAL_INSTITUTIONAL_STATEMENTS
-      },
-      programOutcomes: [
-        ...OFFICIAL_SYLLABUS_CSPC112.programOutcomes
-      ]
-    });
-  };
+  // Normalise legacy `{1,2,3,4}` payloads and align every criterion to one
+  // number of performance levels.
+  useEffect(() => {
+    if (projectRubrics.length === 0) return;
+    const count = Math.max(1, Math.min(10, normalizeRubricLevels(projectRubrics[0].levels).length));
+    setNewRowLevelCount(count);
+    const aligned = resizeRubricLevels(projectRubrics, count);
+    const isSame = aligned.length === projectRubrics.length
+      && aligned.every((r, i) => JSON.stringify(r) === JSON.stringify(projectRubrics[i]));
+    if (!isSame) {
+      onChange({ ...data, projectRubrics: aligned });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ─── Contact Hours derived from Section 1 schedules ────────────────────────
+  // Contact Hours are NOT editable; they must be computed from the
+  // uniform per-section weekly hours in Section 1 across all instructors.
+  const scheduleAnalysis = analyzeSectionSchedules(data.facultyMembers, courseInfo.type);
+  const lectureMismatch = scheduleAnalysis.hasLectureMismatch;
+  const labMismatch = scheduleAnalysis.hasLabMismatch;
+  const scheduleMismatch = scheduleAnalysis.hasMismatch;
+
+  const lectureHoursValue = lectureMismatch
+    ? ''
+    : (scheduleAnalysis.canonicalLectureHours > 0 ? String(scheduleAnalysis.canonicalLectureHours) : (courseInfo.lectureHours || ''));
+  const labHoursValue = labMismatch
+    ? ''
+    : (scheduleAnalysis.canonicalLabHours > 0 ? String(scheduleAnalysis.canonicalLabHours) : (courseInfo.labHours || ''));
 
   // Auto-normalize if programOutcomes or courseOutcomes have non-contiguous numbering (e.g. from prior deletions or draft)
   useEffect(() => {
@@ -121,6 +162,26 @@ export const Step2InstitutionalOutcomes: React.FC<Step2InstitutionalOutcomesProp
     }
   }, [programOutcomes, courseOutcomes, data, onChange]);
 
+  // Sync computed Contact Hours (from Section 1 schedules) into courseInfo so the
+  // document preview and downstream consumers always reflect the live schedules.
+  // Only writes when the derived value differs from what is stored, to avoid loops.
+  useEffect(() => {
+    const current = data?.courseInfo;
+    if (!current) return;
+    const nextLecture = lectureMismatch ? '' : lectureHoursValue;
+    const nextLab = labMismatch ? '' : labHoursValue;
+    if (current.lectureHours === nextLecture && current.labHours === nextLab) return;
+    onChange({
+      ...data,
+      courseInfo: {
+        ...current,
+        lectureHours: nextLecture,
+        labHours: nextLab
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lectureHoursValue, labHoursValue, lectureMismatch, labMismatch]);
+
   const addProgramOutcome = () => {
     const nextNumber = programOutcomes.length + 1;
     const newPO: ProgramOutcome = {
@@ -133,9 +194,9 @@ export const Step2InstitutionalOutcomes: React.FC<Step2InstitutionalOutcomesProp
     });
   };
 
-  const updateProgramOutcome = (numberOrIndex: number, description: string) => {
-    const updated = programOutcomes.map((po, idx) =>
-      (po.number === numberOrIndex || idx === numberOrIndex) ? { ...po, description } : po
+  const updateProgramOutcome = (idx: number, description: string) => {
+    const updated = programOutcomes.map((po, i) =>
+      i === idx ? { ...po, description } : po
     );
     onChange({
       ...data,
@@ -143,16 +204,13 @@ export const Step2InstitutionalOutcomes: React.FC<Step2InstitutionalOutcomesProp
     });
   };
 
-  const removeProgramOutcome = (numberOrIndex: number) => {
-    const targetIdx = (numberOrIndex >= 0 && numberOrIndex < programOutcomes.length)
-      ? numberOrIndex
-      : programOutcomes.findIndex(po => po.number === numberOrIndex);
-    if (targetIdx === -1) return;
+  const removeProgramOutcome = (idx: number) => {
+    if (idx < 0 || idx >= programOutcomes.length) return;
 
-    const filtered = programOutcomes.filter((_, idx) => idx !== targetIdx);
+    const filtered = programOutcomes.filter((_, i) => i !== idx);
     const poNumberMap = new Map<number, number>();
-    const reindexedPOs = filtered.map((po, idx) => {
-      const newNum = idx + 1;
+    const reindexedPOs = filtered.map((po, i) => {
+      const newNum = i + 1;
       poNumberMap.set(po.number, newNum);
       return {
         ...po,
@@ -202,16 +260,13 @@ export const Step2InstitutionalOutcomes: React.FC<Step2InstitutionalOutcomesProp
     });
   };
 
-  const updateCourseOutcome = (numberOrIndex: number, statement: string) => {
-    const targetIdx = (numberOrIndex >= 0 && numberOrIndex < courseOutcomes.length)
-      ? numberOrIndex
-      : courseOutcomes.findIndex(co => co.number === numberOrIndex);
-    const updated = courseOutcomes.map((co, idx) =>
-      (idx === targetIdx || co.number === numberOrIndex) ? { ...co, statement } : co
+  const updateCourseOutcome = (idx: number, statement: string) => {
+    const updated = courseOutcomes.map((co, i) =>
+      i === idx ? { ...co, statement } : co
     );
-    const targetNum = targetIdx !== -1 ? courseOutcomes[targetIdx]?.number : numberOrIndex;
+    const targetNum = courseOutcomes[idx]?.number ?? (idx + 1);
     const updatedMap = (data.courseMap || []).map(cm =>
-      (cm.coNumber === targetNum || cm.coNumber === (targetIdx + 1)) ? { ...cm, coStatement: statement } : cm
+      cm.coNumber === targetNum ? { ...cm, coStatement: statement } : cm
     );
     onChange({
       ...data,
@@ -220,17 +275,14 @@ export const Step2InstitutionalOutcomes: React.FC<Step2InstitutionalOutcomesProp
     });
   };
 
-  const removeCourseOutcome = (numberOrIndex: number) => {
-    const targetIdx = (numberOrIndex >= 0 && numberOrIndex < courseOutcomes.length)
-      ? numberOrIndex
-      : courseOutcomes.findIndex(co => co.number === numberOrIndex);
-    if (targetIdx === -1) return;
+  const removeCourseOutcome = (idx: number) => {
+    if (idx < 0 || idx >= courseOutcomes.length) return;
 
-    const targetCO = courseOutcomes[targetIdx];
-    const filtered = courseOutcomes.filter((_, idx) => idx !== targetIdx);
+    const targetCO = courseOutcomes[idx];
+    const filtered = courseOutcomes.filter((_, i) => i !== idx);
     const coNumberMap = new Map<number, number>();
-    const reindexedCOs = filtered.map((co, idx) => {
-      const newNum = idx + 1;
+    const reindexedCOs = filtered.map((co, i) => {
+      const newNum = i + 1;
       coNumberMap.set(co.number, newNum);
       return {
         ...co,
@@ -270,7 +322,7 @@ export const Step2InstitutionalOutcomes: React.FC<Step2InstitutionalOutcomesProp
     onChange({
       ...data,
       gradingSystem: {
-        ...(data.gradingSystem || {}),
+        ...data.gradingSystem,
         [field]: value
       }
     });
@@ -278,12 +330,44 @@ export const Step2InstitutionalOutcomes: React.FC<Step2InstitutionalOutcomesProp
 
   const addComponent = () => {
     const current = gradingSystem?.classStandingComponents || [];
-    updateGrading('classStandingComponents', [...current, '']);
+    const currentTotal = current.reduce((sum, comp) => {
+      const pct = typeof comp === 'string' ? 0 : parseFloat(comp.percentage) || 0;
+      return sum + pct;
+    }, 0);
+    const remaining = 100 - currentTotal;
+    updateGrading('classStandingComponents', [...current, { title: '', percentage: remaining.toFixed(1).replace(/\.0$/, '') }]);
   };
 
-  const updateComponentItem = (index: number, value: string) => {
+  const updateComponentItem = (index: number, field: 'title' | 'percentage', value: string) => {
     const current = [...(gradingSystem?.classStandingComponents || [])];
-    current[index] = value;
+    
+    // Handle legacy string format
+    if (typeof current[index] === 'string') {
+      current[index] = { title: value, percentage: '' };
+    } else {
+      current[index] = { ...current[index], [field]: value };
+    }
+    
+    // If percentage changed, redistribute to keep total at 100
+    if (field === 'percentage') {
+      const numValue = parseFloat(value) || 0;
+      const clamped = Math.max(0, Math.min(100, numValue));
+      const otherComponents = current.filter((_, i) => i !== index);
+      const remaining = 100 - clamped;
+
+      if (otherComponents.length > 0) {
+        const eachShare = remaining / otherComponents.length;
+        otherComponents.forEach((comp) => {
+          const idx = current.indexOf(comp);
+          if (idx !== -1 && typeof current[idx] !== 'string') {
+            current[idx] = { ...current[idx], percentage: eachShare.toFixed(1).replace(/\.0$/, '') };
+          }
+        });
+      }
+      
+      current[index] = { ...current[index], percentage: clamped.toFixed(1).replace(/\.0$/, '') };
+    }
+    
     updateGrading('classStandingComponents', current);
   };
 
@@ -319,11 +403,8 @@ export const Step2InstitutionalOutcomes: React.FC<Step2InstitutionalOutcomesProp
     });
   };
 
-  const addRubricRow = () => {
-    const newRow: RubricRow = {
-      category: '',
-      levels: { 1: '', 2: '', 3: '', 4: '' }
-    };
+const addRubricRow = () => {
+    const newRow: RubricRow = createEmptyRubricRow(newRowLevelCount);
     onChange({
       ...data,
       projectRubrics: [...projectRubrics, newRow]
@@ -339,19 +420,47 @@ export const Step2InstitutionalOutcomes: React.FC<Step2InstitutionalOutcomesProp
     });
   };
 
-  const updateRubricLevel = (index: number, level: 1 | 2 | 3 | 4, text: string) => {
+  const updateRubricLevelTitle = (index: number, levelIdx: number, title: string) => {
     const updated = [...projectRubrics];
-    updated[index] = {
-      ...updated[index],
-      levels: {
-        ...updated[index].levels,
-        [level]: text
-      }
-    };
+    const levels = normalizeRubricLevels(updated[index].levels);
+    levels[levelIdx] = { ...levels[levelIdx], title };
+    updated[index] = { ...updated[index], levels };
     onChange({
       ...data,
       projectRubrics: updated
     });
+  };
+
+  const updateRubricLevelDescription = (index: number, levelIdx: number, description: string) => {
+    const updated = [...projectRubrics];
+    const levels = normalizeRubricLevels(updated[index].levels);
+    levels[levelIdx] = { ...levels[levelIdx], description };
+    updated[index] = { ...updated[index], levels };
+    onChange({
+      ...data,
+      projectRubrics: updated
+    });
+  };
+
+  /** One count for the whole rubric: every criterion is resized together. */
+  const stepRubricLevelCount = (delta: number) => {
+    const count = Math.max(1, Math.min(10, newRowLevelCount + delta));
+    if (count === newRowLevelCount) return;
+    setNewRowLevelCount(count);
+    if (projectRubrics.length > 0) {
+      onChange({ ...data, projectRubrics: resizeRubricLevels(projectRubrics, count) });
+    }
+  };
+
+  // Arrow keys on the read-only count field or its stepper buttons adjust the count.
+  const handleLevelCountKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      stepRubricLevelCount(1);
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      stepRubricLevelCount(-1);
+    }
   };
 
   const removeRubricRow = (index: number) => {
@@ -365,44 +474,12 @@ export const Step2InstitutionalOutcomes: React.FC<Step2InstitutionalOutcomesProp
   const restoreBaselineRubrics = () => {
     onChange({
       ...data,
-      projectRubrics: [...OFFICIAL_SYLLABUS_CSPC112.projectRubrics]
-    });
-  };
-
-  const updateConsultationHours = (val: string) => {
-    const updated = [...facultyMembers];
-    if (updated.length > 0) {
-      updated[0] = {
-        ...updated[0],
-        consultation: val
-      };
-    } else {
-      updated.push({
-        name: 'Assigned Faculty',
-        sections: [{ section: '', schedule: '', room: '' }],
-        consultation: val
-      });
-    }
-    onChange({
-      ...data,
-      facultyMembers: updated
+      projectRubrics: resizeRubricLevels(OFFICIAL_SYLLABUS_CSPC112.projectRubrics, newRowLevelCount)
     });
   };
 
   return (
     <div className="space-y-6">
-      <div className="border-b border-border/70 pb-4 flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-bold text-foreground flex items-center space-x-2">
-            <Award className="w-5 h-5 text-primary" />
-            <span>Institutional Foundation &amp; Course Specifications</span>
-          </h2>
-          <p className="text-xs text-muted-foreground mt-1">
-            Institutional PVMGO statements, Graduate Attributes, Core Values, Outcomes, Course Specifications, Grading, and Policies aligned with DMMMSU-INS-F003 Part I.
-          </p>
-        </div>
-      </div>
-
       {/* 1. Philosophy, Mission, Vision, Goals */}
       <div className="rounded-xl border border-border bg-card shadow-xs overflow-hidden">
         <div className="flex items-center justify-between p-4 bg-muted/40 border-b border-border">
@@ -415,28 +492,14 @@ export const Step2InstitutionalOutcomes: React.FC<Step2InstitutionalOutcomesProp
             <span>Institutional Framework (Philosophy, Mission, Vision, Goals)</span>
             {showInstitutional ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
           </button>
-          <div className="flex items-center space-x-2">
-            <span className="text-[10px] px-2 py-0.5 rounded bg-muted text-muted-foreground font-medium">
-              Institutional Standard (Non-editable)
-            </span>
-            <button
-              type="button"
-              onClick={restoreBaseline}
-              className="flex items-center space-x-1 text-[11px] text-muted-foreground hover:text-primary transition-colors cursor-pointer"
-            >
-              <RotateCcw className="w-3 h-3" />
-              <span>Restore University Baseline</span>
-            </button>
-          </div>
         </div>
 
         {showInstitutional && (
           <div className="p-4 space-y-4 text-xs">
             {/* Philosophy */}
             <div className="space-y-1.5">
-              <label htmlFor="inst-philosophy" className="font-bold text-foreground flex items-center justify-between">
+              <label htmlFor="inst-philosophy" className="font-bold text-foreground">
                 <span>Philosophy</span>
-                <span className="text-[10px] font-normal text-muted-foreground">(DMMMSU Standard)</span>
               </label>
               <textarea
                 id="inst-philosophy"
@@ -450,9 +513,8 @@ export const Step2InstitutionalOutcomes: React.FC<Step2InstitutionalOutcomesProp
 
             {/* Mission */}
             <div className="space-y-1.5">
-              <label htmlFor="inst-mission" className="font-bold text-foreground flex items-center justify-between">
+              <label htmlFor="inst-mission" className="font-bold text-foreground">
                 <span>Mission</span>
-                <span className="text-[10px] font-normal text-muted-foreground">(DMMMSU Standard)</span>
               </label>
               <textarea
                 id="inst-mission"
@@ -466,9 +528,8 @@ export const Step2InstitutionalOutcomes: React.FC<Step2InstitutionalOutcomesProp
 
             {/* Vision */}
             <div className="space-y-1.5">
-              <label htmlFor="inst-vision" className="font-bold text-foreground flex items-center justify-between">
+              <label htmlFor="inst-vision" className="font-bold text-foreground">
                 <span>Vision</span>
-                <span className="text-[10px] font-normal text-muted-foreground">(DMMMSU Standard)</span>
               </label>
               <textarea
                 id="inst-vision"
@@ -482,9 +543,8 @@ export const Step2InstitutionalOutcomes: React.FC<Step2InstitutionalOutcomesProp
 
             {/* Goals */}
             <div className="space-y-1.5">
-              <label htmlFor="inst-goal" className="font-bold text-foreground flex items-center justify-between">
+              <label htmlFor="inst-goal" className="font-bold text-foreground">
                 <span>Goals</span>
-                <span className="text-[10px] font-normal text-muted-foreground">(DMMMSU Standard)</span>
               </label>
               <textarea
                 id="inst-goal"
@@ -511,9 +571,6 @@ export const Step2InstitutionalOutcomes: React.FC<Step2InstitutionalOutcomesProp
             <span>Graduate Attributes ({effectiveInstitutional.graduateAttributes.length} Defined)</span>
             {showGraduateAttributes ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
           </button>
-          <span className="text-[10px] px-2 py-0.5 rounded bg-muted text-muted-foreground font-medium">
-            Institutional Standard (Non-editable)
-          </span>
         </div>
 
         {showGraduateAttributes && (
@@ -558,9 +615,6 @@ export const Step2InstitutionalOutcomes: React.FC<Step2InstitutionalOutcomesProp
             <span>Core Values ({effectiveInstitutional.coreValues.length} Defined)</span>
             {showCoreValues ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
           </button>
-          <span className="text-[10px] px-2 py-0.5 rounded bg-muted text-muted-foreground font-medium">
-            Institutional Standard (Non-editable)
-          </span>
         </div>
 
         {showCoreValues && (
@@ -597,8 +651,9 @@ export const Step2InstitutionalOutcomes: React.FC<Step2InstitutionalOutcomesProp
       <div className="space-y-4 pt-2">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-sm font-bold text-foreground">
-              Program Outcomes (PO1 – PO{programOutcomes.length})
+            <h3 className="text-sm font-bold text-foreground flex items-center space-x-1">
+              <span>Program Outcomes (PO1 – PO{programOutcomes.length})</span>
+              <RequiredMark />
             </h3>
             <p className="text-xs text-muted-foreground">
               Institutional program outcomes. Edit each outcome or add new ones; these map directly into the Part IV Course Map Matrix.
@@ -655,7 +710,10 @@ export const Step2InstitutionalOutcomes: React.FC<Step2InstitutionalOutcomesProp
       <div className="space-y-4 pt-2">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-sm font-bold text-foreground">Course Outcomes (CO)</h3>
+            <h3 className="text-sm font-bold text-foreground inline-flex items-center gap-1">
+              <span>Course Outcomes (CO)</span>
+              <RequiredMark />
+            </h3>
             <p className="text-xs text-muted-foreground">
               Measurable statements of what students should be able to do by the end of the course.
             </p>
@@ -722,32 +780,42 @@ export const Step2InstitutionalOutcomes: React.FC<Step2InstitutionalOutcomesProp
             <label htmlFor="course-type" className="text-xs font-semibold text-foreground">
               Course Type
             </label>
-            <CustomDropdown
-              id="course-type"
-              value={courseInfo.type ?? ''}
-              onChange={val => updateCourseInfo('type', val)}
-              options={COURSE_TYPE_OPTIONS}
-              placeholder="Select Course Type"
-            />
+            <div title="To change the course type, change it from Section 1.">
+              <CustomDropdown
+                id="course-type"
+                value={courseInfo.type ?? ''}
+                onChange={val => updateCourseInfo('type', val)}
+                options={COURSE_TYPE_OPTIONS}
+                placeholder="Select Course Type"
+                disabled
+              />
+            </div>
           </div>
 
           <div className="space-y-1.5">
-            <label htmlFor="course-credit" className="text-xs font-semibold text-foreground">
-              Course Credit
+            <label htmlFor="course-credit" className="text-xs font-semibold text-foreground flex items-center space-x-1">
+              <span>Course Credit</span>
+              <RequiredMark />
             </label>
-            <input
-              id="course-credit"
-              type="text"
-              value={courseInfo.credit ?? ''}
-              onChange={e => updateCourseInfo('credit', e.target.value)}
-              placeholder="e.g. 3 units"
-              className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
-            />
+            <div className="flex items-center gap-2">
+              <input
+                id="course-credit"
+                type="number"
+                value={courseInfo.credit ?? ''}
+                onChange={e => updateCourseInfo('credit', e.target.value)}
+                placeholder="e.g. 3"
+                className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+              />
+              <span className="text-xs text-muted-foreground whitespace-nowrap">unit(s)</span>
+            </div>
           </div>
 
           <div className="space-y-1.5 md:col-span-2">
             <label htmlFor="course-description" className="text-xs font-semibold text-foreground flex items-center justify-between">
-              <span>Course Description</span>
+              <span className="inline-flex items-center gap-1">
+                Course Description
+                <RequiredMark />
+              </span>
               <span className="text-[10px] font-normal text-primary font-medium">(Editable)</span>
             </label>
             <textarea
@@ -760,37 +828,62 @@ export const Step2InstitutionalOutcomes: React.FC<Step2InstitutionalOutcomesProp
             />
           </div>
 
-          <div className="space-y-1.5">
-            <label htmlFor="lecture-hours" className="text-xs font-semibold text-foreground">
-              Contact Hours: Lecture Hours / Week
-            </label>
-            <input
-              id="lecture-hours"
-              type="text"
-              value={courseInfo.lectureHours ?? ''}
-              onChange={e => updateCourseInfo('lectureHours', e.target.value)}
-              placeholder="e.g. 2 hours/week"
-              className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
-            />
-          </div>
+          {scheduleMismatch && (
+            <div className="md:col-span-2 flex items-start gap-2.5 p-3 rounded-xl border border-destructive/40 bg-destructive/5 text-destructive">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+              <div className="text-xs">
+                <span className="font-bold">
+                  {lectureMismatch && labMismatch
+                    ? 'Lecture and Lab Hours Mismatched across Sections:'
+                    : lectureMismatch
+                    ? 'Lecture Hours Mismatched across Sections:'
+                    : 'Lab Hours Mismatched across Sections:'}
+                </span>
+              </div>
+            </div>
+          )}
 
-          <div className="space-y-1.5">
-            <label htmlFor="lab-hours" className="text-xs font-semibold text-foreground">
-              Contact Hours: Laboratory Hours / Week
-            </label>
-            <input
-              id="lab-hours"
-              type="text"
-              value={courseInfo.labHours ?? ''}
-              onChange={e => updateCourseInfo('labHours', e.target.value)}
-              placeholder="e.g. 3 hours/week (or leave empty)"
-              className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
-            />
-          </div>
+          {(courseInfo.type === 'Lecture' || courseInfo.type === 'Lecture and Laboratory') && (
+            <div className="space-y-1.5">
+              <label htmlFor="lecture-hours" className="text-xs font-semibold text-foreground">
+                Contact Hours: Lecture Hours / Week
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  id="lecture-hours"
+                  type="text"
+                  disabled
+                  value={lectureHoursValue}
+                  placeholder={lectureMismatch ? 'Lecture hours is Mismatched' : 'e.g. 2'}
+                  className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-muted/50 text-muted-foreground cursor-not-allowed outline-none select-none transition-all"
+                />
+                <span className="text-xs text-muted-foreground whitespace-nowrap">hours/week</span>
+              </div>
+            </div>
+          )}
+
+          {(courseInfo.type === 'Laboratory' || courseInfo.type === 'Lecture and Laboratory') && (
+            <div className="space-y-1.5">
+              <label htmlFor="lab-hours" className="text-xs font-semibold text-foreground">
+                Contact Hours: Laboratory Hours / Week
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  id="lab-hours"
+                  type="text"
+                  disabled
+                  value={labHoursValue}
+                  placeholder={labMismatch ? 'Lab hours is Mismatched' : 'e.g. 3'}
+                  className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-muted/50 text-muted-foreground cursor-not-allowed outline-none select-none transition-all"
+                />
+                <span className="text-xs text-muted-foreground whitespace-nowrap">hours/week</span>
+              </div>
+            </div>
+          )}
 
           <div className="space-y-1.5 md:col-span-2">
             <label htmlFor="course-prereq" className="text-xs font-semibold text-foreground">
-              Course Prerequisites
+              Course Prerequisites <span className="text-muted-foreground font-normal">(Optional)</span>
             </label>
             <input
               id="course-prereq"
@@ -814,53 +907,56 @@ export const Step2InstitutionalOutcomes: React.FC<Step2InstitutionalOutcomesProp
           <span className="text-[10px] text-muted-foreground italic">Evaluation Formulas</span>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-1.5">
-            <label htmlFor="term-formula" className="text-xs font-semibold text-foreground">
-              Term Formula (Midterms)
+            <label className="text-xs font-semibold text-foreground inline-flex items-center gap-1">
+              <span>Term Formula</span>
+              <RequiredMark />
             </label>
-            <input
-              id="term-formula"
-              type="text"
-              value={gradingSystem?.termFormula || ''}
-              onChange={e => updateGrading('termFormula', e.target.value)}
-              placeholder="e.g. 60% Class Standing + 40% Midterm Exam"
-              className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all font-mono text-xs"
+            <PercentageSplitInput
+              label1="Class Standing"
+              label2="Exam"
+              value1={typeof gradingSystem?.termFormula === 'object' ? gradingSystem.termFormula.classStandingPercent : '60'}
+              value2={typeof gradingSystem?.termFormula === 'object' ? gradingSystem.termFormula.examPercent : '40'}
+              onChange1={val => updateGrading('termFormula', { ...(typeof gradingSystem?.termFormula === 'object' ? gradingSystem.termFormula : { classStandingPercent: '', examPercent: '' }), classStandingPercent: val })}
+              onChange2={val => updateGrading('termFormula', { ...(typeof gradingSystem?.termFormula === 'object' ? gradingSystem.termFormula : { classStandingPercent: '', examPercent: '' }), examPercent: val })}
             />
           </div>
 
           <div className="space-y-1.5">
-            <label htmlFor="final-formula" className="text-xs font-semibold text-foreground">
-              Final Grade Formula
+            <label className="text-xs font-semibold text-foreground inline-flex items-center gap-1">
+              <span>Final Grade Formula</span>
+              <RequiredMark />
             </label>
-            <input
-              id="final-formula"
-              type="text"
-              value={gradingSystem?.finalFormula || ''}
-              onChange={e => updateGrading('finalFormula', e.target.value)}
-              placeholder="e.g. 50% Midterm Grade + 50% Tentative Final Grade"
-              className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all font-mono text-xs"
+            <PercentageSplitInput
+              label1="Midterm Grade"
+              label2="Final Term Grade"
+              value1={typeof gradingSystem?.finalFormula === 'object' ? gradingSystem.finalFormula.midtermPercent : '40'}
+              value2={typeof gradingSystem?.finalFormula === 'object' ? gradingSystem.finalFormula.finalPercent : '60'}
+              onChange1={val => updateGrading('finalFormula', { ...(typeof gradingSystem?.finalFormula === 'object' ? gradingSystem.finalFormula : { midtermPercent: '', finalPercent: '' }), midtermPercent: val })}
+              onChange2={val => updateGrading('finalFormula', { ...(typeof gradingSystem?.finalFormula === 'object' ? gradingSystem.finalFormula : { midtermPercent: '', finalPercent: '' }), finalPercent: val })}
             />
           </div>
 
           <div className="space-y-1.5">
-            <label htmlFor="passing-grade" className="text-xs font-semibold text-foreground">
-              Passing Grade Benchmark
+            <label htmlFor="passing-grade" className="text-xs font-semibold text-foreground inline-flex items-center gap-1">
+              <span>Passing Grade Benchmark</span>
+              <RequiredMark />
             </label>
-            <input
+            <PercentageInput
               id="passing-grade"
-              type="text"
               value={gradingSystem?.passingGrade || ''}
-              onChange={e => updateGrading('passingGrade', e.target.value)}
-              placeholder="e.g. 75% or 3.0"
-              className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+              onChange={val => updateGrading('passingGrade', val)}
+              placeholder="e.g. 75"
+              className="w-full"
             />
           </div>
 
           <div className="space-y-2 md:col-span-2">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-foreground">
-                Class Standing Components
+              <label className="text-xs font-semibold text-foreground inline-flex items-center gap-1">
+                <span>Class Standing Components</span>
+                <RequiredMark />
               </label>
               <button
                 type="button"
@@ -872,29 +968,86 @@ export const Step2InstitutionalOutcomes: React.FC<Step2InstitutionalOutcomesProp
               </button>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-3">
               {(gradingSystem?.classStandingComponents && gradingSystem.classStandingComponents.length > 0) ? (
-                gradingSystem.classStandingComponents.map((comp, idx) => (
-                  <div key={idx} className="flex items-center space-x-2">
-                    <input
-                      type="text"
-                      aria-label={`Class Standing Component ${idx + 1}`}
-                      value={comp}
-                      onChange={e => updateComponentItem(idx, e.target.value)}
-                      placeholder="e.g. Quizzes and Unit Tests (25%)"
-                      className="flex-1 px-3 py-2 text-sm rounded-xl border border-border bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeComponent(idx)}
-                      className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors cursor-pointer"
-                      title="Remove component"
-                      aria-label={`Remove component ${idx + 1}`}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                <>
+                  {gradingSystem.classStandingComponents.map((comp, idx) => (
+                    <div key={idx} className="p-3 rounded-xl border border-border/70 bg-muted/10 space-y-2">
+                      <div className="flex items-start gap-3">
+                        <div className="flex-1 space-y-1.5">
+                          <label className="text-[11px] font-semibold text-muted-foreground inline-flex items-center gap-1">
+                            <span>Component #{idx + 1}</span>
+                            <RequiredMark />
+                          </label>
+                          <input
+                            type="text"
+                            value={typeof comp === 'string' ? comp : comp.title}
+                            onChange={e => updateComponentItem(idx, 'title', e.target.value)}
+                            placeholder="e.g. Quizzes"
+                            className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+                          />
+                        </div>
+                        <div className="w-24 space-y-1.5">
+                          <label className="text-[11px] font-semibold text-muted-foreground inline-flex items-center gap-1">
+                            <span>Weight</span>
+                            <RequiredMark />
+                          </label>
+                          <div className="relative">
+                            <input
+                              type="text"
+                              value={typeof comp === 'string' ? '' : comp.percentage}
+                              onChange={e => updateComponentItem(idx, 'percentage', e.target.value)}
+                              placeholder="0"
+                              className="w-full px-2 py-1.5 text-sm font-mono text-center rounded-lg border border-border bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+                            />
+                            <span className="absolute right-6 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">%</span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeComponent(idx)}
+                          className="mt-[32px] p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors cursor-pointer"
+                          title="Remove component"
+                          aria-label={`Remove component ${idx + 1}`}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-muted/20 border border-border/50">
+                    <span className="text-[11px] font-semibold text-muted-foreground">Total Weight</span>
+                    <span className={`text-xs font-bold ${(() => {
+                      const total = gradingSystem.classStandingComponents.reduce((sum, comp) => {
+                        const pct = typeof comp === 'string' ? 0 : parseFloat(comp.percentage) || 0;
+                        return sum + pct;
+                      }, 0);
+                      return Math.abs(total - 100) < 0.01 ? 'text-primary' : 'text-destructive';
+                    })()}`}>
+                      {gradingSystem.classStandingComponents.reduce((sum, comp) => {
+                        const pct = typeof comp === 'string' ? 0 : parseFloat(comp.percentage) || 0;
+                        return sum + pct;
+                      }, 0).toFixed(1)}%
+                    </span>
                   </div>
-                ))
+                  {(() => {
+                    const total = gradingSystem.classStandingComponents.reduce((sum, comp) => {
+                      const pct = typeof comp === 'string' ? 0 : parseFloat(comp.percentage) || 0;
+                      return sum + pct;
+                    }, 0);
+                    if (Math.abs(total - 100) > 0.01) {
+                      return (
+                        <div className="px-3 py-2 rounded-lg bg-destructive/10 border border-destructive/30 flex items-center gap-2">
+                          <AlertTriangle className="w-3 h-3 text-destructive flex-shrink-0" />
+                          <span className="text-xs text-destructive font-bold">
+                            Class Standing Components must total 100%
+                          </span>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+                </>
               ) : (
                 <div className="text-xs text-muted-foreground italic py-1">
                   No components defined. Click &ldquo;Add Component&rdquo; to add one.
@@ -938,7 +1091,7 @@ export const Step2InstitutionalOutcomes: React.FC<Step2InstitutionalOutcomesProp
                   if (e.target.checked) {
                     onChange({
                       ...data,
-                      projectRubrics: [{ category: '', levels: { 1: '', 2: '', 3: '', 4: '' } }]
+                      projectRubrics: [createEmptyRubricRow(newRowLevelCount)]
                     });
                   } else {
                     onChange({
@@ -954,94 +1107,168 @@ export const Step2InstitutionalOutcomes: React.FC<Step2InstitutionalOutcomesProp
           </div>
         </div>
 
-        {projectRubrics.length > 0 ? (
-          <div className="p-4 space-y-4">
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-muted-foreground">
-                Teams and group presentations are evaluated across criteria scored from Level 1 (Beginning) to Level 4 (Exemplary):
-              </p>
-              <button
-                type="button"
-                onClick={addRubricRow}
-                className="flex items-center space-x-1 text-xs text-primary hover:text-primary/80 font-medium transition-colors cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Add Rubric Criterion</span>
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              {projectRubrics.map((r, rIdx) => (
-                <div key={rIdx} className="p-3.5 rounded-xl border border-border bg-muted/20 space-y-3">
-                  <div className="flex items-center justify-between gap-2 border-b border-border/60 pb-2.5">
-                    <div className="flex-1 space-y-1">
-                      <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                        Criterion #{rIdx + 1} Name / Evaluation Category
-                      </label>
-                      <input
-                        type="text"
-                        value={r.category}
-                        onChange={e => updateRubricCategory(rIdx, e.target.value)}
-                        placeholder="e.g. Articulate requirements and design of the project"
-                        className="w-full px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
-                      />
+{projectRubrics.length > 0 ? (
+            <div className="p-4 space-y-4">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <label htmlFor="rubric-level-count" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Levels per criterion
+                  </label>
+                  <div className="flex items-center gap-1" onKeyDown={handleLevelCountKeyDown}>
+                    <input
+                      id="rubric-level-count"
+                      aria-label="Performance levels per criterion"
+                      type="number"
+                      min={1}
+                      max={10}
+                      value={newRowLevelCount}
+                      readOnly
+                      className="w-12 px-2 py-1 text-center text-xs rounded-lg border border-border bg-muted/50 text-muted-foreground cursor-default outline-none appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    />
+                    <div className="flex flex-col gap-0.5">
+                      <button
+                        type="button"
+                        aria-label="Increase performance levels"
+                        onClick={() => stepRubricLevelCount(1)}
+                        disabled={newRowLevelCount >= 10}
+                        className="flex h-3 w-6 items-center justify-center rounded border border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        <ChevronUp className="h-2.5 w-2.5" />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Decrease performance levels"
+                        onClick={() => stepRubricLevelCount(-1)}
+                        disabled={newRowLevelCount <= 1}
+                        className="flex h-3 w-6 items-center justify-center rounded border border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        <ChevronDown className="h-2.5 w-2.5" />
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => removeRubricRow(rIdx)}
-                      className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors cursor-pointer mt-4"
-                      title="Remove rubric criterion"
-                      aria-label={`Remove rubric criterion ${rIdx + 1}`}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2.5">
-                    {([1, 2, 3, 4] as const).map(lv => {
-                      const labels = {
-                        1: 'Level 1 (Beginning)',
-                        2: 'Level 2 (Developing)',
-                        3: 'Level 3 (Proficient)',
-                        4: 'Level 4 (Exemplary)'
-                      };
-                      return (
-                        <div key={lv} className="space-y-1">
-                          <label className="text-[10px] font-bold text-muted-foreground">
-                            {labels[lv]}
-                          </label>
-                          <textarea
-                            rows={3}
-                            value={r.levels[lv] || ''}
-                            onChange={e => updateRubricLevel(rIdx, lv, e.target.value)}
-                            placeholder={`Describe performance for ${labels[lv]}...`}
-                            className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-border bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all leading-relaxed"
-                          />
-                        </div>
-                      );
-                    })}
                   </div>
                 </div>
-              ))}
+                <button
+                  type="button"
+                  onClick={addRubricRow}
+                  className="flex items-center space-x-1 text-xs text-primary hover:text-primary/80 font-medium transition-colors cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add Rubric Criterion</span>
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                {projectRubrics.map((r, rIdx) => {
+                  // Read through the normalizer: a legacy `{1:{...}}` payload from a
+                  // saved draft reaches this render before the mount effect can rewrite it.
+                  const levels = normalizeRubricLevels(r.levels);
+                  return (
+                    <div key={rIdx} className="p-3.5 rounded-xl border border-border bg-muted/20 space-y-3">
+                      <div className="flex items-center justify-between gap-2 border-b border-border/60 pb-2.5">
+                        <div className="flex-1 space-y-1">
+                          <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1">
+                            <span>Criterion #{rIdx + 1} Name / Evaluation Category</span>
+                            <RequiredMark />
+                          </label>
+                          <input
+                            type="text"
+                            value={r.category}
+                            onChange={e => updateRubricCategory(rIdx, e.target.value)}
+                            placeholder="e.g. Articulate requirements and design of the project"
+                            className="w-full px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeRubricRow(rIdx)}
+                          className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors cursor-pointer mt-4"
+                          title="Remove rubric criterion"
+                          aria-label={`Remove rubric criterion ${rIdx + 1}`}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      <div className="space-y-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                          Performance Levels ({levels.length})
+                        </span>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                          {levels.map((level, lvIdx) => {
+                            const levelNames = ['Beginning', 'Developing', 'Proficient', 'Exemplary'];
+                            const placeholder = `e.g. Level ${lvIdx + 1} (${levelNames[lvIdx] || 'Custom'})`;
+                            return (
+                            <div key={lvIdx} className="space-y-1.5 p-2.5 rounded-lg border border-border bg-background">
+                              <div className="space-y-1">
+                                <label className="text-[10px] font-semibold text-muted-foreground inline-flex items-center gap-1">
+                                  <span>Level Title</span>
+                                  <RequiredMark />
+                                </label>
+                                <div className="flex items-center gap-1.5">
+                                  <input
+                                    type="text"
+                                    value={level.title}
+                                    onChange={e => updateRubricLevelTitle(rIdx, lvIdx, e.target.value)}
+                                    placeholder={placeholder}
+                                    className="flex-1 px-2 py-1 text-[11px] font-bold rounded border border-border bg-muted/40 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                                  />
+                                  <span className="text-[9px] text-muted-foreground whitespace-nowrap">#{lvIdx + 1}</span>
+                                </div>
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-[10px] font-semibold text-muted-foreground inline-flex items-center gap-1">
+                                  <span>Description</span>
+                                  <RequiredMark />
+                                </label>
+                                <textarea
+                                  rows={3}
+                                  value={level.description}
+                                  onChange={e => updateRubricLevelDescription(rIdx, lvIdx, e.target.value)}
+                                  placeholder="Describe performance for this level..."
+                                  className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-border bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all leading-relaxed"
+                                />
+                              </div>
+                            </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        ) : (
-          <div className="p-4 text-xs text-muted-foreground flex items-center justify-between">
-            <span>Project presentation and documentation rubrics are currently omitted from this syllabus.</span>
-            <button
-              type="button"
-              onClick={() => {
-                onChange({
-                  ...data,
-                  projectRubrics: [{ category: '', levels: { 1: '', 2: '', 3: '', 4: '' } }]
-                });
-              }}
-              className="text-primary hover:underline font-semibold cursor-pointer"
-            >
-              + Enable Project Rubric
-            </button>
-          </div>
-        )}
+          ) : (
+            <div className="p-4 text-xs text-muted-foreground flex items-center justify-between flex-wrap gap-2">
+              <span>Project presentation and documentation rubrics are currently omitted from this syllabus.</span>
+              <div className="flex items-center gap-2">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                  Levels
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={newRowLevelCount}
+                  onChange={e => setNewRowLevelCount(Math.max(1, Math.min(10, Number(e.target.value) || 4)))}
+                  className="w-16 px-2 py-1 text-xs rounded-lg border border-border bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    onChange({
+                      ...data,
+                      projectRubrics: [createEmptyRubricRow(newRowLevelCount)]
+                    });
+                  }}
+                  className="text-primary hover:underline font-semibold cursor-pointer"
+                >
+                  + Enable Project Rubric
+                </button>
+              </div>
+            </div>
+          )}
       </div>
 
       {/* 8. Classroom Policies */}
@@ -1050,6 +1277,7 @@ export const Step2InstitutionalOutcomes: React.FC<Step2InstitutionalOutcomesProp
           <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center space-x-1.5">
             <ShieldCheck className="w-4 h-4 text-primary" />
             <span>Classroom Policies</span>
+            <RequiredMark />
           </h3>
           <button
             type="button"
@@ -1098,32 +1326,7 @@ export const Step2InstitutionalOutcomes: React.FC<Step2InstitutionalOutcomesProp
             )}
           </div>
         </div>
-      </div>
-
-      {/* 9. Consultation Hours */}
-      <div className="p-4 rounded-xl border border-border bg-card shadow-xs space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center space-x-1.5">
-            <Clock className="w-4 h-4 text-primary" />
-            <span>Consultation Hours</span>
-          </h3>
-          <span className="text-[10px] text-muted-foreground italic">Student Advising Schedule</span>
-        </div>
-
-        <div className="space-y-1.5">
-          <label htmlFor="consultation-hours-policy" className="text-xs font-semibold text-foreground">
-            Designated Faculty Consultation Period / Office Hours
-          </label>
-          <input
-            id="consultation-hours-policy"
-            type="text"
-            value={primaryFaculty?.consultation || ''}
-            onChange={e => updateConsultationHours(e.target.value)}
-            placeholder="e.g. MTWTHF 02:00 PM – 03:00 PM (Dean's Office / Faculty Room)"
-            className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
-          />
-        </div>
-      </div>
+</div>
     </div>
   );
 };

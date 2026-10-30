@@ -1,6 +1,6 @@
 import React from 'react';
 import type { OfficialSyllabusData, CourseMapEntry } from '../../../../../shared/data/syllabusData';
-import { Compass, HelpCircle } from 'lucide-react';
+import { HelpCircle } from 'lucide-react';
 
 interface Step5CourseMapProps {
   data: OfficialSyllabusData;
@@ -68,17 +68,8 @@ export const Step5CourseMap: React.FC<Step5CourseMapProps> = ({ data, onChange }
 
   return (
     <div className="space-y-6">
-      <div className="border-b border-border/70 pb-4">
-        <h2 className="text-lg font-bold text-foreground flex items-center space-x-2">
-          <Compass className="w-5 h-5 text-primary" />
-          <span>Part IV: Curriculum Course Map Matrix</span>
-        </h2>
-        <p className="text-xs text-muted-foreground mt-1">
-          Map each Course Outcome (CO) against the 11 institutional Program Outcomes (PO). Click any cell to cycle through the alignments.
-        </p>
-
-        {/* Legend */}
-        <div className="flex flex-wrap items-center gap-3 mt-3 p-2.5 rounded-lg bg-muted/40 border border-border text-xs">
+      {/* Legend */}
+      <div className="flex flex-wrap items-center gap-3 p-2.5 rounded-lg bg-muted/40 border border-border text-xs">
           <span className="font-semibold text-foreground flex items-center space-x-1">
             <HelpCircle className="w-3.5 h-3.5 text-muted-foreground" />
             <span>Legend:</span>
@@ -105,7 +96,6 @@ export const Step5CourseMap: React.FC<Step5CourseMapProps> = ({ data, onChange }
             Click cell to cycle: (blank) → I → P → D → (blank)
           </span>
         </div>
-      </div>
 
       <div className="overflow-x-auto rounded-xl border border-border shadow-sm bg-card">
         <table className="w-full border-collapse text-left text-xs">

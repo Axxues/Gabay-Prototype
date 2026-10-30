@@ -394,4 +394,60 @@ describe('useSyllabusLifecycle', () => {
     const record = result.current.getRecord(cspc103.id);
     expect(record?.syllabusData?.courseInfo?.code).not.toBe('MUTATED');
   });
+
+  it('invokes onPersist callback with nextStatus when confirmAgreement and retractAgreement are called', () => {
+    const onPersistMock = vi.fn();
+    const { result } = renderHook(() => useSyllabusLifecycle(mockCourses as any, 'col-1'));
+    const cspc103 = result.current.groups.find(g => g.courseCode === 'CSPC 103')!;
+
+    // Release first
+    act(() => {
+      result.current.releaseCourses([cspc103.id], 'chair-1');
+    });
+
+    // First instructor confirms agreement
+    act(() => {
+      result.current.confirmAgreement(cspc103.id, 'u1', onPersistMock);
+    });
+    expect(onPersistMock).toHaveBeenCalledWith(['c1', 'c2'], 'submission_in_progress');
+
+    // Second instructor confirms agreement -> unanimous!
+    act(() => {
+      result.current.confirmAgreement(cspc103.id, 'u2', onPersistMock);
+    });
+    expect(onPersistMock).toHaveBeenCalledWith(['c1', 'c2'], 'ready_for_evaluation');
+
+    // Instructor retracts agreement
+    act(() => {
+      result.current.retractAgreement(cspc103.id, 'u2', onPersistMock);
+    });
+    expect(onPersistMock).toHaveBeenCalledWith(['c1', 'c2'], 'submission_in_progress');
+  });
+
+  it('syncs remote agreements from other co-instructors and calculates consensus status properly', () => {
+    const { result } = renderHook(() => useSyllabusLifecycle(mockCourses as any, 'col-1'));
+    const cspc103 = result.current.groups.find(g => g.courseCode === 'CSPC 103')!;
+
+    act(() => {
+      result.current.releaseCourses([cspc103.id], 'chair-1');
+    });
+
+    // Simulate receiving remote agreement from Dr. Santos (u1) via WebSocket/Likha draft
+    act(() => {
+      result.current.syncRemoteAgreements(cspc103.id, { u1: true });
+    });
+
+    let rec = result.current.getRecord(cspc103.id);
+    expect(rec?.submissionAgreements).toEqual({ u1: true, u2: false });
+    expect(rec?.status).toBe('submission_in_progress');
+
+    // Simulate receiving remote agreement from Prof. Reyes (u2) -> unanimous consensus!
+    act(() => {
+      result.current.syncRemoteAgreements(cspc103.id, { u2: true });
+    });
+
+    rec = result.current.getRecord(cspc103.id);
+    expect(rec?.submissionAgreements).toEqual({ u1: true, u2: true });
+    expect(rec?.status).toBe('ready_for_evaluation');
+  });
 });

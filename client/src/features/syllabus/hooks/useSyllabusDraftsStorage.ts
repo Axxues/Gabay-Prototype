@@ -31,18 +31,20 @@ export function createBaselineSyllabus(overrides?: Partial<OfficialSyllabusData>
         sections: [
           {
             section: 'BSCS 1A',
-            schedule: '',
-            room: ''
+            lectureSchedule: '',
+            lectureRoom: '',
+            labSchedule: '',
+            labRoom: ''
           }
         ],
-        consultation: ''
+        consultationSlots: [{ days: [], time: '' }]
       }
     ],
     institutionalStatements: {
       ...OFFICIAL_SYLLABUS_CSPC112.institutionalStatements
     },
-    programOutcomes: [],
-    courseOutcomes: [],
+    programOutcomes: [{ number: 1, description: '' }],
+    courseOutcomes: [{ number: 1, statement: '' }],
     courseRequirements: {
       major: [],
       other: []

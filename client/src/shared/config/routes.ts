@@ -16,7 +16,7 @@ export const TAB_PATHS: Record<string, string> = {
   'account-profile': '/accounts',
   register: '/register',
   activate: '/activate',
-  page1: '/page1',
+  'syllabus-development': '/syllabus-development',
   page2: '/page2',
   page3: '/page3',
 };
@@ -54,7 +54,7 @@ export function pathToTab(pathname: string): { tab: string; courseId?: string; s
   if (first === 'profile') return { tab: 'profile' };
   if (first === 'history') return { tab: 'history' };
   if (first === 'help') return { tab: 'help' };
-  if (first === 'page1' || first === 'syllabus-creator' || first === 'syllabus-development') return { tab: 'page1' };
+  if (first === 'syllabus-development') return { tab: 'syllabus-development' };
   if (first === 'page2') return { tab: 'page2' };
   if (first === 'page3') return { tab: 'page3' };
   if (first === 'governance') {

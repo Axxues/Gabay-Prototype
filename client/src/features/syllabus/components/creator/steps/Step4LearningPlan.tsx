@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import type { OfficialSyllabusData, LearningPlanWeek } from '../../../../../shared/data/syllabusData';
-import { CustomDropdown } from '../../../../../shared/components/common/CustomDropdown';
-import { Plus, Trash2, Globe, Clock, Layers } from 'lucide-react';
+import { CustomDropdown, RichTextEditor } from '../../../../../shared/components/common';
+import { Plus, Trash2, Globe, Clock, X } from 'lucide-react';
+import { RequiredMark } from '../RequiredMark';
+import { analyzeSectionSchedules } from '../../../utils/scheduleHours';
 
 interface Step4LearningPlanProps {
   data: OfficialSyllabusData;
@@ -27,7 +29,46 @@ const SDG_OPTIONS = [
 ];
 
 export const Step4LearningPlan: React.FC<Step4LearningPlanProps> = ({ data, onChange }) => {
-  const { learningPlan = [] } = data;
+  const { learningPlan = [], courseInfo } = data;
+
+  // ─── Auto-sync lecture/lab hours from Contact Hours ─────────────────────────
+  const scheduleAnalysis = analyzeSectionSchedules(data.facultyMembers, courseInfo.type);
+  const canonicalLectureHours = scheduleAnalysis.canonicalLectureHours || parseFloat(courseInfo.lectureHours || '0') || 0;
+  const canonicalLabHours = scheduleAnalysis.canonicalLabHours || parseFloat(courseInfo.labHours || '0') || 0;
+
+  // Function to calculate number of weeks from week range string
+  const getWeekCount = (weekStr: string): number => {
+    if (!weekStr) return 0;
+    const parts = weekStr.split('-').map(p => p.trim());
+    if (parts.length === 2) {
+      const start = parseInt(parts[0], 10);
+      const end = parseInt(parts[1], 10);
+      if (!isNaN(start) && !isNaN(end) && end >= start) {
+        return end - start + 1;
+      }
+    }
+    // Single number represents one week (e.g., "5" = week 5, not 5 weeks)
+    return 1;
+  };
+
+  // Auto-update learning plan hours when Contact Hours change
+  useEffect(() => {
+    if (learningPlan.length === 0) return;
+    
+    const updated = learningPlan.map(row => ({
+      ...row,
+      hoursLec: canonicalLectureHours,
+      hoursLab: canonicalLabHours
+    }));
+    
+    const hasChanges = learningPlan.some((row, i) => 
+      row.hoursLec !== updated[i].hoursLec || row.hoursLab !== updated[i].hoursLab
+    );
+    
+    if (hasChanges) {
+      onChange({ ...data, learningPlan: updated });
+    }
+  }, [canonicalLectureHours, canonicalLabHours, learningPlan, data, onChange]);
 
   const updatePlanRow = (index: number, field: keyof LearningPlanWeek, value: any) => {
     const updated = learningPlan.map((item, i) => {
@@ -39,38 +80,50 @@ export const Step4LearningPlan: React.FC<Step4LearningPlanProps> = ({ data, onCh
     onChange({ ...data, learningPlan: updated });
   };
 
-  const updateListField = (index: number, field: 'learningOutcomes' | 'topics' | 'methodology' | 'resources' | 'assessment', text: string) => {
-    const items = text.split('\n').filter(Boolean);
-    updatePlanRow(index, field, items);
+  const updateListField = (index: number, field: 'learningOutcomes' | 'topics' | 'methodology' | 'resources' | 'assessment', htmlContent: string) => {
+    updatePlanRow(index, field, [htmlContent]);
   };
 
-  const handleSdgChange = (index: number, goalKey: string) => {
-    if (!goalKey) {
-      updatePlanRow(index, 'sdgCoherence', undefined);
-      return;
-    }
+  const addSdg = (planIndex: number, goalKey: string) => {
     const matched = SDG_PRESETS.find(s => s.goal === goalKey);
-    if (matched) {
-      updatePlanRow(index, 'sdgCoherence', {
+    if (!matched) return;
+
+    const currentSdgs = learningPlan[planIndex].sdgCoherence || [];
+    if (currentSdgs.some(s => s.goal === goalKey)) return; // Prevent duplicates
+
+    updatePlanRow(planIndex, 'sdgCoherence', [
+      ...currentSdgs,
+      {
         goal: matched.goal,
         title: matched.title,
-        description: matched.description
-      });
-    }
+        description: matched.description,
+        explanation: ''
+      }
+    ]);
+  };
+
+  const removeSdg = (planIndex: number, goalKey: string) => {
+    const currentSdgs = learningPlan[planIndex].sdgCoherence || [];
+    const updated = currentSdgs.filter(s => s.goal !== goalKey);
+    updatePlanRow(planIndex, 'sdgCoherence', updated.length > 0 ? updated : undefined);
+  };
+
+  const updateSdgExplanation = (planIndex: number, goalKey: string, explanation: string) => {
+    const currentSdgs = learningPlan[planIndex].sdgCoherence || [];
+    const updated = currentSdgs.map(s =>
+      s.goal === goalKey ? { ...s, explanation } : s
+    );
+    updatePlanRow(planIndex, 'sdgCoherence', updated);
   };
 
   const addPlanRow = () => {
     const nextRow: LearningPlanWeek = {
-      week: `Week ${learningPlan.length + 1}`,
-      hoursLec: 3,
+      week: '',
+      hoursLec: 0,
       hoursLab: 0,
       learningOutcomes: [],
       topics: [],
-      sdgCoherence: {
-        goal: 'SDG 4',
-        title: 'Quality Education',
-        description: 'Providing inclusive and equitable quality education.'
-      },
+      sdgCoherence: undefined,
       methodology: [],
       resources: [],
       assessment: []
@@ -88,16 +141,7 @@ export const Step4LearningPlan: React.FC<Step4LearningPlanProps> = ({ data, onCh
 
   return (
     <div className="space-y-6">
-      <div className="border-b border-border/70 pb-4 flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-bold text-foreground flex items-center space-x-2">
-            <Layers className="w-5 h-5 text-primary" />
-            <span>Part III: Learning Plan & SDG Alignment</span>
-          </h2>
-          <p className="text-xs text-muted-foreground mt-1">
-            Map out learning outcomes, topics, UN Sustainable Development Goals (SDG), teaching methodologies, and assessment tasks.
-          </p>
-        </div>
+      <div className="flex justify-end">
         <button
           type="button"
           onClick={addPlanRow}
@@ -119,38 +163,82 @@ export const Step4LearningPlan: React.FC<Step4LearningPlanProps> = ({ data, onCh
                 <span className="font-bold text-sm text-foreground">
                   Block {idx + 1}
                 </span>
-                <input
-                  type="text"
-                  value={row.week ?? ''}
-                  onChange={e => updatePlanRow(idx, 'week', e.target.value)}
-                  placeholder="e.g. Week 1 - 4"
-                  className="px-2.5 py-1 text-xs font-semibold rounded-lg border border-border bg-background focus:ring-1 focus:ring-primary focus:border-primary outline-none"
-                />
+                <RequiredMark />
+                <div className="relative">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-medium pointer-events-none">
+                    Week:
+                  </span>
+                  <input
+                    type="text"
+                    value={row.week ?? ''}
+                    onChange={e => {
+                      const input = e.target.value;
+
+                      // Only allow numbers, spaces, and hyphens
+                      const validChars = /^[0-9\s-]*$/;
+                      if (!validChars.test(input)) return;
+
+                      // Split by hyphen to get individual numbers
+                      const parts = input.split('-').map(p => p.trim());
+                      const isValid = parts.every(part => {
+                        if (part === '') return true; // Allow empty during typing
+                        const num = parseInt(part, 10);
+                        return !isNaN(num) && num >= 1 && num <= 99;
+                      });
+
+                      if (isValid) {
+                        updatePlanRow(idx, 'week', input);
+                      }
+                    }}
+                    onKeyDown={e => {
+                      // Allow navigation and deletion keys
+                      const allowedKeys = ['Backspace', 'Delete', 'Tab', 'ArrowLeft', 'ArrowRight', 'Home', 'End'];
+                      if (allowedKeys.includes(e.key)) return;
+
+                      // Only allow numbers, space, and hyphen
+                      if (!/^[0-9-]$/.test(e.key)) {
+                        e.preventDefault();
+                      }
+                    }}
+                    placeholder="1 or 1 - 4"
+                    className="w-32 pl-14 pr-2.5 py-1 text-xs font-semibold rounded-lg border border-border bg-background focus:ring-1 focus:ring-primary focus:border-primary outline-none font-mono"
+                  />
+                </div>
                 <div className="flex items-center space-x-1 text-xs text-muted-foreground">
                   <Clock className="w-3.5 h-3.5" />
                   <span>Lec:</span>
                   <input
                     type="text"
                     inputMode="decimal"
-                    value={row.hoursLec === 0 ? '' : (row.hoursLec ?? '')}
+                    value={(() => {
+                      const weekCount = getWeekCount(row.week);
+                      const totalLec = canonicalLectureHours * weekCount;
+                      return totalLec === 0 ? '' : String(totalLec);
+                    })()}
                     placeholder="0"
+                    disabled
                     onChange={e => {
                       const raw = e.target.value.replace(/[^0-9.]/g, '');
                       updatePlanRow(idx, 'hoursLec', raw === '' ? 0 : Number(raw));
                     }}
-                    className="w-12 px-1.5 py-0.5 text-xs rounded border border-border bg-background text-center outline-none focus:ring-1 focus:ring-primary"
+                    className="w-12 px-1.5 py-0.5 text-xs rounded border border-border bg-muted/50 text-muted-foreground cursor-not-allowed text-center outline-none select-none"
                   />
                   <span>Lab:</span>
                   <input
                     type="text"
                     inputMode="decimal"
-                    value={row.hoursLab === 0 ? '' : (row.hoursLab ?? '')}
+                    value={(() => {
+                      const weekCount = getWeekCount(row.week);
+                      const totalLab = canonicalLabHours * weekCount;
+                      return totalLab === 0 ? '' : String(totalLab);
+                    })()}
                     placeholder="0"
+                    disabled
                     onChange={e => {
                       const raw = e.target.value.replace(/[^0-9.]/g, '');
                       updatePlanRow(idx, 'hoursLab', raw === '' ? 0 : Number(raw));
                     }}
-                    className="w-12 px-1.5 py-0.5 text-xs rounded border border-border bg-background text-center outline-none focus:ring-1 focus:ring-primary"
+                    className="w-12 px-1.5 py-0.5 text-xs rounded border border-border bg-muted/50 text-muted-foreground cursor-not-allowed text-center outline-none select-none"
                   />
                   <span>hrs</span>
                 </div>
@@ -170,34 +258,32 @@ export const Step4LearningPlan: React.FC<Step4LearningPlanProps> = ({ data, onCh
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1">
-                <label className="text-[11px] font-semibold text-muted-foreground">
-                  Learning Outcomes (one per line)
+                <label className="text-[11px] font-semibold text-muted-foreground inline-flex items-center gap-1">
+                  <span>Learning Outcomes</span>
+                  <RequiredMark />
                 </label>
-                <textarea
-                  rows={3}
-                  value={(row.learningOutcomes || []).join('\n')}
-                  onChange={e => updateListField(idx, 'learningOutcomes', e.target.value)}
-                  placeholder="Enter intended learning outcomes for this timeframe..."
-                  className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-border bg-background focus:ring-1 focus:ring-primary focus:border-primary outline-none leading-relaxed"
+                <RichTextEditor
+                  content={(row.learningOutcomes || [])[0] || ''}
+                  onChange={(html: string) => updateListField(idx, 'learningOutcomes', html)}
+                  className="min-h-[100px]"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-[11px] font-semibold text-muted-foreground">
-                  Topics / Subject Matter (one per line)
+                <label className="text-[11px] font-semibold text-muted-foreground inline-flex items-center gap-1">
+                  <span>Topics / Subject Matter</span>
+                  <RequiredMark />
                 </label>
-                <textarea
-                  rows={3}
-                  value={(row.topics || []).join('\n')}
-                  onChange={e => updateListField(idx, 'topics', e.target.value)}
-                  placeholder="Enter module topics and subtopics..."
-                  className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-border bg-background focus:ring-1 focus:ring-primary focus:border-primary outline-none leading-relaxed"
+                <RichTextEditor
+                  content={(row.topics || [])[0] || ''}
+                  onChange={(html: string) => updateListField(idx, 'topics', html)}
+                  className="min-h-[100px]"
                 />
               </div>
             </div>
 
-            {/* SDG Coherence Selection */}
-            <div className="p-3 rounded-lg bg-muted/40 border border-border/70 space-y-2">
+            {/* SDG Coherence - Multiple Selections with Explanations */}
+            <div className="p-4 rounded-xl bg-muted/30 border border-border/70 space-y-3">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-semibold text-foreground flex items-center space-x-1.5">
                   <Globe className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
@@ -205,35 +291,70 @@ export const Step4LearningPlan: React.FC<Step4LearningPlanProps> = ({ data, onCh
                 </label>
                 <div className="w-64">
                   <CustomDropdown
-                    value={row.sdgCoherence?.goal || ''}
-                    onChange={val => handleSdgChange(idx, val)}
-                    options={SDG_OPTIONS}
+                    value=""
+                    onChange={val => val && addSdg(idx, val)}
+                    options={SDG_OPTIONS.filter(opt => opt.value !== '' && !(row.sdgCoherence || []).some(s => s.goal === opt.value))}
                     variant="compact"
-                    placeholder="Select SDG"
+                    placeholder="+ Add SDG"
                   />
                 </div>
               </div>
 
-              {row.sdgCoherence && (
-                <div className="text-xs text-muted-foreground pl-5 border-l-2 border-emerald-500">
-                  <span className="font-semibold text-foreground">{row.sdgCoherence.goal} – {row.sdgCoherence.title}: </span>
-                  <span>{row.sdgCoherence.description}</span>
+              {(row.sdgCoherence || []).length > 0 ? (
+                <div className="space-y-1.5">
+                  {row.sdgCoherence.map((sdg, sdgIdx) => (
+                    <div key={sdgIdx} className="p-2 rounded-md bg-background border border-border/60 space-y-1.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1">
+                          <div className="text-xs font-bold text-foreground mb-0.5">
+                            {sdg.goal}: {sdg.title}
+                          </div>
+                          <div className="text-[11px] text-muted-foreground mb-1">
+                            {sdg.description}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeSdg(idx, sdg.goal)}
+                          className="p-0.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded transition-colors cursor-pointer"
+                          title="Remove SDG"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                      <div className="space-y-0.5">
+                        <label className="text-[10px] font-semibold text-muted-foreground">
+                          Alignment:
+                        </label>
+                        <textarea
+                          rows={1}
+                          value={sdg.explanation || ''}
+                          onChange={e => updateSdgExplanation(idx, sdg.goal, e.target.value)}
+                          placeholder="How this aligns..."
+                          className="w-full px-1.5 py-1 text-xs rounded-sm border border-border bg-background focus:ring-1 focus:ring-primary focus:border-primary outline-none resize-y"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-xs text-muted-foreground italic py-2">
+                  No SDGs assigned. Click "+ Add SDG" to assign relevant Sustainable Development Goals.
                 </div>
               )}
             </div>
 
             {/* Methodology, Resources & Assessment */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-1">
-                <label className="text-[11px] font-semibold text-muted-foreground">
-                  Methodology (Teaching Strategies)
+                <label className="text-[11px] font-semibold text-muted-foreground inline-flex items-center gap-1">
+                  <span>Methodology (Teaching Strategies)</span>
+                  <RequiredMark />
                 </label>
-                <textarea
-                  rows={2}
-                  value={(row.methodology || []).join('\n')}
-                  onChange={e => updateListField(idx, 'methodology', e.target.value)}
-                  placeholder="Lecture-Discussion&#10;Demonstration&#10;Collaborative Learning"
-                  className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-border bg-background focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+                <RichTextEditor
+                  content={(row.methodology || [])[0] || ''}
+                  onChange={(html: string) => updateListField(idx, 'methodology', html)}
+                  className="min-h-[80px]"
                 />
               </div>
 
@@ -241,25 +362,22 @@ export const Step4LearningPlan: React.FC<Step4LearningPlanProps> = ({ data, onCh
                 <label className="text-[11px] font-semibold text-muted-foreground">
                   Learning Resources
                 </label>
-                <textarea
-                  rows={2}
-                  value={(row.resources || []).join('\n')}
-                  onChange={e => updateListField(idx, 'resources', e.target.value)}
-                  placeholder="PPT Presentation&#10;Course LMS&#10;Textbook"
-                  className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-border bg-background focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+                <RichTextEditor
+                  content={(row.resources || [])[0] || ''}
+                  onChange={(html: string) => updateListField(idx, 'resources', html)}
+                  className="min-h-[80px]"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-[11px] font-semibold text-muted-foreground">
-                  Assessment Tasks
+                <label className="text-[11px] font-semibold text-muted-foreground inline-flex items-center gap-1">
+                  <span>Assessment</span>
+                  <RequiredMark />
                 </label>
-                <textarea
-                  rows={2}
-                  value={(row.assessment || []).join('\n')}
-                  onChange={e => updateListField(idx, 'assessment', e.target.value)}
-                  placeholder="Short Quizzes&#10;Lab Exercises&#10;Midterm Exam"
-                  className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-border bg-background focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+                <RichTextEditor
+                  content={(row.assessment || [])[0] || ''}
+                  onChange={(html: string) => updateListField(idx, 'assessment', html)}
+                  className="min-h-[80px]"
                 />
               </div>
             </div>

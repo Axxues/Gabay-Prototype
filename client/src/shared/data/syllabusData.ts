@@ -1,4 +1,4 @@
-export interface GraduateAttribute {
+﻿export interface GraduateAttribute {
   number: number;
   title: string;
   description: string;
@@ -20,13 +20,44 @@ export interface CourseOutcome {
   statement: string;
 }
 
+export interface RubricLevel {
+  title: string;
+  description: string;
+}
+
 export interface RubricRow {
   category: string;
-  levels: {
-    1: string;
-    2: string;
-    3: string;
-    4: string;
+  levels: RubricLevel[];
+}
+
+/** Default titles for the four standard rubric levels. */
+export const DEFAULT_RUBRIC_LEVEL_TITLES = ['Level 1 (Beginning)', 'Level 2 (Developing)', 'Level 3 (Proficient)', 'Level 4 (Exemplary)'];
+
+/** Convert legacy `{1: string, 2: string, 3: string, 4: string}` levels into the new RubricLevel[] shape. */
+export function normalizeRubricLevels(levels: any): RubricLevel[] {
+  if (Array.isArray(levels)) {
+    return levels.map((l: any, idx: number) => {
+      if (l && typeof l === 'object' && !Array.isArray(l)) {
+        if (typeof l.title === 'string' && typeof l.description === 'string') return l as RubricLevel;
+        return { title: '', description: typeof l.description === 'string' ? l.description : (typeof l === 'string' ? l : '') };
+      }
+      return { title: '', description: typeof l === 'string' ? l : '' };
+    });
+  }
+  if (levels && typeof levels === 'object') {
+    const entries = Object.entries(levels).sort((a, b) => Number(a[0]) - Number(b[0]));
+    return entries.map(([key, val]) => {
+      return { title: '', description: typeof val === 'string' ? val : '' };
+    });
+  }
+  return DEFAULT_RUBRIC_LEVEL_TITLES.map(() => ({ title: '', description: '' }));
+}
+
+/** Build a fresh empty rubric row with the given number of levels. */
+export function createEmptyRubricRow(levelCount: number): RubricRow {
+  return {
+    category: '',
+    levels: Array.from({ length: levelCount }, () => ({ title: '', description: '' }))
   };
 }
 
@@ -36,12 +67,12 @@ export interface LearningPlanWeek {
   hoursLec: number;
   learningOutcomes: string[];
   topics: string[];
-  sdgCoherence?: {
+  sdgCoherence?: Array<{
     goal: string;
     title: string;
     description: string;
-    target?: string;
-  };
+    explanation: string;
+  }>;
   methodology: string[];
   resources: string[];
   assessment: string[];
@@ -53,14 +84,24 @@ export interface CourseMapEntry {
   poAlignments: Record<number, 'I' | 'P' | 'D' | ''>;
 }
 
+export interface ConsultationSlot {
+  days: string[];
+  time: string;
+}
+
 export interface FacultySchedule {
   name: string;
   sections: Array<{
     section: string;
-    schedule: string;
-    room: string;
+    schedule?: string;
+    room?: string;
+    lectureSchedule: string;
+    lectureRoom: string;
+    labSchedule: string;
+    labRoom: string;
   }>;
-  consultation: string;
+  consultation?: string;
+  consultationSlots: ConsultationSlot[];
 }
 
 export type ReferenceType = 'book' | 'website' | 'journal';
@@ -189,9 +230,15 @@ export interface OfficialSyllabusData {
     other: string[];
   };
   gradingSystem: {
-    termFormula: string;
-    finalFormula: string;
-    classStandingComponents: string[];
+    termFormula: {
+      classStandingPercent: string;
+      examPercent: string;
+    };
+    finalFormula: {
+      midtermPercent: string;
+      finalPercent: string;
+    };
+    classStandingComponents: Array<{ title: string; percentage: string }>;
     passingGrade: string;
   };
   projectRubrics: RubricRow[];
@@ -290,21 +337,24 @@ export const OFFICIAL_SYLLABUS_CSPC112: OfficialSyllabusData = {
     {
       name: 'Ezekiel O. Bacungan',
       sections: [
-        { section: '4A', schedule: '08:00-09:00 MF / 11:00-01:30 W', room: 'LR114 / CLR205' },
-        { section: '4B', schedule: '09:00-10:00 MF / 08:00-09:30 TTh', room: 'LR114 / CLR204' },
-        { section: '4C', schedule: '01:00-02:00 MF / 12:30-02:00 TTh', room: 'LR115 / CLR205' }
+        { section: '4A', lectureSchedule: '08:00-09:00 MF', lectureRoom: 'LR114', labSchedule: '11:00-01:30 W', labRoom: 'CLR205' },
+        { section: '4B', lectureSchedule: '09:00-10:00 MF', lectureRoom: 'LR114', labSchedule: '08:00-09:30 TTh', labRoom: 'CLR204' },
+        { section: '4C', lectureSchedule: '01:00-02:00 MF', lectureRoom: 'LR115', labSchedule: '12:30-02:00 TTh', labRoom: 'CLR205' }
       ],
-      consultation: 'MTWTHF 02:00PM - 03:00PM'
+      consultationSlots: [{ days: ['M', 'T', 'W', 'Th', 'F'], time: '02:00PM–03:00PM' }]
     },
     {
       name: 'Raymund E. Dilan',
       sections: [
-        { section: '4D', schedule: '08:00-09:30 MF / 02:00-03:00 MF', room: '205 / 113' },
-        { section: '4E', schedule: '08:00-10:00 W / 08:00-09:00 TTh', room: '301 / 205' },
-        { section: '4F', schedule: '09:30-11:00 MF / 08:00-10:00 W', room: '205 / 301' },
-        { section: '4G', schedule: '10:00-12:00 W / 11:00-12:30 TTh', room: '101 / ilab' }
+        { section: '4D', lectureSchedule: '08:00-09:30 MF', lectureRoom: '205', labSchedule: '02:00-03:00 MF', labRoom: '113' },
+        { section: '4E', lectureSchedule: '08:00-10:00 W', lectureRoom: '301', labSchedule: '08:00-09:00 TTh', labRoom: '205' },
+        { section: '4F', lectureSchedule: '09:30-11:00 MF', lectureRoom: '205', labSchedule: '08:00-10:00 W', labRoom: '301' },
+        { section: '4G', lectureSchedule: '10:00-12:00 W', lectureRoom: '101', labSchedule: '11:00-12:30 TTh', labRoom: 'ilab' }
       ],
-      consultation: 'MWF 1:00-2:00, TTh 9:30-10:30'
+      consultationSlots: [
+        { days: ['M', 'W', 'F'], time: '01:00PM–02:00PM' },
+        { days: ['T', 'Th'], time: '09:30AM–10:30AM' }
+      ]
     }
   ],
   institutionalStatements: {
@@ -415,107 +465,113 @@ export const OFFICIAL_SYLLABUS_CSPC112: OfficialSyllabusData = {
     ]
   },
   gradingSystem: {
-    termFormula: 'Midterm Grade / Final Term Grade = 60% Class Standing + 40% ME / FE',
-    finalFormula: 'Final Grade = 40% Midterm Grade + 60% Final Term Grade',
+    termFormula: {
+      classStandingPercent: '60',
+      examPercent: '40'
+    },
+    finalFormula: {
+      midtermPercent: '40',
+      finalPercent: '60'
+    },
     classStandingComponents: [
-      'Quizzes',
-      'Activities',
-      'Oral Presentations',
-      'Individual & Group Laboratory Activities',
-      'Software Engineering Group Project'
+      { title: 'Quizzes', percentage: '20' },
+      { title: 'Activities', percentage: '20' },
+      { title: 'Oral Presentations', percentage: '20' },
+      { title: 'Individual & Group Laboratory Activities', percentage: '20' },
+      { title: 'Software Engineering Group Project', percentage: '20' }
     ],
     passingGrade: '75% (Passing standard based on institutional DMMMSU handbook)'
   },
   projectRubrics: [
     {
       category: 'Articulate requirements and design of the project',
-      levels: {
-        1: 'Lacks understanding of the requirements of the client.',
-        2: 'Demonstrated understanding of requirement and design issues.',
-        3: 'Articulated requirement and design of the project. Described most constraints and variables to be maximized or minimized.',
-        4: 'Clearly articulated requirement, design and underlying issues. Clearly articulated constraints and variables to be maximized or minimized. Correctly answered clarifying questions, demonstrating mastery of issues.'
-      }
+      levels: [
+        { title: '', description: '' },
+        { title: '', description: '' },
+        { title: '', description: '' },
+        { title: '', description: '' }
+      ]
     },
     {
       category: 'Plan the solution and implementation of the project',
-      levels: {
-        1: 'Some design models are not appropriate.',
-        2: 'Identified some critical tasks. Created plan with some foreseeable problems.',
-        3: 'Identified critical tasks. Delegated tasks to team members. Created plan for task and project completion that is workable with some modifications.',
-        4: 'Identified critical tasks. Delegated tasks to team members. Accurately estimated time and resources for critical tasks. Created credible plan for task and project completion.'
-      }
+      levels: [
+        { title: '', description: '' },
+        { title: '', description: '' },
+        { title: '', description: '' },
+        { title: '', description: '' }
+      ]
     },
     {
       category: 'Choose appropriate tools and methods for each task',
-      levels: {
-        1: 'Poor selection of tools.',
-        2: 'Selected appropriate tools and methods for most tasks. Identified strengths and weaknesses of most chosen tools.',
-        3: 'Selected appropriate tools and methods for each task. Identified strengths and weaknesses of various tools and methods. Cited reasons of choices.',
-        4: 'Selected appropriate tools and methods for each task. Articulated strengths and weakness of various tools and methods. Discussed and gave credible justification for choices.'
-      }
+      levels: [
+        { title: '', description: '' },
+        { title: '', description: '' },
+        { title: '', description: '' },
+        { title: '', description: '' }
+      ]
     },
     {
       category: 'Give clear and coherent oral presentation',
-      levels: {
-        1: 'Presentation was not organized and lacks clarity.',
-        2: 'Provided minimal presentation of design problem and results.',
-        3: 'Presentation was reasonable and organized. Presentation presented mostly in a professional manner.',
-        4: 'Presentation was coherent and well organized. Presentation presented in a professional manner.'
-      }
+      levels: [
+        { title: '', description: '' },
+        { title: '', description: '' },
+        { title: '', description: '' },
+        { title: '', description: '' }
+      ]
     },
     {
       category: 'Give clear and coherent written final report',
-      levels: {
-        1: 'Some requirements are missing.',
-        2: 'Provided acceptable final report detailing all project phases and results.',
-        3: 'Provided acceptable final report detailing all project phases and results. Report was reasonable and organized. Report was provided mostly in a professional manner.',
-        4: 'Provided acceptable final report detailing all project phases and results. Report was coherent and well organized. Report presented design in a clear and professional manner.'
-      }
+      levels: [
+        { title: '', description: '' },
+        { title: '', description: '' },
+        { title: '', description: '' },
+        { title: '', description: '' }
+      ]
     },
     {
       category: 'Function well as a team',
-      levels: {
-        1: 'Team work is not evident.',
-        2: 'Contributions of team members variable. Lack of leadership on the project. Many individual contributions with some overlap.',
-        3: 'Most team members contributed. Little or no duplicated effort. Conflicts usually amicably resolved. Team members demonstrated some understanding of the overall project.',
-        4: 'Each team member contributed to the success of the design. Little or no duplicated effort. Few conflicts amicably resolved. Team members able to respond to questions.'
-      }
+      levels: [
+        { title: '', description: '' },
+        { title: '', description: '' },
+        { title: '', description: '' },
+        { title: '', description: '' }
+      ]
     },
     {
       category: 'Create well documented set of life cycle products specific to the project',
-      levels: {
-        1: 'Shows minimal understanding of the product life cycle in relation to their project.',
-        2: 'Project document/solution was acceptable but limited due to the background of the team.',
-        3: 'Project document/solution met objectives set for the project. Project document/solution considerations showed team generally understood the problem.',
-        4: 'Project document/solution exceeded the initial objectives. Innovative approaches were demonstrated in the design. Solution indicated a thorough understanding of project.'
-      }
+      levels: [
+        { title: '', description: '' },
+        { title: '', description: '' },
+        { title: '', description: '' },
+        { title: '', description: '' }
+      ]
     },
     {
       category: 'Consistency between design models and modules',
-      levels: {
-        1: 'Design models and program modules show inconsistencies.',
-        2: 'Design models and program modules show low level of consistency.',
-        3: 'Design models and program modules show required level of consistency.',
-        4: 'Design models and program modules show optimal level of consistency.'
-      }
+      levels: [
+        { title: '', description: '' },
+        { title: '', description: '' },
+        { title: '', description: '' },
+        { title: '', description: '' }
+      ]
     },
     {
       category: 'Correctness of design models',
-      levels: {
-        1: 'Less than 50% of the models are consistent, accurate and complete.',
-        2: '50% of the models are consistent, accurate and complete.',
-        3: '75% of the models are consistent, accurate and complete.',
-        4: '95% of the models are consistent, accurate and complete.'
-      }
+      levels: [
+        { title: '', description: '' },
+        { title: '', description: '' },
+        { title: '', description: '' },
+        { title: '', description: '' }
+      ]
     },
     {
       category: 'Preparedness of presentation',
-      levels: {
-        1: 'Most members are not in proper uniform, assigning of task is not evident and reading of presentation.',
-        2: '50% is not in their proper uniform, 50% of the members show some kind of preparedness to the assigned task.',
-        3: '75% is not in their proper uniform, 75% of the members show some kind of preparedness to the assigned task.',
-        4: 'Every member is in proper uniform, well performed assigned task and all members participated and spoken.'
-      }
+      levels: [
+        { title: '', description: '' },
+        { title: '', description: '' },
+        { title: '', description: '' },
+        { title: '', description: '' }
+      ]
     }
   ],
   classroomPolicies: [
@@ -604,12 +660,14 @@ export const OFFICIAL_SYLLABUS_CSPC112: OfficialSyllabusData = {
         'Presentation of the course syllabus',
         'Review of Software Engineering 1'
       ],
-      sdgCoherence: {
-        goal: 'SDG 4',
-        title: 'Quality Education',
-        description: 'Aligning academic advancement with institutional principles. Reviewing foundational knowledge strengthens learning outcomes.',
-        target: 'Target 4.4 & 4.4.1 (Skills for employment, ICT skills)'
-      },
+      sdgCoherence: [
+        {
+          goal: 'SDG 4',
+          title: 'Quality Education',
+          description: 'Aligning academic advancement with institutional principles. Reviewing foundational knowledge strengthens learning outcomes.',
+          explanation: 'Course orientation and syllabus review establishes clear learning expectations, supporting SDG 4.4 on skills for employment.'
+        }
+      ],
       methodology: ['Discussion', 'Video Lecture', 'Group Discussion'],
       resources: ['Presentation slides', 'Laptop', 'Google Classroom', 'Computer laboratory', 'Figma'],
       assessment: [
@@ -625,12 +683,14 @@ export const OFFICIAL_SYLLABUS_CSPC112: OfficialSyllabusData = {
         'Enhance existing software solutions by applying appropriate design patterns to improve functionality and maintainability.'
       ],
       topics: ['Design patterns (Creational, Structural, Behavioral patterns)'],
-      sdgCoherence: {
-        goal: 'SDG 9',
-        title: 'Industry, Innovation, and Infrastructure',
-        description: 'Design patterns promote efficient and scalable software systems, supporting technological innovation and sustainable infrastructure.',
-        target: 'Target 9.4 (Upgrade infrastructure, resource-use efficiency)'
-      },
+      sdgCoherence: [
+        {
+          goal: 'SDG 9',
+          title: 'Industry, Innovation, and Infrastructure',
+          description: 'Design patterns promote efficient and scalable software systems, supporting technological innovation and sustainable infrastructure.',
+          explanation: 'Learning design patterns enables students to build robust, scalable systems that support technological innovation.'
+        }
+      ],
       methodology: ['Project-based Learning', 'Discussion', 'Brainstorming', 'Collaborative Learning', 'Case based learning'],
       resources: ['Presentation', 'Laptop', 'Google Classroom', 'Selected programming language environment'],
       assessment: ['Individual activity on design patterns', 'Project proposal presentation']
@@ -643,12 +703,14 @@ export const OFFICIAL_SYLLABUS_CSPC112: OfficialSyllabusData = {
         'Enhance existing software solutions by applying appropriate architectural patterns to improve system resilience.'
       ],
       topics: ['Architectural patterns (Layered, Client-Server, Microservices, Event-Driven)'],
-      sdgCoherence: {
-        goal: 'SDG 9',
-        title: 'Industry, Innovation, and Infrastructure',
-        description: 'Architectural patterns build resilient, scalable systems, crucial for sustainable industry growth.',
-        target: 'Target 9.1 (Develop quality, reliable, sustainable and resilient infrastructure)'
-      },
+      sdgCoherence: [
+        {
+          goal: 'SDG 9',
+          title: 'Industry, Innovation, and Infrastructure',
+          description: 'Architectural patterns build resilient, scalable systems, crucial for sustainable industry growth.',
+          explanation: 'Teaching architectural patterns helps students design systems that are resilient and scalable, supporting sustainable infrastructure development.'
+        }
+      ],
       methodology: ['Discussion', 'Project-based Learning', 'Brainstorming', 'Collaborative Learning', 'Problem based learning'],
       resources: ['Presentation', 'Laptop', 'Google Classroom', 'Programming language selected based on project'],
       assessment: [
@@ -664,11 +726,14 @@ export const OFFICIAL_SYLLABUS_CSPC112: OfficialSyllabusData = {
         'Apply modern software analysis and design tools in crafting engineering models.'
       ],
       topics: ['Software analysis and design tools (CASE tools, modeling suites, API designers)'],
-      sdgCoherence: {
-        goal: 'SDG 4',
-        title: 'Quality Education',
-        description: 'Introducing students to modern tools equips them with relevant skills, ensuring high-quality education.'
-      },
+      sdgCoherence: [
+        {
+          goal: 'SDG 4',
+          title: 'Quality Education',
+          description: 'Introducing students to modern tools equips them with relevant skills, ensuring high-quality education.',
+          explanation: 'Learning modern analysis and design tools prepares students with industry-relevant skills for quality education outcomes.'
+        }
+      ],
       methodology: ['Discussion', 'Project-based Learning', 'Brainstorming', 'Collaborative Learning', 'Group discussion'],
       resources: ['Presentation', 'Laptop', 'Google Classroom', 'Software design and modeling toolkits'],
       assessment: [
@@ -690,12 +755,20 @@ export const OFFICIAL_SYLLABUS_CSPC112: OfficialSyllabusData = {
         'Defensive and secure coding practices',
         'Exception handling mechanisms'
       ],
-      sdgCoherence: {
-        goal: 'SDG 4 & SDG 9',
-        title: 'Quality Education & Resilient Infrastructure',
-        description: 'Promotes the development of secure, reliable systems that enhance resilience in industries.',
-        target: 'Target 4.4.1 & Target 9.1'
-      },
+      sdgCoherence: [
+        {
+          goal: 'SDG 4',
+          title: 'Quality Education',
+          description: 'Developing secure, reliable coding practices enhances student competence and skill acquisition.',
+          explanation: 'Secure coding practices provide students with valuable skills for quality education and employment readiness.'
+        },
+        {
+          goal: 'SDG 9',
+          title: 'Industry, Innovation, and Infrastructure',
+          description: 'Secure and reliable systems enhance resilience in industries.',
+          explanation: 'Building secure software contributes to resilient digital infrastructure for sustainable industrial development.'
+        }
+      ],
       methodology: ['Discussion', 'Project-based Learning', 'Code reading and critique sessions', 'Peer review activities'],
       resources: ['Presentation', 'Laptop', 'Google Classroom', 'IDE & Compiler toolchain'],
       assessment: [
@@ -721,12 +794,14 @@ export const OFFICIAL_SYLLABUS_CSPC112: OfficialSyllabusData = {
         'Differentiate between centralized and distributed software configuration management systems and their appropriate applications.'
       ],
       topics: ['Managing Changes in Software Engineering: Software Configuration Management'],
-      sdgCoherence: {
-        goal: 'SDG 9',
-        title: 'Industry, Innovation, and Infrastructure',
-        description: 'Efficient change management ensures software adaptability, scalability, and innovation.',
-        target: 'Target 9.1'
-      },
+      sdgCoherence: [
+        {
+          goal: 'SDG 9',
+          title: 'Industry, Innovation, and Infrastructure',
+          description: 'Efficient change management ensures software adaptability, scalability, and innovation.',
+          explanation: 'Learning software configuration management enables students to build adaptable, scalable systems supporting industrial innovation.'
+        }
+      ],
       methodology: ['Discussion', 'Comparative analysis discussions', 'Video Lecture'],
       resources: ['Presentation', 'Laptop', 'Google Classroom'],
       assessment: [
@@ -742,12 +817,14 @@ export const OFFICIAL_SYLLABUS_CSPC112: OfficialSyllabusData = {
         'Demonstrate the use of version control systems in managing software releases and tracking development changes.'
       ],
       topics: ['Version Control (Git workflows, branch strategies, pull requests, resolving merge conflicts)'],
-      sdgCoherence: {
-        goal: 'SDG 9',
-        title: 'Industry, Innovation, and Infrastructure',
-        description: 'Supporting resilient and sustainable developer infrastructure.',
-        target: 'Target 9.1'
-      },
+      sdgCoherence: [
+        {
+          goal: 'SDG 9',
+          title: 'Industry, Innovation, and Infrastructure',
+          description: 'Supporting resilient and sustainable developer infrastructure.',
+          explanation: 'Version control systems enable collaborative development, supporting resilient and sustainable software infrastructure.'
+        }
+      ],
       methodology: ['Discussion', 'Video Lectures', 'Hands-on terminal workshop'],
       resources: ['Presentation', 'Laptop', 'Git / GitHub Classroom'],
       assessment: [
@@ -825,12 +902,20 @@ export const OFFICIAL_SYLLABUS_CSPC112: OfficialSyllabusData = {
         'Effectively present and communicate the features, functionality, and development process of a completed software project or study.'
       ],
       topics: ['Group Project Presentation and Formal Defense'],
-      sdgCoherence: {
-        goal: 'SDG 4 & SDG 17',
-        title: 'Quality Education & Partnerships',
-        description: 'Hands-on teamwork and public oral defense; partnership and collaborative delivery.',
-        target: 'Target 4.4.1 & Target 17.17'
-      },
+      sdgCoherence: [
+        {
+          goal: 'SDG 4',
+          title: 'Quality Education',
+          description: 'Hands-on teamwork and public oral defense develops practical skills.',
+          explanation: 'Project presentations and oral defense build communication and teamwork skills essential for quality education.'
+        },
+        {
+          goal: 'SDG 17',
+          title: 'Partnerships for the Goals',
+          description: 'Partnership and collaborative delivery in team projects.',
+          explanation: 'Group project work fosters partnerships and collaborative delivery aligned with SDG 17.'
+        }
+      ],
       methodology: ['Project presentations', 'Poster or pitch sessions', 'Oral defense and Q&A with peers and instructor'],
       resources: ['Project repository', 'Live software demo', 'Slides deck'],
       assessment: ['Group Project Presentation', 'Group Project Documentation']

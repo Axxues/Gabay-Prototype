@@ -59,6 +59,7 @@ export interface SyllabusGroup {
   courseIds: string[];
   instructorIds: string[];
   instructorNames: string[];
+  instructorSections?: Record<string, string[]>; // instructorId -> sections
   sections: string[];
   status: SyllabusLifecycleStatus;
   submissionAgreements: Record<string, boolean>;
