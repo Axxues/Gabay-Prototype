@@ -63,6 +63,96 @@ export interface FacultySchedule {
   consultation: string;
 }
 
+export type ReferenceType = 'book' | 'website' | 'journal';
+
+export interface ReferenceItem {
+  type?: ReferenceType;
+  citation: string;
+  year: string;
+  doiOrPublisher?: string;
+  authors?: string;
+  title?: string;
+  edition?: string;
+  publisher?: string;
+  journal?: string;
+  volume?: string;
+  issue?: string;
+  pages?: string;
+  websiteName?: string;
+  url?: string;
+}
+
+export function formatApa7Reference(ref: Partial<ReferenceItem>): string {
+  const type = ref.type || 'book';
+  const rawYear = (ref.year || '').trim();
+  const yearStr = rawYear ? (rawYear.startsWith('(') ? rawYear : `(${rawYear}).`) : '(n.d.).';
+  const rawAuthors = (ref.authors || '').trim();
+  const authorsStr = rawAuthors ? (rawAuthors.endsWith('.') ? rawAuthors : `${rawAuthors}.`) : '';
+
+  if (type === 'book') {
+    const titleStr = (ref.title || '').trim();
+    const editionStr = (ref.edition || '').trim() ? ` (${ref.edition?.trim()})` : '';
+    const publisherStr = ((ref.publisher || ref.doiOrPublisher) || '').trim();
+    const urlStr = (ref.url || '').trim();
+
+    const parts = [
+      authorsStr,
+      yearStr,
+      titleStr ? `${titleStr}${editionStr}.` : '',
+      publisherStr ? (publisherStr.endsWith('.') ? publisherStr : `${publisherStr}.`) : '',
+      urlStr
+    ].filter(Boolean);
+
+    return parts.join(' ').replace(/\s+/g, ' ').trim();
+  }
+
+  if (type === 'journal') {
+    const titleStr = (ref.title || '').trim();
+    const titleWithPeriod = titleStr ? (titleStr.endsWith('.') ? titleStr : `${titleStr}.`) : '';
+    const journalStr = (ref.journal || '').trim();
+    let volIssuePages = '';
+    if ((ref.volume || '').trim()) {
+      volIssuePages += ref.volume!.trim();
+      if ((ref.issue || '').trim()) {
+        volIssuePages += `(${ref.issue!.trim()})`;
+      }
+    }
+    if ((ref.pages || '').trim()) {
+      volIssuePages += volIssuePages ? `, ${ref.pages!.trim()}` : ref.pages!.trim();
+    }
+    const pubDoi = (ref.url || ref.doiOrPublisher || '').trim();
+
+    const parts = [
+      authorsStr,
+      yearStr,
+      titleWithPeriod,
+      journalStr ? `${journalStr}${volIssuePages ? `, ${volIssuePages}.` : '.'}` : (volIssuePages ? `${volIssuePages}.` : ''),
+      pubDoi
+    ].filter(Boolean);
+
+    return parts.join(' ').replace(/\s+/g, ' ').trim();
+  }
+
+  if (type === 'website') {
+    const titleStr = (ref.title || '').trim();
+    const titleWithPeriod = titleStr ? (titleStr.endsWith('.') ? titleStr : `${titleStr}.`) : '';
+    const siteStr = (ref.websiteName || ref.doiOrPublisher || '').trim();
+    const urlStr = (ref.url || '').trim();
+
+    const parts = [
+      authorsStr,
+      yearStr,
+      titleWithPeriod,
+      siteStr ? (siteStr.endsWith('.') ? siteStr : `${siteStr}.`) : '',
+      urlStr
+    ].filter(Boolean);
+
+    return parts.join(' ').replace(/\s+/g, ' ').trim();
+  }
+
+  return ref.citation || '';
+}
+
 export interface OfficialSyllabusData {
   courseId?: string; // Strictly bounded to this specific course
   institution: {
@@ -113,11 +203,7 @@ export interface OfficialSyllabusData {
   }>;
   learningPlan: LearningPlanWeek[];
   courseMap: CourseMapEntry[];
-  references: Array<{
-    citation: string;
-    year: string;
-    doiOrPublisher?: string;
-  }>;
+  references: ReferenceItem[];
   signatories: {
     preparedBy: Array<{ name: string; title: string }>;
     recommendingApproval: { name: string; title: string };
@@ -131,6 +217,54 @@ export interface OfficialSyllabusData {
     uploadedAt: string;
   };
 }
+
+export const OFFICIAL_INSTITUTIONAL_STATEMENTS = {
+  philosophy: 'Total human development',
+  vision: 'A Premier University of the North by 2030 – excellent across disciplines, globally competitive and futures-ready',
+  mission: 'Develop human capital for nation building and foster entrepreneurship by providing inclusive and relevant instruction, research, and extension services',
+  goal: 'To lead in transforming human resources into productive, self-reliant citizens, and responsible leaders.',
+  coreValues: [
+    { acronym: 'S', keyword: 'SERVICE', description: 'Service to our stakeholders' },
+    { acronym: 'P', keyword: 'PRODUCTIVITY', description: 'Productivity with passion for work' },
+    { acronym: 'E', keyword: 'EXCELLENCE', description: 'Excellence in our programs through scholarly undertakings' },
+    { acronym: 'C', keyword: 'COMMITMENT', description: 'Commitment in delivering our mandates' },
+    { acronym: 'I', keyword: 'INNOVATIVENESS', description: 'Innovation towards attaining operative systems, breakthroughs, and milestone' },
+    { acronym: 'A', keyword: 'ADVOCACY', description: 'Advocacy in transforming lives' },
+    { acronym: 'L', keyword: 'LEADERSHIP', description: 'Leadership for transformation, Empowerment, and sustainable development' }
+  ],
+  graduateAttributes: [
+    {
+      number: 1,
+      title: 'Professionally competent',
+      description: 'Exemplify the competencies and value required of their professions;'
+    },
+    {
+      number: 2,
+      title: 'Committed and responsible leader',
+      description: 'Demonstrate professional, social and ethical responsibility consistent with their roles as local and global citizens;'
+    },
+    {
+      number: 3,
+      title: 'Effective communicator and collaborator',
+      description: 'Can effectively communicate and work in multi-disciplinary teams;'
+    },
+    {
+      number: 4,
+      title: 'Critical thinker and innovator',
+      description: 'Use relevant information and research drawn facts in rendering sound decisions and developing insights for new knowledge;'
+    },
+    {
+      number: 5,
+      title: 'Reflective lifelong learner',
+      description: 'Engage in lifelong learning for continuous professional growth and development; and'
+    },
+    {
+      number: 6,
+      title: 'Responsible environment steward',
+      description: 'Manage a sustainable environment, promoting peace and prosperity for mankind.'
+    }
+  ]
+};
 
 export const OFFICIAL_SYLLABUS_CSPC112: OfficialSyllabusData = {
   institution: {
@@ -174,51 +308,7 @@ export const OFFICIAL_SYLLABUS_CSPC112: OfficialSyllabusData = {
     }
   ],
   institutionalStatements: {
-    philosophy: 'Total human development with appropriate competencies.',
-    vision: 'By 2030, DMMMSU IS A globally ranked university.',
-    mission: 'Excellence in instruction, research and extension.',
-    goal: 'To lead in transforming human resources into productive, self-reliant citizens, and responsible leaders.',
-    coreValues: [
-      { acronym: 'S', keyword: 'SERVICE', description: 'Service to our stakeholders' },
-      { acronym: 'P', keyword: 'PRODUCTIVITY', description: 'Productivity with passion for work' },
-      { acronym: 'E', keyword: 'EXCELLENCE', description: 'Excellence in our programs through scholarly undertakings' },
-      { acronym: 'C', keyword: 'COMMITMENT', description: 'Commitment in delivering our mandates' },
-      { acronym: 'I', keyword: 'INNOVATIVENESS', description: 'Innovation towards attaining operative systems, breakthroughs, and milestone' },
-      { acronym: 'A', keyword: 'ADVOCACY', description: 'Advocacy in transforming lives' },
-      { acronym: 'L', keyword: 'LEADERSHIP', description: 'Leadership for transformation, Empowerment, and sustainable development' }
-    ],
-    graduateAttributes: [
-      {
-        number: 1,
-        title: 'Professionally competent',
-        description: 'Exemplify the competencies and value required of their professions;'
-      },
-      {
-        number: 2,
-        title: 'Committed and responsible leader',
-        description: 'Demonstrate professional, social and ethical responsibility consistent with their roles as local and global citizens;'
-      },
-      {
-        number: 3,
-        title: 'Effective communicator and collaborator',
-        description: 'Can effectively communicate and work in multi-disciplinary teams;'
-      },
-      {
-        number: 4,
-        title: 'Critical thinker and innovator',
-        description: 'Use relevant information and research drawn facts in rendering sound decisions and developing insights for new knowledge;'
-      },
-      {
-        number: 5,
-        title: 'Reflective lifelong learner',
-        description: 'Engage in lifelong learning for continuous professional growth and development; and'
-      },
-      {
-        number: 6,
-        title: 'Responsible environment steward',
-        description: 'Manage a sustainable environment, promoting peace and prosperity for mankind.'
-      }
-    ]
+    ...OFFICIAL_INSTITUTIONAL_STATEMENTS
   },
   programOutcomes: [
     {

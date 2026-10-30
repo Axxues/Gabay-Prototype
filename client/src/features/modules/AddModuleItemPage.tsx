@@ -31,7 +31,7 @@ import { normalizeTermId } from '../../shared/utils/gradingTerms';
 import { UploadProgress } from '../../shared/components/common/UploadProgress';
 import { useSimulatedUpload } from '../../shared/hooks/useSimulatedUpload';
 import { FilePickerModal } from '../../shared/components/common/FilePickerModal';
-import type { AggregatedCourseFile } from '../../shared/hooks/useCourseFiles';
+import { activitiesTermFolderId, type AggregatedCourseFile } from '../../shared/hooks/useCourseFiles';
 import {
   ActivityFormFields,
   buildClassicActivityPayload,
@@ -574,9 +574,13 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
   // Helper to upload any staged raw files on assessment forms
   const resolveActivityAttachments = async (
     attachments: ActivityAttachment[],
-    targetArea: 'modules' | 'activities' | 'assignments' = 'modules'
+    targetArea: 'modules' | 'activities' | 'assignments' = 'modules',
+    targetTerm?: string | null
   ): Promise<ActivityAttachment[]> => {
     const results: ActivityAttachment[] = [];
+    const termFolder = targetArea === 'activities'
+      ? activitiesTermFolderId(normalizeTermId(targetTerm) ?? 'midterm')
+      : undefined;
     for (const att of attachments) {
       if (att.rawFile) {
         let fileUrl = '';
@@ -587,6 +591,7 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
         try {
           const saved = await uploadCourseFile({
             courseId,
+            folderId: termFolder,
             name: att.rawFile.name,
             rawFile: att.rawFile,
             size: att.rawFile.size,
@@ -775,7 +780,7 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
         : activityForm.attachedFile
           ? [activityForm.attachedFile]
           : [];
-      const resolvedActFiles = await resolveActivityAttachments(rawActFiles, 'activities');
+      const resolvedActFiles = await resolveActivityAttachments(rawActFiles, 'activities', activityForm.term);
       const primaryActFile = resolvedActFiles[0] || null;
       const actFormToSave: ActivityFormValue = {
         ...activityForm,
@@ -1300,7 +1305,7 @@ export const AddModuleItemPage: React.FC<AddModuleItemPageProps> = ({
               : activityForm.attachedFile
                 ? [activityForm.attachedFile]
                 : [];
-            const resolvedActFiles = await resolveActivityAttachments(rawActFiles, 'activities');
+            const resolvedActFiles = await resolveActivityAttachments(rawActFiles, 'activities', activityForm.term);
             const primaryActFile = resolvedActFiles[0] || null;
             const actFormToSave: ActivityFormValue = {
               ...activityForm,

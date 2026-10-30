@@ -99,9 +99,9 @@ describe('SyllabusDocumentPreview', () => {
     // 3. Philosophy
     expect(screen.getByText(/Total human development/i)).toBeInTheDocument();
     // 4. Mission
-    expect(screen.getByText(/Excellence in instruction/i)).toBeInTheDocument();
+    expect(screen.getByText(/Develop human capital for nation building/i)).toBeInTheDocument();
     // 5. Vision
-    expect(screen.getByText(/DMMMSU IS A globally ranked university/i)).toBeInTheDocument();
+    expect(screen.getByText(/A Premier University of the North by 2030/i)).toBeInTheDocument();
     // 6. Goals
     expect(screen.getByText(/To lead in transforming human resources into productive/i)).toBeInTheDocument();
     // 7. Graduate Attributes

@@ -3,6 +3,7 @@ import { useLMS } from '../../../../shared/context/LMSContext';
 import type { QuizQuestion, QuizItemType, Activity } from '../../../../shared/types/lms';
 import type { TermId } from '../../../../shared/utils/gradingTerms';
 import { TermSelect } from '../../../../shared/components/common/TermSelect';
+import { NumericInput } from '../../../../shared/components/common/NumericInput';
 import {
   Trash2,
   Check,
@@ -816,14 +817,11 @@ export const QuestionSetFields: React.FC<{ value: QuestionSetValue; onChange: (v
                 <div className="pt-3 border-t border-border/70 flex items-center justify-end space-x-3 text-xs">
                   <div className="flex items-center space-x-1.5 bg-muted/40 px-2.5 py-1 rounded-xl border border-border mr-auto">
                     <label className="text-[11px] font-bold text-muted-foreground">Points:</label>
-                    <input
-                      type="number"
+                    <NumericInput
                       min={1}
                       max={100}
                       value={item.points}
-                      onChange={e =>
-                        handleUpdateItem(itemIdx, { points: Math.max(1, Number(e.target.value)) })
-                      }
+                      onChange={num => handleUpdateItem(itemIdx, { points: num })}
                       className="w-12 px-1 py-0.5 bg-background border border-border rounded-md text-foreground text-xs font-bold text-center outline-none focus:ring-2 focus:ring-primary/20"
                     />
                   </div>

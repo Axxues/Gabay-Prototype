@@ -276,7 +276,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
       aria-label={title || 'PDF Document Viewer'}
     >
       {/* Top Toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-muted/40 border-b border-border text-xs select-none">
+      <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-muted/40 border-b border-border text-xs select-none shrink-0">
         {/* Document Title */}
         <div className="flex items-center space-x-2 min-w-0 max-w-[260px] sm:max-w-xs">
           <FileText className="w-4 h-4 text-primary shrink-0" />
@@ -365,9 +365,9 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
       </div>
 
       {/* Canvas / Render Body */}
-      <div className="relative flex-1 overflow-auto bg-muted/10 p-4 flex items-center justify-center min-h-[360px]">
+      <div className="relative flex-1 overflow-auto bg-muted/10 p-4 sm:p-6 flex flex-col items-center justify-start min-h-[360px]">
         {isLoading && (
-          <div className="flex flex-col items-center justify-center space-y-2 text-muted-foreground py-12">
+          <div className="flex flex-col items-center justify-center space-y-2 text-muted-foreground my-auto py-12">
             <Loader2 className="w-7 h-7 animate-spin text-primary" />
             <span className="text-xs font-sans">Rendering PDF vector canvas...</span>
           </div>
@@ -395,13 +395,15 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
           </div>
         )}
 
-        <canvas
-          ref={canvasRef}
-          data-testid="pdf-canvas"
-          className={`shadow-elevated rounded border border-border bg-white transition-opacity ${
-            isLoading || error ? 'hidden' : 'block'
-          }`}
-        />
+        <div className="min-w-full w-fit flex justify-center py-2 shrink-0">
+          <canvas
+            ref={canvasRef}
+            data-testid="pdf-canvas"
+            className={`shadow-elevated rounded border border-border bg-white transition-opacity ${
+              isLoading || error ? 'hidden' : 'block'
+            }`}
+          />
+        </div>
       </div>
     </div>
   );

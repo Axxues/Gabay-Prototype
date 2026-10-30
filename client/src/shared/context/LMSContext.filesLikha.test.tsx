@@ -119,11 +119,14 @@ const updateCourseFileMock = vi.fn(async (id: string, patch: any) => ({
 }));
 const deleteCourseFileMock = vi.fn(async () => ({}));
 const clearSourceDocMock = vi.fn(async () => ({}));
+const updateModuleItemMock = vi.fn(async () => ({}));
 const uploadFileMock = vi.fn(async (file: File) => ({
   id: 'asset-uploaded',
   filename_download: file.name,
   url: `https://gabay.zyberlab.com/assets/asset-uploaded`,
 }));
+
+const saveActivityMock = vi.fn(async (act: any) => act);
 
 vi.mock('../api/client', () => ({
   ApiError: class ApiError extends Error {
@@ -139,6 +142,7 @@ vi.mock('../api/client', () => ({
     getCoursesWithRelations: (...args: any[]) => (getCoursesWithRelationsMock as any)(...args),
     getNotifications: (...args: any[]) => (getNotifsMock as any)(...args),
     uploadFile: (...args: any[]) => (uploadFileMock as any)(...args),
+    saveActivity: (...args: any[]) => (saveActivityMock as any)(...args),
     users: {
       getUsers: (...args: any[]) => (getUsersMock as any)(...args),
     },
@@ -161,6 +165,7 @@ vi.mock('../api/client', () => ({
     },
     modules: {
       getModulesWithItems: (...args: any[]) => (getModulesWithItemsMock as any)(...args),
+      updateModuleItem: (...args: any[]) => (updateModuleItemMock as any)(...args),
     },
     assessments: {
       getQuizzes: (...args: any[]) => (getQuizzesMock as any)(...args),
@@ -179,6 +184,7 @@ vi.mock('../api/client', () => ({
     },
     files: {
       uploadFile: (...args: any[]) => (uploadFileMock as any)(...args),
+    saveActivity: (...args: any[]) => (saveActivityMock as any)(...args),
       getCourseFiles: (...args: any[]) => (getCourseFilesMock as any)(...args),
       createCourseFile: (...args: any[]) => (createCourseFileMock as any)(...args),
       updateCourseFile: (...args: any[]) => (updateCourseFileMock as any)(...args),
@@ -415,5 +421,180 @@ describe('files and folders via Likha (Task 9)', () => {
     expect(clearSourceDocMock).toHaveBeenCalledWith('c1');
     expect((seenDb.courseFiles || []).find((f: any) => f.id === 'file-syl-1')).toBeUndefined();
     expect((seenDb.courses || []).find((c: any) => c.id === 'c1')?.syllabus?.sourceDocument).toBeUndefined();
+  });
+
+  test('deleteCourseFile deletes duplicate records with matching name in same course/area and unlinks from activities', async () => {
+    deleteCourseFileMock.mockClear();
+    saveActivityMock.mockClear();
+
+    seedFiles = [
+      {
+        id: 'dup-1',
+        course_id: 'c1',
+        name: 'Diagram.png',
+        source_area: 'activities',
+        size: 1000,
+        formatted_size: '1 KB',
+        type: 'image',
+        visibility: 'published',
+        date_updated: TS,
+      },
+      {
+        id: 'dup-2',
+        course_id: 'c1',
+        name: 'Diagram.png',
+        source_area: 'activities',
+        size: 1000,
+        formatted_size: '1 KB',
+        type: 'image',
+        visibility: 'published',
+        date_updated: TS,
+      },
+    ];
+
+    getActivitiesMock.mockResolvedValueOnce([
+      {
+        id: 'act-1',
+        course_id: 'c1',
+        title: 'Activity 1',
+        term: 'midterm',
+        file_name: 'Diagram.png',
+        attachments: [{ name: 'Diagram.png', url: '/likha/assets/diagram' }],
+      },
+    ]);
+
+    await renderLoggedIn();
+    expect((seenDb.courseFiles || []).filter((f: any) => f.name === 'Diagram.png')).toHaveLength(2);
+    expect((seenDb.activities || []).find((a: any) => a.id === 'act-1')?.attachments).toHaveLength(1);
+
+    await act(async () => {
+      await ctx.deleteCourseFile('dup-1');
+    });
+
+    expect(deleteCourseFileMock).toHaveBeenCalledWith('dup-1');
+    expect(deleteCourseFileMock).toHaveBeenCalledWith('dup-2');
+    expect((seenDb.courseFiles || []).filter((f: any) => f.name === 'Diagram.png')).toHaveLength(0);
+    const updatedAct = (seenDb.activities || []).find((a: any) => a.id === 'act-1');
+    expect(updatedAct?.attachments).toHaveLength(0);
+    expect(updatedAct?.fileName).toBeUndefined();
+    expect(saveActivityMock).toHaveBeenCalled();
+  });
+
+  test('deleteCourseFile with virtual act-file removes attachment from activity and saves', async () => {
+    saveActivityMock.mockClear();
+
+    getActivitiesMock.mockResolvedValueOnce([
+      {
+        id: 'act-2',
+        course_id: 'c1',
+        title: 'Activity 2',
+        term: 'midterm',
+        attachments: [
+          { name: 'Handout.pdf', url: '/likha/assets/handout' },
+          { name: 'Extra.pdf', url: '/likha/assets/extra' },
+        ],
+      },
+    ]);
+
+    await renderLoggedIn();
+    expect((seenDb.activities || []).find((a: any) => a.id === 'act-2')?.attachments).toHaveLength(2);
+
+    await act(async () => {
+      await ctx.deleteCourseFile('act-file-act-2-0');
+    });
+
+    const updatedAct = (seenDb.activities || []).find((a: any) => a.id === 'act-2');
+    expect(updatedAct?.attachments).toHaveLength(1);
+    expect(updatedAct?.attachments[0].name).toBe('Extra.pdf');
+    expect(saveActivityMock).toHaveBeenCalled();
+  });
+
+  test('deleteCourseFile for an activity file never deletes or strips attachments from module items', async () => {
+    updateModuleItemMock.mockClear();
+
+    seedFiles = [
+      {
+        id: 'cf-act-1',
+        course_id: 'c1',
+        name: 'SharedResource.pdf',
+        source_area: 'activities',
+        source_id: 'act-99',
+      },
+    ];
+
+    getModulesWithItemsMock.mockResolvedValueOnce([
+      {
+        id: 'mod-1',
+        course_id: 'c1',
+        title: 'Module 1',
+        items: [
+          {
+            id: 'item-1',
+            title: 'Lecture 1',
+            type: 'page',
+            file_name: 'SharedResource.pdf',
+            attachments: [
+              { name: 'SharedResource.pdf', url: '/likha/assets/shared' },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    await renderLoggedIn();
+
+    const lectureItem = (seenDb.modules || [])[0]?.items?.[0];
+    expect(lectureItem?.attachments).toHaveLength(1);
+
+    await act(async () => {
+      await ctx.deleteCourseFile('cf-act-1');
+    });
+
+    expect(deleteCourseFileMock).toHaveBeenCalledWith('cf-act-1');
+    expect(updateModuleItemMock).not.toHaveBeenCalled();
+    const lectureItemAfter = (seenDb.modules || [])[0]?.items?.[0];
+    expect(lectureItemAfter?.attachments).toHaveLength(1);
+    expect(lectureItemAfter?.attachments[0].name).toBe('SharedResource.pdf');
+  });
+
+  test('deleteCourseFile for a module file never deletes or strips attachments from activities', async () => {
+    saveActivityMock.mockClear();
+
+    seedFiles = [
+      {
+        id: 'cf-mod-1',
+        course_id: 'c1',
+        name: 'SharedResource.pdf',
+        source_area: 'modules',
+        source_id: 'mod-1',
+      },
+    ];
+
+    getActivitiesMock.mockResolvedValueOnce([
+      {
+        id: 'act-1',
+        course_id: 'c1',
+        title: 'Activity 1',
+        term: 'midterm',
+        attachments: [
+          { name: 'SharedResource.pdf', url: '/likha/assets/shared' },
+        ],
+      },
+    ]);
+
+    await renderLoggedIn();
+
+    const activity = (seenDb.activities || []).find((a: any) => a.id === 'act-1');
+    expect(activity?.attachments).toHaveLength(1);
+
+    await act(async () => {
+      await ctx.deleteCourseFile('cf-mod-1');
+    });
+
+    expect(deleteCourseFileMock).toHaveBeenCalledWith('cf-mod-1');
+    expect(saveActivityMock).not.toHaveBeenCalled();
+    const activityAfter = (seenDb.activities || []).find((a: any) => a.id === 'act-1');
+    expect(activityAfter?.attachments).toHaveLength(1);
+    expect(activityAfter?.attachments[0].name).toBe('SharedResource.pdf');
   });
 });

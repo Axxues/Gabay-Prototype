@@ -44,7 +44,7 @@ describe('useCourseFiles assessment-backed entries', () => {
     expect((result.current.sourceCounts as any).quizzes).toBeUndefined();
   });
 
-  test('lists a question-set activity created via Add module item even with no file attachment', () => {
+  test('does not list a question-set activity when no file is attached', () => {
     mocks.db.activities = [
       {
         id: 'act-1',
@@ -59,8 +59,30 @@ describe('useCourseFiles assessment-backed entries', () => {
     ];
     const { result } = renderHook(() => useCourseFiles('c1'));
     const activities = result.current.allFiles.filter(f => f.source === 'activities');
-    expect(activities.length).toBeGreaterThan(0);
-    expect(result.current.sourceCounts.activities).toBeGreaterThan(0);
+    expect(activities).toHaveLength(0);
+    expect(result.current.sourceCounts.activities).toBe(0);
+  });
+
+  test('lists an activity only when files are attached, placed in midterm or finals', () => {
+    mocks.db.activities = [
+      {
+        id: 'act-1',
+        format: 'classic',
+        courseId: 'c1',
+        title: 'Activity 1 Midterm',
+        term: 'midterm',
+        instructions: 'Do it.',
+        attachments: [{ name: 'LabGuide.pdf', size: '1.2 MB', url: '/uploads/guide.pdf' }],
+        pointsPossible: 100,
+        published: true,
+      },
+    ];
+    const { result } = renderHook(() => useCourseFiles('c1'));
+    const activities = result.current.allFiles.filter(f => f.source === 'activities');
+    expect(activities).toHaveLength(1);
+    expect(activities[0].name).toBe('LabGuide.pdf');
+    expect(activities[0].folderId).toBe('vf-activities-midterm');
+    expect(result.current.sourceCounts.activities).toBe(1);
   });
 });
 
@@ -107,13 +129,14 @@ describe('useCourseFiles module-folder placement', () => {
         title: 'Activity 1',
         instructions: 'Do it.',
         term: 'midterm',
+        attachments: [{ name: 'QuestionSetGuide.pdf', size: '500 KB', url: '/uploads/qs.pdf' }],
         questions: [],
         pointsPossible: 8,
         published: true,
       },
     ];
     const { result } = renderHook(() => useCourseFiles('c1'));
-    const entry = result.current.allFiles.find(f => f.id === 'act-virtual-act-1');
+    const entry = result.current.allFiles.find(f => f.name === 'QuestionSetGuide.pdf');
     expect(entry).toBeDefined();
     expect(entry?.folderId).toBe('vf-activities-midterm');
     expect(entry?.source).toBe('activities');
@@ -136,6 +159,8 @@ describe('useCourseFiles module-folder placement', () => {
         title: 'Lab 1',
         instructions: 'Do the lab.',
         term: 'midterm',
+        fileName: 'Lab1Handout.pdf',
+        fileUrl: '/uploads/lab1.pdf',
         pointsPossible: 100,
         dueDate: new Date().toISOString(),
         submissionTypes: ['online_text'],
@@ -146,7 +171,7 @@ describe('useCourseFiles module-folder placement', () => {
       },
     ];
     const { result } = renderHook(() => useCourseFiles('c1'));
-    const entry = result.current.allFiles.find(f => f.id === 'asg-virtual-asg-1');
+    const entry = result.current.allFiles.find(f => f.name === 'Lab1Handout.pdf');
     expect(entry).toBeDefined();
     expect(entry?.folderId).toBe('vf-activities-midterm');
     expect(entry?.source).toBe('activities');
@@ -169,18 +194,19 @@ describe('useCourseFiles module-folder placement', () => {
         courseId: 'c1',
         title: 'Homework 1',
         instructions: 'Submit essay.',
+        attachments: [{ name: 'HW1_Prompt.pdf', size: '1.0 MB', url: '/uploads/hw1.pdf' }],
         published: true,
       },
     ];
     const { result } = renderHook(() => useCourseFiles('c1'));
-    const entry = result.current.allFiles.find(f => f.id === 'asg-virtual-asg-hw-1');
+    const entry = result.current.allFiles.find(f => f.name === 'HW1_Prompt.pdf');
     expect(entry).toBeDefined();
     expect(entry?.folderId).toBe('vf-assignments');
     expect(entry?.source).toBe('assignments');
     expect(result.current.virtualFolders.some(f => f.id === 'vf-assignments' && f.name === 'Assignments')).toBe(true);
   });
 
-  test('direct file uploaded with area activities and moduleId resolves into activities folder', () => {
+  test('direct file uploaded with area activities and moduleId resolves into activities midterm folder', () => {
     mocks.db.courseFiles = [
       {
         id: 'cf-act',
@@ -193,7 +219,7 @@ describe('useCourseFiles module-folder placement', () => {
     const { result } = renderHook(() => useCourseFiles('c1'));
     const entry = result.current.allFiles.find(f => f.id === 'cf-act');
     expect(entry).toBeDefined();
-    expect(entry?.folderId).toBe('vf-activities');
+    expect(entry?.folderId).toBe('vf-activities-midterm');
     expect(entry?.source).toBe('activities');
   });
 
@@ -207,6 +233,7 @@ describe('useCourseFiles module-folder placement', () => {
         title: 'Direct Lab',
         instructions: 'Do the lab.',
         term: 'finals',
+        attachments: [{ name: 'DirectLabPrompt.pdf', size: '1.2 MB', url: '/uploads/dl.pdf' }],
         pointsPossible: 100,
         dueDate: new Date().toISOString(),
         submissionTypes: ['online_text'],
@@ -217,7 +244,7 @@ describe('useCourseFiles module-folder placement', () => {
       },
     ];
     const { result } = renderHook(() => useCourseFiles('c1'));
-    const entry = result.current.allFiles.find(f => f.id === 'asg-virtual-asg-9');
+    const entry = result.current.allFiles.find(f => f.name === 'DirectLabPrompt.pdf');
     expect(entry).toBeDefined();
     expect(entry?.folderId).toBe('vf-activities-finals');
   });
@@ -233,6 +260,7 @@ describe('useCourseFiles Activities term folders', () => {
         instructions: '',
         term: 'midterm',
         format: 'classic',
+        attachments: [{ name: 'MidtermLab.pdf', size: '1.2 MB', url: '/uploads/m.pdf' }],
         pointsPossible: 100,
         dueDate: new Date().toISOString(),
         submissionTypes: ['online_text'],
@@ -248,6 +276,7 @@ describe('useCourseFiles Activities term folders', () => {
         instructions: '',
         term: 'finals',
         format: 'questionset',
+        attachments: [{ name: 'FinalsPrompt.pdf', size: '1.5 MB', url: '/uploads/f.pdf' }],
         questions: [],
         pointsPossible: 8,
         published: true,
@@ -262,10 +291,10 @@ describe('useCourseFiles Activities term folders', () => {
     expect(mid).toMatchObject({ name: 'Midterm', parentId: 'vf-activities' });
     expect(fin).toMatchObject({ name: 'Finals', parentId: 'vf-activities' });
     expect(folders.find(f => f.id === 'vf-activities-prelim')).toBeUndefined();
-    expect(result.current.allFiles.find(f => f.id === 'asg-virtual-asg-m')?.folderId).toBe(
+    expect(result.current.allFiles.find(f => f.name === 'MidtermLab.pdf')?.folderId).toBe(
       'vf-activities-midterm'
     );
-    expect(result.current.allFiles.find(f => f.id === 'act-virtual-act-f')?.folderId).toBe(
+    expect(result.current.allFiles.find(f => f.name === 'FinalsPrompt.pdf')?.folderId).toBe(
       'vf-activities-finals'
     );
   });
@@ -278,6 +307,7 @@ describe('useCourseFiles Activities term folders', () => {
         courseId: 'c1',
         title: 'Old Lab',
         instructions: '',
+        fileName: 'OldLabHandout.pdf',
         pointsPossible: 50,
         dueDate: new Date().toISOString(),
         submissionTypes: ['online_text'],
@@ -288,7 +318,7 @@ describe('useCourseFiles Activities term folders', () => {
       },
     ];
     const { result } = renderHook(() => useCourseFiles('c1'));
-    expect(result.current.allFiles.find(f => f.id === 'asg-virtual-asg-old')?.folderId).toBe(
+    expect(result.current.allFiles.find(f => f.name === 'OldLabHandout.pdf')?.folderId).toBe(
       'vf-activities-midterm'
     );
     expect(
@@ -319,6 +349,7 @@ describe('useCourseFiles Activities term folders', () => {
         title: 'Activity 1',
         instructions: '',
         term: 'midterm',
+        attachments: [{ name: 'Act1_Resource.pdf', size: '1.0 MB', url: '/uploads/a1.pdf' }],
         questions: [],
         pointsPossible: 8,
         published: true,
@@ -326,14 +357,14 @@ describe('useCourseFiles Activities term folders', () => {
     ];
     const { result } = renderHook(() => useCourseFiles('c1'));
     expect(result.current.virtualFolders.some(f => f.id === 'vf-activities' && f.name === 'Activities')).toBe(true);
-    expect(result.current.allFiles.find(f => f.id === 'act-virtual-act-1')?.folderId).toBe(
+    expect(result.current.allFiles.find(f => f.name === 'Act1_Resource.pdf')?.folderId).toBe(
       'vf-activities-midterm'
     );
   });
 });
 
 describe('useCourseFiles real Activities root', () => {
-  test('unlinked activities file flat under the real root, no virtual folders', () => {
+  test('unlinked activities file with attachments resolves into its term folder under the real root', () => {
     mocks.db.courseFolders = [
       { id: 'fld-act', courseId: 'c1', parentId: null, name: 'Activities', autoKey: 'area:activities' },
     ];
@@ -345,6 +376,7 @@ describe('useCourseFiles real Activities root', () => {
         title: 'Direct Lab',
         instructions: 'Do the lab.',
         term: 'finals',
+        attachments: [{ name: 'FinalLabPrompt.pdf', size: '1.2 MB', url: '/uploads/fl.pdf' }],
         pointsPossible: 100,
         dueDate: new Date().toISOString(),
         submissionTypes: ['online_text'],
@@ -355,9 +387,14 @@ describe('useCourseFiles real Activities root', () => {
       },
     ];
     const { result } = renderHook(() => useCourseFiles('c1'));
-    expect(result.current.virtualFolders).toHaveLength(0);
-    expect(result.current.allFiles.find(f => f.id === 'asg-virtual-asg-9')?.folderId).toBe(
-      'fld-act'
+    expect(result.current.virtualFolders).toHaveLength(1);
+    expect(result.current.virtualFolders[0]).toMatchObject({
+      id: 'vf-activities-finals',
+      parentId: 'fld-act',
+      name: 'Finals',
+    });
+    expect(result.current.allFiles.find(f => f.name === 'FinalLabPrompt.pdf')?.folderId).toBe(
+      'vf-activities-finals'
     );
   });
 

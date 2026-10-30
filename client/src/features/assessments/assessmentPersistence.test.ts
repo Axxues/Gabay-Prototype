@@ -111,7 +111,9 @@ describe('Assessment Persistence & Child Relations', () => {
     expect(actReq).toBeDefined();
     const body = JSON.parse(actReq!.options.body);
     expect(body.total_points).toBe(50);
-    expect(body.points_possible).toBe(50);
+    expect(body.points_possible).toBeUndefined();
+    expect(body.rubric).toHaveLength(2);
+    expect(body.rubric[0].title).toBe('Code Quality');
     expect(body.file_name).toBe('Starter.zip');
     expect(body.attachments).toEqual([{ directus_files_id: '11111111-1111-1111-1111-111111111111' }]);
     expect(body.metadata?.attachments).toHaveLength(1);
@@ -120,6 +122,28 @@ describe('Assessment Persistence & Child Relations', () => {
       r.url.endsWith('/items/rubric_criteria') && r.options?.method === 'DELETE'
     );
     expect(rubricDelete).toBeDefined();
+  });
+
+  test('getActivitiesWithRelations falls back to rubric_criteria table when rubric column is missing', async () => {
+    vi.spyOn(global, 'fetch').mockImplementation(async (input: any) => {
+      const url = String(input);
+      if (url.includes('/items/activities')) {
+        return new Response(JSON.stringify({
+          data: [{ id: 'act-legacy-1', title: 'Legacy Act', rubric: null }]
+        }), { status: 200 });
+      }
+      if (url.includes('/items/rubric_criteria')) {
+        return new Response(JSON.stringify({
+          data: [{ id: 'rub-1', activity_id: 'act-legacy-1', title: 'Criterion 1', max_points: 20, order: 1 }]
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ data: [] }), { status: 200 });
+    });
+
+    const activities = await likhaLmsApi.getActivitiesWithRelations('crs-1');
+    expect(activities).toHaveLength(1);
+    expect(activities[0].rubric_criteria).toHaveLength(1);
+    expect(activities[0].rubric_criteria[0].title).toBe('Criterion 1');
   });
 
   test('getSubmissions expands file.* relation for student attachment metadata', async () => {

@@ -728,7 +728,9 @@ export const ModulesView: React.FC<ModulesViewProps> = ({
                           No learning items in this unit yet.
                         </div>
                       ) : (
-                        [...mod.items].slice().reverse().map(item => {
+                        [...mod.items]
+                          .sort((a, b) => (Number(b.order) || 0) - (Number(a.order) || 0))
+                          .map(item => {
                           const isItemExpanded = expandedItems[item.id] ?? false;
                           const isNavigable =
                             ((item.type === 'activity' || item.type === 'assignment' || item.type === 'project' || item.type === 'presentation') && Boolean(item.activityId)) ||

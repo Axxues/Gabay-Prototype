@@ -1,6 +1,6 @@
 // src/api/client.test.ts
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { ApiError, apiFetch, setToken } from './client';
+import { ApiError, apiFetch, clearToken, getRefreshToken, getToken, setRefreshToken, setToken } from './client';
 
 describe('apiFetch', () => {
   beforeEach(() => {
@@ -84,5 +84,75 @@ describe('apiFetch', () => {
     await expect(apiFetch('/auth/login')).rejects.toThrow();
 
     expect(dispatchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('cross-tab token storage and persistence', () => {
+  let localStore: Map<string, string>;
+  let sessionStore: Map<string, string>;
+
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+    localStore = new Map<string, string>();
+    sessionStore = new Map<string, string>();
+
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => localStore.get(k) ?? null,
+      setItem: (k: string, v: string) => { localStore.set(k, String(v)); },
+      removeItem: (k: string) => { localStore.delete(k); },
+      clear: () => { localStore.clear(); },
+    });
+
+    vi.stubGlobal('sessionStorage', {
+      getItem: (k: string) => sessionStore.get(k) ?? null,
+      setItem: (k: string, v: string) => { sessionStore.set(k, String(v)); },
+      removeItem: (k: string) => { sessionStore.delete(k); },
+      clear: () => { sessionStore.clear(); },
+    });
+  });
+
+  it('persists token to localStorage so new tabs can access it', () => {
+    setToken('cross-tab-token');
+    // localStorage must contain the token so another tab has it
+    expect(localStore.get('gabay_token')).toBe('cross-tab-token');
+  });
+
+  it('persists refreshToken to localStorage so new tabs can access it', () => {
+    setRefreshToken('cross-tab-refresh');
+    expect(localStore.get('gabay_refresh_token')).toBe('cross-tab-refresh');
+  });
+
+  it('retrieves token in a simulated new tab where sessionStorage is empty', () => {
+    // Tab 1 logged in and persisted to localStorage
+    localStore.set('gabay_token', 'persisted-jwt');
+    // Tab 2 opens with clean sessionStorage
+    sessionStore.clear();
+
+    expect(getToken()).toBe('persisted-jwt');
+  });
+
+  it('migrates legacy or orphan sessionStorage token into localStorage', () => {
+    sessionStore.set('gabay_token', 'session-only-jwt');
+    localStore.clear();
+
+    expect(getToken()).toBe('session-only-jwt');
+    // Now localStorage should have it so any other tab can read it
+    expect(localStore.get('gabay_token')).toBe('session-only-jwt');
+  });
+
+  it('clears token and refreshToken from both localStorage and sessionStorage on clearToken', () => {
+    localStore.set('gabay_token', 'tok1');
+    localStore.set('gabay_refresh_token', 'ref1');
+    sessionStore.set('gabay_token', 'tok1');
+    sessionStore.set('gabay_refresh_token', 'ref1');
+
+    clearToken();
+
+    expect(localStore.get('gabay_token')).toBeUndefined();
+    expect(localStore.get('gabay_refresh_token')).toBeUndefined();
+    expect(sessionStore.get('gabay_token')).toBeUndefined();
+    expect(sessionStore.get('gabay_refresh_token')).toBeUndefined();
+    expect(getToken()).toBeNull();
+    expect(getRefreshToken()).toBeNull();
   });
 });

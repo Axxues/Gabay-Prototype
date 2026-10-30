@@ -7,53 +7,127 @@ import { Step3CourseOutline } from './Step3CourseOutline';
 import { OFFICIAL_SYLLABUS_CSPC112 } from '../../../../../shared/data/syllabusData';
 
 describe('Wizard Steps Early', () => {
-  it('Step 1 updates course code and descriptive title', () => {
-    const onChange = vi.fn();
-    render(<Step1CourseInfo data={OFFICIAL_SYLLABUS_CSPC112} onChange={onChange} />);
-    const codeInput = screen.getByLabelText(/Course Code/i);
-    fireEvent.change(codeInput, { target: { value: 'CS 201' } });
-    expect(onChange).toHaveBeenCalled();
-  });
-
-  it('Step 1 updates institutional header fields and class section', () => {
+  it('Step 1 renders institutional header, course identifiers, faculty name, semester, and academic year as disabled', () => {
     const onChange = vi.fn();
     render(<Step1CourseInfo data={OFFICIAL_SYLLABUS_CSPC112} onChange={onChange} />);
 
     const univInput = screen.getByLabelText(/University Name/i);
-    fireEvent.change(univInput, { target: { value: 'DMMMSU North La Union Campus' } });
-    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
-      institution: expect.objectContaining({ university: 'DMMMSU North La Union Campus' })
-    }));
-
     const collegeInput = screen.getByLabelText(/College \/ Campus/i);
-    fireEvent.change(collegeInput, { target: { value: 'College of Information Technology' } });
+    const formCodeInput = screen.getByLabelText(/Document Form Code/i);
+    const revisionInput = screen.getByLabelText(/Document Revision/i);
+    const codeInput = screen.getByLabelText(/Course No/i);
+    const titleInput = screen.getByLabelText(/Descriptive Title/i);
+    const semInput = screen.getByLabelText(/Academic Semester/i);
+    const ayInput = screen.getByLabelText(/Academic Year/i);
+    const facultyInput = screen.getAllByLabelText(/Name of Faculty Member/i)[0];
+    const sectionInputs = screen.getAllByRole('textbox', { name: /^Section/i });
+
+    expect(univInput).toBeDisabled();
+    expect(collegeInput).toBeDisabled();
+    expect(formCodeInput).toBeDisabled();
+    expect(revisionInput).toBeDisabled();
+    expect(codeInput).toBeDisabled();
+    expect(titleInput).toBeDisabled();
+    expect(semInput).toBeDisabled();
+    expect(ayInput).toBeDisabled();
+    expect(facultyInput).toBeDisabled();
+    sectionInputs.forEach(input => expect(input).toBeDisabled());
+  });
+
+  it('Step 1 allows adding and updating section schedule rows and consultation hours', () => {
+    const onChange = vi.fn();
+    render(<Step1CourseInfo data={OFFICIAL_SYLLABUS_CSPC112} onChange={onChange} />);
+
+    // Add section row
+    const addRowBtn = screen.getAllByRole('button', { name: /\+ Add section row/i })[0];
+    fireEvent.click(addRowBtn);
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
-      institution: expect.objectContaining({ college: 'College of Information Technology' })
+      facultyMembers: expect.arrayContaining([
+        expect.objectContaining({
+          sections: expect.arrayContaining([
+            expect.objectContaining({ section: '' })
+          ])
+        })
+      ])
     }));
 
-    const sectionInput = screen.getByLabelText(/Class Section \/ Group/i);
-    fireEvent.change(sectionInput, { target: { value: 'BSCS 4B' } });
+    const scheduleInput = screen.getAllByLabelText(/Schedule/i)[0];
+    fireEvent.change(scheduleInput, { target: { value: 'TTh 09:00 AM - 10:30 AM' } });
+    expect(onChange).toHaveBeenCalled();
+
+    const consultationInput = screen.getAllByLabelText(/Consultation Hours/i)[0];
+    fireEvent.change(consultationInput, { target: { value: 'Daily 03:00 PM - 04:00 PM' } });
     expect(onChange).toHaveBeenCalled();
   });
 
-  it('Step 2 allows editing Philosophy, Vision, Mission, and Goal', () => {
+  it('Step 2 pre-fills institutional framework (Philosophy, Mission, Vision, Goals, Graduate Attributes, Core Values) statically from DMMMSU standard even when input data is empty', () => {
+    const emptyDraftData = {
+      ...OFFICIAL_SYLLABUS_CSPC112,
+      institutionalStatements: {
+        philosophy: '',
+        vision: '',
+        mission: '',
+        goal: '',
+        coreValues: [],
+        graduateAttributes: []
+      }
+    };
+    render(<Step2InstitutionalOutcomes data={emptyDraftData} onChange={vi.fn()} />);
+
+    const philInput = screen.getByLabelText(/Philosophy/i) as HTMLTextAreaElement;
+    const missionInput = screen.getByLabelText(/Mission/i) as HTMLTextAreaElement;
+    const visionInput = screen.getByLabelText(/Vision/i) as HTMLTextAreaElement;
+    const goalInput = screen.getByLabelText(/Goals/i) as HTMLTextAreaElement;
+
+    expect(philInput.value).toBe('Total human development');
+    expect(missionInput.value).toContain('Develop human capital for nation building');
+    expect(visionInput.value).toContain('A Premier University of the North by 2030');
+    expect(goalInput.value).toContain('To lead in transforming human resources');
+    expect(philInput).toBeDisabled();
+    expect(missionInput).toBeDisabled();
+    expect(visionInput).toBeDisabled();
+    expect(goalInput).toBeDisabled();
+
+    // Verify Graduate Attributes count and Core Values count are prefilled statically
+    expect(screen.getByText(/Graduate Attributes \(6 Defined\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Core Values \(7 Defined\)/i)).toBeInTheDocument();
+
+    // Toggle Graduate Attributes and verify items are displayed
+    fireEvent.click(screen.getByText(/Graduate Attributes \(6 Defined\)/i));
+    expect(screen.getByDisplayValue(/Professionally competent/i)).toBeInTheDocument();
+    expect(screen.getByDisplayValue(/Responsible environment steward/i)).toBeInTheDocument();
+
+    // Toggle Core Values and verify items are displayed
+    fireEvent.click(screen.getByText(/Core Values \(7 Defined\)/i));
+    expect(screen.getByDisplayValue('SERVICE')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('LEADERSHIP')).toBeInTheDocument();
+  });
+
+  it('Step 2 renders Philosophy, Mission, Vision, and Goals as disabled inputs', () => {
     const onChange = vi.fn();
     render(<Step2InstitutionalOutcomes data={OFFICIAL_SYLLABUS_CSPC112} onChange={onChange} />);
 
     const philInput = screen.getByLabelText(/Philosophy/i);
-    fireEvent.change(philInput, { target: { value: 'Custom institutional philosophy.' } });
-    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
-      institutionalStatements: expect.objectContaining({
-        philosophy: 'Custom institutional philosophy.'
-      })
-    }));
-
+    const missionInput = screen.getByLabelText(/Mission/i);
     const visionInput = screen.getByLabelText(/Vision/i);
-    fireEvent.change(visionInput, { target: { value: 'Global leader by 2035.' } });
+    const goalInput = screen.getByLabelText(/Goals/i);
+
+    expect(philInput).toBeDisabled();
+    expect(missionInput).toBeDisabled();
+    expect(visionInput).toBeDisabled();
+    expect(goalInput).toBeDisabled();
+  });
+
+  it('Step 2 renders Course Description as editable and updates on change', () => {
+    const onChange = vi.fn();
+    render(<Step2InstitutionalOutcomes data={OFFICIAL_SYLLABUS_CSPC112} onChange={onChange} />);
+
+    const descInput = screen.getByLabelText(/Course Description/i);
+    expect(descInput).not.toBeDisabled();
+
+    fireEvent.change(descInput, { target: { value: 'Updated editable syllabus course description.' } });
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
-      institutionalStatements: expect.objectContaining({
-        vision: 'Global leader by 2035.'
-      })
+      courseInfo: expect.objectContaining({ description: 'Updated editable syllabus course description.' })
     }));
   });
 
@@ -79,18 +153,43 @@ describe('Wizard Steps Early', () => {
       ])
     }));
 
-    // Remove PO1
+    // Remove PO1: former PO2 should become the new PO1
     const removePoBtn = screen.getByTitle(/^Remove PO1$/i);
     fireEvent.click(removePoBtn);
-    expect(onChange).toHaveBeenCalled();
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
+      programOutcomes: expect.arrayContaining([
+        expect.objectContaining({
+          number: 1,
+          description: OFFICIAL_SYLLABUS_CSPC112.programOutcomes[1].description
+        })
+      ])
+    }));
   });
 
-  it('Step 2 allows adding a new course outcome', () => {
+  it('Step 2 allows adding and deleting course outcomes with sequential re-indexing (CO2 becomes new CO1)', () => {
     const onChange = vi.fn();
     render(<Step2InstitutionalOutcomes data={OFFICIAL_SYLLABUS_CSPC112} onChange={onChange} />);
+
+    // Add CO
     const addOutcomeBtn = screen.getByRole('button', { name: /Add Course Outcome/i });
     fireEvent.click(addOutcomeBtn);
-    expect(onChange).toHaveBeenCalled();
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
+      courseOutcomes: expect.arrayContaining([
+        expect.objectContaining({ number: OFFICIAL_SYLLABUS_CSPC112.courseOutcomes.length + 1 })
+      ])
+    }));
+
+    // Remove CO1: former CO2 must become the new CO1
+    const removeCo1Btn = screen.getByTitle(/^Remove CO1$/i);
+    fireEvent.click(removeCo1Btn);
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
+      courseOutcomes: expect.arrayContaining([
+        expect.objectContaining({
+          number: 1,
+          statement: OFFICIAL_SYLLABUS_CSPC112.courseOutcomes[1].statement
+        })
+      ])
+    }));
   });
 
   it('Step 2 restores university baseline', () => {
@@ -99,6 +198,103 @@ describe('Wizard Steps Early', () => {
     const restoreBtn = screen.getByRole('button', { name: /Restore University Baseline/i });
     fireEvent.click(restoreBtn);
     expect(onChange).toHaveBeenCalled();
+  });
+
+  it('Step 2 allows editing class standing components and classroom policies across separate individual inputs', () => {
+    const onChange = vi.fn();
+    const testData = {
+      ...OFFICIAL_SYLLABUS_CSPC112,
+      gradingSystem: {
+        ...OFFICIAL_SYLLABUS_CSPC112.gradingSystem,
+        classStandingComponents: ['Quizzes (25%)', 'Laboratory (25%)']
+      },
+      classroomPolicies: ['Attendance policy', 'Dress code']
+    };
+
+    render(<Step2InstitutionalOutcomes data={testData} onChange={onChange} />);
+
+    // Class standing components are individual inputs
+    expect(screen.getByDisplayValue('Quizzes (25%)')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Laboratory (25%)')).toBeInTheDocument();
+
+    // Add component
+    const addCompBtn = screen.getByRole('button', { name: /Add Component/i });
+    fireEvent.click(addCompBtn);
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
+      gradingSystem: expect.objectContaining({
+        classStandingComponents: ['Quizzes (25%)', 'Laboratory (25%)', '']
+      })
+    }));
+
+    // Remove first component
+    const removeComp1 = screen.getByLabelText(/Remove component 1/i);
+    fireEvent.click(removeComp1);
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
+      gradingSystem: expect.objectContaining({
+        classStandingComponents: ['Laboratory (25%)']
+      })
+    }));
+
+    // Classroom policies are individual inputs
+    expect(screen.getByDisplayValue('Attendance policy')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Dress code')).toBeInTheDocument();
+
+    // Add policy
+    const addPolicyBtn = screen.getByRole('button', { name: /Add Policy/i });
+    fireEvent.click(addPolicyBtn);
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
+      classroomPolicies: ['Attendance policy', 'Dress code', '']
+    }));
+
+    // Remove first policy
+    const removePol1 = screen.getByLabelText(/Remove policy 1/i);
+    fireEvent.click(removePol1);
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
+      classroomPolicies: ['Dress code']
+    }));
+  });
+
+  it('Step 2 manages optional Rubrics for Group Project Presentation and Documentation', () => {
+    const onChange = vi.fn();
+    // Initially without rubrics
+    const noRubricData = {
+      ...OFFICIAL_SYLLABUS_CSPC112,
+      projectRubrics: []
+    };
+
+    const { rerender } = render(<Step2InstitutionalOutcomes data={noRubricData} onChange={onChange} />);
+
+    expect(screen.getByText(/Rubrics for Group Project Presentation and Documentation/i)).toBeInTheDocument();
+    expect(screen.getByText(/Optional/i)).toBeInTheDocument();
+
+    // Enable rubric button - shows only one with placeholders
+    const enableBtn = screen.getByRole('button', { name: /\+ Enable Project Rubric/i });
+    fireEvent.click(enableBtn);
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
+      projectRubrics: [{ category: '', levels: { 1: '', 2: '', 3: '', 4: '' } }]
+    }));
+
+    // Rerender with active project rubrics
+    rerender(<Step2InstitutionalOutcomes data={OFFICIAL_SYLLABUS_CSPC112} onChange={onChange} />);
+
+    // Verify checkbox is checked
+    const checkbox = screen.getByLabelText(/Include in Syllabus/i) as HTMLInputElement;
+    expect(checkbox.checked).toBe(true);
+
+    // Add rubric criterion row
+    const addCriterionBtn = screen.getByRole('button', { name: /Add Rubric Criterion/i });
+    fireEvent.click(addCriterionBtn);
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
+      projectRubrics: expect.arrayContaining([
+        expect.objectContaining({ category: '' })
+      ])
+    }));
+
+    // Uncheck to disable rubrics
+    fireEvent.click(checkbox);
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
+      projectRubrics: []
+    }));
   });
 
   it('Step 3 renders week ranges and time frames', () => {

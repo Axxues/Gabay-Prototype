@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLMS } from '../../shared/context/LMSContext';
-import type { TermId } from '../../shared/types/lms';
+import type { TermId, Activity, SubmissionAttachment } from '../../shared/types/lms';
 import { normalizeTermId } from '../../shared/utils/gradingTerms';
 import { TERM_LABELS, TermFilterSelect } from '../../shared/components/common/TermSelect';
 import { canManageCourseContent } from '../../shared/utils/roles';
@@ -10,6 +10,7 @@ import {
   matchesSourceFilter,
   type AssessmentSourceFilter,
 } from '../../shared/utils/assessmentSource';
+import { sortAssessmentsLatestFirst } from './utils/assessmentSorting';
 import {
   FileCheck2,
   Clock,
@@ -22,9 +23,9 @@ import {
   Trash2,
   ArrowLeft,
   Calendar,
-  Users,
   Paperclip,
   Download,
+  Eye,
   Image as ImageIcon,
   FileText,
   X,
@@ -34,6 +35,7 @@ import { uploadFileToPublic, formatFileSize } from '../../shared/utils/fileUploa
 import { CreateActivityPage } from './CreateActivityPage';
 import { ActivityRunnerView } from './ActivityRunnerView';
 import { PageHeader } from '../../shared/components/common/PageHeader';
+import { AssessmentFilePreviewModal, type AssessmentPreviewAttachment } from './components/AssessmentFilePreviewModal';
 import { EmptyState } from '../../shared/components/common/EmptyState';
 
 interface ActivitiesViewProps {
@@ -44,6 +46,15 @@ interface ActivitiesViewProps {
 }
 
 const questionSetKeyOf = (activityId: string) => `asg-activity-${activityId}`;
+
+const formatSubmissionTypes = (types?: string[]) => {
+  if (!types || types.length === 0) return 'File upload, text entry';
+  const labels: string[] = [];
+  if (types.includes('file')) labels.push('File upload');
+  if (types.includes('online_text')) labels.push('Text entry');
+  if (types.includes('online_url')) labels.push('Website URL');
+  return labels.length > 0 ? labels.join(', ') : types.join(', ');
+};
 
 export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
   courseId,
@@ -75,8 +86,6 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
   const courseActivities = (db.activities || []).filter(
     a => a.courseId === courseId && (!a.assessmentType || a.assessmentType === 'activity')
   );
-  const courseClassics = courseActivities.filter(a => a.format === 'classic');
-  const courseQuestionSets = courseActivities.filter(a => a.format !== 'classic');
 
   // Syllabus-driven terms (Prelim/Midterm/Finals depending on scanned syllabus).
   const effectiveTerms: TermId[] =
@@ -97,16 +106,16 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
   );
   const matchesTerm = (term?: TermId) =>
     termFilter === 'all' || (normalizeTermId(term) ?? 'midterm') === termFilter;
-  const visibleClassics = courseClassics.filter(
-    a =>
-      matchesTerm(a.term) &&
-      matchesSourceFilter(sourceIndex.classicActivityIds.has(a.id), sourceFilter)
-  );
-  const visibleQuestionSets = courseQuestionSets.filter(
-    a =>
-      matchesTerm(a.term) &&
-      matchesSourceFilter(sourceIndex.activityIds.has(a.id), sourceFilter)
-  );
+  const isFromModule = (act: Activity) =>
+    act.format === 'classic'
+      ? sourceIndex.classicActivityIds.has(act.id)
+      : sourceIndex.activityIds.has(act.id);
+  const visibleActivities = useMemo(() => {
+    const filtered = courseActivities.filter(
+      a => matchesTerm(a.term) && matchesSourceFilter(isFromModule(a), sourceFilter)
+    );
+    return sortAssessmentsLatestFirst(filtered, sourceIndex);
+  }, [courseActivities, termFilter, sourceFilter, sourceIndex]);
   const selectedActivity = (db.activities || []).find(a => a.id === selectedActivityId);
 
   // Synthetic link convention (`asg-activity-<id>`, shared with submissions /
@@ -117,13 +126,38 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
       ? selectedActivityId.slice('asg-activity-'.length)
       : null;
 
+  // Submission type constraints from activity definition
+  const rawTypes = selectedActivity?.submissionTypes;
+  const allowFileUpload = !rawTypes || rawTypes.length === 0 || rawTypes.includes('file');
+  const allowOnlineText = !rawTypes || rawTypes.length === 0 || rawTypes.includes('online_text');
+
   // Student submission form state
-  const [submissionType, setSubmissionType] = useState<'file' | 'online_text'>('online_text');
+  const [submissionType, setSubmissionType] = useState<'file' | 'online_text'>(
+    allowFileUpload && !allowOnlineText ? 'file' : 'online_text'
+  );
+
+  useEffect(() => {
+    if (allowFileUpload && !allowOnlineText) {
+      setSubmissionType('file');
+    } else if (allowOnlineText && !allowFileUpload) {
+      setSubmissionType('online_text');
+    }
+  }, [allowFileUpload, allowOnlineText]);
   const [textContent, setTextContent] = useState('');
-  const [simulatedFileName, setSimulatedFileName] = useState('');
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+
+  const addFiles = (files: File[]) => {
+    setSelectedFiles(prev => {
+      const next = [...prev];
+      for (const f of files) {
+        if (!next.some(existing => existing.name === f.name && existing.size === f.size)) next.push(f);
+      }
+      return next;
+    });
+  };
   const [isDragging, setIsDragging] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [previewAttachment, setPreviewAttachment] = useState<AssessmentPreviewAttachment | null>(null);
 
   // Full Page Create Activity State
   const [isCreatingActivity, setIsCreatingActivity] = useState(false);
@@ -131,6 +165,14 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
   const currentSubmission = selectedActivity
     ? db.submissions.find(s => (s.activityKey === selectedActivity.id || s.activityId === selectedActivity.id) && s.studentId === activeUser.id)
     : undefined;
+
+  // All files attached to the submission (legacy rows store a single file).
+  const submissionFiles: SubmissionAttachment[] =
+    currentSubmission?.attachments && currentSubmission.attachments.length > 0
+      ? currentSubmission.attachments
+      : currentSubmission?.fileName
+        ? [{ name: currentSubmission.fileName, url: currentSubmission.fileUrl }]
+        : [];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -140,51 +182,53 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
       showAlert("Please enter submission text content.");
       return;
     }
-    if (submissionType === 'file' && !selectedFile && !simulatedFileName) {
-      showAlert("Please choose a file or enter a filename to attach.");
+    if (submissionType === 'file' && selectedFiles.length === 0) {
+      showAlert("Please choose at least one file to attach.");
       return;
     }
 
     setIsSubmitting(true);
     try {
-      let uploadedFileUrl: string | undefined = undefined;
-      let uploadedFileId: string | undefined = undefined;
-      let uploadedFileSize: string | undefined = undefined;
-      let finalFileName = selectedFile ? selectedFile.name : (simulatedFileName || 'CMSC131_Lab_Submission.pdf');
+      const attachments: SubmissionAttachment[] = [];
 
-      if (submissionType === 'file' && selectedFile) {
-        try {
-          const res = await uploadFileToPublic(selectedFile);
-          uploadedFileUrl = res.url;
-          uploadedFileId = (res as any).id || (res as any).fileId;
-          uploadedFileSize = res.size;
-          finalFileName = res.name || selectedFile.name;
-        } catch {
-          uploadedFileUrl = `/likha/assets/mock-${encodeURIComponent(selectedFile.name)}`;
-          uploadedFileSize = formatFileSize(selectedFile.size);
+      if (submissionType === 'file') {
+        for (const file of selectedFiles) {
+          try {
+            const res = await uploadFileToPublic(file);
+            attachments.push({
+              name: res.name || file.name,
+              url: res.url,
+              size: res.size,
+              id: (res as any).id || (res as any).fileId,
+            });
+          } catch {
+            attachments.push({
+              name: file.name,
+              url: `/likha/assets/mock-${encodeURIComponent(file.name)}`,
+              size: formatFileSize(file.size),
+            });
+          }
         }
-      } else if (submissionType === 'file' && simulatedFileName) {
-        uploadedFileUrl = `/likha/assets/simulated-${encodeURIComponent(simulatedFileName.trim())}`;
-        uploadedFileSize = '500 KB';
-        finalFileName = simulatedFileName.trim();
       }
 
+      const primary = attachments[0];
       await submitActivity(
         selectedActivity.id,
         submissionType,
         textContent,
-        finalFileName,
+        primary?.name ?? 'CMSC131_Lab_Submission.pdf',
         undefined,
-        uploadedFileUrl,
-        uploadedFileId,
-        uploadedFileSize
+        primary?.url,
+        primary?.id,
+        primary?.size,
+        attachments.length > 0 ? attachments : undefined
       );
       showAlert({
         title: "Activity Submitted",
         message: "Your submission has been recorded successfully.",
         type: "success"
       });
-      setSelectedFile(null);
+      setSelectedFiles([]);
     } catch {
       // submitActivity already surfaced the alert.
     } finally {
@@ -311,15 +355,21 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
             <EmptyState
               title="No activities published for this course yet."
             />
-          ) : visibleClassics.length === 0 && visibleQuestionSets.length === 0 ? (
+          ) : visibleActivities.length === 0 ? (
             <p className="text-[12.5px] text-muted-foreground text-center py-6">
               No activities match the selected filters yet.
             </p>
           ) : (
-            <>
-            {visibleClassics.map(act => {
+            visibleActivities.map(act => {
+              if (act.format === 'classic') {
+              // Submissions come back keyed either by the raw activity id (written
+              // in-session) or the synthetic `asg-activity-<id>` key (from Likha ERP).
               const studentSub = db.submissions.find(
-                s => s.activityKey === act.id && s.studentId === activeUser.id
+                s =>
+                  (s.activityKey === act.id ||
+                    s.activityKey === questionSetKeyOf(act.id) ||
+                    s.activityId === act.id) &&
+                  s.studentId === activeUser.id
               );
               const actTermId: TermId = normalizeTermId(act.term) ?? 'midterm';
               const actFromModule = sourceIndex.classicActivityIds.has(act.id);
@@ -390,14 +440,18 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                   </div>
                 </div>
               );
-            })}
-            {visibleQuestionSets.map(act => {
-              const studentSub =
-                activeRole === 'student'
-                  ? db.submissions.find(
-                      s => s.activityKey === questionSetKeyOf(act.id) && s.studentId === activeUser.id
-                    )
-                  : undefined;
+            }
+
+            const studentSub =
+              activeRole === 'student'
+                ? db.submissions.find(
+                    s =>
+                      (s.activityKey === questionSetKeyOf(act.id) ||
+                        s.activityKey === act.id ||
+                        s.activityId === act.id) &&
+                      s.studentId === activeUser.id
+                  )
+                : undefined;
               const hasEssay = act.questions.some(q => q.type === 'essay');
               const actTermId: TermId = normalizeTermId(act.term) ?? 'midterm';
               const actFromModule = sourceIndex.activityIds.has(act.id);
@@ -500,8 +554,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                   </div>
                 </div>
               );
-            })}
-            </>
+            })
           )}
         </div>
 
@@ -511,7 +564,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
 
   // Render Detailed Activity & Submission Workspace (classic format)
   return (
-    <div className="space-y-5 max-w-5xl mx-auto animate-fade-in pb-16">
+    <div className="space-y-5 w-full animate-fade-in pb-16">
       <div className="flex items-center justify-between gap-3">
         <button
           type="button"
@@ -528,34 +581,15 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
           <span>{onBackToModules ? 'Back to modules' : 'Back to activities'}</span>
         </button>
 
-        {activeRole !== 'student' && (
+        {activeRole !== 'student' && isAssignedInstructor && (
           <div className="flex items-center gap-2">
             <button
-              onClick={() => {
-                // Classic rows link via the raw activity id; question-set rows
-                // link via the synthetic `asg-activity-<id>` key.
-                const sub = db.submissions.find(
-                  s =>
-                    s.activityKey === selectedActivity.id ||
-                    s.activityKey === questionSetKeyOf(selectedActivity.id) ||
-                    (s as unknown as { activityId?: string }).activityId === selectedActivity.id
-                );
-                if (sub) openSpeedGrader(sub.id);
-                else showAlert("No student submissions yet for this activity.");
-              }}
-              className="px-3 py-1.5 text-[12px] font-semibold text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-colors cursor-pointer"
+              onClick={() => handleDelete(selectedActivity.id)}
+              className="p-1.5 text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
+              title="Delete activity"
             >
-              Inspect in SpeedGrader
+              <Trash2 className="w-4 h-4" />
             </button>
-            {isAssignedInstructor && (
-              <button
-                onClick={() => handleDelete(selectedActivity.id)}
-                className="p-1.5 text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
-                title="Delete activity"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            )}
           </div>
         )}
       </div>
@@ -564,7 +598,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
       <div className="bg-card border border-border rounded-2xl overflow-hidden">
         <div className="p-6 sm:p-8 space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
-          <div className="min-w-0 max-w-2xl space-y-1.5">
+          <div className="min-w-0 flex-1 space-y-1.5">
             <div className="text-[12px] font-semibold text-muted-foreground">
               {selectedActivity.category || 'Activity'}
             </div>
@@ -582,7 +616,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
         </div>
 
         {/* Due Date & Submission Type */}
-        <div className="grid sm:grid-cols-3 gap-3 py-4 border-y border-border/70">
+        <div className="grid sm:grid-cols-2 gap-3 py-4 border-y border-border/70">
           <div className="flex items-center gap-2.5 min-w-0">
             <Calendar className="w-4 h-4 text-muted-foreground shrink-0" />
             <div className="min-w-0">
@@ -594,20 +628,13 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
             <Upload className="w-4 h-4 text-muted-foreground shrink-0" />
             <div className="min-w-0">
               <div className="text-[11px] text-muted-foreground">Submissions</div>
-              <div className="text-[12.5px] font-semibold text-foreground truncate">File upload, text entry</div>
-            </div>
-          </div>
-          <div className="flex items-center gap-2.5 min-w-0">
-            <Users className="w-4 h-4 text-muted-foreground shrink-0" />
-            <div className="min-w-0">
-              <div className="text-[11px] text-muted-foreground">Available to</div>
-              <div className="text-[12.5px] font-semibold text-foreground truncate">All enrolled students</div>
+              <div className="text-[12.5px] font-semibold text-foreground truncate">{formatSubmissionTypes(selectedActivity.submissionTypes)}</div>
             </div>
           </div>
         </div>
 
         {/* Activity Instructions */}
-        <div className="space-y-2 max-w-3xl">
+        <div className="space-y-2">
           <h4 className="text-[13px] font-bold text-foreground">
             Guidelines
           </h4>
@@ -639,7 +666,19 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                       key={idx}
                       className="p-3.5 bg-muted/20 hover:bg-muted/30 border border-border/70 rounded-xl flex items-center justify-between gap-3 transition-colors"
                     >
-                      <div className="flex items-center space-x-3 overflow-hidden min-w-0">
+                      <div
+                        className="flex items-center space-x-3 overflow-hidden min-w-0 flex-1 cursor-pointer"
+                        onClick={() => setPreviewAttachment(att)}
+                        title={`View ${att.name}`}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setPreviewAttachment(att);
+                          }
+                        }}
+                      >
                         <div className="w-9 h-9 rounded-lg bg-card border border-border flex items-center justify-center shrink-0">
                           {isImg ? (
                             <ImageIcon className="w-4 h-4 text-pink-500" />
@@ -648,7 +687,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                           )}
                         </div>
                         <div className="truncate min-w-0">
-                          <p className="font-semibold text-xs text-foreground truncate" title={att.name}>
+                          <p className="font-semibold text-xs text-foreground truncate hover:text-primary transition-colors" title={att.name}>
                             {att.name}
                           </p>
                           <p className="text-[11px] text-muted-foreground">
@@ -657,18 +696,30 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                         </div>
                       </div>
 
-                      {att.url && (
-                        <a
-                          href={att.url}
-                          download={att.name}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/10 rounded-lg transition-colors cursor-pointer flex items-center space-x-1 shrink-0 border border-primary/20"
+                      <div className="flex items-center space-x-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setPreviewAttachment(att)}
+                          className="px-2.5 py-1.5 text-xs font-semibold text-foreground hover:bg-muted/70 rounded-lg transition-colors cursor-pointer flex items-center space-x-1 border border-border"
+                          title={`View ${att.name}`}
                         >
-                          <Download className="w-3.5 h-3.5" />
-                          <span>Download</span>
-                        </a>
-                      )}
+                          <Eye className="w-3.5 h-3.5 text-muted-foreground" />
+                          <span>View</span>
+                        </button>
+                        {att.url && (
+                          <a
+                            href={att.url}
+                            download={att.name}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-2.5 py-1.5 text-xs font-semibold text-primary hover:bg-primary/10 rounded-lg transition-colors cursor-pointer flex items-center space-x-1 border border-primary/20"
+                            title={`Download ${att.name}`}
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            <span>Download</span>
+                          </a>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
@@ -694,7 +745,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                 </div>
                 <p className="text-[12.5px] leading-relaxed text-muted-foreground">{criterion.description}</p>
                 <div className="grid grid-cols-3 gap-1.5 pt-1">
-                  {criterion.ratings.map(r => (
+                  {(criterion.ratings || []).map(r => (
                     <div key={r.points} className="px-2 py-2 bg-card border border-border/60 rounded-lg text-center">
                       <div className="text-[12px] font-bold tabular-nums text-foreground">{r.points}</div>
                       <div className="mt-0.5 text-[11px] leading-tight text-muted-foreground truncate">{r.description}</div>
@@ -705,6 +756,31 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
             ))}
           </div>
         </div>
+
+        {/* Grading entry point (faculty / staff) */}
+        {activeRole !== 'student' && (
+          <div>
+            <button
+              type="button"
+              onClick={() => {
+                // Classic rows link via the raw activity id; question-set rows
+                // link via the synthetic `asg-activity-<id>` key.
+                const sub = db.submissions.find(
+                  s =>
+                    s.activityKey === selectedActivity.id ||
+                    s.activityKey === questionSetKeyOf(selectedActivity.id) ||
+                    (s as unknown as { activityId?: string }).activityId === selectedActivity.id
+                );
+                if (sub) openSpeedGrader(sub.id);
+                else showAlert('No student submissions yet for this activity.');
+              }}
+              className="w-full px-4 py-3 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.99] text-primary-foreground rounded-xl transition-all shadow-primary-sm flex items-center justify-center space-x-2 cursor-pointer"
+            >
+              <Award className="w-4 h-4" />
+              <span>Grade Submissions</span>
+            </button>
+          </div>
+        )}
         </div>
       </div>
 
@@ -740,57 +816,100 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                     {currentSubmission.submittedAt ? new Date(currentSubmission.submittedAt).toLocaleString() : 'Recently'}
                   </span>
                 </div>
-                {currentSubmission.fileName && (
-                  <div className="flex items-center justify-between">
+                {submissionFiles.length > 0 && (
+                  <div className="flex items-start justify-between space-x-3">
                     <span className="text-muted-foreground flex items-center space-x-1.5">
                       <Paperclip className="w-3.5 h-3.5" />
-                      <span>Attached File:</span>
+                      <span>{submissionFiles.length > 1 ? 'Attached Files:' : 'Attached File:'}</span>
                     </span>
-                    <div className="flex items-center space-x-2">
-                      <span className="font-semibold text-foreground truncate max-w-[200px]">
-                        {currentSubmission.fileName}
-                      </span>
-                      {currentSubmission.fileUrl && (
-                        <a
-                          href={currentSubmission.fileUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-primary hover:underline font-bold inline-flex items-center space-x-1"
-                        >
-                          <span>Download</span>
-                          <Download className="w-3 h-3" />
-                        </a>
-                      )}
+                    <div className="flex flex-col items-end space-y-1.5">
+                      {submissionFiles.map((file, idx) => (
+                        <div key={`${file.name}-${idx}`} className="flex items-center space-x-2">
+                          <span className="font-semibold text-foreground truncate max-w-[200px]">
+                            {file.name}
+                          </span>
+                          {file.url && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => setPreviewAttachment({
+                                  name: file.name || 'Submission Attachment',
+                                  size: file.size,
+                                  url: file.url,
+                                })}
+                                className="px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-muted/70 rounded-lg transition-colors cursor-pointer flex items-center space-x-1 border border-border"
+                                title={`View ${file.name}`}
+                              >
+                                <Eye className="w-3.5 h-3.5 text-muted-foreground" />
+                                <span>View</span>
+                              </button>
+                              <a
+                                href={file.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary/10 rounded-lg transition-colors cursor-pointer flex items-center space-x-1 border border-primary/20"
+                                title={`Download ${file.name}`}
+                              >
+                                <Download className="w-3 h-3" />
+                                <span>Download</span>
+                              </a>
+                            </>
+                          )}
+                        </div>
+                      ))}
                     </div>
+                  </div>
+                )}
+                {((currentSubmission.comments ?? []).length > 0 || currentSubmission.feedback) && (
+                  <div className="pt-1.5 border-t border-border/70 space-y-1.5">
+                    <span className="text-muted-foreground">Instructor Feedback:</span>
+                    {(currentSubmission.comments ?? []).length > 0 ? (
+                      (currentSubmission.comments ?? []).map(comment => (
+                        <div key={comment.id} className="p-3 bg-card border border-border rounded-xl space-y-1">
+                          <div className="flex justify-between text-[10px] font-sans text-muted-foreground">
+                            <span className="font-bold text-foreground">{comment.authorName}</span>
+                            <span>{new Date(comment.createdAt).toLocaleString()}</span>
+                          </div>
+                          <p className="text-foreground leading-normal italic">{comment.text}</p>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="p-3 bg-card border border-border rounded-xl space-y-1">
+                        <div className="text-[10px] font-sans font-bold text-foreground">Instructor</div>
+                        <p className="text-foreground leading-normal italic">{currentSubmission.feedback}</p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
             )}
 
-            <div className="flex space-x-2 border-b border-border pb-2">
-              <button
-                type="button"
-                onClick={() => setSubmissionType('online_text')}
-                className={`px-3 py-1.5 rounded-lg font-bold transition-colors cursor-pointer ${submissionType === 'online_text'
-                    ? 'bg-primary text-primary-foreground shadow-subtle'
-                    : 'bg-muted text-muted-foreground hover:text-foreground'
-                  }`}
-              >
-                Text Entry / Repository URL
-              </button>
-              <button
-                type="button"
-                onClick={() => setSubmissionType('file')}
-                className={`px-3 py-1.5 rounded-lg font-bold transition-colors cursor-pointer ${submissionType === 'file'
-                    ? 'bg-primary text-primary-foreground shadow-subtle'
-                    : 'bg-muted text-muted-foreground hover:text-foreground'
-                  }`}
-              >
-                File Upload (.PDF / .ZIP)
-              </button>
-            </div>
+            {allowOnlineText && allowFileUpload && (
+              <div className="flex space-x-2 border-b border-border pb-2">
+                <button
+                  type="button"
+                  onClick={() => setSubmissionType('online_text')}
+                  className={`px-3 py-1.5 rounded-lg font-bold transition-colors cursor-pointer ${submissionType === 'online_text'
+                      ? 'bg-primary text-primary-foreground shadow-subtle'
+                      : 'bg-muted text-muted-foreground hover:text-foreground'
+                    }`}
+                >
+                  Text Entry / Repository URL
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSubmissionType('file')}
+                  className={`px-3 py-1.5 rounded-lg font-bold transition-colors cursor-pointer ${submissionType === 'file'
+                      ? 'bg-primary text-primary-foreground shadow-subtle'
+                      : 'bg-muted text-muted-foreground hover:text-foreground'
+                    }`}
+                >
+                  File Upload (.PDF / .ZIP)
+                </button>
+              </div>
+            )}
 
-            {submissionType === 'online_text' ? (
+            {submissionType === 'online_text' && allowOnlineText ? (
               <div className="space-y-2">
                 <label className="block font-bold text-foreground">
                   Online Text Content & Code Submissions:
@@ -803,7 +922,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                   className="w-full p-3 rounded-xl border border-border bg-background font-sans text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/40 focus:border-primary text-xs outline-none"
                 />
               </div>
-            ) : (
+            ) : allowFileUpload ? (
               <div className="space-y-2">
                 <label className="block font-bold text-foreground">
                   File Attachment:
@@ -814,77 +933,93 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                   onDrop={e => {
                     e.preventDefault();
                     setIsDragging(false);
-                    const file = e.dataTransfer.files?.[0];
-                    if (file) {
-                      setSelectedFile(file);
-                      setSimulatedFileName(file.name);
-                    }
+                    const dropped = Array.from(e.dataTransfer.files || []);
+                    if (dropped.length) addFiles(dropped);
                   }}
                   className={`border-2 border-dashed rounded-2xl p-6 text-center space-y-3 transition-colors ${
                     isDragging ? 'border-primary bg-primary/5' : 'border-border bg-muted/20'
                   }`}
                 >
-                  {selectedFile ? (
-                    <div className="p-3 bg-card border border-border rounded-xl flex items-center justify-between max-w-md mx-auto">
-                      <div className="flex items-center space-x-3 truncate">
-                        <FileText className="w-6 h-6 text-primary shrink-0" />
-                        <div className="text-left truncate">
-                          <div className="font-bold text-foreground truncate text-xs">{selectedFile.name}</div>
-                          <div className="text-[11px] text-muted-foreground">{formatFileSize(selectedFile.size)}</div>
+                  {selectedFiles.length > 0 ? (
+                    <div className="max-w-md mx-auto space-y-2">
+                      {selectedFiles.map((file, idx) => (
+                        <div
+                          key={`${file.name}-${idx}`}
+                          className="p-3 bg-card border border-border rounded-xl flex items-center justify-between"
+                        >
+                          <div className="flex items-center space-x-3 truncate">
+                            <FileText className="w-6 h-6 text-primary shrink-0" />
+                            <div className="text-left truncate">
+                              <div className="font-bold text-foreground truncate text-xs">{file.name}</div>
+                              <div className="text-[11px] text-muted-foreground">{formatFileSize(file.size)}</div>
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-1 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const url = URL.createObjectURL(file);
+                                setPreviewAttachment({ name: file.name, size: formatFileSize(file.size), url });
+                              }}
+                              className="p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg transition-colors cursor-pointer"
+                              title="Preview selected file"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedFiles(prev => prev.filter((_, i) => i !== idx));
+                              }}
+                              className="p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg transition-colors cursor-pointer"
+                              title="Remove file"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => { setSelectedFile(null); setSimulatedFileName(''); }}
-                        className="p-1 hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg transition-colors cursor-pointer shrink-0"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
+                      ))}
+                      <label className="block text-[11px] font-semibold text-primary hover:underline cursor-pointer">
+                        + Add more files
+                        <input
+                          type="file"
+                          multiple
+                          className="hidden"
+                          onChange={e => {
+                            const list = Array.from(e.target.files || []);
+                            if (list.length) addFiles(list);
+                            e.target.value = '';
+                          }}
+                        />
+                      </label>
                     </div>
                   ) : (
                     <>
                       <Upload className="w-8 h-8 text-muted-foreground mx-auto" />
                       <div>
                         <label className="font-semibold text-primary hover:underline cursor-pointer">
-                          <span>Browse file to upload</span>
+                          <span>Browse files to upload</span>
                           <input
                             type="file"
+                            multiple
                             className="hidden"
                             onChange={e => {
-                              const f = e.target.files?.[0];
-                              if (f) {
-                                setSelectedFile(f);
-                                setSimulatedFileName(f.name);
-                              }
+                              const list = Array.from(e.target.files || []);
+                              if (list.length) addFiles(list);
+                              e.target.value = '';
                             }}
                           />
                         </label>
                         <span className="text-muted-foreground"> or drag and drop here</span>
                       </div>
                       <div className="text-[11px] text-muted-foreground">
-                        Supported: PDF, DOCX, ZIP, images (up to 25MB)
+                        Supported: PDF, DOCX, ZIP, images (up to 25MB each)
                       </div>
                     </>
                   )}
-
-                  <div className="pt-2 border-t border-border/60">
-                    <div className="text-[11px] text-muted-foreground mb-1">
-                      Quick test filename fallback:
-                    </div>
-                    <input
-                      type="text"
-                      value={simulatedFileName}
-                      onChange={e => {
-                        setSimulatedFileName(e.target.value);
-                        if (!e.target.value) setSelectedFile(null);
-                      }}
-                      placeholder="e.g. CMSC131_Lab4_JayveeReyes_2021-SLUC-0492.pdf"
-                      className="max-w-md mx-auto p-2 border border-border rounded-xl font-sans text-center w-full bg-background text-xs outline-none"
-                    />
-                  </div>
                 </div>
               </div>
-            )}
+            ) : null}
 
             <div className="pt-2 flex justify-end">
               <button
@@ -903,6 +1038,12 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
           </form>
         </div>
       )}
+
+      {/* Assessment Attachment Preview Modal */}
+      <AssessmentFilePreviewModal
+        file={previewAttachment}
+        onClose={() => setPreviewAttachment(null)}
+      />
     </div>
   );
 };

@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useLMS } from '../../shared/context/LMSContext';
 import type { TermId } from '../../shared/types/lms';
 import { normalizeTermId } from '../../shared/utils/gradingTerms';
 import { TERM_LABELS, TermFilterSelect } from '../../shared/components/common/TermSelect';
+import { buildAssessmentSourceIndex } from '../../shared/utils/assessmentSource';
+import { sortAssessmentsLatestFirst } from './utils/assessmentSorting';
 import {
   Briefcase,
   Users,
@@ -17,12 +19,18 @@ import {
   ArrowLeft,
   Calendar,
   Globe,
-  Code
+  Code,
+  Paperclip,
+  Download,
+  Eye,
+  FileText,
+  Image as ImageIcon
 } from 'lucide-react';
 import { PageHeader } from '../../shared/components/common/PageHeader';
 import { EmptyState } from '../../shared/components/common/EmptyState';
 import { CreateProjectPage } from './CreateProjectPage';
 import { canManageCourseContent } from '../../shared/utils/roles';
+import { AssessmentFilePreviewModal, type AssessmentPreviewAttachment } from './components/AssessmentFilePreviewModal';
 
 interface ProjectsViewProps {
   courseId: string;
@@ -56,6 +64,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   const [simulatedFileName, setSimulatedFileName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [previewAttachment, setPreviewAttachment] = useState<AssessmentPreviewAttachment | null>(null);
 
   const currentCourse = (db.courses || []).find(c => c.id === courseId);
   const isAssignedInstructor = canManageCourseContent(currentCourse, activeUser);
@@ -69,11 +78,21 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     a => a.courseId === courseId && a.assessmentType === 'project'
   );
 
-  const visibleProjects = courseProjects.filter(a => {
-    if (activeRole === 'student' && !a.published) return false;
-    if (termFilter !== 'all' && (normalizeTermId(a.term) ?? 'midterm') !== termFilter) return false;
-    return true;
-  });
+  const sourceIndex = useMemo(
+    () => buildAssessmentSourceIndex((db as any).modules, courseId),
+    [(db as any).modules, courseId]
+  );
+
+  const visibleProjects = useMemo(() => {
+    return sortAssessmentsLatestFirst(
+      courseProjects.filter(a => {
+        if (activeRole === 'student' && !a.published) return false;
+        if (termFilter !== 'all' && (normalizeTermId(a.term) ?? 'midterm') !== termFilter) return false;
+        return true;
+      }),
+      sourceIndex
+    );
+  }, [courseProjects, activeRole, termFilter, sourceIndex]);
 
   const selectedProject = selectedProjectId
     ? courseProjects.find(a => a.id === selectedProjectId)
@@ -287,7 +306,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
   // Detail & Submission View
   return (
-    <div className="space-y-6 max-w-4xl animate-fade-in">
+    <div className="space-y-6 w-full animate-fade-in">
       <button
         type="button"
         onClick={() => onSelectProject(null)}
@@ -347,6 +366,92 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           <p className="whitespace-pre-line text-sm text-foreground/90">{selectedProject.instructions}</p>
         </div>
 
+        {/* Attached Starter Handouts / Reference Files */}
+        {(() => {
+          const attachments = (selectedProject.attachments && selectedProject.attachments.length > 0)
+            ? selectedProject.attachments
+            : selectedProject.fileName
+              ? [{ name: selectedProject.fileName, size: selectedProject.fileSize || '', url: selectedProject.fileUrl, type: 'file' }]
+              : [];
+          if (attachments.length === 0) return null;
+
+          return (
+            <div className="pt-3 border-t border-border space-y-3">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <Paperclip className="w-3.5 h-3.5" />
+                <span>Reference & Starter Files ({attachments.length})</span>
+              </h3>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {attachments.map((att, idx) => {
+                  const isImg = att.name ? /\.(jpg|jpeg|png|gif|svg|webp)$/i.test(att.name) : false;
+                  return (
+                    <div
+                      key={idx}
+                      className="p-3 bg-muted/20 hover:bg-muted/30 border border-border/70 rounded-xl flex items-center justify-between gap-3 transition-colors"
+                    >
+                      <div
+                        className="flex items-center space-x-3 overflow-hidden min-w-0 flex-1 cursor-pointer"
+                        onClick={() => setPreviewAttachment(att)}
+                        title={`View ${att.name}`}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setPreviewAttachment(att);
+                          }
+                        }}
+                      >
+                        <div className="w-8 h-8 rounded-lg bg-card border border-border flex items-center justify-center shrink-0">
+                          {isImg ? (
+                            <ImageIcon className="w-4 h-4 text-pink-500" />
+                          ) : (
+                            <FileText className="w-4 h-4 text-primary" />
+                          )}
+                        </div>
+                        <div className="truncate min-w-0">
+                          <p className="font-semibold text-xs text-foreground truncate hover:text-primary transition-colors" title={att.name}>
+                            {att.name}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground">
+                            {att.size || 'Resource'} • {isImg ? 'Image' : 'Document'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center space-x-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setPreviewAttachment(att)}
+                          className="px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-muted/70 rounded-lg transition-colors cursor-pointer flex items-center space-x-1 border border-border"
+                          title={`View ${att.name}`}
+                        >
+                          <Eye className="w-3.5 h-3.5 text-muted-foreground" />
+                          <span>View</span>
+                        </button>
+                        {att.url && (
+                          <a
+                            href={att.url}
+                            download={att.name}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary/10 rounded-lg transition-colors cursor-pointer flex items-center space-x-1 border border-primary/20"
+                            title={`Download ${att.name}`}
+                          >
+                            <Download className="w-3 h-3" />
+                            <span>Download</span>
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+
         {selectedProject.rubric && selectedProject.rubric.length > 0 && (
           <div className="pt-4 border-t border-border space-y-2">
             <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Rubric Criteria</h3>
@@ -391,8 +496,35 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                 </div>
               )}
               {currentSubmission.fileName && (
-                <div className="text-xs font-mono text-muted-foreground">
-                  Attached file: {currentSubmission.fileName}
+                <div className="text-xs font-mono text-muted-foreground flex items-center justify-between">
+                  <span>Attached file: {currentSubmission.fileName}</span>
+                  {currentSubmission.fileUrl && (
+                    <div className="flex items-center space-x-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewAttachment({
+                          name: currentSubmission.fileName || 'Project Deliverable',
+                          url: currentSubmission.fileUrl,
+                        })}
+                        className="px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-muted/70 rounded-lg transition-colors cursor-pointer flex items-center space-x-1 border border-border"
+                        title={`View ${currentSubmission.fileName}`}
+                      >
+                        <Eye className="w-3.5 h-3.5 text-muted-foreground" />
+                        <span>View</span>
+                      </button>
+                      <a
+                        href={currentSubmission.fileUrl}
+                        download={currentSubmission.fileName}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary/10 rounded-lg transition-colors cursor-pointer flex items-center space-x-1 border border-primary/20"
+                        title={`Download ${currentSubmission.fileName}`}
+                      >
+                        <Download className="w-3 h-3" />
+                        <span>Download</span>
+                      </a>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -467,6 +599,12 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           )}
         </div>
       )}
+
+      {/* Assessment Attachment Preview Modal */}
+      <AssessmentFilePreviewModal
+        file={previewAttachment}
+        onClose={() => setPreviewAttachment(null)}
+      />
     </div>
   );
 };

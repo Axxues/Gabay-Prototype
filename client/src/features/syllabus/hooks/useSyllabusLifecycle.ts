@@ -211,14 +211,18 @@ export function useSyllabusLifecycle(
         initialAgreements[instId] = false;
       }
 
-      // Check if any course in this group has an active syllabusStatus from the backend
+      // Check backend syllabus status from courses
       const groupCourses = relevantCourses.filter(
         c =>
-          g.courseIds.includes(c.id) ||
+          g.courseIds.some(id => String(id).trim() === String(c.id).trim()) ||
           (Boolean(c.code && g.courseCode) &&
             normalizeCourseCode(c.code) === normalizeCourseCode(g.courseCode) &&
             normalizeAcademicSemester(c.semester || c.term) === normalizeAcademicSemester(g.semester))
       );
+
+      const hasBackendCourses = groupCourses.length > 0;
+      const anyBackendLocked = hasBackendCourses && groupCourses.some(c => c.syllabusStatus === 'locked');
+      const allBackendLocked = hasBackendCourses && groupCourses.every(c => c.syllabusStatus === 'locked');
 
       let maxBackendStatus: string | undefined;
       let maxBackendWeight = 0;
@@ -232,12 +236,23 @@ export function useSyllabusLifecycle(
         }
       }
 
+      const wasExplicitlyLocked = existingRecord?.status === 'locked' && Boolean(existingRecord.lockedAt);
+      const isNewerBackendRelease = groupCourses.some(
+        c =>
+          c.syllabusStatus === 'in_development' &&
+          c.syllabusReleasedAt &&
+          existingRecord?.lockedAt &&
+          new Date(c.syllabusReleasedAt) > new Date(existingRecord.lockedAt)
+      );
+
       let effectiveStatus = existingRecord?.status || 'locked';
-      if (maxBackendStatus) {
-        const localWeight = STATUS_WEIGHT[effectiveStatus] ?? 0;
-        if (maxBackendWeight >= localWeight) {
-          effectiveStatus = maxBackendStatus as any;
-        }
+
+      if (allBackendLocked || (anyBackendLocked && !maxBackendStatus)) {
+        effectiveStatus = 'locked';
+      } else if (wasExplicitlyLocked && !isNewerBackendRelease) {
+        effectiveStatus = 'locked';
+      } else if (maxBackendStatus) {
+        effectiveStatus = maxBackendStatus as any;
       }
 
       return {
@@ -280,7 +295,7 @@ export function useSyllabusLifecycle(
               courseTitle: g.courseTitle,
               schoolYear: g.schoolYear,
               semester: g.semester,
-              status: legacy.status === 'locked' && g.status !== 'locked' ? g.status : legacy.status,
+              status: g.status,
               courseIds: g.courseIds,
               instructorIds: g.instructorIds,
               sections: g.sections
@@ -319,9 +334,9 @@ export function useSyllabusLifecycle(
           const hasNewSections = g.sections.some(s => !record.sections?.includes(s));
           const hasNewInstructors = g.instructorIds.some(i => !record.instructorIds?.includes(i));
           const hasNewCourseIds = g.courseIds.some(cId => !record.courseIds?.includes(cId));
-          const shouldUpgradeStatus = record.status === 'locked' && g.status !== 'locked';
+          const shouldSyncStatus = record.status !== g.status;
 
-          if (hasNewSections || hasNewInstructors || hasNewCourseIds || shouldUpgradeStatus) {
+          if (hasNewSections || hasNewInstructors || hasNewCourseIds || shouldSyncStatus) {
             const updatedAgreements = { ...(record.submissionAgreements || {}) };
             for (const instId of g.instructorIds) {
               if (updatedAgreements[instId] === undefined) {
@@ -330,12 +345,12 @@ export function useSyllabusLifecycle(
             }
             next[g.id] = {
               ...record,
-              status: shouldUpgradeStatus ? g.status : record.status,
+              status: g.status,
               courseIds: Array.from(new Set([...(record.courseIds || []), ...g.courseIds])),
               instructorIds: Array.from(new Set([...(record.instructorIds || []), ...g.instructorIds])),
               sections: Array.from(new Set([...(record.sections || []), ...g.sections])),
               submissionAgreements: updatedAgreements,
-              updatedAt: shouldUpgradeStatus ? new Date().toISOString() : record.updatedAt
+              updatedAt: shouldSyncStatus ? new Date().toISOString() : record.updatedAt
             };
             changed = true;
           }
@@ -404,6 +419,61 @@ export function useSyllabusLifecycle(
 
     if (onPersist && affectedCourseIds.length > 0) {
       onPersist(Array.from(new Set(affectedCourseIds)), 'in_development');
+    }
+  }, [groups, updateRecords]);
+
+  // Chair locks courses to halt syllabus development
+  const lockCourses = useCallback((
+    groupIds: string[],
+    chairId: string,
+    onPersist?: (courseIds: string[], status: string) => void
+  ) => {
+    const affectedCourseIds: string[] = [];
+
+    updateRecords(prev => {
+      const next = { ...prev };
+      const now = new Date().toISOString();
+
+      for (const id of groupIds) {
+        const existing = next[id];
+        const targetGroup = groups.find(g => g.id === id);
+        const cIds = existing?.courseIds || targetGroup?.courseIds || [];
+        affectedCourseIds.push(...cIds);
+
+        if (existing) {
+          next[id] = {
+            ...existing,
+            status: 'locked',
+            lockedAt: now,
+            lockedBy: chairId,
+            updatedAt: now
+          };
+        } else if (targetGroup) {
+          next[id] = {
+            id,
+            courseCode: targetGroup.courseCode,
+            courseTitle: targetGroup.courseTitle,
+            schoolYear: targetGroup.schoolYear,
+            semester: targetGroup.semester,
+            collegeId: targetGroup.collegeId,
+            departmentId: targetGroup.departmentId,
+            courseIds: targetGroup.courseIds,
+            instructorIds: targetGroup.instructorIds,
+            sections: targetGroup.sections,
+            status: 'locked',
+            lockedAt: now,
+            lockedBy: chairId,
+            submissionAgreements: { ...targetGroup.submissionAgreements },
+            evaluators: [],
+            updatedAt: now
+          };
+        }
+      }
+      return next;
+    });
+
+    if (onPersist && affectedCourseIds.length > 0) {
+      onPersist(Array.from(new Set(affectedCourseIds)), 'locked');
     }
   }, [groups, updateRecords]);
 
@@ -586,14 +656,27 @@ export function useSyllabusLifecycle(
   // Update syllabus draft content for this group
   const updateSyllabusData = useCallback((groupId: string, syllabusData: OfficialSyllabusData) => {
     updateRecords(prev => {
-      const existing = prev[groupId];
-      if (!existing) return prev;
-
+      const existing = prev[groupId] || findMatchingRecord(prev, groupId);
+      if (existing?.status === 'locked') {
+        return prev;
+      }
       const now = new Date().toISOString();
       return {
         ...prev,
         [groupId]: {
-          ...existing,
+          ...(existing || {
+            id: groupId,
+            courseCode: '',
+            courseTitle: '',
+            schoolYear: '',
+            semester: '',
+            courseIds: [],
+            instructorIds: [],
+            sections: [],
+            status: 'in_development',
+            submissionAgreements: {},
+            evaluators: []
+          }),
           syllabusData,
           updatedAt: now
         }
@@ -606,6 +689,7 @@ export function useSyllabusLifecycle(
     records,
     getRecord,
     releaseCourses,
+    lockCourses,
     confirmAgreement,
     assignEvaluators,
     submitEvaluatorReview,

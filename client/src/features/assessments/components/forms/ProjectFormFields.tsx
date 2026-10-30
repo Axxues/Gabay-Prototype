@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Activity, RubricCriterion, TermId } from '../../../../shared/types/lms';
 import { TermSelect } from '../../../../shared/components/common/TermSelect';
+import { NumericInput } from '../../../../shared/components/common/NumericInput';
 import {
   GradingRubricSection,
   blankRubricCriterion,
@@ -174,11 +175,10 @@ export const ProjectFormFields: React.FC<{
                 Points possible
               </label>
               <div className="relative">
-                <input
-                  type="number"
+                <NumericInput
                   min={1}
                   value={value.pointsPossible}
-                  onChange={e => onChange({ ...value, pointsPossible: Math.max(1, parseInt(e.target.value) || 0) })}
+                  onChange={num => onChange({ ...value, pointsPossible: num })}
                   className="w-full pl-3.5 pr-11 py-2 bg-background border border-border rounded-xl text-foreground text-[13px] font-semibold tabular-nums outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all"
                 />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[12px] text-muted-foreground font-medium">
@@ -297,12 +297,11 @@ export const ProjectFormFields: React.FC<{
                   <span className="text-xs font-semibold text-foreground">Max Members per Team</span>
                   <p className="text-[11px] text-muted-foreground">Limit the number of student contributors per group submission</p>
                 </div>
-                <input
-                  type="number"
+                <NumericInput
                   min={2}
                   max={15}
                   value={value.maxGroupSize}
-                  onChange={e => onChange({ ...value, maxGroupSize: Math.max(2, parseInt(e.target.value) || 2) })}
+                  onChange={num => onChange({ ...value, maxGroupSize: num })}
                   className="w-20 px-2.5 py-1.5 text-center text-xs font-bold bg-background border border-border rounded-lg outline-none focus:ring-1 focus:ring-primary"
                 />
               </div>

@@ -110,4 +110,27 @@ describe('ModulesView refresh loading', () => {
     expect(screen.getByText(/Attachments \(3\):/i)).toBeInTheDocument();
     expect(screen.getByAltText('architecture_diagram.png')).toBeInTheDocument();
   });
+
+  test('renders module items latest at the top, oldest at the bottom', () => {
+    mocks.modules = [
+      {
+        id: 'm1',
+        courseId: 'c1',
+        title: 'Module 1',
+        order: 1,
+        published: true,
+        items: [
+          { id: 'item-oldest', title: 'Lecture 1', type: 'page', order: 1, published: true, required: false },
+          { id: 'item-mid', title: 'Lecture 2', type: 'page', order: 2, published: true, required: false },
+          { id: 'item-latest', title: 'Activity 3 (Both)', type: 'activity', order: 5, published: true, required: false },
+        ]
+      }
+    ];
+
+    renderPage();
+    fireEvent.click(screen.getByText('Module 1'));
+
+    const itemEls = screen.getAllByText(/^(Activity 3 \(Both\)|Lecture 2|Lecture 1)$/);
+    expect(itemEls.map(el => el.textContent)).toEqual(['Activity 3 (Both)', 'Lecture 2', 'Lecture 1']);
+  });
 });

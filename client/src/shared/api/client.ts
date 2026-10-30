@@ -29,59 +29,67 @@ function safeLocalStorage(): Storage | null {
 
 export function getToken(): string | null {
   try {
-    const session = safeSessionStorage();
-    const token = session?.getItem(TOKEN_KEY);
-    if (token) return token;
     const local = safeLocalStorage();
-    return local?.getItem(TOKEN_KEY) ?? null;
+    const localToken = local?.getItem(TOKEN_KEY);
+    if (localToken) return localToken;
+
+    const session = safeSessionStorage();
+    const sessionToken = session?.getItem(TOKEN_KEY);
+    if (sessionToken) {
+      try {
+        local?.setItem(TOKEN_KEY, sessionToken);
+      } catch {}
+      return sessionToken;
+    }
+    return null;
   } catch {
     return null;
   }
 }
 
-export function setToken(token: string, persist?: boolean): void {
+export function setToken(token: string, persist = true): void {
   try {
     const session = safeSessionStorage();
     const local = safeLocalStorage();
-    const shouldPersist = persist ?? Boolean(local?.getItem(TOKEN_KEY) && !session?.getItem(TOKEN_KEY));
-    if (shouldPersist && local) {
-      local.setItem(TOKEN_KEY, token);
-      session?.removeItem(TOKEN_KEY);
-    } else if (session) {
-      session.setItem(TOKEN_KEY, token);
+    if (persist) {
+      local?.setItem(TOKEN_KEY, token);
+    } else {
       local?.removeItem(TOKEN_KEY);
-    } else if (local) {
-      local.setItem(TOKEN_KEY, token);
     }
+    session?.setItem(TOKEN_KEY, token);
   } catch {}
 }
 
 export function getRefreshToken(): string | null {
   try {
-    const session = safeSessionStorage();
-    const token = session?.getItem(REFRESH_TOKEN_KEY);
-    if (token) return token;
     const local = safeLocalStorage();
-    return local?.getItem(REFRESH_TOKEN_KEY) ?? null;
+    const localToken = local?.getItem(REFRESH_TOKEN_KEY);
+    if (localToken) return localToken;
+
+    const session = safeSessionStorage();
+    const sessionToken = session?.getItem(REFRESH_TOKEN_KEY);
+    if (sessionToken) {
+      try {
+        local?.setItem(REFRESH_TOKEN_KEY, sessionToken);
+      } catch {}
+      return sessionToken;
+    }
+    return null;
   } catch {
     return null;
   }
 }
 
-export function setRefreshToken(refreshToken: string, persist?: boolean): void {
+export function setRefreshToken(refreshToken: string, persist = true): void {
   try {
     const session = safeSessionStorage();
     const local = safeLocalStorage();
-    const shouldPersist = persist ?? Boolean(local?.getItem(REFRESH_TOKEN_KEY) && !session?.getItem(REFRESH_TOKEN_KEY));
-    if (shouldPersist && local) {
-      local.setItem(REFRESH_TOKEN_KEY, refreshToken);
-      session?.removeItem(REFRESH_TOKEN_KEY);
-    } else if (session) {
-      session.setItem(REFRESH_TOKEN_KEY, refreshToken);
+    if (persist) {
+      local?.setItem(REFRESH_TOKEN_KEY, refreshToken);
+    } else {
       local?.removeItem(REFRESH_TOKEN_KEY);
-    } else if (local) {
-      local.setItem(REFRESH_TOKEN_KEY, refreshToken);
     }
+    session?.setItem(REFRESH_TOKEN_KEY, refreshToken);
   } catch {}
 }
 

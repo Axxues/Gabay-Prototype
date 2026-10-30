@@ -5,6 +5,8 @@ import { normalizeTermId } from '../../shared/utils/gradingTerms';
 import { TERM_LABELS, TermFilterSelect } from '../../shared/components/common/TermSelect';
 import { canManageCourseContent } from '../../shared/utils/roles';
 import { EmptyState } from '../../shared/components/common/EmptyState';
+import { buildAssessmentSourceIndex } from '../../shared/utils/assessmentSource';
+import { sortAssessmentsLatestFirst } from './utils/assessmentSorting';
 import {
   ClipboardList,
   FileCheck2,
@@ -13,8 +15,7 @@ import {
   Briefcase,
   Presentation,
   Search,
-  Calendar,
-  Award,
+  Hourglass,
   Clock,
   ChevronRight,
   Plus,
@@ -39,6 +40,8 @@ interface UnifiedAssessmentItem {
   published: boolean;
   format?: string;
   targetSubTab: string;
+  createdAt?: string;
+  metadata?: any;
 }
 
 const CATEGORY_TABS: { id: CategoryFilter; label: string; icon: React.ReactNode }[] = [
@@ -102,6 +105,8 @@ export const AssessmentsOverviewView: React.FC<AssessmentsOverviewViewProps> = (
           published: a.published,
           format: a.format,
           targetSubTab: subTabMap[type] || 'activities',
+          createdAt: a.createdAt,
+          metadata: a.metadata,
         });
       });
 
@@ -120,15 +125,21 @@ export const AssessmentsOverviewView: React.FC<AssessmentsOverviewViewProps> = (
           dueDate: q.dueDate,
           published: q.published,
           targetSubTab: 'quizzes',
+          createdAt: q.createdAt,
         });
       });
 
     return list;
   }, [db.activities, db.quizzes, courseId]);
 
+  const sourceIndex = useMemo(
+    () => buildAssessmentSourceIndex((db as any).modules, courseId),
+    [(db as any).modules, courseId]
+  );
+
   // Filter items
   const filteredItems = useMemo(() => {
-    return allItems.filter(item => {
+    const filtered = allItems.filter(item => {
       // Role visibility: students only see published assessments
       if (activeRole === 'student' && !item.published) return false;
 
@@ -154,13 +165,14 @@ export const AssessmentsOverviewView: React.FC<AssessmentsOverviewViewProps> = (
 
       return true;
     });
-  }, [allItems, categoryFilter, selectedTerm, searchQuery, activeRole]);
+
+    return sortAssessmentsLatestFirst(filtered, sourceIndex);
+  }, [allItems, categoryFilter, selectedTerm, searchQuery, activeRole, sourceIndex]);
 
   // Metrics computation
   const metrics = useMemo(() => {
     const visible = allItems.filter(i => activeRole !== 'student' || i.published);
     const totalCount = visible.length;
-    const totalPoints = visible.reduce((sum, i) => sum + i.points, 0);
 
     // Due in next 7 days
     const now = new Date().getTime();
@@ -170,6 +182,14 @@ export const AssessmentsOverviewView: React.FC<AssessmentsOverviewViewProps> = (
       const d = new Date(i.dueDate).getTime();
       return d >= now && d <= next7Days;
     }).length;
+
+    // Submissions still waiting on the grader (faculty) or on evaluation (student).
+    const ungradedCount = (db.submissions || []).filter(
+      s =>
+        s.courseId === courseId &&
+        s.status === 'submitted' &&
+        (activeRole !== 'student' || s.studentId === activeUser.id)
+    ).length;
 
     // Completed submissions
     let completedCount = 0;
@@ -185,7 +205,7 @@ export const AssessmentsOverviewView: React.FC<AssessmentsOverviewViewProps> = (
       completedCount = graded.length;
     }
 
-    return { totalCount, totalPoints, dueThisWeek, completedCount };
+    return { totalCount, dueThisWeek, completedCount, ungradedCount };
   }, [allItems, activeRole, db.submissions, courseId, activeUser.id]);
 
   const getItemSubmissionStatus = (item: UnifiedAssessmentItem) => {
@@ -203,23 +223,22 @@ export const AssessmentsOverviewView: React.FC<AssessmentsOverviewViewProps> = (
       if (sub) {
         if (sub.status === 'graded') {
           return (
-            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
-              <CheckCircle2 className="h-3 w-3" />
-              Graded ({sub.grade ?? 0}/{item.points})
+            <span className="px-2.5 py-1 text-xs font-sans font-semibold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 rounded-full border border-emerald-500/20 flex items-center space-x-1">
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>Scored {sub.grade ?? 0}/{item.points}</span>
             </span>
           );
         }
         return (
-          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 bg-blue-50 dark:bg-blue-950/40 px-2 py-0.5 rounded-full border border-blue-200 dark:border-blue-800">
-            <CheckCircle2 className="h-3 w-3" />
-            Submitted
+          <span className="px-2.5 py-1 text-xs font-sans font-semibold bg-blue-500/10 text-blue-700 dark:text-blue-400 rounded-full border border-blue-500/20 flex items-center space-x-1">
+            <Clock className="w-3.5 h-3.5" />
+            <span>Submitted</span>
           </span>
         );
       }
       return (
-        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-600 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-800">
-          <Clock className="h-3 w-3" />
-          Pending
+        <span className="px-2.5 py-1 text-xs font-sans font-medium bg-muted text-muted-foreground rounded-full border border-border">
+          Not submitted
         </span>
       );
     }
@@ -236,10 +255,29 @@ export const AssessmentsOverviewView: React.FC<AssessmentsOverviewViewProps> = (
     );
     const toGrade = subs.filter(s => s.status === 'submitted').length;
     return (
-      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-muted-foreground bg-accent px-2 py-0.5 rounded-full">
+      <span className="px-2.5 py-1 text-xs font-sans font-medium bg-muted text-muted-foreground rounded-full border border-border">
         {subs.length} submissions {toGrade > 0 && `(${toGrade} to grade)`}
       </span>
     );
+  };
+
+  // Per-category pill tone, matching the badge palette used elsewhere in the
+  // assessments feature (SpeedGrader header badges).
+  const getCategoryPillClasses = (category: string) => {
+    switch (category) {
+      case 'activity':
+        return 'bg-sky-500/10 text-sky-700 dark:text-sky-400 border-sky-500/20';
+      case 'quiz':
+        return 'bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/20';
+      case 'assignment':
+        return 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20';
+      case 'project':
+        return 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20';
+      case 'presentation':
+        return 'bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/20';
+      default:
+        return 'bg-muted text-muted-foreground border-border';
+    }
   };
 
   const getCategoryIcon = (category: string) => {
@@ -361,13 +399,13 @@ export const AssessmentsOverviewView: React.FC<AssessmentsOverviewViewProps> = (
 
         <div className="rounded-2xl border border-border bg-card p-4 shadow-sm flex items-center justify-between">
           <div>
-            <div className="text-[11px] font-semibold text-muted-foreground">Total Points</div>
-            <div className="text-2xl font-black mt-1 text-indigo-600 dark:text-indigo-400">
-              {metrics.totalPoints}
+            <div className="text-[11px] font-semibold text-muted-foreground">Ungraded Submissions</div>
+            <div className="text-2xl font-black mt-1 text-rose-600 dark:text-rose-400">
+              {metrics.ungradedCount}
             </div>
           </div>
-          <div className="h-10 w-10 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
-            <Award className="h-5 w-5" />
+          <div className="h-10 w-10 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center">
+            <Hourglass className="h-5 w-5" />
           </div>
         </div>
       </div>
@@ -432,39 +470,33 @@ export const AssessmentsOverviewView: React.FC<AssessmentsOverviewViewProps> = (
             <div
               key={`${item.category}-${item.id}`}
               onClick={() => onNavigateCategory(item.targetSubTab, item.id)}
-              className="group flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-border bg-card p-4 hover:border-primary/50 hover:shadow-md transition-all duration-150 cursor-pointer"
+              className="group p-4 bg-card border border-border rounded-2xl hover:border-muted-foreground/25 hover:shadow-card cursor-pointer transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3"
             >
-              <div className="flex items-start gap-3.5 min-w-0">
-                <div className="mt-0.5 rounded-xl border border-border bg-background p-2.5 flex-shrink-0 group-hover:scale-105 transition-transform">
+              <div className="flex items-start space-x-3.5 min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-muted border border-border text-muted-foreground flex items-center justify-center shrink-0 mt-0.5">
                   {getCategoryIcon(item.category)}
                 </div>
 
-                <div className="min-w-0 space-y-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-accent text-muted-foreground">
-                      {item.categoryLabel}
-                    </span>
-                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-primary/10 text-primary">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                    <h3 className="font-bold text-[14px] tracking-tight truncate text-foreground group-hover:text-primary transition-colors">
+                      {item.title}
+                    </h3>
+                    <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-muted text-muted-foreground border border-border shrink-0">
                       {TERM_LABELS[item.term] ?? item.term}
                     </span>
+                    <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold border shrink-0 ${getCategoryPillClasses(item.category)}`}>
+                      {item.categoryLabel}
+                    </span>
                     {!item.published && (
-                      <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600">
+                      <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 shrink-0">
                         Draft
                       </span>
                     )}
                   </div>
 
-                  <h3 className="text-sm font-bold truncate group-hover:text-primary transition-colors">
-                    {item.title}
-                  </h3>
-
-                  <div className="flex items-center gap-4 text-[11px] text-muted-foreground flex-wrap">
-                    <span className="flex items-center gap-1 font-semibold">
-                      <Award className="h-3 w-3" />
-                      {item.points} pts
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Calendar className="h-3 w-3" />
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-muted-foreground mt-1 font-sans">
+                    <span>
                       {item.dueDate
                         ? `Due ${new Date(item.dueDate).toLocaleDateString(undefined, {
                             month: 'short',
@@ -474,15 +506,15 @@ export const AssessmentsOverviewView: React.FC<AssessmentsOverviewViewProps> = (
                           })}`
                         : 'No due date'}
                     </span>
+                    <span>·</span>
+                    <span className="font-semibold text-foreground">{item.points} pts</span>
                   </div>
                 </div>
               </div>
 
-              <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-border/50">
+              <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-3 sm:pt-0 border-t sm:border-t-0 border-border/50">
                 {getItemSubmissionStatus(item)}
-                <div className="h-7 w-7 rounded-full bg-accent text-muted-foreground group-hover:bg-primary group-hover:text-primary-foreground flex items-center justify-center transition-colors">
-                  <ChevronRight className="h-4 w-4" />
-                </div>
+                <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
               </div>
             </div>
           ))}

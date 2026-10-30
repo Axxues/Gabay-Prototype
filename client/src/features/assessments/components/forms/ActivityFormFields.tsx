@@ -19,6 +19,7 @@ import { useSimulatedUpload } from '../../../../shared/hooks/useSimulatedUpload'
 import type { AggregatedCourseFile } from '../../../../shared/hooks/useCourseFiles';
 import type { Activity, RubricCriterion, RubricRating, TermId } from '../../../../shared/types/lms';
 import { TermSelect } from '../../../../shared/components/common/TermSelect';
+import { NumericInput } from '../../../../shared/components/common/NumericInput';
 
 export interface ActivityAttachment {
   id?: string;
@@ -536,12 +537,11 @@ export const ActivityFormFields: React.FC<{
               Total points
             </label>
             <div className="relative">
-              <input
-                type="number"
+              <NumericInput
                 min={1}
                 max={1000}
                 value={value.pointsPossible}
-                onChange={e => onChange({ ...value, pointsPossible: Math.max(1, Number(e.target.value)) })}
+                onChange={num => onChange({ ...value, pointsPossible: num })}
                 className="w-full pl-3.5 pr-11 py-2 bg-background border border-border rounded-xl text-foreground text-[13px] font-semibold tabular-nums outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all"
               />
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[12px] text-muted-foreground font-medium">
@@ -752,13 +752,12 @@ export const GradingRubricSection: React.FC<GradingRubricSectionProps> = ({
                   className="w-full px-3 py-2 bg-background border border-border rounded-xl text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary/40 text-[12.5px] font-semibold outline-none transition-all"
                 />
                 <div className="relative">
-                  <input
-                    type="number"
+                  <NumericInput
                     min={1}
                     value={criterion.points}
-                    onChange={e =>
+                    onChange={num =>
                       onChangeRubric(
-                        rubric.map((c, i) => (i === cIdx ? { ...c, points: Math.max(0, Number(e.target.value)) } : c))
+                        rubric.map((c, i) => (i === cIdx ? { ...c, points: num } : c))
                       )
                     }
                     className="w-full pl-3 pr-9 py-2 bg-background border border-border rounded-xl text-foreground text-[12.5px] font-semibold tabular-nums outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all"
@@ -783,18 +782,17 @@ export const GradingRubricSection: React.FC<GradingRubricSectionProps> = ({
                 <span className="text-[11px] font-semibold text-muted-foreground">Rating levels</span>
                 {criterion.ratings.map((rating, rIdx) => (
                   <div key={rIdx} className="flex items-center gap-2">
-                    <input
-                      type="number"
+                    <NumericInput
                       min={0}
                       value={rating.points}
-                      onChange={e =>
+                      onChange={num =>
                         onChangeRubric(
                           rubric.map((c, i) =>
                             i === cIdx
                               ? {
                                   ...c,
                                   ratings: c.ratings.map((r, j) =>
-                                    j === rIdx ? { ...r, points: Math.max(0, Number(e.target.value)) } : r
+                                    j === rIdx ? { ...r, points: num } : r
                                   )
                                 }
                               : c

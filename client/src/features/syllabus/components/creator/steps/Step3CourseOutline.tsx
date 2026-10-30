@@ -33,9 +33,9 @@ export const Step3CourseOutline: React.FC<Step3CourseOutlineProps> = ({ data, on
 
   const addOutlineModule = () => {
     const newModule = {
-      timeFrame: 'Weeks',
-      title: 'New Module Title',
-      topics: ['Topic overview', 'Key concepts and discussions']
+      timeFrame: '',
+      title: '',
+      topics: []
     };
     onChange({
       ...data,
@@ -90,7 +90,7 @@ export const Step3CourseOutline: React.FC<Step3CourseOutlineProps> = ({ data, on
                   </label>
                   <input
                     type="text"
-                    value={item.timeFrame}
+                    value={item.timeFrame ?? ''}
                     onChange={e => updateOutlineItem(idx, 'timeFrame', e.target.value)}
                     placeholder="e.g. Week 1 - 4"
                     className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-border bg-background focus:ring-1 focus:ring-primary focus:border-primary outline-none"
@@ -103,7 +103,7 @@ export const Step3CourseOutline: React.FC<Step3CourseOutlineProps> = ({ data, on
                   </label>
                   <input
                     type="text"
-                    value={item.title}
+                    value={item.title ?? ''}
                     onChange={e => updateOutlineItem(idx, 'title', e.target.value)}
                     placeholder="e.g. Module 1: Overview of Knowledge Management"
                     className="w-full px-2.5 py-1.5 text-xs font-medium rounded-lg border border-border bg-background focus:ring-1 focus:ring-primary focus:border-primary outline-none"

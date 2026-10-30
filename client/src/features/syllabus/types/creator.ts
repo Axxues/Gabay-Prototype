@@ -19,15 +19,15 @@ export interface WizardStepDefinition {
 export const WIZARD_STEPS: WizardStepDefinition[] = [
   {
     id: 'course-info',
-    label: 'Course Information',
+    label: 'Course Identification & Schedule',
     shortTitle: 'Course Info',
-    description: 'Course identifiers, schedule, credits, prerequisites, and faculty details.'
+    description: 'Institutional header, basic course identification, and individual faculty schedules.'
   },
   {
     id: 'outcomes',
-    label: 'Institutional Statements & Outcomes',
-    shortTitle: 'Outcomes',
-    description: 'PVMGO statements, Program Outcomes (PO), and Course Outcomes (CO).'
+    label: 'Institutional Statements & Course Specifications',
+    shortTitle: 'Outcomes & Specs',
+    description: 'PVMGO statements, Program Outcomes, Course Outcomes, course catalog specifications, grading formulas, and classroom policies.'
   },
   {
     id: 'outline',
@@ -49,9 +49,9 @@ export const WIZARD_STEPS: WizardStepDefinition[] = [
   },
   {
     id: 'grading',
-    label: 'Grading System & Policies',
-    shortTitle: 'Grading & Policies',
-    description: 'Computation formulas, class standing weights, classroom code, and APA references.'
+    label: 'References',
+    shortTitle: 'References',
+    description: 'APA academic references, textbooks, online resources, and reading materials.'
   },
   {
     id: 'review',

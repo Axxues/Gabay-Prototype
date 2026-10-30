@@ -21,6 +21,7 @@ interface DepartmentSyllabusTableProps {
   isChair?: boolean;
   canRelease?: boolean;
   onReleaseCourses: (groupIds: string[]) => void;
+  onLockCourses?: (groupIds: string[]) => void;
   onAssignEvaluators: (group: SyllabusGroup) => void;
   onChairApprove: (group: SyllabusGroup) => void;
   onDeanApprove: (group: SyllabusGroup) => void;
@@ -102,6 +103,7 @@ export const DepartmentSyllabusTable: React.FC<DepartmentSyllabusTableProps> = (
   isChair: propIsChair,
   canRelease: propCanRelease,
   onReleaseCourses,
+  onLockCourses,
   onAssignEvaluators,
   onChairApprove,
   onDeanApprove,
@@ -110,6 +112,18 @@ export const DepartmentSyllabusTable: React.FC<DepartmentSyllabusTableProps> = (
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+
+  const selectedLockedIds = useMemo(
+    () => selectedIds.filter(id => groups.find(g => g.id === id)?.status === 'locked'),
+    [selectedIds, groups]
+  );
+  const selectedLockableIds = useMemo(
+    () => selectedIds.filter(id => {
+      const s = groups.find(g => g.id === id)?.status;
+      return s === 'in_development' || s === 'submission_in_progress' || s === 'revisions_required';
+    }),
+    [selectedIds, groups]
+  );
 
   const filteredGroups = useMemo(() => {
     return groups.filter(g => {
@@ -230,13 +244,24 @@ export const DepartmentSyllabusTable: React.FC<DepartmentSyllabusTableProps> = (
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => onReleaseCourses(selectedIds)}
-              className="px-3 py-1.5 bg-primary-foreground text-primary rounded-lg text-xs font-bold hover:bg-primary-foreground/90 transition-all flex items-center gap-1.5"
-            >
-              <Unlock className="w-3.5 h-3.5" />
-              <span>Release Selected for Development</span>
-            </button>
+            {(selectedLockedIds.length > 0 || selectedLockableIds.length === 0) && (
+              <button
+                onClick={() => onReleaseCourses(selectedLockedIds.length > 0 ? selectedLockedIds : selectedIds)}
+                className="px-3 py-1.5 bg-primary-foreground text-primary rounded-lg text-xs font-bold hover:bg-primary-foreground/90 transition-all flex items-center gap-1.5 shadow-xs"
+              >
+                <Unlock className="w-3.5 h-3.5" />
+                <span>Release Selected for Development</span>
+              </button>
+            )}
+            {selectedLockableIds.length > 0 && onLockCourses && (
+              <button
+                onClick={() => onLockCourses(selectedLockableIds)}
+                className="px-3 py-1.5 bg-zinc-800 text-white hover:bg-zinc-700 border border-zinc-700/60 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs"
+              >
+                <Lock className="w-3.5 h-3.5" />
+                <span>Lock Selected Development</span>
+              </button>
+            )}
             <button
               onClick={() => setSelectedIds([])}
               className="px-2 py-1 text-xs text-primary-foreground/80 hover:text-primary-foreground"
@@ -377,10 +402,23 @@ export const DepartmentSyllabusTable: React.FC<DepartmentSyllabusTableProps> = (
                           {group.status === 'locked' && canRelease && (
                             <button
                               onClick={() => onReleaseCourses([group.id])}
-                              className="px-2.5 py-1 rounded-lg bg-blue-600 text-white hover:bg-blue-700 text-xs font-semibold flex items-center gap-1"
+                              aria-label={`Release ${group.courseCode} for development`}
+                              className="px-2.5 py-1 rounded-lg bg-blue-600 text-white hover:bg-blue-700 text-xs font-semibold flex items-center gap-1 shadow-xs transition-colors"
                             >
                               <Unlock className="w-3 h-3" />
                               <span>Release</span>
+                            </button>
+                          )}
+
+                          {(group.status === 'in_development' || group.status === 'submission_in_progress' || group.status === 'revisions_required') && isChair && onLockCourses && (
+                            <button
+                              onClick={() => onLockCourses([group.id])}
+                              aria-label={`Lock syllabus development for ${group.courseCode}`}
+                              className="px-2.5 py-1 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-white text-xs font-semibold flex items-center gap-1 shadow-xs transition-colors"
+                              title="Lock syllabus development"
+                            >
+                              <Lock className="w-3 h-3" />
+                              <span>Lock</span>
                             </button>
                           )}
 

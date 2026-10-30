@@ -38,11 +38,58 @@ describe('Wizard Steps Late', () => {
     expect(screen.getByTestId('cell-co-1-po-12')).toBeInTheDocument();
   });
 
-  it('Step 6 updates grading formula and policies', () => {
+  it('Step 6 allows selecting reference formats (Books, Websites, Journal Articles) under APA 7th edition', () => {
     const onChange = vi.fn();
     render(<Step6GradingPolicies data={OFFICIAL_SYLLABUS_CSPC112} onChange={onChange} />);
-    const passingGradeInput = screen.getByLabelText(/Passing Grade/i);
-    fireEvent.change(passingGradeInput, { target: { value: '75%' } });
-    expect(onChange).toHaveBeenCalled();
+
+    // Check type buttons in toolbar
+    expect(screen.getByRole('button', { name: /Add Book/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Add Journal/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Add Website/i })).toBeInTheDocument();
+
+    // Add a Website reference
+    const addWebsiteBtn = screen.getByRole('button', { name: /Add Website/i });
+    fireEvent.click(addWebsiteBtn);
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
+      references: expect.arrayContaining([
+        expect.objectContaining({ type: 'website' })
+      ])
+    }));
+
+    // Add a Journal reference
+    const addJournalBtn = screen.getByRole('button', { name: /Add Journal/i });
+    fireEvent.click(addJournalBtn);
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
+      references: expect.arrayContaining([
+        expect.objectContaining({ type: 'journal' })
+      ])
+    }));
+
+    // Test format selector tabs on first reference
+    const journalTab = screen.getAllByRole('button', { name: /Journal Article/i })[0];
+    fireEvent.click(journalTab);
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
+      references: expect.arrayContaining([
+        expect.objectContaining({ type: 'journal' })
+      ])
+    }));
+  });
+
+  it('Step 6 is dedicated to references and does not render duplicate grading review fields', () => {
+    const onChange = vi.fn();
+    render(<Step6GradingPolicies data={OFFICIAL_SYLLABUS_CSPC112} onChange={onChange} />);
+
+    // Grading and policy review fields have moved to Step 2
+    expect(screen.queryByLabelText(/Passing Grade/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Term Formula/i)).not.toBeInTheDocument();
+
+    // Verify adding a reference works properly
+    const addBookBtn = screen.getByRole('button', { name: /Add Book/i });
+    fireEvent.click(addBookBtn);
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
+      references: expect.arrayContaining([
+        expect.objectContaining({ type: 'book' })
+      ])
+    }));
   });
 });

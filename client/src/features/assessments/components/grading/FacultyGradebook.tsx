@@ -710,14 +710,17 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
                                   <td className={`px-2 py-2.5 text-center animate-gradebook-cell-in ${termCols.length === 0 ? 'border-l border-border' : ''}`}>
                                     {canEdit ? (
                                       <input
-                                        type="number"
-                                        min={0}
-                                        max={examPerfectByTerm[term] ?? 100}
-                                        step="0.01"
+                                        type="text"
+                                        inputMode="decimal"
                                         value={display}
                                         placeholder="—"
                                         disabled={savingManual[draftKey]}
-                                        onChange={e => setManualDrafts(prev => ({ ...prev, [draftKey]: e.target.value }))}
+                                        onChange={e => {
+                                          let val = e.target.value.replace(/[^0-9.]/g, '');
+                                          const parts = val.split('.');
+                                          if (parts.length > 2) val = parts[0] + '.' + parts.slice(1).join('');
+                                          setManualDrafts(prev => ({ ...prev, [draftKey]: val }));
+                                        }}
                                         onBlur={() => {
                                           if (draft !== undefined && draft.trim() !== '') {
                                             void handleSaveManualExam(term, student.id);

@@ -1,8 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useLMS } from '../../shared/context/LMSContext';
 import { createBaselineSyllabus } from './hooks/useSyllabusDraftsStorage';
-import { useSyllabusLifecycle } from './hooks/useSyllabusLifecycle';
+import { OFFICIAL_SYLLABUS_CSPC112, OFFICIAL_INSTITUTIONAL_STATEMENTS } from '../../shared/data/syllabusData';
+import { useSyllabusLifecycle, normalizeCourseCode } from './hooks/useSyllabusLifecycle';
 import { useSyllabusCollaboration } from './hooks/useSyllabusCollaboration';
+import { fetchRemoteDraft } from './api/syllabusCollaborationApi';
 import { SyllabusWizard } from './components/creator/SyllabusWizard';
 import { AttachToCourseModal } from './components/creator/AttachToCourseModal';
 import { DepartmentSyllabusTable, STATUS_CONFIG } from './components/governance/DepartmentSyllabusTable';
@@ -13,6 +15,7 @@ import { RevisionRemarksBanner } from './components/creator/RevisionRemarksBanne
 import { SyllabusDocumentPreview } from './components/creator/SyllabusDocumentPreview';
 import type { SyllabusGroup } from './types/lifecycle';
 import { isChairRole, isDeanRole } from '../../shared/utils/roles';
+import { formatSemesterLabel } from '../../shared/utils/academicSemester';
 import {
   ShieldAlert,
   Sparkles,
@@ -46,6 +49,7 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
     groups,
     getRecord,
     releaseCourses,
+    lockCourses,
     confirmAgreement,
     assignEvaluators,
     submitEvaluatorReview,
@@ -72,6 +76,7 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
 
   // Active course group opened in Syllabus Studio
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+  const [activeStepId, setActiveStepId] = useState<string>('course-info');
 
   // Modals state
   const [isAttachOpen, setIsAttachOpen] = useState(false);
@@ -83,10 +88,29 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
   } | null>(null);
   const [previewingGroup, setPreviewingGroup] = useState<SyllabusGroup | null>(null);
 
+  // Active Group Details
+  const activeGroup = groups.find(g => g.id === activeGroupId);
+  const activeRecord = activeGroupId ? getRecord(activeGroupId) : undefined;
+  const canonicalCourseId = activeGroup?.courseIds[0];
+
   // Real-time Collaboration Hook for the actively opened group
-  const { activePresenceNotice, broadcastSectionUpdate } = useSyllabusCollaboration(
+  const handleRemoteUpdate = useCallback((remoteData: any) => {
+    if (activeGroupId) {
+      updateSyllabusData(activeGroupId, remoteData);
+    }
+  }, [activeGroupId, updateSyllabusData]);
+
+  const {
+    activePresenceNotice,
+    broadcastSectionUpdate,
+    broadcastStepChange,
+    collaborators
+  } = useSyllabusCollaboration(
     activeGroupId || undefined,
-    activeUser
+    activeUser,
+    activeStepId,
+    canonicalCourseId,
+    handleRemoteUpdate
   );
 
   // RBAC Access Gate
@@ -106,25 +130,29 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
     );
   }
 
-  // Active Group Details
-  const activeGroup = groups.find(g => g.id === activeGroupId);
-  const activeRecord = activeGroupId ? getRecord(activeGroupId) : undefined;
-
   // Baseline syllabus generator tailored to a specific course group
-  const getBaselineForGroup = (grp: SyllabusGroup) => {
+  const getBaselineForGroup = useCallback((grp: SyllabusGroup) => {
     const matchedCourse = coursesList.find(c => grp.courseIds.includes(c.id));
+    const targetCollegeId = grp.collegeId || matchedCourse?.collegeId || activeUser?.collegeId;
+    const activeSem = typeof lms?.getActiveSemesterForCollege === 'function'
+      ? formatSemesterLabel(lms.getActiveSemesterForCollege(targetCollegeId) || lms.baselineSemester || 'First')
+      : (grp.semester ? formatSemesterLabel(grp.semester as any) : 'First Semester');
+    const activeSY = typeof lms?.getActiveSchoolYearForCollege === 'function'
+      ? ((targetCollegeId ? lms.getActiveSchoolYearForCollege(targetCollegeId)?.year : undefined) || (typeof lms?.getBaselineSchoolYear === 'function' ? lms.getBaselineSchoolYear()?.year : undefined) || grp.schoolYear || '2026-2027')
+      : (grp.schoolYear || '2026-2027');
+
     return createBaselineSyllabus({
       courseInfo: {
         code: grp.courseCode,
         title: grp.courseTitle,
-        semester: grp.semester,
-        academicYear: grp.schoolYear,
+        semester: activeSem,
+        academicYear: activeSY,
         type: '',
         credit: '',
         lectureHours: '',
         labHours: '',
         prerequisite: '',
-        description: (matchedCourse as any)?.description || (matchedCourse as any)?.syllabus?.courseInfo?.description || `${grp.courseCode} – ${grp.courseTitle}`
+        description: (matchedCourse as any)?.description || (matchedCourse as any)?.syllabus?.courseInfo?.description || ''
       },
       facultyMembers: grp.instructorNames.map(name => {
         const instCourses = coursesList.filter(
@@ -149,10 +177,151 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
         };
       })
     });
-  };
+  }, [coursesList, activeUser?.collegeId, lms]);
 
-  // Active syllabus data for the open group (or baseline fallback)
-  const currentSyllabusData = activeRecord?.syllabusData || (activeGroup ? getBaselineForGroup(activeGroup) : createBaselineSyllabus());
+  // Active syllabus data for the open group (enforcing college active semester & school year setup, course code, title, and all faculty)
+  const currentSyllabusData = useMemo(() => {
+    const rawData = activeRecord?.syllabusData || (activeGroup ? getBaselineForGroup(activeGroup) : createBaselineSyllabus());
+    if (!activeGroup) return rawData;
+
+    const targetCollegeId = activeGroup.collegeId || activeUser?.collegeId;
+    const activeSem = typeof lms?.getActiveSemesterForCollege === 'function'
+      ? formatSemesterLabel(lms.getActiveSemesterForCollege(targetCollegeId) || lms.baselineSemester || 'First')
+      : (activeGroup.semester ? formatSemesterLabel(activeGroup.semester as any) : 'First Semester');
+    const activeSY = typeof lms?.getActiveSchoolYearForCollege === 'function'
+      ? ((targetCollegeId ? lms.getActiveSchoolYearForCollege(targetCollegeId)?.year : undefined) || (typeof lms?.getBaselineSchoolYear === 'function' ? lms.getBaselineSchoolYear()?.year : undefined) || activeGroup.schoolYear || '2026-2027')
+      : (activeGroup.schoolYear || '2026-2027');
+
+    const canonicalCode = activeGroup.courseCode || rawData.courseInfo?.code || '';
+    const canonicalTitle = activeGroup.courseTitle || rawData.courseInfo?.title || '';
+
+    // Reconcile faculty members so EVERY assigned instructor in activeGroup is present
+    let reconciledFaculty = [...(rawData.facultyMembers || [])];
+    if (activeGroup.instructorNames && activeGroup.instructorNames.length > 0) {
+      reconciledFaculty = activeGroup.instructorNames.map((name, idx) => {
+        const existing = (rawData.facultyMembers || []).find(
+          f => f.name && f.name.trim().toLowerCase() === name.trim().toLowerCase()
+        ) || (rawData.facultyMembers && rawData.facultyMembers[idx]);
+
+        const instCourses = coursesList.filter(
+          c => activeGroup.courseIds.includes(c.id) && (c.instructorName === name || c.instructorId === activeGroup.instructorIds[idx])
+        );
+        const assignedSections = instCourses.map(c => c.section).filter(Boolean);
+        const uniqueSections = [...new Set(assignedSections)];
+
+        if (existing && existing.name && existing.name.trim()) {
+          const sections = existing.sections && existing.sections.length > 0
+            ? existing.sections
+            : uniqueSections.length > 0
+              ? uniqueSections.map(sec => ({
+                  section: sec,
+                  schedule: instCourses.find(c => c.section === sec)?.schedule || '',
+                  room: instCourses.find(c => c.section === sec)?.room || ''
+                }))
+              : [{ section: activeGroup.sections[idx] || activeGroup.sections[0] || '', schedule: '', room: '' }];
+
+          return {
+            name: existing.name || name,
+            sections,
+            consultation: existing.consultation || ''
+          };
+        }
+
+        const sectionsData = uniqueSections.length > 0
+          ? uniqueSections.map(sec => ({
+              section: sec,
+              schedule: instCourses.find(c => c.section === sec)?.schedule || '',
+              room: instCourses.find(c => c.section === sec)?.room || ''
+            }))
+          : activeGroup.sections.length > 0
+            ? [{ section: activeGroup.sections[idx] || activeGroup.sections[0] || '', schedule: '', room: '' }]
+            : [{ section: '', schedule: '', room: '' }];
+
+        return {
+          name,
+          sections: sectionsData,
+          consultation: ''
+        };
+      });
+    }
+
+    const institutionalStatements = {
+      philosophy: (rawData.institutionalStatements?.philosophy && rawData.institutionalStatements.philosophy.trim()) || OFFICIAL_INSTITUTIONAL_STATEMENTS.philosophy,
+      vision: (rawData.institutionalStatements?.vision && rawData.institutionalStatements.vision.trim()) || OFFICIAL_INSTITUTIONAL_STATEMENTS.vision,
+      mission: (rawData.institutionalStatements?.mission && rawData.institutionalStatements.mission.trim()) || OFFICIAL_INSTITUTIONAL_STATEMENTS.mission,
+      goal: (rawData.institutionalStatements?.goal && rawData.institutionalStatements.goal.trim()) || OFFICIAL_INSTITUTIONAL_STATEMENTS.goal,
+      coreValues: (rawData.institutionalStatements?.coreValues && rawData.institutionalStatements.coreValues.length > 0)
+        ? rawData.institutionalStatements.coreValues
+        : OFFICIAL_INSTITUTIONAL_STATEMENTS.coreValues,
+      graduateAttributes: (rawData.institutionalStatements?.graduateAttributes && rawData.institutionalStatements.graduateAttributes.length > 0)
+        ? rawData.institutionalStatements.graduateAttributes
+        : OFFICIAL_INSTITUTIONAL_STATEMENTS.graduateAttributes
+    };
+
+    const institution = {
+      university: rawData.institution?.university?.trim() || OFFICIAL_SYLLABUS_CSPC112.institution.university,
+      college: rawData.institution?.college?.trim() || OFFICIAL_SYLLABUS_CSPC112.institution.college,
+      formCode: rawData.institution?.formCode?.trim() || OFFICIAL_SYLLABUS_CSPC112.institution.formCode,
+      revision: rawData.institution?.revision?.trim() || OFFICIAL_SYLLABUS_CSPC112.institution.revision
+    };
+
+    // Auto-normalize Program Outcomes and Course Outcomes to strictly sequential 1..N
+    const rawPOs = rawData.programOutcomes || [];
+    const poNumberMap = new Map<number, number>();
+    const normalizedPOs = rawPOs.map((po, idx) => {
+      const newNum = idx + 1;
+      poNumberMap.set(po.number, newNum);
+      return {
+        ...po,
+        number: newNum
+      };
+    });
+
+    const rawCOs = rawData.courseOutcomes || [];
+    const coNumberMap = new Map<number, number>();
+    const normalizedCOs = rawCOs.map((co, idx) => {
+      const newNum = idx + 1;
+      coNumberMap.set(co.number, newNum);
+      return {
+        ...co,
+        number: newNum
+      };
+    });
+
+    const normalizedCourseMap = (rawData.courseMap || []).map((cm, idx) => {
+      const newCoNum = coNumberMap.get(cm.coNumber) ?? (idx + 1);
+      const newAlignments: Record<number, 'I' | 'P' | 'D'> = {};
+      Object.entries(cm.poAlignments || {}).forEach(([oldPoKey, val]) => {
+        const oldPoNum = Number(oldPoKey);
+        const newPoNum = poNumberMap.get(oldPoNum) ?? oldPoNum;
+        if (val) {
+          newAlignments[newPoNum] = val;
+        }
+      });
+      return {
+        ...cm,
+        coNumber: newCoNum,
+        poAlignments: newAlignments
+      };
+    });
+
+    return {
+      ...rawData,
+      institution,
+      institutionalStatements,
+      programOutcomes: normalizedPOs,
+      courseOutcomes: normalizedCOs,
+      courseMap: normalizedCourseMap,
+      courseInfo: {
+        ...(rawData.courseInfo || {}),
+        code: canonicalCode,
+        title: canonicalTitle,
+        semester: activeSem,
+        academicYear: activeSY
+      },
+      facultyMembers: reconciledFaculty
+    };
+  }, [activeRecord?.syllabusData, activeGroup, activeUser?.collegeId, lms, getBaselineForGroup, coursesList]);
 
   // Co-instructors status for active group
   const coInstructorAgreements = useMemo(() => {
@@ -196,11 +365,23 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
       return;
     }
     setActiveGroupId(group.id);
+    setActiveStepId('course-info');
+
+    // Hydrate remote draft if present on Likha ERP
+    const canonicalId = group.courseIds[0];
+    if (canonicalId) {
+      fetchRemoteDraft(canonicalId).then(remote => {
+        if (remote?.payload?.syllabusData) {
+          updateSyllabusData(group.id, remote.payload.syllabusData);
+        }
+      }).catch(() => {});
+    }
   };
 
   // Close Studio back to list
   const handleCloseStudio = () => {
     setActiveGroupId(null);
+    setActiveStepId('course-info');
   };
 
   // If a group's syllabus document preview is active
@@ -225,6 +406,29 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
 
   // If Studio is actively open for an assigned group
   if (activeGroupId && activeGroup) {
+    if (activeGroup.status === 'locked') {
+      return (
+        <div className="w-full space-y-4 animate-fade-in pb-16">
+          <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-xs font-semibold flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Lock className="w-4 h-4 shrink-0" />
+              <span>This course syllabus development has been locked by the Department Chairperson. Editing is disabled until released.</span>
+            </div>
+            <button
+              onClick={handleCloseStudio}
+              className="px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-xs font-semibold cursor-pointer"
+            >
+              ← Back to Syllabus Hub
+            </button>
+          </div>
+          <SyllabusDocumentPreview
+            data={currentSyllabusData}
+            onBack={handleCloseStudio}
+          />
+        </div>
+      );
+    }
+
     return (
       <div className="flex-1 w-full space-y-6 animate-fade-in pb-16">
         {/* Studio Navigation Bar */}
@@ -267,17 +471,33 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
         <SyllabusWizard
           data={currentSyllabusData}
           onChange={updated => {
+            if (activeGroup.status === 'locked') return;
             updateSyllabusData(activeGroup.id, updated);
-            broadcastSectionUpdate('course-info', 'Syllabus Updated');
+            broadcastSectionUpdate(activeStepId, 'Syllabus Updated', updated);
           }}
           onSave={() => {
+            if (activeGroup.status === 'locked') {
+              showAlert({
+                title: 'Syllabus Development Locked',
+                message: 'This syllabus cannot be edited or saved because it is locked by the Department Chairperson.',
+                type: 'warning'
+              });
+              return;
+            }
             updateSyllabusData(activeGroup.id, currentSyllabusData);
+            broadcastSectionUpdate(activeStepId, 'Syllabus Saved', currentSyllabusData);
             showAlert({
               title: 'Syllabus Saved',
               message: 'Your changes have been saved to the course draft.',
               type: 'success'
             });
           }}
+          onStepChange={stepId => {
+            setActiveStepId(stepId);
+            broadcastStepChange(stepId);
+          }}
+          presenceNotice={activePresenceNotice}
+          collaborators={collaborators}
           onAttachToCourse={() => setIsAttachOpen(true)}
           coInstructors={coInstructorAgreements}
           currentUserId={activeUser?.id}
@@ -394,9 +614,21 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
                 return;
               }
               const chairId = activeUser?.id || 'chair';
-              const targetCourseIds = groups
-                .filter(g => ids.includes(g.id))
-                .flatMap(g => g.courseIds);
+              const selectedGroups = groups.filter(g => ids.includes(g.id));
+              const targetCourseIds = Array.from(
+                new Set([
+                  ...selectedGroups.flatMap(g => g.courseIds),
+                  ...coursesList
+                    .filter(c =>
+                      selectedGroups.some(
+                        g =>
+                          (c.code && g.courseCode && normalizeCourseCode(c.code) === normalizeCourseCode(g.courseCode)) ||
+                          (c.title && g.courseTitle && c.title.trim().toLowerCase() === g.courseTitle.trim().toLowerCase())
+                      )
+                    )
+                    .map(c => String(c.id))
+                ])
+              );
 
               releaseCourses(ids, chairId);
               if (targetCourseIds.length > 0 && lms.updateCourseSyllabusStatus) {
@@ -406,6 +638,45 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
                 title: 'Courses Released',
                 message: `${ids.length} course(s) unlocked for syllabus development. Instructors can now begin authoring.`,
                 type: 'success'
+              });
+            }}
+            onLockCourses={async ids => {
+              if (!isChair) {
+                showAlert({
+                  title: 'Unauthorized Action',
+                  message: 'Only the Department Chairperson has the authority to lock syllabus development.',
+                  type: 'error'
+                });
+                return;
+              }
+              const chairId = activeUser?.id || 'chair';
+              const selectedGroups = groups.filter(g => ids.includes(g.id));
+              const targetCourseIds = Array.from(
+                new Set([
+                  ...selectedGroups.flatMap(g => g.courseIds),
+                  ...coursesList
+                    .filter(c =>
+                      selectedGroups.some(
+                        g =>
+                          (c.code && g.courseCode && normalizeCourseCode(c.code) === normalizeCourseCode(g.courseCode)) ||
+                          (c.title && g.courseTitle && c.title.trim().toLowerCase() === g.courseTitle.trim().toLowerCase())
+                      )
+                    )
+                    .map(c => String(c.id))
+                ])
+              );
+
+              lockCourses(ids, chairId);
+              if (targetCourseIds.length > 0 && lms.updateCourseSyllabusStatus) {
+                await lms.updateCourseSyllabusStatus(targetCourseIds, 'locked', chairId);
+              }
+              if (activeGroupId && ids.includes(activeGroupId)) {
+                setActiveGroupId(null);
+              }
+              showAlert({
+                title: 'Syllabus Development Locked',
+                message: `${ids.length} course syllabus development locked. Instructors cannot edit until released again.`,
+                type: 'info'
               });
             }}
             onAssignEvaluators={group => setEvaluatorAssignGroup(group)}

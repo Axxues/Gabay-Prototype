@@ -131,4 +131,95 @@ describe('DepartmentSyllabusTable', () => {
 
     expect(screen.queryByRole('button', { name: /^Release$/i })).not.toBeInTheDocument();
   });
+
+  it('renders lock action for courses in development and triggers onLockCourses', () => {
+    const onLock = vi.fn();
+    const groupsWithInDev: SyllabusGroup[] = [
+      ...mockGroups,
+      {
+        id: 'grp-3',
+        courseCode: 'CCSC 303',
+        courseTitle: 'Computer Programming 1',
+        schoolYear: '2026-2027',
+        semester: 'First',
+        collegeId: 'col-1',
+        departmentId: 'dept-1',
+        courseIds: ['c4'],
+        instructorIds: ['u2'],
+        instructorNames: ['Prof. Reyes'],
+        sections: ['BSCS 1A'],
+        status: 'in_development',
+        submissionAgreements: { u2: false },
+        evaluators: [],
+        updatedAt: new Date().toISOString()
+      }
+    ];
+
+    render(
+      <DepartmentSyllabusTable
+        groups={groupsWithInDev}
+        userRole="chairperson"
+        isChair={true}
+        onReleaseCourses={vi.fn()}
+        onLockCourses={onLock}
+        onAssignEvaluators={vi.fn()}
+        onChairApprove={vi.fn()}
+        onDeanApprove={vi.fn()}
+        onOpenPreview={vi.fn()}
+      />
+    );
+
+    // Row-level lock button for CCSC 303
+    const lockBtn = screen.getByRole('button', { name: /lock syllabus development for ccsc 303/i });
+    expect(lockBtn).toBeInTheDocument();
+    fireEvent.click(lockBtn);
+    expect(onLock).toHaveBeenCalledWith(['grp-3']);
+
+    // Checkbox bulk lock
+    const checkbox = screen.getByRole('checkbox', { name: /select ccsc 303/i });
+    fireEvent.click(checkbox);
+    const bulkLockBtn = screen.getByRole('button', { name: /lock selected development/i });
+    expect(bulkLockBtn).toBeInTheDocument();
+    fireEvent.click(bulkLockBtn);
+    expect(onLock).toHaveBeenCalledWith(['grp-3']);
+  });
+
+  it('restricts lock action: dean cannot lock courses in development', () => {
+    const onLock = vi.fn();
+    const groupsWithInDev: SyllabusGroup[] = [
+      {
+        id: 'grp-3',
+        courseCode: 'CCSC 303',
+        courseTitle: 'Computer Programming 1',
+        schoolYear: '2026-2027',
+        semester: 'First',
+        collegeId: 'col-1',
+        departmentId: 'dept-1',
+        courseIds: ['c4'],
+        instructorIds: ['u2'],
+        instructorNames: ['Prof. Reyes'],
+        sections: ['BSCS 1A'],
+        status: 'in_development',
+        submissionAgreements: { u2: false },
+        evaluators: [],
+        updatedAt: new Date().toISOString()
+      }
+    ];
+
+    render(
+      <DepartmentSyllabusTable
+        groups={groupsWithInDev}
+        userRole="dean"
+        isChair={false}
+        onReleaseCourses={vi.fn()}
+        onLockCourses={onLock}
+        onAssignEvaluators={vi.fn()}
+        onChairApprove={vi.fn()}
+        onDeanApprove={vi.fn()}
+        onOpenPreview={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByRole('button', { name: /lock syllabus development/i })).not.toBeInTheDocument();
+  });
 });

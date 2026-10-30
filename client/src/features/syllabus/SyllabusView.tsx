@@ -40,7 +40,8 @@ import {
   AlertTriangle,
   ArrowLeft,
   Pencil,
-  FolderOpen
+  FolderOpen,
+  Lock
 } from 'lucide-react';
 import { FilePickerModal } from '../../shared/components/common/FilePickerModal';
 import { UploadProgress } from '../../shared/components/common/UploadProgress';
@@ -358,6 +359,29 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
   // Check if current user is the assigned instructor for this course
   const isFacultyCreator = canManageCourseContent(currentCourse, activeUser);
 
+  const isSyllabusLocked = useMemo(() => {
+    if (currentCourse?.syllabusStatus === 'locked') return true;
+    try {
+      const raw = localStorage.getItem('gabay_syllabus_lifecycle_records');
+      if (raw && currentCourse) {
+        const records = JSON.parse(raw);
+        const normCode = (currentCourse.code || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        for (const rec of Object.values(records) as any[]) {
+          const recCode = (rec.courseCode || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+          const isCourseMatch =
+            (rec.courseIds && rec.courseIds.includes(currentCourse.id)) ||
+            (recCode && normCode && recCode === normCode);
+          if (isCourseMatch && rec.status === 'locked') {
+            return true;
+          }
+        }
+      }
+    } catch {}
+    return false;
+  }, [currentCourse]);
+
+  const canEditSyllabus = isFacultyCreator && !isSyllabusLocked;
+
   const siblingCourses = useMemo(() => {
     return currentCourse ? findMatchingSiblingCourses(currentCourse, db.courses || [], activeUser?.id) : [];
   }, [currentCourse, db.courses, activeUser?.id]);
@@ -415,6 +439,13 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
 
   const startEditing = (sectionId: string) => {
     if (!data) return;
+    if (isSyllabusLocked) {
+      showAlert(
+        'This course syllabus development has been locked by the Department Chairperson. Editing is disabled.',
+        'Syllabus Locked'
+      );
+      return;
+    }
     if (isPublishedRevision) {
       showAlert(
         'This revision is published and read-only. Create a draft to make changes.',
@@ -438,6 +469,10 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
 
   const saveDraft = async () => {
     if (!draft || !editingSection) return;
+    if (isSyllabusLocked) {
+      showAlert('This course syllabus development has been locked by the Department Chairperson.', 'Syllabus Locked');
+      return;
+    }
     // Grading-terms override: at least one term must stay checked.
     if (editingSection === 'gradingSystem' && gradingTermsOverride !== null && gradingTermsOverride.length === 0) {
       showAlert({
@@ -1496,9 +1531,15 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
         )
       ) : (
         <>
+          {isSyllabusLocked && (
+            <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-xs font-semibold flex items-center gap-2 mb-4">
+              <Lock className="w-4 h-4 shrink-0" />
+              <span>This course syllabus development has been locked by the Department Chairperson. Editing, scanning, and revisions are disabled until released.</span>
+            </div>
+          )}
           <SyllabusRevisionBar
             revision={revision}
-            canEdit={isFacultyCreator}
+            canEdit={canEditSyllabus}
             isDirty={editingSection !== null && draft !== null}
             isPublishing={isPublishing}
             isCreatingDraft={isCreatingDraft}
@@ -1646,7 +1687,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
             </div>
           </div>
           <div className="shrink-0 ml-3 flex items-center gap-1.5">
-            {isFacultyCreator && (
+            {canEditSyllabus && (
               <button
                 type="button"
                 onClick={e => { e.stopPropagation(); startEditing('facultySchedule'); setExpandedSections(prev => ({ ...prev, facultySchedule: true })); }}
@@ -1863,7 +1904,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
             </div>
           </div>
           <div className="shrink-0 ml-3 flex items-center gap-1.5">
-            {isFacultyCreator && (
+            {canEditSyllabus && (
               <button
                 type="button"
                 onClick={e => { e.stopPropagation(); startEditing('vgmo'); setExpandedSections(prev => ({ ...prev, vgmo: true })); }}
@@ -2149,7 +2190,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
             </div>
           </div>
           <div className="shrink-0 ml-3 flex items-center gap-1.5">
-            {isFacultyCreator && (
+            {canEditSyllabus && (
               <button type="button" onClick={e => { e.stopPropagation(); startEditing('programOutcomes'); setExpandedSections(prev => ({ ...prev, programOutcomes: true })); }} className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed" title="Edit section" disabled={isPublishedRevision}>
                 <Pencil className="w-3.5 h-3.5" />
               </button>
@@ -2194,7 +2235,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                         setDraft(prev => {
                           if (!prev) return prev;
                           const next = cloneSyllabus(prev);
-                          next.programOutcomes = next.programOutcomes.filter((_, i) => i !== idx);
+                          next.programOutcomes = next.programOutcomes.filter((_, i) => i !== idx).map((po, i) => ({ ...po, number: i + 1 }));
                           return next;
                         });
                       }} className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg cursor-pointer" title="Remove">
@@ -2266,7 +2307,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
             </div>
           </div>
           <div className="shrink-0 ml-3 flex items-center gap-1.5">
-            {isFacultyCreator && (
+            {canEditSyllabus && (
               <button type="button" onClick={e => { e.stopPropagation(); startEditing('courseOutcomes'); setExpandedSections(prev => ({ ...prev, courseOutcomes: true })); }} className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed" title="Edit section" disabled={isPublishedRevision}>
                 <Pencil className="w-3.5 h-3.5" />
               </button>
@@ -2306,7 +2347,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                         setDraft(prev => {
                           if (!prev) return prev;
                           const next = cloneSyllabus(prev);
-                          next.courseOutcomes = next.courseOutcomes.filter((_, i) => i !== idx);
+                          next.courseOutcomes = next.courseOutcomes.filter((_, i) => i !== idx).map((co, i) => ({ ...co, number: i + 1 }));
                           return next;
                         });
                       }} className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg cursor-pointer" title="Remove">
@@ -2380,7 +2421,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
             </div>
           </div>
           <div className="shrink-0 ml-3 flex items-center gap-1.5">
-            {isFacultyCreator && (
+            {canEditSyllabus && (
               <button type="button" onClick={e => { e.stopPropagation(); startEditing('gradingSystem'); setExpandedSections(prev => ({ ...prev, gradingSystem: true })); }} className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed" title="Edit section" disabled={isPublishedRevision}>
                 <Pencil className="w-3.5 h-3.5" />
               </button>
@@ -2662,7 +2703,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
             </div>
           </div>
           <div className="shrink-0 ml-3 flex items-center gap-1.5">
-            {isFacultyCreator && (
+            {canEditSyllabus && (
               <button type="button" onClick={e => { e.stopPropagation(); startEditing('projectRubrics'); setExpandedSections(prev => ({ ...prev, projectRubrics: true })); }} className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed" title="Edit section" disabled={isPublishedRevision}>
                 <Pencil className="w-3.5 h-3.5" />
               </button>
@@ -2812,7 +2853,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
             </div>
           </div>
           <div className="shrink-0 ml-3 flex items-center gap-1.5">
-            {isFacultyCreator && (
+            {canEditSyllabus && (
               <button type="button" onClick={e => { e.stopPropagation(); startEditing('classroomPolicies'); setExpandedSections(prev => ({ ...prev, classroomPolicies: true })); }} className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed" title="Edit section" disabled={isPublishedRevision}>
                 <Pencil className="w-3.5 h-3.5" />
               </button>
@@ -2920,7 +2961,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
             </div>
           </div>
           <div className="shrink-0 ml-3 flex items-center gap-1.5">
-            {isFacultyCreator && (
+            {canEditSyllabus && (
               <button type="button" onClick={e => { e.stopPropagation(); startEditing('courseOutline'); setExpandedSections(prev => ({ ...prev, courseOutline: true })); }} className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed" title="Edit section" disabled={isPublishedRevision}>
                 <Pencil className="w-3.5 h-3.5" />
               </button>
@@ -3064,7 +3105,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
             </div>
           </div>
           <div className="shrink-0 ml-3 flex items-center gap-1.5">
-            {isFacultyCreator && (
+            {canEditSyllabus && (
               <button type="button" onClick={e => { e.stopPropagation(); startEditing('learningPlan'); setExpandedSections(prev => ({ ...prev, learningPlan: true })); }} className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed" title="Edit section" disabled={isPublishedRevision}>
                 <Pencil className="w-3.5 h-3.5" />
               </button>
@@ -3404,7 +3445,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
             </div>
           </div>
           <div className="shrink-0 ml-3 flex items-center gap-1.5">
-            {isFacultyCreator && (
+            {canEditSyllabus && (
               <button type="button" onClick={e => { e.stopPropagation(); startEditing('curriculumMap'); setExpandedSections(prev => ({ ...prev, curriculumMap: true })); }} className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed" title="Edit section" disabled={isPublishedRevision}>
                 <Pencil className="w-3.5 h-3.5" />
               </button>
@@ -3574,7 +3615,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
             </div>
           </div>
           <div className="shrink-0 ml-3 flex items-center gap-1.5">
-            {isFacultyCreator && (
+            {canEditSyllabus && (
               <button type="button" onClick={e => { e.stopPropagation(); startEditing('referencesSignatures'); setExpandedSections(prev => ({ ...prev, referencesSignatures: true })); }} className="w-7 h-7 rounded-lg bg-muted hover:bg-primary/10 text-muted-foreground hover:text-primary flex items-center justify-center transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed" title="Edit section" disabled={isPublishedRevision}>
                 <Pencil className="w-3.5 h-3.5" />
               </button>
@@ -3851,7 +3892,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
       {/* =========================================================
           FACULTY ACTIONS: REMOVE SYLLABUS (CREATOR ONLY)
           ========================================================= */}
-      {isFacultyCreator && (
+      {canEditSyllabus && (
         <div className="p-5 sm:p-6 bg-destructive/5 border border-destructive/20 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-start space-x-3.5">
             <div className="w-10 h-10 rounded-xl bg-destructive/10 text-destructive flex items-center justify-center shrink-0 mt-0.5">

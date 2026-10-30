@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useLMS } from '../../shared/context/LMSContext';
-import type { TermId } from '../../shared/types/lms';
+import type { TermId, SubmissionAttachment } from '../../shared/types/lms';
 import { normalizeTermId } from '../../shared/utils/gradingTerms';
 import { TERM_LABELS, TermFilterSelect } from '../../shared/components/common/TermSelect';
+import { buildAssessmentSourceIndex } from '../../shared/utils/assessmentSource';
+import { sortAssessmentsLatestFirst } from './utils/assessmentSorting';
 import {
   FileText,
   Clock,
@@ -17,6 +19,7 @@ import {
   Users,
   Paperclip,
   Download,
+  Eye,
   Image as ImageIcon,
   X,
   Loader2
@@ -27,6 +30,7 @@ import { EmptyState } from '../../shared/components/common/EmptyState';
 import { CreateAssignmentPage } from './CreateAssignmentPage';
 import { ActivityRunnerView } from './ActivityRunnerView';
 import { canManageCourseContent } from '../../shared/utils/roles';
+import { AssessmentFilePreviewModal, type AssessmentPreviewAttachment } from './components/AssessmentFilePreviewModal';
 
 interface AssignmentsViewProps {
   courseId: string;
@@ -56,11 +60,21 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
   const [termFilter, setTermFilter] = useState<'all' | TermId>('all');
   const [submissionType, setSubmissionType] = useState<'file' | 'online_text'>('online_text');
   const [textContent, setTextContent] = useState('');
-  const [simulatedFileName, setSimulatedFileName] = useState('');
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+
+  const addFiles = (files: File[]) => {
+    setSelectedFiles(prev => {
+      const next = [...prev];
+      for (const f of files) {
+        if (!next.some(existing => existing.name === f.name && existing.size === f.size)) next.push(f);
+      }
+      return next;
+    });
+  };
   const [isDragging, setIsDragging] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [previewAttachment, setPreviewAttachment] = useState<AssessmentPreviewAttachment | null>(null);
 
   const currentCourse = (db.courses || []).find(c => c.id === courseId);
   const isAssignedInstructor = canManageCourseContent(currentCourse, activeUser);
@@ -74,11 +88,21 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
     a => a.courseId === courseId && a.assessmentType === 'assignment'
   );
 
-  const visibleAssignments = courseAssignments.filter(a => {
-    if (activeRole === 'student' && !a.published) return false;
-    if (termFilter !== 'all' && (normalizeTermId(a.term) ?? 'midterm') !== termFilter) return false;
-    return true;
-  });
+  const sourceIndex = useMemo(
+    () => buildAssessmentSourceIndex((db as any).modules, courseId),
+    [(db as any).modules, courseId]
+  );
+
+  const visibleAssignments = useMemo(() => {
+    return sortAssessmentsLatestFirst(
+      courseAssignments.filter(a => {
+        if (activeRole === 'student' && !a.published) return false;
+        if (termFilter !== 'all' && (normalizeTermId(a.term) ?? 'midterm') !== termFilter) return false;
+        return true;
+      }),
+      sourceIndex
+    );
+  }, [courseAssignments, activeRole, termFilter, sourceIndex]);
 
   const selectedAssignment = selectedAssignmentId
     ? courseAssignments.find(a => a.id === selectedAssignmentId)
@@ -90,6 +114,14 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
       )
     : undefined;
 
+  // All files attached to the submission (legacy rows store a single file).
+  const submissionFiles: SubmissionAttachment[] =
+    currentSubmission?.attachments && currentSubmission.attachments.length > 0
+      ? currentSubmission.attachments
+      : currentSubmission?.fileName
+        ? [{ name: currentSubmission.fileName, url: currentSubmission.fileUrl }]
+        : [];
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedAssignment) return;
@@ -98,51 +130,53 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
       showAlert('Please enter your assignment response text.');
       return;
     }
-    if (submissionType === 'file' && !selectedFile && !simulatedFileName) {
-      showAlert('Please choose or upload a file.');
+    if (submissionType === 'file' && selectedFiles.length === 0) {
+      showAlert('Please choose at least one file to attach.');
       return;
     }
 
     setIsSubmitting(true);
     try {
-      let uploadedFileUrl: string | undefined = undefined;
-      let uploadedFileId: string | undefined = undefined;
-      let uploadedFileSize: string | undefined = undefined;
-      let finalFileName = selectedFile ? selectedFile.name : (simulatedFileName || 'Assignment_Submission.pdf');
+      const attachments: SubmissionAttachment[] = [];
 
-      if (submissionType === 'file' && selectedFile) {
-        try {
-          const res = await uploadFileToPublic(selectedFile);
-          uploadedFileUrl = res.url;
-          uploadedFileId = (res as any).id || (res as any).fileId;
-          uploadedFileSize = res.size;
-          finalFileName = res.name || selectedFile.name;
-        } catch {
-          uploadedFileUrl = `/likha/assets/mock-${encodeURIComponent(selectedFile.name)}`;
-          uploadedFileSize = formatFileSize(selectedFile.size);
+      if (submissionType === 'file') {
+        for (const file of selectedFiles) {
+          try {
+            const res = await uploadFileToPublic(file);
+            attachments.push({
+              name: res.name || file.name,
+              url: res.url,
+              size: res.size,
+              id: (res as any).id || (res as any).fileId,
+            });
+          } catch {
+            attachments.push({
+              name: file.name,
+              url: `/likha/assets/mock-${encodeURIComponent(file.name)}`,
+              size: formatFileSize(file.size),
+            });
+          }
         }
-      } else if (submissionType === 'file' && simulatedFileName) {
-        uploadedFileUrl = `/likha/assets/simulated-${encodeURIComponent(simulatedFileName.trim())}`;
-        uploadedFileSize = '500 KB';
-        finalFileName = simulatedFileName.trim();
       }
 
+      const primary = attachments[0];
       await submitActivity(
         selectedAssignment.id,
         submissionType,
         textContent,
-        finalFileName,
+        primary?.name ?? 'Assignment_Submission.pdf',
         undefined,
-        uploadedFileUrl,
-        uploadedFileId,
-        uploadedFileSize
+        primary?.url,
+        primary?.id,
+        primary?.size,
+        attachments.length > 0 ? attachments : undefined
       );
       showAlert({
         title: 'Assignment Submitted',
         message: 'Your assignment has been submitted successfully.',
         type: 'success',
       });
-      setSelectedFile(null);
+      setSelectedFiles([]);
     } catch {
       // Handled in submitActivity
     } finally {
@@ -316,7 +350,7 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
 
   // Detail & Submission View
   return (
-    <div className="space-y-6 max-w-4xl animate-fade-in">
+    <div className="space-y-6 w-full animate-fade-in">
       <button
         type="button"
         onClick={() => onSelectAssignment(null)}
@@ -397,7 +431,19 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
                       key={idx}
                       className="p-3 bg-muted/20 hover:bg-muted/30 border border-border/70 rounded-xl flex items-center justify-between gap-3 transition-colors"
                     >
-                      <div className="flex items-center space-x-3 overflow-hidden min-w-0">
+                      <div
+                        className="flex items-center space-x-3 overflow-hidden min-w-0 flex-1 cursor-pointer"
+                        onClick={() => setPreviewAttachment(att)}
+                        title={`View ${att.name}`}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setPreviewAttachment(att);
+                          }
+                        }}
+                      >
                         <div className="w-8 h-8 rounded-lg bg-card border border-border flex items-center justify-center shrink-0">
                           {isImg ? (
                             <ImageIcon className="w-4 h-4 text-pink-500" />
@@ -406,7 +452,7 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
                           )}
                         </div>
                         <div className="truncate min-w-0">
-                          <p className="font-semibold text-xs text-foreground truncate" title={att.name}>
+                          <p className="font-semibold text-xs text-foreground truncate hover:text-primary transition-colors" title={att.name}>
                             {att.name}
                           </p>
                           <p className="text-[11px] text-muted-foreground">
@@ -415,18 +461,30 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
                         </div>
                       </div>
 
-                      {att.url && (
-                        <a
-                          href={att.url}
-                          download={att.name}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary/10 rounded-lg transition-colors cursor-pointer flex items-center space-x-1 shrink-0 border border-primary/20"
+                      <div className="flex items-center space-x-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setPreviewAttachment(att)}
+                          className="px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-muted/70 rounded-lg transition-colors cursor-pointer flex items-center space-x-1 border border-border"
+                          title={`View ${att.name}`}
                         >
-                          <Download className="w-3 h-3" />
-                          <span>Download</span>
-                        </a>
-                      )}
+                          <Eye className="w-3.5 h-3.5 text-muted-foreground" />
+                          <span>View</span>
+                        </button>
+                        {att.url && (
+                          <a
+                            href={att.url}
+                            download={att.name}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary/10 rounded-lg transition-colors cursor-pointer flex items-center space-x-1 border border-primary/20"
+                            title={`Download ${att.name}`}
+                          >
+                            <Download className="w-3 h-3" />
+                            <span>Download</span>
+                          </a>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
@@ -479,20 +537,43 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
                   {currentSubmission.content}
                 </div>
               )}
-              {currentSubmission.fileName && (
-                <div className="text-xs font-mono text-muted-foreground flex items-center justify-between">
-                  <span>File: {currentSubmission.fileName}</span>
-                  {currentSubmission.fileUrl && (
-                    <a
-                      href={currentSubmission.fileUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-primary hover:underline font-bold inline-flex items-center space-x-1"
+              {submissionFiles.length > 0 && (
+                <div className="space-y-1.5">
+                  {submissionFiles.map((file, idx) => (
+                    <div
+                      key={`${file.name}-${idx}`}
+                      className="text-xs font-mono text-muted-foreground flex items-center justify-between"
                     >
-                      <span>Download</span>
-                      <Download className="w-3 h-3" />
-                    </a>
-                  )}
+                      <span className="truncate">File: {file.name}</span>
+                      {file.url && (
+                        <div className="flex items-center space-x-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setPreviewAttachment({
+                              name: file.name || 'Submission Attachment',
+                              size: file.size,
+                              url: file.url,
+                            })}
+                            className="px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-muted/70 rounded-lg transition-colors cursor-pointer flex items-center space-x-1 border border-border"
+                            title={`View ${file.name}`}
+                          >
+                            <Eye className="w-3.5 h-3.5 text-muted-foreground" />
+                            <span>View</span>
+                          </button>
+                          <a
+                            href={file.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary/10 rounded-lg transition-colors cursor-pointer flex items-center space-x-1 border border-primary/20"
+                            title={`Download ${file.name}`}
+                          >
+                            <Download className="w-3 h-3" />
+                            <span>Download</span>
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -534,48 +615,80 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
                   onDrop={e => {
                     e.preventDefault();
                     setIsDragging(false);
-                    const file = e.dataTransfer.files?.[0];
-                    if (file) {
-                      setSelectedFile(file);
-                      setSimulatedFileName(file.name);
-                    }
+                    const dropped = Array.from(e.dataTransfer.files || []);
+                    if (dropped.length) addFiles(dropped);
                   }}
                   className={`rounded-xl border border-dashed p-6 text-center space-y-3 transition-colors ${
                     isDragging ? 'border-primary bg-primary/5' : 'border-border'
                   }`}
                 >
-                  {selectedFile ? (
-                    <div className="p-3 bg-card border border-border rounded-xl flex items-center justify-between max-w-md mx-auto">
-                      <div className="flex items-center space-x-3 truncate">
-                        <FileText className="w-6 h-6 text-primary shrink-0" />
-                        <div className="text-left truncate">
-                          <div className="font-bold text-foreground truncate text-xs">{selectedFile.name}</div>
-                          <div className="text-[11px] text-muted-foreground">{formatFileSize(selectedFile.size)}</div>
+                  {selectedFiles.length > 0 ? (
+                    <div className="mx-auto max-w-md space-y-2">
+                      {selectedFiles.map((file, idx) => (
+                        <div
+                          key={`${file.name}-${idx}`}
+                          className="p-3 bg-card border border-border rounded-xl flex items-center justify-between"
+                        >
+                          <div className="flex items-center space-x-3 truncate">
+                            <FileText className="w-6 h-6 text-primary shrink-0" />
+                            <div className="text-left truncate">
+                              <div className="font-bold text-foreground truncate text-xs">{file.name}</div>
+                              <div className="text-[11px] text-muted-foreground">{formatFileSize(file.size)}</div>
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-1 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const url = URL.createObjectURL(file);
+                                setPreviewAttachment({ name: file.name, size: formatFileSize(file.size), url });
+                              }}
+                              className="p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg transition-colors cursor-pointer"
+                              title="Preview selected file"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedFiles(prev => prev.filter((_, i) => i !== idx));
+                              }}
+                              className="p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg transition-colors cursor-pointer"
+                              title="Remove file"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => { setSelectedFile(null); setSimulatedFileName(''); }}
-                        className="p-1 hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg transition-colors cursor-pointer shrink-0"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
+                      ))}
+                      <label className="block text-center text-[11px] font-semibold text-primary hover:underline cursor-pointer">
+                        + Add more files
+                        <input
+                          type="file"
+                          multiple
+                          className="hidden"
+                          onChange={e => {
+                            const list = Array.from(e.target.files || []);
+                            if (list.length) addFiles(list);
+                            e.target.value = '';
+                          }}
+                        />
+                      </label>
                     </div>
                   ) : (
                     <>
                       <Upload className="h-8 w-8 mx-auto text-muted-foreground" />
                       <div className="text-xs text-muted-foreground">
                         <label className="font-semibold text-primary hover:underline cursor-pointer">
-                          <span>Browse file to attach</span>
+                          <span>Browse files to attach</span>
                           <input
                             type="file"
+                            multiple
                             className="hidden"
                             onChange={e => {
-                              const f = e.target.files?.[0];
-                              if (f) {
-                                setSelectedFile(f);
-                                setSimulatedFileName(f.name);
-                              }
+                              const list = Array.from(e.target.files || []);
+                              if (list.length) addFiles(list);
+                              e.target.value = '';
                             }}
                           />
                         </label>
@@ -583,22 +696,6 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
                       </div>
                     </>
                   )}
-
-                  <div className="pt-2 border-t border-border/60">
-                    <div className="text-[11px] text-muted-foreground mb-1">
-                      Quick test filename fallback:
-                    </div>
-                    <input
-                      type="text"
-                      placeholder="Enter file name (e.g. essay.pdf)"
-                      value={simulatedFileName}
-                      onChange={e => {
-                        setSimulatedFileName(e.target.value);
-                        if (!e.target.value) setSelectedFile(null);
-                      }}
-                      className="w-64 mx-auto rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-center"
-                    />
-                  </div>
                 </div>
               )}
 
@@ -618,6 +715,12 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
           )}
         </div>
       )}
+
+      {/* Assessment Attachment Preview Modal */}
+      <AssessmentFilePreviewModal
+        file={previewAttachment}
+        onClose={() => setPreviewAttachment(null)}
+      />
     </div>
   );
 };

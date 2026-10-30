@@ -81,7 +81,7 @@ export const LoginPage: React.FC = () => {
 
     setIsLoading(true);
     try {
-      const res = await login(identifier, password);
+      const res = await login(identifier, password, rememberMe);
       if (!res.success) {
         const msg = String(res.message || '');
         if (msg.includes('502') || /502|Bad Gateway/i.test(msg)) {
@@ -114,7 +114,7 @@ export const LoginPage: React.FC = () => {
     setFieldErrors({});
     setIsLoading(true);
     try {
-      const res = await login(account.email, account.password);
+      const res = await login(account.email, account.password, true);
       if (!res?.success) {
         const msg = String(res?.message || '');
         if (msg.includes('502') || /502|Bad Gateway/i.test(msg)) {

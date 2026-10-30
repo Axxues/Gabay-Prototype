@@ -21,3 +21,4 @@ export { UserAvatar } from './UserAvatar';
 export { SessionExpiredModal, type SessionExpiredModalProps } from './SessionExpiredModal';
 export { UserProfileModal } from './UserProfileModal';
 export { PdfViewer, type PdfViewerProps } from './PdfViewer';
+export { NumericInput, type NumericInputProps } from './NumericInput';

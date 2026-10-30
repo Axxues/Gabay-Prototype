@@ -10,6 +10,7 @@ import {
   matchesSourceFilter,
   type AssessmentSourceFilter,
 } from '../../shared/utils/assessmentSource';
+import { sortAssessmentsLatestFirst } from './utils/assessmentSorting';
 import {
   HelpCircle,
   Play,
@@ -80,11 +81,16 @@ export const QuizzesView: React.FC<QuizzesViewProps> = ({
     () => buildAssessmentSourceIndex((db as any).modules, courseId),
     [(db as any).modules, courseId]
   );
-  const visibleQuizzes = courseQuizzes.filter(
-    q =>
-      (termFilter === 'all' || (normalizeTermId(q.term) ?? 'midterm') === termFilter) &&
-      matchesSourceFilter(sourceIndex.quizIds.has(q.id), sourceFilter)
-  );
+  const visibleQuizzes = useMemo(() => {
+    return sortAssessmentsLatestFirst(
+      courseQuizzes.filter(
+        q =>
+          (termFilter === 'all' || (normalizeTermId(q.term) ?? 'midterm') === termFilter) &&
+          matchesSourceFilter(sourceIndex.quizIds.has(q.id), sourceFilter)
+      ),
+      sourceIndex
+    );
+  }, [courseQuizzes, termFilter, sourceFilter, sourceIndex]);
 
   // Sync activeQuiz when selectedQuizId changes (e.g. from Modules navigation)
   useEffect(() => {
@@ -212,7 +218,7 @@ export const QuizzesView: React.FC<QuizzesViewProps> = ({
     const progressPercent = Math.round(((currentPageIndex + 1) / totalPages) * 100);
 
     return (
-      <div className="space-y-6 max-w-4xl mx-auto animate-fade-in font-sans pb-16">
+      <div className="space-y-6 w-full animate-fade-in font-sans pb-16">
         <button
           type="button"
           onClick={() => {

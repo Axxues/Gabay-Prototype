@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useLMS } from '../../shared/context/LMSContext';
 import type { TermId } from '../../shared/types/lms';
+import { activitiesTermFolderId, normalizeTermId } from '../../shared/hooks/useCourseFiles';
 import {
   ArrowLeft,
   FileCheck2,
@@ -91,7 +92,10 @@ export const CreateActivityPage: React.FC<CreateActivityPageProps> = ({
             let fileId = att.fileId;
             let directus_files_id = att.directus_files_id;
             try {
+              const targetTerm: TermId = normalizeTermId(form.term) ?? 'midterm';
+              const targetFolderId = activitiesTermFolderId(targetTerm);
               const saved = await uploadCourseFile({
+                folderId: targetFolderId,
                 courseId,
                 name: att.name,
                 rawFile: att.rawFile,
@@ -115,6 +119,7 @@ export const CreateActivityPage: React.FC<CreateActivityPageProps> = ({
                     try {
                       await uploadCourseFile({
                         courseId: siblingId,
+                        folderId: targetFolderId,
                         name: saved.name || att.name,
                         fileUrl: saved.fileUrl || saved.url,
                         url: saved.url || saved.fileUrl,

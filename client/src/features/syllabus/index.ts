@@ -4,6 +4,8 @@ export { SyllabusCreatorPage, SyllabusCreatorPage as SyllabusDevelopmentPage } f
 export * from './types/lifecycle';
 export { useSyllabusLifecycle, makeSyllabusGroupId, normalizeCourseCode } from './hooks/useSyllabusLifecycle';
 export { useSyllabusCollaboration } from './hooks/useSyllabusCollaboration';
+export type { CollaboratorInfo, PeerMessage } from './hooks/useSyllabusCollaboration';
+export * from './api/syllabusCollaborationApi';
 export { DepartmentSyllabusTable } from './components/governance/DepartmentSyllabusTable';
 export { AssignEvaluatorsModal } from './components/governance/AssignEvaluatorsModal';
 export { EvaluatorReviewModal } from './components/governance/EvaluatorReviewModal';

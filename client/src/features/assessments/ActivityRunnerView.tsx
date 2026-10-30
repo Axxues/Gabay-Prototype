@@ -13,6 +13,7 @@ import {
   Users
 } from 'lucide-react';
 import { EmptyState } from '../../shared/components/common/EmptyState';
+import { likhaLmsApi } from '../../shared/api/likhaLmsApi';
 
 interface ActivityRunnerViewProps {
   courseId: string;
@@ -71,15 +72,42 @@ export const ActivityRunnerView: React.FC<ActivityRunnerViewProps> = ({
   // Instant-feedback score from the client scorer — the server row stays
   // 'submitted' until faculty grades in SpeedGrader.
   const [clientScore, setClientScore] = useState<ActivityScore | null>(null);
+  const [localQuestions, setLocalQuestions] = useState<QuizQuestion[] | null>(null);
 
   useEffect(() => {
     setAnswers({});
     setResult(null);
     setClientScore(null);
+    setLocalQuestions(null);
   }, [activityId]);
 
   const courseActivities = (db.activities || []).filter(a => a.courseId === courseId);
   const activity = courseActivities.find(a => a.id === activityId);
+
+  useEffect(() => {
+    if (activity && (!activity.questions || activity.questions.length === 0) && activity.id) {
+      likhaLmsApi.assessments.getAssessmentQuestions({ activity_id: activity.id }).then(rows => {
+        if (Array.isArray(rows) && rows.length > 0) {
+          const mapped: QuizQuestion[] = rows.map((q: any) => ({
+            id: String(q.id),
+            text: q.question_text || q.text || '',
+            type: q.question_type || q.type || 'multiple_choice',
+            options: typeof q.options_json === 'string'
+              ? (() => { try { return JSON.parse(q.options_json); } catch { return []; } })()
+              : (Array.isArray(q.options) ? q.options : []),
+            correctAnswer: q.correct_answer || q.correctAnswer || undefined,
+            points: Number(q.points) || 1,
+          }));
+          setLocalQuestions(mapped);
+        }
+      }).catch(() => {});
+    }
+  }, [activity?.id, activity?.questions?.length]);
+
+  const effectiveQuestions: QuizQuestion[] =
+    activity?.questions && activity.questions.length > 0
+      ? activity.questions
+      : localQuestions || [];
 
   const setAnswer = (questionId: string, value: string) => {
     setAnswers(prev => ({ ...prev, [questionId]: value }));
@@ -150,7 +178,7 @@ export const ActivityRunnerView: React.FC<ActivityRunnerViewProps> = ({
       const serverSub = await recordActivitySubmission(activity.id, activeUser.id, answers);
       // Instant feedback keeps using the client scorer; the cached server
       // row records the submission for SpeedGrader/gradebook.
-      setClientScore(scoreActivityQuestions(activity.questions, answers));
+      setClientScore(scoreActivityQuestions(effectiveQuestions, answers));
       setResult(serverSub);
     } catch {
       // recordActivitySubmission already surfaced the alert.
@@ -158,7 +186,7 @@ export const ActivityRunnerView: React.FC<ActivityRunnerViewProps> = ({
   };
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto animate-fade-in pb-16">
+    <div className="space-y-6 w-full animate-fade-in pb-16">
       <div className="flex items-center justify-between">
         <button
           type="button"
@@ -179,7 +207,7 @@ export const ActivityRunnerView: React.FC<ActivityRunnerViewProps> = ({
               }}
               className="px-3 py-1.5 text-xs font-bold bg-muted hover:bg-muted/80 text-foreground border border-border rounded-xl transition-colors cursor-pointer"
             >
-              Inspect in SpeedGrader
+              Grade Submissions
             </button>
             <button
               onClick={() => handleDelete(activity.id)}
@@ -201,12 +229,12 @@ export const ActivityRunnerView: React.FC<ActivityRunnerViewProps> = ({
           <h1 className="text-[22px] leading-tight font-extrabold tracking-[-0.02em] text-foreground">
             {(activity.title || '').trim() || 'Untitled question set'}
           </h1>
-          <p className="text-[13px] text-muted-foreground leading-relaxed max-w-2xl">
+          <p className="text-[13px] text-muted-foreground leading-relaxed">
             {activity.instructions}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] text-muted-foreground border-t border-border/70 pt-3">
-          <span className="font-semibold text-foreground">{activity.questions.length} questions</span>
+          <span className="font-semibold text-foreground">{effectiveQuestions.length} questions</span>
           <span className="text-muted-foreground/40">·</span>
           <span className="font-semibold text-foreground">{activity.pointsPossible} pts total</span>
           {activity.dueDate && (
@@ -260,7 +288,7 @@ export const ActivityRunnerView: React.FC<ActivityRunnerViewProps> = ({
             <h4 className="font-bold uppercase tracking-wider text-[11px] text-foreground">
               Question Key Preview
             </h4>
-            {activity.questions.map((q, idx) => (
+            {effectiveQuestions.map((q, idx) => (
               <div key={q.id} className="p-3 bg-muted/40 rounded-xl border border-border text-xs">
                 <span className="font-bold text-foreground">
                   Q{idx + 1} • {typeLabel(q.type)} • {q.points} pts
@@ -292,7 +320,7 @@ export const ActivityRunnerView: React.FC<ActivityRunnerViewProps> = ({
           )}
 
           <form onSubmit={handleSubmit} className="space-y-5">
-            {activity.questions.map((q, idx) => (
+            {effectiveQuestions.map((q, idx) => (
               <div key={q.id} className="p-5 bg-card rounded-2xl border border-border space-y-4 shadow-subtle">
                 <div className="flex justify-between items-start gap-3">
                   <div className="space-y-1">
@@ -442,7 +470,7 @@ export const ActivityRunnerView: React.FC<ActivityRunnerViewProps> = ({
           )}
 
           <div className="space-y-4">
-            {activity.questions.map((q, idx) => {
+            {effectiveQuestions.map((q, idx) => {
               const userAns = (answers[q.id] || '').trim();
               if (q.type === 'essay') {
                 return (

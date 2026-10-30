@@ -354,4 +354,44 @@ describe('useSyllabusLifecycle', () => {
 
     expect(onPersistMock).toHaveBeenCalledWith(['c1', 'c2'], 'in_development');
   });
+
+  it('allows chair to lock courses in development and records locked metadata', () => {
+    const onPersistMock = vi.fn();
+    const { result } = renderHook(() => useSyllabusLifecycle(mockCourses as any, 'col-1'));
+
+    const cspc103 = result.current.groups.find(g => g.courseCode === 'CSPC 103')!;
+
+    // First release
+    act(() => {
+      result.current.releaseCourses([cspc103.id], 'chair-1');
+    });
+    expect(result.current.getRecord(cspc103.id)?.status).toBe('in_development');
+
+    // Then lock
+    act(() => {
+      result.current.lockCourses([cspc103.id], 'chair-1', onPersistMock);
+    });
+
+    const lockedRecord = result.current.getRecord(cspc103.id);
+    expect(lockedRecord?.status).toBe('locked');
+    expect(lockedRecord?.lockedBy).toBe('chair-1');
+    expect(lockedRecord?.lockedAt).toBeDefined();
+    expect(onPersistMock).toHaveBeenCalledWith(['c1', 'c2'], 'locked');
+  });
+
+  it('refuses updateSyllabusData when group status is locked', () => {
+    const { result } = renderHook(() => useSyllabusLifecycle(mockCourses as any, 'col-1'));
+    const cspc103 = result.current.groups.find(g => g.courseCode === 'CSPC 103')!;
+
+    expect(cspc103.status).toBe('locked');
+
+    act(() => {
+      result.current.updateSyllabusData(cspc103.id, {
+        courseInfo: { code: 'MUTATED', title: 'Mutated Title' }
+      } as any);
+    });
+
+    const record = result.current.getRecord(cspc103.id);
+    expect(record?.syllabusData?.courseInfo?.code).not.toBe('MUTATED');
+  });
 });

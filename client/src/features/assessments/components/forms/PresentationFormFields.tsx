@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Activity, RubricCriterion, TermId } from '../../../../shared/types/lms';
 import { TermSelect } from '../../../../shared/components/common/TermSelect';
+import { NumericInput } from '../../../../shared/components/common/NumericInput';
 import {
   GradingRubricSection,
   blankRubricCriterion,
@@ -170,11 +171,10 @@ export const PresentationFormFields: React.FC<{
                 Total points
               </label>
               <div className="relative">
-                <input
-                  type="number"
+                <NumericInput
                   min={1}
                   value={value.pointsPossible}
-                  onChange={e => onChange({ ...value, pointsPossible: Math.max(1, parseInt(e.target.value) || 0) })}
+                  onChange={num => onChange({ ...value, pointsPossible: num })}
                   className="w-full pl-3.5 pr-11 py-2 bg-background border border-border rounded-xl text-foreground text-[13px] font-semibold tabular-nums outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all"
                 />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[12px] text-muted-foreground font-medium">
@@ -311,12 +311,11 @@ export const PresentationFormFields: React.FC<{
                 <Clock className="w-3.5 h-3.5 text-primary" />
                 <span>Allocated duration (minutes)</span>
               </label>
-              <input
-                type="number"
+              <NumericInput
                 min={1}
                 max={180}
                 value={value.durationMinutes}
-                onChange={e => onChange({ ...value, durationMinutes: Math.max(1, parseInt(e.target.value) || 15) })}
+                onChange={num => onChange({ ...value, durationMinutes: num })}
                 className="w-full px-3.5 py-2 bg-background border border-border rounded-xl text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary/40 text-[13px] outline-none transition-all"
               />
             </div>

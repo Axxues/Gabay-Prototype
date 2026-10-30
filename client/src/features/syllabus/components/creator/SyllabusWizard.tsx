@@ -15,8 +15,10 @@ import {
   ArrowRight,
   Eye,
   EyeOff,
-  Check
+  Check,
+  Radio
 } from 'lucide-react';
+import type { CollaboratorInfo } from '../../hooks/useSyllabusCollaboration';
 
 interface SyllabusWizardProps {
   data?: OfficialSyllabusData;
@@ -29,6 +31,9 @@ interface SyllabusWizardProps {
   currentUserId?: string;
   allAgreed?: boolean;
   onAgreeToSubmit?: () => void;
+  onStepChange?: (stepId: string) => void;
+  presenceNotice?: string;
+  collaborators?: CollaboratorInfo[];
 }
 
 export const SyllabusWizard: React.FC<SyllabusWizardProps> = ({
@@ -40,7 +45,10 @@ export const SyllabusWizard: React.FC<SyllabusWizardProps> = ({
   coInstructors,
   currentUserId,
   allAgreed,
-  onAgreeToSubmit
+  onAgreeToSubmit,
+  onStepChange,
+  presenceNotice,
+  collaborators: _collaborators
 }) => {
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [showPreview, setShowPreview] = useState(false);
@@ -50,22 +58,36 @@ export const SyllabusWizard: React.FC<SyllabusWizardProps> = ({
 
   const currentStep = WIZARD_STEPS[currentStepIndex];
 
+  const setStep = (idx: number) => {
+    setCurrentStepIndex(idx);
+    if (onStepChange && WIZARD_STEPS[idx]) {
+      onStepChange(WIZARD_STEPS[idx].id);
+    }
+  };
+
   const goNext = () => {
     if (currentStepIndex < WIZARD_STEPS.length - 1) {
-      setCurrentStepIndex(prev => prev + 1);
+      setStep(currentStepIndex + 1);
     }
   };
 
   const goPrev = () => {
     if (currentStepIndex > 0) {
-      setCurrentStepIndex(prev => prev - 1);
+      setStep(currentStepIndex - 1);
     }
   };
 
   const renderActiveStep = () => {
     switch (currentStep.id) {
       case 'course-info':
-        return <Step1CourseInfo data={activeData} onChange={onChange} />;
+        return (
+          <Step1CourseInfo
+            data={activeData}
+            onChange={onChange}
+            courseCode={activeData?.courseInfo?.code}
+            courseTitle={activeData?.courseInfo?.title}
+          />
+        );
       case 'outcomes':
         return <Step2InstitutionalOutcomes data={activeData} onChange={onChange} />;
       case 'outline':
@@ -107,7 +129,7 @@ export const SyllabusWizard: React.FC<SyllabusWizardProps> = ({
               <button
                 key={step.id}
                 type="button"
-                onClick={() => setCurrentStepIndex(idx)}
+                onClick={() => setStep(idx)}
                 className={`flex items-center space-x-2.5 p-2 rounded-xl text-left transition-all cursor-pointer ${
                   isActive
                     ? 'bg-primary text-primary-foreground shadow-xs font-semibold'
@@ -156,28 +178,40 @@ export const SyllabusWizard: React.FC<SyllabusWizardProps> = ({
                 </p>
               </div>
 
-              {/* Live Preview Toggle Pill */}
-              <button
-                type="button"
-                onClick={() => setShowPreview(!showPreview)}
-                className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
-                  showPreview
-                    ? 'bg-primary/10 text-primary border-primary/30'
-                    : 'bg-background border-border text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                {showPreview ? (
-                  <>
-                    <EyeOff className="w-3.5 h-3.5" />
-                    <span>Hide Document</span>
-                  </>
-                ) : (
-                  <>
-                    <Eye className="w-3.5 h-3.5" />
-                    <span>Document Preview</span>
-                  </>
+              <div className="flex items-center gap-3">
+                {presenceNotice && (
+                  <div
+                    data-testid="wizard-peer-presence-chip"
+                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-400 text-xs font-semibold animate-pulse shadow-xs"
+                  >
+                    <Radio className="w-3.5 h-3.5 animate-pulse text-blue-500" />
+                    <span>{presenceNotice}</span>
+                  </div>
                 )}
-              </button>
+
+                {/* Live Preview Toggle Pill */}
+                <button
+                  type="button"
+                  onClick={() => setShowPreview(!showPreview)}
+                  className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                    showPreview
+                      ? 'bg-primary/10 text-primary border-primary/30'
+                      : 'bg-background border-border text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {showPreview ? (
+                    <>
+                      <EyeOff className="w-3.5 h-3.5" />
+                      <span>Hide Document</span>
+                    </>
+                  ) : (
+                    <>
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>Document Preview</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
 
             {/* Current Step Component */}

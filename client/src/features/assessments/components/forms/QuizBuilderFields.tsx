@@ -8,6 +8,7 @@ import { extractDocxText, extractPdfText } from '../../../../shared/utils/quizEx
 import { useSimulatedUpload } from '../../../../shared/hooks/useSimulatedUpload';
 import { UploadProgress } from '../../../../shared/components/common/UploadProgress';
 import { TermSelect } from '../../../../shared/components/common/TermSelect';
+import { NumericInput } from '../../../../shared/components/common/NumericInput';
 import {
   Clock,
   Trash2,
@@ -915,12 +916,11 @@ export const QuizBuilderFields: React.FC<{ value: QuizBuilderValue; onChange: (v
               <div className="flex items-center space-x-2">
                 <Clock className="w-4 h-4 text-primary" />
                 <span className="font-bold text-foreground">Time Limit:</span>
-                <input
-                  type="number"
+                <NumericInput
                   min={1}
                   max={300}
                   value={value.timeLimitMinutes}
-                  onChange={e => onChange({ ...value, timeLimitMinutes: Math.max(1, Number(e.target.value)) })}
+                  onChange={num => onChange({ ...value, timeLimitMinutes: num })}
                   className="w-16 px-2 py-1 bg-background border border-border rounded-lg text-foreground font-bold text-center outline-none focus:ring-2 focus:ring-primary/20"
                 />
                 <span className="text-muted-foreground">mins</span>
@@ -1510,14 +1510,11 @@ export const QuizBuilderFields: React.FC<{ value: QuizBuilderValue; onChange: (v
                   {/* Points Input */}
                   <div className="flex items-center space-x-1.5 bg-muted/40 px-2.5 py-1 rounded-xl border border-border mr-auto">
                     <label className="text-[11px] font-bold text-muted-foreground">Points:</label>
-                    <input
-                      type="number"
+                    <NumericInput
                       min={1}
                       max={100}
                       value={item.points}
-                      onChange={e =>
-                        handleUpdateItem(itemIdx, { points: Math.max(1, Number(e.target.value)) })
-                      }
+                      onChange={num => handleUpdateItem(itemIdx, { points: num })}
                       className="w-12 px-1 py-0.5 bg-background border border-border rounded-md text-foreground text-xs font-bold text-center outline-none focus:ring-2 focus:ring-primary/20"
                     />
                   </div>

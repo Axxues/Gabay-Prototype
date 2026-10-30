@@ -344,6 +344,13 @@ export interface SubmissionComment {
   text: string;
 }
 
+export interface SubmissionAttachment {
+  name: string;
+  url?: string;
+  size?: string;
+  id?: string;
+}
+
 export interface Submission {
   id: string;
   activityKey?: string;
@@ -359,6 +366,9 @@ export interface Submission {
   content?: string;
   fileUrl?: string;
   fileName?: string;
+  attachments?: SubmissionAttachment[];
+  /** Grader note mirrored onto the submission row (readable even when the comment thread is not). */
+  feedback?: string;
   grade?: number;
   gradedAt?: string;
   gradedBy?: string;

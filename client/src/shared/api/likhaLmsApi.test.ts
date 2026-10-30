@@ -647,6 +647,67 @@ describe('Likha LMS Direct API Client', () => {
 
   });
 
+  it('groups submission feedback rows by submission id and degrades when unreadable', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: [
+          { id: 'sc-1', submission_id: 'sub-cmt-1', content: 'Nice work' },
+          { id: 'sc-2', submission_id: 'sub-cmt-2', content: 'Revise section 3' },
+        ],
+      }),
+    } as any);
+
+    const grouped = await likhaLmsApi.submissions.getComments(['sub-cmt-1', 'sub-cmt-2']);
+
+    expect(grouped['sub-cmt-1'][0].content).toBe('Nice work');
+    expect(grouped['sub-cmt-2']).toHaveLength(1);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+    // An unreadable thread degrades to "no comments" instead of throwing.
+    fetchSpy.mockRejectedValueOnce(new Error('forbidden') as any);
+    await expect(likhaLmsApi.submissions.getComments(['sub-cmt-1'])).resolves.toEqual({});
+  });
+
+  it('mirrors grader feedback onto the submission row in a second, tolerated PATCH', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch')
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ data: { id: 'sub-fb-1', score: 15, status: 'graded' } }),
+      } as any)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ data: { id: 'sub-fb-1', feedback: 'Pwede na' } }),
+      } as any);
+
+    const saved = await likhaLmsApi.gradeSubmission('sub-fb-1', 15, 'Pwede na');
+
+    expect(saved.id).toBe('sub-fb-1');
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    const feedbackRequest = fetchSpy.mock.calls[1];
+    expect(String(feedbackRequest[0])).toContain('/items/submissions/sub-fb-1');
+    expect(JSON.parse(String((feedbackRequest[1] as any)?.body))).toEqual({ feedback: 'Pwede na' });
+
+    // A failing feedback mirror must never take the saved grade down with it.
+    vi.spyOn(global, 'fetch')
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ data: { id: 'sub-fb-2', score: 10 } }),
+      } as any)
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: async () => ({}),
+        text: async () => 'column missing',
+      } as any);
+
+    await expect(likhaLmsApi.gradeSubmission('sub-fb-2', 10, 'note')).resolves.toMatchObject({ id: 'sub-fb-2' });
+  });
+
 
 
   it('fetches the user directory with expanded role relations', async () => {
@@ -1997,6 +2058,82 @@ describe('Likha LMS Direct API Client', () => {
       const retryBody = JSON.parse(fetchSpy.mock.calls[1][1]?.body as string);
       expect(retryBody.attachments).toBeUndefined();
       expect(retryBody.metadata.attachments).toHaveLength(1);
+    });
+
+    it('saveActivity strictly sanitizes payload to prevent 403 on non-existent collection fields', async () => {
+      localStorage.setItem('gabay_token', 'test-token');
+      const fetchSpy = vi.spyOn(global, 'fetch')
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: { id: 'act-clean-1', title: 'Clean Activity' } }),
+        } as any);
+
+      await likhaLmsApi.saveActivity({
+        id: 'act-clean-1',
+        title: 'Clean Activity',
+        points_possible: 100,
+        pointsPossible: 100,
+        assessmentType: 'activity',
+        sectionRestriction: 'All Sections',
+        unknownClientProperty: 'custom_value',
+      });
+
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      const call = fetchSpy.mock.calls[0];
+      const body = JSON.parse(call[1]?.body as string);
+      expect(body.total_points).toBe(100);
+      expect(body.points_possible).toBeUndefined();
+      expect(body.pointsPossible).toBeUndefined();
+      expect(body.assessment_type).toBe('activity');
+      expect(body.assessmentType).toBeUndefined();
+      expect(body.section_restriction).toBe('All Sections');
+      expect(body.sectionRestriction).toBeUndefined();
+      expect(body.unknownClientProperty).toBeUndefined();
+      expect(body.metadata?.unknownClientProperty).toBe('custom_value');
+    });
+
+    it('saveQuiz and saveExam sanitize root payloads to valid Directus columns', async () => {
+      localStorage.setItem('gabay_token', 'test-token');
+      const fetchSpy = vi.spyOn(global, 'fetch')
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: { id: 'quiz-clean-1', title: 'Clean Quiz' } }),
+        } as any)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: { id: 'exam-clean-1', title: 'Clean Exam' } }),
+        } as any);
+
+      await likhaLmsApi.assessments.saveQuiz({
+        id: 'quiz-clean-1',
+        title: 'Clean Quiz',
+        timeLimitMinutes: 30,
+        pointsPossible: 40,
+        assessmentType: 'quiz',
+        sectionRestriction: 'All Sections',
+      });
+
+      const quizBody = JSON.parse(fetchSpy.mock.calls[0][1]?.body as string);
+      expect(quizBody.total_points).toBe(40);
+      expect(quizBody.time_limit_minutes).toBe(30);
+      expect(quizBody.pointsPossible).toBeUndefined();
+      expect(quizBody.points_possible).toBeUndefined();
+      expect(quizBody.assessmentType).toBeUndefined();
+      expect(quizBody.sectionRestriction).toBeUndefined();
+
+      await likhaLmsApi.assessments.saveExam({
+        id: 'exam-clean-1',
+        title: 'Clean Exam',
+        timeLimitMinutes: 60,
+        pointsPossible: 100,
+        assessmentType: 'exam',
+      });
+
+      const examBody = JSON.parse(fetchSpy.mock.calls[1][1]?.body as string);
+      expect(examBody.total_points).toBe(100);
+      expect(examBody.time_limit_minutes).toBe(60);
+      expect(examBody.pointsPossible).toBeUndefined();
+      expect(examBody.assessmentType).toBeUndefined();
 
     });
 
@@ -2225,6 +2362,51 @@ describe('Likha LMS Direct API Client', () => {
         expect.stringContaining('/auth/refresh'),
         expect.objectContaining({ method: 'POST' })
       );
+    });
+
+    it('updateModuleItem normalizes camelCase keys and strictly strips non-schema fields', async () => {
+      let capturedBody: any = null;
+      const fetchSpy = vi.spyOn(global, 'fetch');
+      fetchSpy.mockImplementation((url: RequestInfo | URL, opts?: RequestInit) => {
+        if (opts?.method === 'PATCH' && String(url).includes('/items/module_items/mi-123')) {
+          capturedBody = JSON.parse(opts.body as string);
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve({ data: { id: 'mi-123', ...capturedBody } })
+          } as Response);
+        }
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ data: {} }) } as Response);
+      });
+
+      await likhaLmsApi.modules.updateModuleItem('mi-123', {
+        title: 'Updated Lesson',
+        fileName: 'Lesson1.pdf',
+        fileUrl: 'https://cdn.example.com/Lesson1.pdf',
+        fileSize: '2.5 MB',
+        fileType: 'pdf',
+        activityId: 'act-99',
+        quizId: 'quiz-88',
+        completionCondition: 'view',
+        minScore: 80,
+        authorId: 'usr-1',
+        completed: true,
+      });
+
+      expect(capturedBody).toBeDefined();
+      expect(capturedBody.title).toBe('Updated Lesson');
+      expect(capturedBody.file_name).toBe('Lesson1.pdf');
+      expect(capturedBody.file_url).toBe('https://cdn.example.com/Lesson1.pdf');
+      expect(capturedBody.file_size).toBe('2.5 MB');
+      expect(capturedBody.file_type).toBe('pdf');
+      expect(capturedBody.activity_id).toBe('act-99');
+      expect(capturedBody.quiz_id).toBe('quiz-88');
+      expect(capturedBody.fileName).toBeUndefined();
+      expect(capturedBody.fileUrl).toBeUndefined();
+      expect(capturedBody.completionCondition).toBeUndefined();
+      expect(capturedBody.minScore).toBeUndefined();
+      expect(capturedBody.authorId).toBeUndefined();
+      expect(capturedBody.completed).toBeUndefined();
     });
   });
 });

@@ -8,6 +8,7 @@ import {
   resolveFiledSourceLabel,
 } from '../utils/autoFolder';
 import { normalizeTermId } from '../utils/gradingTerms';
+export { normalizeTermId };
 import { TERM_LABELS } from '../components/common/TermSelect';
 import { formatFileSize, parseFormattedSize } from '../utils/fileUploader';
 
@@ -129,8 +130,15 @@ export const useCourseFiles = (courseId?: string) => {
 
     const unlinkedTerms = new Set<TermId>();
     const activityFolderId = (term: TermId | null | undefined): string => {
-      if (realActivitiesFolder) return realActivitiesFolder.id;
       const resolved = term ?? 'midterm';
+      if (realActivitiesFolder) {
+        const child = folders.find((f: any) =>
+          f.courseId === effectiveScopeId &&
+          f.parentId === realActivitiesFolder.id &&
+          (f.name.toLowerCase() === resolved || f.name.toLowerCase() === TERM_LABELS[resolved]?.toLowerCase())
+        );
+        if (child) return child.id;
+      }
       unlinkedTerms.add(resolved);
       return activitiesTermFolderId(resolved);
     };
@@ -170,6 +178,27 @@ export const useCourseFiles = (courseId?: string) => {
           if (matchedModule) break;
         }
 
+        const matchedActivity = (db.activities || []).find((a: any) => {
+          if (!isPersonal && a.courseId !== courseId && a.courseId !== effectiveScopeId) return false;
+          if (f.sourceId && String(a.id) === String(f.sourceId)) return true;
+          if (matchedItem?.activityId && String(a.id) === String(matchedItem.activityId)) return true;
+          if (a.fileName && a.fileName === f.name) return true;
+          if (fileUrl && a.fileUrl && a.fileUrl === fileUrl) return true;
+          let atts = a.attachments;
+          if (typeof atts === 'string') {
+            try { atts = JSON.parse(atts); } catch { atts = []; }
+          }
+          if (Array.isArray(atts)) {
+            return atts.some((att: any) => att && (
+              att.name === f.name ||
+              (fileUrl && att.url === fileUrl) ||
+              (att.directus_files_id && (f as any).directus_files_id && att.directus_files_id === (f as any).directus_files_id) ||
+              (att.fileId && (f.id === att.fileId || (f as any).fileId === att.fileId))
+            ));
+          }
+          return false;
+        });
+
         const isSyllabus = area === 'syllabus'
           || Boolean(course?.syllabus?.sourceDocument && (course.syllabus.sourceDocument.fileName === f.name || (course.syllabus.sourceDocument as any).courseFileId === f.id))
           || Boolean(/course[\s_-]*orientation|[\s_-]syllabus/i.test(f.name) && !area);
@@ -180,7 +209,7 @@ export const useCourseFiles = (courseId?: string) => {
           resolvedSource = 'announcements';
         } else if (isSyllabus) {
           resolvedSource = 'syllabus';
-        } else if (area === 'activities' || (!area && matchedItem?.type === 'activity')) {
+        } else if (area === 'activities' || (!area && (matchedItem?.type === 'activity' || matchedActivity))) {
           resolvedSource = 'activities';
         } else if (area === 'assignments' || (!area && matchedItem?.type === 'assignment')) {
           resolvedSource = 'assignments';
@@ -198,19 +227,33 @@ export const useCourseFiles = (courseId?: string) => {
 
         const resolvedSourceId = f.sourceId || (
           resolvedSource === 'announcements' ? matchedAnnouncement?.id :
-          resolvedSource === 'modules' ? matchedModule?.id : undefined
+          resolvedSource === 'modules' ? matchedModule?.id :
+          resolvedSource === 'activities' ? matchedActivity?.id : undefined
         );
 
         let resolvedFolderId = f.folderId;
-        if (!resolvedFolderId && !isPersonal) {
-          if (resolvedSource === 'announcements') resolvedFolderId = announcementsFolderId;
-          else if (resolvedSource === 'syllabus') resolvedFolderId = syllabusFolderId;
-          else if (resolvedSource === 'modules') resolvedFolderId = (resolvedSourceId ? folderIdForModule(resolvedSourceId) : null) ?? modulesFolderId;
-          else if (resolvedSource === 'activities') resolvedFolderId = activitiesFolderId;
-          else if (resolvedSource === 'assignments') resolvedFolderId = assignmentsFolderId;
-          else if (resolvedSource === 'quizzes') resolvedFolderId = quizzesFolderId;
-          else if (resolvedSource === 'projects') resolvedFolderId = projectsFolderId;
-          else if (resolvedSource === 'presentations') resolvedFolderId = presentationsFolderId;
+        if (!isPersonal) {
+          // If folderId is unset OR currently pointing at the root activities folder,
+          // route into the specific term folder (Midterm / Finals)
+          if (!resolvedFolderId || resolvedFolderId === activitiesFolderId) {
+            if (resolvedSource === 'activities') {
+              const actTerm: TermId = matchedActivity ? (normalizeTermId(matchedActivity.term) ?? 'midterm') : 'midterm';
+              resolvedFolderId = activityFolderId(actTerm);
+            }
+          }
+          if (!resolvedFolderId) {
+            if (resolvedSource === 'announcements') resolvedFolderId = announcementsFolderId;
+            else if (resolvedSource === 'syllabus') resolvedFolderId = syllabusFolderId;
+            else if (resolvedSource === 'modules') resolvedFolderId = (resolvedSourceId ? folderIdForModule(resolvedSourceId) : null) ?? modulesFolderId;
+            else if (resolvedSource === 'assignments') resolvedFolderId = assignmentsFolderId;
+            else if (resolvedSource === 'quizzes') resolvedFolderId = quizzesFolderId;
+            else if (resolvedSource === 'projects') resolvedFolderId = projectsFolderId;
+            else if (resolvedSource === 'presentations') resolvedFolderId = presentationsFolderId;
+          }
+        }
+
+        if (resolvedFolderId === 'vf-activities-midterm' || resolvedFolderId === 'vf-activities-finals') {
+          unlinkedTerms.add(resolvedFolderId === 'vf-activities-finals' ? 'finals' : 'midterm');
         }
 
         let effectiveFormattedSize = f.formattedSize;
@@ -416,9 +459,7 @@ export const useCourseFiles = (courseId?: string) => {
       isPersonal ? db.activities || [] : (db.activities || []).filter(a => a.courseId === courseId)
     );
 
-    const relevantClassicActivities = relevantActivities.filter(a => a.format === 'classic');
-
-    relevantClassicActivities.forEach(act => {
+    relevantActivities.forEach(act => {
       const actTerm: TermId = normalizeTermId(act.term) ?? 'midterm';
       const rawType = act.assessmentType || (
         act.category?.toLowerCase() === 'assignments' ? 'assignment' :
@@ -498,29 +539,6 @@ export const useCourseFiles = (courseId?: string) => {
         });
       });
 
-      // Virtual entry so every classic activity counts in Files even with
-      // no starter file attached.
-      if (actAttachments.length === 0) {
-        activityFiles.push({
-          id: `asg-virtual-${act.id}`,
-          courseId: act.courseId,
-          folderId: targetFolderId,
-          name: (act.title || `Untitled ${targetSource}`).trim() || `Untitled ${targetSource}`,
-          size: 0,
-          formattedSize: 'Assessment',
-          type: 'document',
-          visibility: act.published ? 'published' : 'unpublished',
-          updatedAt: act.dueDate || new Date().toISOString(),
-          uploadedBy: 'faculty',
-          uploadedByName: 'Course Faculty',
-          url: undefined,
-          fileUrl: undefined,
-          content: act.instructions,
-          source: targetSource,
-          sourceLabel: `${targetLabelPrefix}: ${act.title}`
-        });
-      }
-
       const relevantSubs = (db.submissions || []).filter(
         s => s.activityKey === act.id && (s.fileName || s.fileUrl)
       );
@@ -544,49 +562,6 @@ export const useCourseFiles = (courseId?: string) => {
           source: targetSource,
           sourceLabel: `Student Submission (${sub.studentName})`
         });
-      });
-    });
-
-    // 4b. Question-set activities (non-classic db.activities rows)
-    const relevantQuestionSets = relevantActivities.filter((a: any) => a.format !== 'classic');
-    relevantQuestionSets.forEach((act: any) => {
-      const actTerm: TermId = normalizeTermId(act.term) ?? 'midterm';
-      const rawType = act.assessmentType || (
-        act.category?.toLowerCase() === 'assignments' ? 'assignment' :
-        act.category?.toLowerCase() === 'projects' ? 'project' :
-        act.category?.toLowerCase() === 'presentations' ? 'presentation' :
-        'activity'
-      );
-      const targetFolderId = rawType === 'assignment' ? assignmentsFolderId :
-        rawType === 'project' ? projectsFolderId :
-        rawType === 'presentation' ? presentationsFolderId :
-        activityFolderId(actTerm);
-      const targetSource = rawType === 'assignment' ? 'assignments' :
-        rawType === 'project' ? 'projects' :
-        rawType === 'presentation' ? 'presentations' :
-        'activities';
-      const targetLabelPrefix = rawType === 'assignment' ? 'Assignment' :
-        rawType === 'project' ? 'Project' :
-        rawType === 'presentation' ? 'Presentation' :
-        'Activity';
-
-      activityFiles.push({
-        id: `act-virtual-${act.id}`,
-        courseId: act.courseId,
-        folderId: targetFolderId,
-        name: (act.title || 'Untitled question set').trim() || 'Untitled question set',
-        size: 0,
-        formattedSize: 'Assessment',
-        type: 'document',
-        visibility: act.published ? 'published' : 'unpublished',
-        updatedAt: act.dueDate || new Date().toISOString(),
-        uploadedBy: 'faculty',
-        uploadedByName: 'Course Faculty',
-        url: undefined,
-        fileUrl: undefined,
-        content: act.instructions,
-        source: targetSource,
-        sourceLabel: `${targetLabelPrefix}: ${act.title} (Question set)`
       });
     });
 
@@ -655,6 +630,19 @@ export const useCourseFiles = (courseId?: string) => {
             )
           );
         }
+      } else if (realActivitiesFolder && unlinkedTerms.size > 0) {
+        virtualFolders.push(
+          ...TERM_ORDER.filter(t => unlinkedTerms.has(t)).map(
+            (t): CourseFolder => ({
+              id: activitiesTermFolderId(t),
+              courseId: scopeId,
+              parentId: realActivitiesFolder.id,
+              name: TERM_LABELS[t],
+              updatedAt: nowIso,
+              autoKey: `activities-term:${t}`,
+            })
+          )
+        );
       }
 
       const hasAssignmentFiles = activityFiles.some(f => f.source === 'assignments') || directFiles.some(f => f.source === 'assignments');

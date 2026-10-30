@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useLMS } from '../../../../shared/context/LMSContext';
 import { X, ChevronLeft, ChevronRight, Award, MessageSquare, FileText, CheckCircle2, ExternalLink, Download } from 'lucide-react';
 import { ModalPortal, useModalAnimate } from '../../../../shared/components/common/ModalPortal';
+import { CustomDropdown, type DropdownOption } from '../../../../shared/components/common/CustomDropdown';
+import type { SubmissionAttachment } from '../../../../shared/types/lms';
+import { PdfViewer } from '../../../../shared/components/common/PdfViewer';
 
 interface SpeedGraderContentProps {
   currentSubmission: NonNullable<ReturnType<typeof useLMS>['db']['submissions'][number]>;
@@ -174,6 +177,14 @@ const SpeedGraderContent: React.FC<SpeedGraderContentProps> = ({
   const assessment = resolveAssessment(currentSubmission, db);
   const course = db.courses.find(c => c.id === currentSubmission.courseId);
 
+  // Every file attached to the submission (legacy rows store a single file).
+  const submissionAttachments: SubmissionAttachment[] =
+    currentSubmission.attachments && currentSubmission.attachments.length > 0
+      ? currentSubmission.attachments
+      : currentSubmission.fileName || currentSubmission.fileUrl
+        ? [{ name: currentSubmission.fileName || 'Attachment', url: currentSubmission.fileUrl }]
+        : [];
+
   const activitySubmissions = db.submissions
     .filter(s => s.activityKey === currentSubmission.activityKey)
     .sort((a, b) => {
@@ -182,6 +193,41 @@ const SpeedGraderContent: React.FC<SpeedGraderContentProps> = ({
       return a.studentName.localeCompare(b.studentName);
     });
   const currentIndex = activitySubmissions.findIndex(s => s.id === currentSubmission.id);
+
+  // Submission rows carry no expanded `student` relation, so `studentName` is
+  // usually blank (or a raw user id). Resolve it from the user directory.
+  const displayNameOf = (sub: SpeedGraderContentProps['currentSubmission']): string => {
+    const fromDirectory = (db.users || []).find(
+      u => String(u.id) === String(sub.studentId ?? '')
+    )?.name;
+    if (fromDirectory) return fromDirectory;
+    const stored = (sub.studentName || '').trim();
+    if (stored && stored !== String(sub.studentId ?? '')) return stored;
+    return 'Unknown student';
+  };
+  const studentName = displayNameOf(currentSubmission);
+
+  // Which of the student's attachments is open in the DocViewer.
+  const [activeFileIdx, setActiveFileIdx] = useState(0);
+  const activeFileIndex = Math.min(Math.max(activeFileIdx, 0), Math.max(submissionAttachments.length - 1, 0));
+  const activeFile = submissionAttachments[activeFileIndex];
+
+  const studentOptions: DropdownOption[] = activitySubmissions.map((sub, idx) => ({
+    value: sub.id,
+    label: `${idx + 1}. ${displayNameOf(sub)}`,
+    ...(sub.grade !== undefined && sub.grade !== null
+      ? { icon: <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> }
+      : {}),
+  }));
+
+  const goToSubmission = (subId: string) => {
+    if (subId && subId !== currentSubmission.id) openSpeedGrader(subId);
+  };
+
+  const stepSubmission = (delta: number) => {
+    const target = activitySubmissions[currentIndex + delta];
+    if (target) openSpeedGrader(target.id);
+  };
 
   const [gradeText, setGradeText] = useState<string>(String(currentSubmission.grade ?? 0));
   const [rubricScores, setRubricScores] = useState<Record<string, number>>(currentSubmission.rubricScores || {});
@@ -197,7 +243,27 @@ const SpeedGraderContent: React.FC<SpeedGraderContentProps> = ({
     setRubricScores(currentSubmission.rubricScores || {});
     setIsSaved(false);
     setIsSaving(false);
+    setActiveFileIdx(0);
   }, [currentSubmission.id]);
+
+  // ← / → walk the roster while the grader is reading; ignored while typing or
+  // while the student picker is open (the dropdown owns arrows then).
+  useEffect(() => {
+    const handleNavKey = (e: KeyboardEvent) => {
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) return;
+      if (document.querySelector('[role="listbox"]')) return;
+      const delta = e.key === 'ArrowLeft' ? -1 : 1;
+      if (!activitySubmissions[currentIndex + delta]) return;
+      e.preventDefault();
+      stepSubmission(delta);
+    };
+    window.addEventListener('keydown', handleNavKey);
+    return () => window.removeEventListener('keydown', handleNavKey);
+  });
 
   const pointsPossible = assessment.pointsPossible;
   const parsedGrade = Number(gradeText);
@@ -293,9 +359,21 @@ const SpeedGraderContent: React.FC<SpeedGraderContentProps> = ({
             <ChevronLeft className="w-4 h-4" />
           </button>
 
-          <div className="text-center font-sans text-xs">
-            <span className="font-bold text-foreground">{currentSubmission.studentName}</span>
-            <span className="text-muted-foreground ml-2">({currentIndex + 1} of {activitySubmissions.length})</span>
+          <div className="w-52">
+            <CustomDropdown
+              value={currentSubmission.id}
+              onChange={goToSubmission}
+              options={studentOptions}
+              ariaLabel="Jump to student submission"
+              placeholder="Select student"
+              searchable={activitySubmissions.length > 5}
+              variant="compact"
+              testId="speedgrader-student-picker"
+            />
+          </div>
+
+          <div className="text-center font-sans text-xs whitespace-nowrap" title="Use ← and → to move between students">
+            <span className="font-bold text-foreground">{currentIndex + 1} of {activitySubmissions.length}</span>
           </div>
 
           <button
@@ -324,29 +402,54 @@ const SpeedGraderContent: React.FC<SpeedGraderContentProps> = ({
       <div className="flex-1 flex overflow-hidden">
         {/* Left Pane: Student Document Preview */}
         <div className="flex-1 bg-background p-6 overflow-y-auto flex flex-col space-y-4">
-          <div className="p-4 bg-card border border-border rounded-xl flex items-center justify-between text-xs text-foreground shadow-subtle">
-            <div className="flex items-center space-x-3">
-              <FileText className="w-5 h-5 text-primary" />
-              <div>
-                <div className="font-bold text-foreground">{currentSubmission.fileName || 'Submission Document'}</div>
-                <div className="font-sans text-[11px] text-muted-foreground">
-                  Submitted: {new Date(currentSubmission.submittedAt).toLocaleString()}
+          <div className="p-4 bg-card border border-border rounded-xl text-xs text-foreground shadow-subtle space-y-3">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-start space-x-3 min-w-0">
+                <FileText className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                  <div className="font-bold text-foreground truncate">
+                    {activeFile?.name || currentSubmission.fileName || 'Submission Document'}
+                  </div>
+                  <div className="font-sans text-[11px] text-muted-foreground truncate">
+                    Submitted: {new Date(currentSubmission.submittedAt).toLocaleString()}
+                    {submissionAttachments.length > 1 ? ` • File ${activeFileIndex + 1} of ${submissionAttachments.length}` : ''}
+                  </div>
                 </div>
               </div>
+              {activeFile?.url ? (
+                <a
+                  href={activeFile.url}
+                  download={activeFile.name}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3.5 py-1.5 bg-muted hover:bg-muted/80 text-foreground rounded-lg text-xs font-bold font-sans border border-border transition-colors shrink-0"
+                >
+                  Download this file
+                </a>
+              ) : (
+                <span className="px-3.5 py-1.5 text-muted-foreground rounded-lg text-xs font-sans border border-border shrink-0">
+                  {currentSubmission.submissionType === 'file' ? 'No file attached' : 'Text entry submission'}
+                </span>
+              )}
             </div>
-            {currentSubmission.fileUrl ? (
-              <a
-                href={currentSubmission.fileUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="px-3.5 py-1.5 bg-muted hover:bg-muted/80 text-foreground rounded-lg text-xs font-bold font-sans border border-border transition-colors"
-              >
-                Download attached file
-              </a>
-            ) : (
-              <span className="px-3.5 py-1.5 text-muted-foreground rounded-lg text-xs font-sans border border-border">
-                {currentSubmission.submissionType === 'file' ? 'No file attached' : 'Text entry submission'}
-              </span>
+            {submissionAttachments.length > 1 && (
+              <div className="flex flex-wrap gap-1.5">
+                {submissionAttachments.map((file, idx) => (
+                  <button
+                    key={`${file.name}-${idx}`}
+                    type="button"
+                    onClick={() => setActiveFileIdx(idx)}
+                    title={`View ${file.name}`}
+                    className={`px-2 py-1 rounded-lg border font-sans text-[11px] flex items-center gap-1 max-w-[200px] transition-colors cursor-pointer ${
+                      idx === activeFileIndex
+                        ? 'bg-primary/15 border-primary/40 text-primary font-bold'
+                        : 'bg-muted hover:bg-muted/80 border-border text-foreground'
+                    }`}
+                  >
+                    <span className="truncate">{idx + 1}. {file.name}</span>
+                  </button>
+                ))}
+              </div>
             )}
           </div>
 
@@ -354,7 +457,7 @@ const SpeedGraderContent: React.FC<SpeedGraderContentProps> = ({
           <div className="flex-1 bg-card border border-border rounded-xl p-6 font-sans text-xs text-foreground leading-relaxed overflow-y-auto whitespace-pre-line shadow-inner">
             <div className="text-muted-foreground pb-2 mb-4 border-b border-border flex justify-between items-center text-[10px]">
               <span>GABAY DOCVIEWER ENGINE v2.4 • STUDENT PAYLOAD RENDERER</span>
-              <span>{currentSubmission.studentName}{currentSubmission.studentId ? ` (${currentSubmission.studentId})` : ''}</span>
+              <span>{studentName}{currentSubmission.studentId ? ` (${currentSubmission.studentId})` : ''}</span>
             </div>
             {showQuestionAnswers ? (
               <div className="space-y-3">
@@ -382,14 +485,57 @@ const SpeedGraderContent: React.FC<SpeedGraderContentProps> = ({
                   );
                 })}
               </div>
-            ) : currentSubmission.fileUrl && /\.(jpg|jpeg|png|gif|webp)$/i.test(currentSubmission.fileName || currentSubmission.fileUrl) ? (
+            ) : activeFile?.url && /\.(jpg|jpeg|png|gif|webp)$/i.test(activeFile.name || activeFile.url) ? (
               <div className="text-center py-4 space-y-3">
                 <img
-                  src={currentSubmission.fileUrl}
-                  alt={currentSubmission.fileName || 'Submission Image'}
+                  src={activeFile.url}
+                  alt={activeFile.name || 'Submission Image'}
                   className="max-h-[500px] max-w-full rounded-xl mx-auto object-contain border border-border shadow-sm"
                 />
-                <div className="text-xs text-muted-foreground font-mono">{currentSubmission.fileName}</div>
+                <div className="text-xs text-muted-foreground font-mono">{activeFile.name}</div>
+              </div>
+            ) : activeFile?.url && /\.pdf$/i.test(activeFile.name || activeFile.url) ? (
+              <div className="w-full flex-1 min-h-[550px] flex flex-col">
+                <PdfViewer
+                  url={activeFile.url}
+                  title={activeFile.name || 'Submission Document'}
+                  className="w-full flex-1 min-h-[550px]"
+                />
+              </div>
+            ) : activeFile?.url ? (
+              <div className="text-center py-12 text-muted-foreground space-y-3">
+                <FileText className="w-10 h-10 mx-auto text-primary/60" />
+                <div className="font-semibold text-foreground">
+                  {activeFile.name}
+                  {activeFile.size ? ` (${activeFile.size})` : ''}
+                </div>
+                <div className="text-[11px]">No inline preview for this file type.</div>
+                <div className="flex items-center justify-center gap-3">
+                  <a
+                    href={activeFile.url}
+                    download={activeFile.name}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center space-x-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-xl font-bold text-xs hover:opacity-90 shadow-sm transition-all"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Download {activeFile.name}</span>
+                  </a>
+                  <a
+                    href={activeFile.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center space-x-1.5 px-4 py-2 bg-card hover:bg-muted text-foreground border border-border rounded-xl font-bold text-xs transition-all"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Open in New Tab</span>
+                  </a>
+                </div>
+                {currentSubmission.content && (
+                  <div className="pt-4 mt-4 border-t border-border text-left">
+                    {renderSubmissionContent(currentSubmission.content)}
+                  </div>
+                )}
               </div>
             ) : currentSubmission.content ? (
               renderSubmissionContent(currentSubmission.content)
@@ -397,21 +543,8 @@ const SpeedGraderContent: React.FC<SpeedGraderContentProps> = ({
               <div className="text-center py-12 text-muted-foreground space-y-3">
                 <FileText className="w-10 h-10 mx-auto text-primary/60" />
                 <div className="font-semibold text-foreground">
-                  Attached Document: {currentSubmission.fileName ?? 'none'}
+                  {currentSubmission.submissionType === 'file' ? 'No file attached' : 'No submission content'}
                 </div>
-                {currentSubmission.fileUrl && (
-                  <div>
-                    <a
-                      href={currentSubmission.fileUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center space-x-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-xl font-bold text-xs hover:opacity-90 shadow-sm transition-all"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                      <span>Download {currentSubmission.fileName || 'Document'}</span>
-                    </a>
-                  </div>
-                )}
               </div>
             )}
           </div>
@@ -431,12 +564,21 @@ const SpeedGraderContent: React.FC<SpeedGraderContentProps> = ({
                 </span>
               </div>
               <input
-                type="number"
-                min={0}
-                max={pointsPossible}
+                type="text"
+                role="spinbutton"
+                aria-label="Grade"
+                aria-valuenow={gradeText === '' ? undefined : Number(gradeText)}
+                aria-valuemin={0}
+                aria-valuemax={pointsPossible}
+                inputMode="decimal"
                 value={gradeText}
                 disabled={isAdmin || isSaving}
-                onChange={e => setGradeText(e.target.value)}
+                onChange={e => {
+                  let val = e.target.value.replace(/[^0-9.]/g, '');
+                  const parts = val.split('.');
+                  if (parts.length > 2) val = parts[0] + '.' + parts.slice(1).join('');
+                  setGradeText(val);
+                }}
                 aria-invalid={!isGradeValid}
                 className="w-full p-2.5 bg-card border border-border rounded-xl font-sans text-xl font-extrabold text-primary focus:outline-hidden focus:ring-2 focus:ring-primary/30 text-center shadow-subtle disabled:opacity-75 disabled:cursor-not-allowed"
               />
@@ -465,7 +607,7 @@ const SpeedGraderContent: React.FC<SpeedGraderContentProps> = ({
                       <p className="text-[11px] text-muted-foreground leading-relaxed">{r.description}</p>
 
                       <div className="grid grid-cols-1 gap-1.5 pt-1">
-                        {r.ratings.map((rating, ratingIdx) => (
+                        {(r.ratings || []).map((rating, ratingIdx) => (
                           <button
                             key={`${r.id}-${ratingIdx}-${rating.points}`}
                             type="button"
@@ -508,6 +650,15 @@ const SpeedGraderContent: React.FC<SpeedGraderContentProps> = ({
                   <p className="text-foreground leading-normal italic">{c.text}</p>
                 </div>
               ))}
+
+              {(currentSubmission.comments ?? []).length === 0 && currentSubmission.feedback && (
+                <div className="p-3 bg-muted/40 border border-border rounded-xl space-y-1">
+                  <div className="flex justify-between text-[10px] font-sans text-muted-foreground">
+                    <span className="font-bold text-foreground">Instructor</span>
+                  </div>
+                  <p className="text-foreground leading-normal italic">{currentSubmission.feedback}</p>
+                </div>
+              )}
 
               {!isAdmin && (
                 <textarea
@@ -568,6 +719,8 @@ export const SpeedGraderModal: React.FC = () => {
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        // An open picker (student dropdown) consumes Escape to close itself.
+        if (document.querySelector('[role="listbox"]')) return;
         startClose();
       }
     };

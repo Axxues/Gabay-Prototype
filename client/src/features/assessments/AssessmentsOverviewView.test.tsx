@@ -41,6 +41,8 @@ describe('AssessmentsOverviewView', () => {
     // Header & Metric cards
     expect(screen.getByText('Assessments Overview')).toBeDefined();
     expect(screen.getByText('Total Assessments')).toBeDefined();
+    expect(screen.getByText('Ungraded Submissions')).toBeDefined();
+    expect(screen.queryByText('Total Points')).toBeNull();
 
     // Verify all assessments rendered initially
     expect(screen.getByText('Activity 1')).toBeDefined();

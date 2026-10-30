@@ -44,6 +44,7 @@ export default defineConfig({
         target: 'https://gabay.zyberlab.com',
         changeOrigin: true,
         secure: true,
+        ws: true,
         agent: new https.Agent({ keepAlive: true, keepAliveMsecs: 30000, maxSockets: 50 }),
         rewrite: (path) => path.replace(/^\/likha/, ''),
         configure: (proxy) => {

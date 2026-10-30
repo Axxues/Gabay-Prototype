@@ -36,6 +36,8 @@ export interface SyllabusDevelopmentRecord {
   status: SyllabusLifecycleStatus;
   releasedAt?: string;
   releasedBy?: string; // Chairperson ID
+  lockedAt?: string;
+  lockedBy?: string; // Chairperson ID
   submissionAgreements: Record<string, boolean>; // instructorId -> agreed
   evaluators: EvaluatorReview[];
   chairApprovedAt?: string;

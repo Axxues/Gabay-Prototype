@@ -64,16 +64,16 @@ export const Step4LearningPlan: React.FC<Step4LearningPlanProps> = ({ data, onCh
       week: `Week ${learningPlan.length + 1}`,
       hoursLec: 3,
       hoursLab: 0,
-      learningOutcomes: ['Articulate key concepts and objectives for this module.'],
-      topics: ['Topic Overview and Key Concepts'],
+      learningOutcomes: [],
+      topics: [],
       sdgCoherence: {
         goal: 'SDG 4',
         title: 'Quality Education',
         description: 'Providing inclusive and equitable quality education.'
       },
-      methodology: ['Lecture-Discussion', 'Interactive Problem Solving'],
-      resources: ['Slide Presentation', 'Course LMS', 'Reference Books'],
-      assessment: ['Short Quiz', 'Class Recitation']
+      methodology: [],
+      resources: [],
+      assessment: []
     };
     onChange({
       ...data,
@@ -121,7 +121,7 @@ export const Step4LearningPlan: React.FC<Step4LearningPlanProps> = ({ data, onCh
                 </span>
                 <input
                   type="text"
-                  value={row.week}
+                  value={row.week ?? ''}
                   onChange={e => updatePlanRow(idx, 'week', e.target.value)}
                   placeholder="e.g. Week 1 - 4"
                   className="px-2.5 py-1 text-xs font-semibold rounded-lg border border-border bg-background focus:ring-1 focus:ring-primary focus:border-primary outline-none"
@@ -132,7 +132,7 @@ export const Step4LearningPlan: React.FC<Step4LearningPlanProps> = ({ data, onCh
                   <input
                     type="text"
                     inputMode="decimal"
-                    value={row.hoursLec === 0 ? '' : row.hoursLec}
+                    value={row.hoursLec === 0 ? '' : (row.hoursLec ?? '')}
                     placeholder="0"
                     onChange={e => {
                       const raw = e.target.value.replace(/[^0-9.]/g, '');
@@ -144,7 +144,7 @@ export const Step4LearningPlan: React.FC<Step4LearningPlanProps> = ({ data, onCh
                   <input
                     type="text"
                     inputMode="decimal"
-                    value={row.hoursLab === 0 ? '' : row.hoursLab}
+                    value={row.hoursLab === 0 ? '' : (row.hoursLab ?? '')}
                     placeholder="0"
                     onChange={e => {
                       const raw = e.target.value.replace(/[^0-9.]/g, '');

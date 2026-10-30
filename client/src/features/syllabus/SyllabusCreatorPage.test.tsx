@@ -112,4 +112,19 @@ describe('SyllabusCreatorPage', () => {
     render(<SyllabusCreatorPage />);
     expect(screen.getByText(/Access Restricted/i)).toBeInTheDocument();
   });
+
+  it('blocks opening studio and editing when syllabus development is locked', () => {
+    const showAlert = vi.fn();
+    vi.spyOn(LMSContext, 'useLMS').mockReturnValue({
+      activeUser: mockFacultyUser,
+      activeRole: 'faculty',
+      courses: [{ ...mockReleasedCourse, syllabusStatus: 'locked' }],
+      db: { courses: [{ ...mockReleasedCourse, syllabusStatus: 'locked' }] },
+      showAlert,
+    } as any);
+
+    render(<SyllabusCreatorPage />);
+    expect(screen.getByText(/Pending Chair Release/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Open Syllabus Studio/i })).not.toBeInTheDocument();
+  });
 });

@@ -1362,6 +1362,11 @@ const mapLikhaSubmissionRow = (row: any, courseId?: string): any => {
       ? parsedContentData.attachments
       : undefined;
 
+  const feedback =
+    (typeof row.feedback === 'string' && row.feedback.trim()) ||
+    (typeof parsedContentData?.feedback === 'string' && parsedContentData.feedback.trim()) ||
+    undefined;
+
   return {
     ...row,
     id: String(row.id),
@@ -1386,6 +1391,7 @@ const mapLikhaSubmissionRow = (row: any, courseId?: string): any => {
     fileUrl,
     fileSize,
     ...(attachments !== undefined ? { attachments } : {}),
+    ...(feedback !== undefined ? { feedback } : {}),
     grade: row.score ?? row.grade ?? undefined,
     gradedAt: row.graded_at ?? row.gradedAt ?? undefined,
     gradedBy: row.graded_by ?? row.gradedBy ?? undefined,
@@ -1407,6 +1413,42 @@ const normalizeSubmissionComment = (raw: any): SubmissionComment => ({
   ...raw,
   createdAt: raw.createdAt ? toIsoString(raw.createdAt) : new Date().toISOString(),
 });
+
+/**
+ * Attach the feedback thread (`submission_comments`) to already-normalized
+ * submissions. One batched read per load, and any failure degrades to
+ * "no comments" rather than hiding the submissions themselves.
+ */
+const attachSubmissionComments = async (
+  submissions: Submission[],
+  users: User[]
+): Promise<Submission[]> => {
+  if (!submissions || submissions.length === 0) return submissions;
+  let grouped: Record<string, any[]> = {};
+  try {
+    grouped = await likhaLmsApi.submissions.getComments(submissions.map(s => s.id));
+  } catch {
+    return submissions;
+  }
+  const nameOf = (authorId: any) =>
+    users.find(u => String(u.id) === String(authorId ?? ''))?.name;
+  return submissions.map(sub => {
+    const rows = grouped[sub.id];
+    if (!rows || rows.length === 0) return sub;
+    return {
+      ...sub,
+      comments: rows.map(row =>
+        normalizeSubmissionComment(
+          mapLikhaSubmissionCommentRow(row, {
+            id: String(row?.author_id ?? ''),
+            name: nameOf(row?.author_id) ?? 'Instructor',
+            role: 'faculty',
+          })
+        )
+      ),
+    };
+  });
+};
 
 export const resolveDirectusAssetUrl = (fileOrId: any, options?: AssetTransformOptions): string | undefined => {
   if (!fileOrId) return undefined;
@@ -1616,6 +1658,7 @@ export const normalizeSubmission = (raw: any): Submission => {
     fileName,
     attachments:
       Array.isArray(raw.attachments) && raw.attachments.length > 0 ? raw.attachments : undefined,
+    feedback: raw.feedback ?? undefined,
     grade: raw.grade ?? undefined,
     gradedAt: toOptionalIso(raw.gradedAt),
     gradedBy: raw.gradedBy ?? undefined,
@@ -3544,7 +3587,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           allSubmissions.push(merged);
         }
       }
-      fresh.submissions = allSubmissions;
+      // Feedback threads ride in a second, failure-tolerant batch so students
+      // and graders keep seeing comments across reloads.
+      fresh.submissions = await attachSubmissionComments(allSubmissions, fresh.users ?? []);
       if (bootstrapRef.current !== run) return; // ponytail: logout/re-login mid-fill — don't resurrect stale db
       const done = fresh;
       setDb(prev => {
@@ -4011,6 +4056,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             newSubmissions.push(...res.value);
           }
         }
+      }
+      if (newSubmissions.length > 0) {
+        newSubmissions = await attachSubmissionComments(newSubmissions, dbRef.current.users ?? []);
       }
 
       let syllabusEnvelope = syllabusSettled.status === 'fulfilled' ? syllabusSettled.value : null;
@@ -7601,11 +7649,12 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ): Promise<void> => {
     if (!courseIds || courseIds.length === 0) return;
     const now = new Date().toISOString();
+    const targetIdSet = new Set(courseIds.map(id => String(id).trim()));
 
     setDb(prev => ({
       ...prev,
       courses: (prev.courses || []).map(c =>
-        courseIds.includes(c.id)
+        targetIdSet.has(String(c.id).trim())
           ? {
               ...c,
               syllabusStatus: status,
@@ -7613,6 +7662,11 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 ? {
                     syllabusReleasedAt: now,
                     syllabusReleasedBy: releasedBy,
+                  }
+                : status === 'locked'
+                ? {
+                    syllabusReleasedAt: undefined,
+                    syllabusReleasedBy: undefined,
                   }
                 : {})
             }
@@ -7747,7 +7801,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         throw new Error('Grade must be a number.');
       }
       // Likha ERP is the source of truth for submissions.
-      const saved = await likhaLmsApi.submissions.gradeSubmission(submissionId, grade);
+      const saved = await likhaLmsApi.submissions.gradeSubmission(submissionId, grade, commentText);
       const criteria = Object.entries(rubricScores || {});
       if (criteria.length > 0 && likhaLmsApi?.submissions?.addRubricScoresBatch) {
         try {
@@ -7770,12 +7824,20 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           activeUser.id,
           commentText.trim()
         );
+        // The POST echo is not guaranteed to carry the body back, so the text
+        // just written is the source of truth for the locally appended comment.
         appended = normalizeSubmissionComment(
-          mapLikhaSubmissionCommentRow(comment, {
-            id: activeUser.id,
-            name: activeUser.name,
-            role: activeUser.role,
-          })
+          mapLikhaSubmissionCommentRow(
+            {
+              ...(comment && typeof comment === 'object' ? comment : {}),
+              content: comment?.content ?? commentText.trim(),
+            },
+            {
+              id: activeUser.id,
+              name: activeUser.name,
+              role: activeUser.role,
+            }
+          )
         );
       }
       const courseId = dbRef.current.submissions?.find(s => s.id === submissionId)?.courseId;
@@ -7792,6 +7854,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   graded.rubricScores && Object.keys(graded.rubricScores).length > 0
                     ? graded.rubricScores
                     : rubricScores,
+                feedback: (commentText && commentText.trim()) || graded.feedback,
                 comments: [...(sub.comments ?? []), ...(appended ? [appended] : [])],
               }
             : sub

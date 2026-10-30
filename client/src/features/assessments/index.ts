@@ -13,6 +13,13 @@ export { QuizzesView } from './QuizzesView';
 export { SpeedGraderModal } from './components/grading/SpeedGraderModal';
 export { FacultyGradebook } from './components/grading/FacultyGradebook';
 export { StudentGradebook } from './components/grading/StudentGradebook';
+export { AssessmentFilePreviewModal, type AssessmentPreviewAttachment } from './components/AssessmentFilePreviewModal';
+export {
+  extractTitleSequenceNumber,
+  getAssessmentRecencyScore,
+  compareAssessmentsLatestFirst,
+  sortAssessmentsLatestFirst,
+} from './utils/assessmentSorting';
 
 // Form fields, builders, validators, and types for assessments authoring
 export {

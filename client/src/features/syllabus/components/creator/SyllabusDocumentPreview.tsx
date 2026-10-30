@@ -1,5 +1,6 @@
 import React from 'react';
 import type { OfficialSyllabusData } from '../../../../shared/data/syllabusData';
+import { OFFICIAL_INSTITUTIONAL_STATEMENTS, formatApa7Reference } from '../../../../shared/data/syllabusData';
 import { Printer } from 'lucide-react';
 
 interface SyllabusDocumentPreviewProps {
@@ -32,6 +33,7 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
     courseOutcomes = [],
     courseRequirements,
     gradingSystem,
+    projectRubrics = [],
     classroomPolicies = [],
     courseOutline = [],
     learningPlan = [],
@@ -240,7 +242,10 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
                     DMMMSU aims to produce highly competent, specialized, and globally competitive professionals. This is operationalized into graduate attributes that should be attained by the time students will graduate from the University.
                   </div>
                   <div className="space-y-1 mt-1">
-                    {(institutionalStatements?.graduateAttributes || []).map((ga, idx) => (
+                    {((institutionalStatements?.graduateAttributes && institutionalStatements.graduateAttributes.length > 0)
+                      ? institutionalStatements.graduateAttributes
+                      : OFFICIAL_INSTITUTIONAL_STATEMENTS.graduateAttributes
+                    ).map((ga, idx) => (
                       <div key={idx} className="pl-4">
                         <span className="font-bold">{ga.title}</span> – {ga.description}
                       </div>
@@ -251,7 +256,10 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
               <tr>
                 <td className="w-[20%] p-1.5 font-bold border border-black align-top">Core Values</td>
                 <td className="p-1.5 border border-black align-top space-y-1">
-                  {(institutionalStatements?.coreValues || []).map((cv, idx) => (
+                  {((institutionalStatements?.coreValues && institutionalStatements.coreValues.length > 0)
+                    ? institutionalStatements.coreValues
+                    : OFFICIAL_INSTITUTIONAL_STATEMENTS.coreValues
+                  ).map((cv, idx) => (
                     <div key={idx}>
                       <span className="font-bold uppercase tracking-wider">{cv.keyword || cv.acronym}:</span> {cv.description}
                     </div>
@@ -267,7 +275,7 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
                       <ol className="list-decimal list-inside space-y-1 mt-1">
                         {programOutcomes.map((po, idx) => (
                           <li key={idx} className="pl-1">
-                            <span className="font-semibold">PO{po.number}:</span> {po.description}
+                            <span className="font-semibold">PO{idx + 1}:</span> {po.description}
                           </li>
                         ))}
                       </ol>
@@ -309,7 +317,7 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
                       <ul className="list-disc list-inside space-y-1 mt-1">
                         {courseOutcomes.map((co, idx) => (
                           <li key={idx} className="pl-1">
-                            <span className="font-semibold">CO{co.number}:</span> {co.statement}
+                            <span className="font-semibold">CO{idx + 1}:</span> {co.statement}
                           </li>
                         ))}
                       </ul>
@@ -356,6 +364,38 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
                   ) : null}
                 </td>
               </tr>
+              {projectRubrics && projectRubrics.length > 0 && (
+                <tr>
+                  <td className="w-[20%] p-1.5 font-bold border border-black align-top">Project Rubrics</td>
+                  <td className="p-1.5 border border-black align-top space-y-1.5">
+                    <div className="font-semibold text-[9.5pt]">
+                      Rubrics for Group Project Presentation and Documentation:
+                    </div>
+                    <table className="w-full border-collapse border border-black text-[9pt]">
+                      <thead>
+                        <tr className="bg-gray-100 font-bold border-b border-black">
+                          <th className="p-1 border border-black text-left w-[24%]">Evaluation Criteria</th>
+                          <th className="p-1 border border-black text-left w-[19%]">Level 1 (Beginning)</th>
+                          <th className="p-1 border border-black text-left w-[19%]">Level 2 (Developing)</th>
+                          <th className="p-1 border border-black text-left w-[19%]">Level 3 (Proficient)</th>
+                          <th className="p-1 border border-black text-left w-[19%]">Level 4 (Exemplary)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {projectRubrics.map((r, idx) => (
+                          <tr key={idx} className="border-b border-black">
+                            <td className="p-1 border border-black font-semibold align-top">{r.category}</td>
+                            <td className="p-1 border border-black align-top text-[8.5pt]">{r.levels[1]}</td>
+                            <td className="p-1 border border-black align-top text-[8.5pt]">{r.levels[2]}</td>
+                            <td className="p-1 border border-black align-top text-[8.5pt]">{r.levels[3]}</td>
+                            <td className="p-1 border border-black align-top text-[8.5pt] font-medium">{r.levels[4]}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </td>
+                </tr>
+              )}
               <tr>
                 <td className="w-[20%] p-1.5 font-bold border border-black align-top">Classroom Policies</td>
                 <td className="p-1.5 border border-black align-top space-y-1">
@@ -570,11 +610,15 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
           <div className="font-bold text-[10pt] mb-1 text-black">Part V: References</div>
           <div className="space-y-1 mb-4 text-[9.5pt]">
             {references && references.length > 0 ? (
-              references.map((ref, idx) => (
-                <div key={idx} className="pl-8 -indent-8 text-justify leading-relaxed">
-                  {ref.citation} {ref.year ? `(${ref.year}).` : ''} {ref.doiOrPublisher}
-                </div>
-              ))
+              references.map((ref, idx) => {
+                const fullCitation = ref.citation?.trim() || formatApa7Reference(ref);
+                const isComplete = fullCitation.includes(`(${ref.year})`) || fullCitation.includes('(n.d.)') || Boolean(ref.type);
+                return (
+                  <div key={idx} className="pl-8 -indent-8 text-justify leading-relaxed">
+                    {isComplete ? fullCitation : `${ref.citation || ''} ${ref.year ? `(${ref.year}).` : ''} ${ref.doiOrPublisher || ''}`}
+                  </div>
+                );
+              })
             ) : (
               <div className="h-6"></div>
             )}
