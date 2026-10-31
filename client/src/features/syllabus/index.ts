@@ -12,3 +12,7 @@ export { EvaluatorReviewModal } from './components/governance/EvaluatorReviewMod
 export { RevisionRemarksBanner } from './components/creator/RevisionRemarksBanner';
 export { CoInstructorSubmissionPanel } from './components/creator/CoInstructorSubmissionPanel';
 export { ApprovalActionModal } from './components/governance/ApprovalActionModal';
+export { ConsolidatedMatrixModal } from './components/matrix/ConsolidatedMatrixModal';
+export type { ConsolidatedMatrixModalProps } from './components/matrix/ConsolidatedMatrixModal';
+export { summarizeMatrix } from './utils/matrixSummary';
+export type { ConsolidatedMatrix, ConsolidatedSection, ConsolidatedRow, ConsolidatedComment } from './utils/matrixSummary';
