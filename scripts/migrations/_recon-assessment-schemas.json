@@ -1,0 +1,859 @@
+{
+  "activities": {
+    "fields": [
+      {
+        "field": "id",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": false,
+        "fk": null
+      },
+      {
+        "field": "course_id",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": "courses"
+      },
+      {
+        "field": "title",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "description",
+        "type": "text",
+        "interface": "input-rich-text-html",
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "term",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "format",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "category",
+        "type": "string",
+        "interface": "select-dropdown",
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "weight",
+        "type": "float",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "total_points",
+        "type": "integer",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "due_date",
+        "type": "dateTime",
+        "interface": "datetime",
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "available_from",
+        "type": "dateTime",
+        "interface": "datetime",
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "available_until",
+        "type": "dateTime",
+        "interface": "datetime",
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "published",
+        "type": "boolean",
+        "interface": "boolean",
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "assessment_type",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "metadata",
+        "type": "json",
+        "interface": null,
+        "special": [
+          "cast-json"
+        ],
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "instructions",
+        "type": "text",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "submission_types",
+        "type": "json",
+        "interface": null,
+        "special": [
+          "cast-json"
+        ],
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "rubric",
+        "type": "json",
+        "interface": null,
+        "special": [
+          "cast-json"
+        ],
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "file_name",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "file_url",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "file_size",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "section_restriction",
+        "type": "string",
+        "interface": "input",
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "attachments",
+        "type": "alias",
+        "interface": "files",
+        "special": [
+          "files"
+        ],
+        "nullable": null,
+        "fk": null
+      }
+    ]
+  },
+  "quizzes": {
+    "fields": [
+      {
+        "field": "id",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": false,
+        "fk": null
+      },
+      {
+        "field": "course_id",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "title",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "description",
+        "type": "text",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "term",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "time_limit_minutes",
+        "type": "integer",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "total_points",
+        "type": "integer",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "due_date",
+        "type": "dateTime",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "published",
+        "type": "boolean",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "available_from",
+        "type": "dateTime",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "available_until",
+        "type": "dateTime",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "delayed_until",
+        "type": "dateTime",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "file_name",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "file_url",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "file_size",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      }
+    ]
+  },
+  "module_items": {
+    "fields": [
+      {
+        "field": "id",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": false,
+        "fk": null
+      },
+      {
+        "field": "module_id",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": "modules"
+      },
+      {
+        "field": "title",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "type",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "published",
+        "type": "boolean",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "required",
+        "type": "boolean",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "content",
+        "type": "text",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "url",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "duration",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "points",
+        "type": "integer",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "due_date",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "order",
+        "type": "integer",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "file_name",
+        "type": "string",
+        "interface": "input",
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "file_url",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "file_size",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "file_type",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "activity_id",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "quiz_id",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "attachments",
+        "type": "json",
+        "interface": "input-code",
+        "special": [
+          "cast-json"
+        ],
+        "nullable": true,
+        "fk": null
+      }
+    ]
+  },
+  "submissions": {
+    "fields": [
+      {
+        "field": "id",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": false,
+        "fk": null
+      },
+      {
+        "field": "course_id",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "student_id",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "activity_id",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": "activities"
+      },
+      {
+        "field": "quiz_id",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "exam_id",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "status",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "score",
+        "type": "float",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "max_score",
+        "type": "float",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "submitted_at",
+        "type": "dateTime",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "graded_at",
+        "type": "dateTime",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "graded_by",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "content",
+        "type": "text",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "file",
+        "type": "uuid",
+        "interface": "file",
+        "special": [
+          "file"
+        ],
+        "nullable": true,
+        "fk": "directus_files"
+      },
+      {
+        "field": "student",
+        "type": "uuid",
+        "interface": "select-dropdown-m2o",
+        "special": [
+          "m2o"
+        ],
+        "nullable": true,
+        "fk": "directus_users"
+      },
+      {
+        "field": "submission_type",
+        "type": "string",
+        "interface": "input",
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "feedback",
+        "type": "text",
+        "interface": "input-multiline",
+        "special": null,
+        "nullable": true,
+        "fk": null
+      }
+    ]
+  },
+  "assessment_questions": {
+    "fields": [
+      {
+        "field": "id",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": false,
+        "fk": null
+      },
+      {
+        "field": "activity_id",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": "activities"
+      },
+      {
+        "field": "quiz_id",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "exam_id",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "question_text",
+        "type": "text",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "question_type",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "points",
+        "type": "float",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "correct_answer",
+        "type": "text",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "options_json",
+        "type": "text",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "order",
+        "type": "integer",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      }
+    ]
+  },
+  "rubric_criteria": {
+    "fields": [
+      {
+        "field": "id",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": false,
+        "fk": null
+      },
+      {
+        "field": "activity_id",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": "activities"
+      },
+      {
+        "field": "title",
+        "type": "string",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "description",
+        "type": "text",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "max_points",
+        "type": "float",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      },
+      {
+        "field": "order",
+        "type": "integer",
+        "interface": null,
+        "special": null,
+        "nullable": true,
+        "fk": null
+      }
+    ]
+  },
+  "_activityRowCounts": {
+    "activity": 4,
+    "<null>": 2,
+    "assignment": 2
+  },
+  "_courses": [
+    "185703b1-ca62-448b-9fc3-0a23e63fcfc1",
+    "4296eaae-3d4a-44d2-9b7e-9b3a3ae9caab"
+  ],
+  "_moduleItemSample": [
+    {
+      "id": "239fbcce-1b13-4758-9bc2-25bd9ede5786",
+      "module_id": "36593777-9c37-4134-b4d8-53bde308e54c",
+      "title": "Quiz 1",
+      "type": "quiz",
+      "published": true,
+      "required": false,
+      "content": "Unit resource instructions aligned with syllabus requirements.",
+      "url": null,
+      "duration": null,
+      "points": null,
+      "due_date": null,
+      "order": 1793410202,
+      "file_name": null,
+      "file_url": null,
+      "file_size": null,
+      "file_type": null,
+      "activity_id": null,
+      "quiz_id": "59848a1b-9da6-4747-834e-4496f6ab3303",
+      "attachments": null
+    },
+    {
+      "id": "3982f87e-d19a-4c63-8ffa-7c94f53549ff",
+      "module_id": "1547d887-dbab-4993-81c0-83bca6044bba",
+      "title": "Activity 1 (File Upload)",
+      "type": "activity",
+      "published": true,
+      "required": false,
+      "content": "Only File Upload, no rubrics",
+      "url": "/likha/assets/ead20aba-676a-4e6e-841f-204d601f5a09",
+      "duration": null,
+      "points": null,
+      "due_date": null,
+      "order": 3,
+      "file_name": "ThesisManuscript-AntiCheating.docx",
+      "file_url": "/likha/assets/ead20aba-676a-4e6e-841f-204d601f5a09",
+      "file_size": "3.8 MB",
+      "file_type": null,
+      "activity_id": "db08a9bf-f61a-4530-9c6f-58bd55e6e46a",
+      "quiz_id": null,
+      "attachments": [
+        {
+          "name": "ThesisManuscript-AntiCheating.docx",
+          "size": "3.8 MB",
+          "url": "/likha/assets/ead20aba-676a-4e6e-841f-204d601f5a09",
+          "type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "fileId": "ead20aba-676a-4e6e-841f-204d601f5a09",
+          "directus_files_id": "ead20aba-676a-4e6e-841f-204d601f5a09"
+        },
+        {
+          "name": "Application for Ethics Review of a New Protocol (DMMMSU-RETC-F013).pdf",
+          "size": "1.4 MB",
+          "url": "/likha/assets/b1e58c37-00d1-426b-b3e2-603145129f3a",
+          "type": "application/pdf",
+          "fileId": "b1e58c37-00d1-426b-b3e2-603145129f3a",
+          "directus_files_id": "b1e58c37-00d1-426b-b3e2-603145129f3a"
+        },
+        {
+          "name": "Diagram.png",
+          "size": "176.9 KB",
+          "url": "/likha/assets/5ad67e9f-e60b-48e1-88a7-a94d92e0aa38",
+          "type": "image/png",
+          "fileId": "5ad67e9f-e60b-48e1-88a7-a94d92e0aa38",
+          "directus_files_id": "5ad67e9f-e60b-48e1-88a7-a94d92e0aa38"
+        }
+      ]
+    },
+    {
+      "id": "5463ea10-9efb-4fdb-9042-4d655714a26b",
+      "module_id": "36593777-9c37-4134-b4d8-53bde308e54c",
+      "title": "Assignment 1",
+      "type": "assignment",
+      "published": true,
+      "required": false,
+      "content": "test assignment 1",
+      "url": null,
+      "duration": null,
+      "points": null,
+      "due_date": null,
+      "order": 1793413215,
+      "file_name": null,
+      "file_url": null,
+      "file_size": null,
+      "file_type": null,
+      "activity_id": "c0ee063d-6d50-4f64-8200-927f1e1271ca",
+      "quiz_id": null,
+      "attachments": null
+    }
+  ]
+}

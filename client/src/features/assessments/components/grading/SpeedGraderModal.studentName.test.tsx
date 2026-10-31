@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   activeSpeedGraderSubmissionId: 'sub-1' as string,
   users: [] as any[],
   submissions: [] as any[],
+  openSpeedGrader: vi.fn(),
 }));
 
 vi.mock('../../../../shared/context/LMSContext', () => ({
@@ -14,7 +15,7 @@ vi.mock('../../../../shared/context/LMSContext', () => ({
     activeUser: { id: 'fac-1', role: 'faculty', name: 'Faculty' },
     activeRole: 'faculty',
     activeSpeedGraderSubmissionId: mocks.activeSpeedGraderSubmissionId,
-    openSpeedGrader: vi.fn(),
+    openSpeedGrader: mocks.openSpeedGrader,
     closeSpeedGrader: vi.fn(),
     gradeSubmission: vi.fn(),
     db: {
@@ -30,6 +31,20 @@ vi.mock('../../../../shared/context/LMSContext', () => ({
           format: 'classic',
           assessmentType: 'activity',
           rubric: [],
+        },
+        {
+          id: 'act-qs',
+          courseId: 'c1',
+          title: 'Activity 5 (new Question Set)',
+          term: 'midterm',
+          pointsPossible: 5,
+          published: true,
+          format: 'questionset',
+          assessmentType: 'activity',
+          rubric: [],
+          questions: [
+            { id: 'q-1', text: 'Q1 prompt', type: 'multiple_choice', points: 1 },
+          ],
         },
       ],
       quizzes: [],
@@ -76,6 +91,25 @@ describe('SpeedGrader student name', () => {
     expect(screen.getByText('Maria Santos (usr-directory-1)')).toBeInTheDocument();
   });
 
+  test('renders question-set answers carried in the submission content map', () => {
+    mocks.submissions = [
+      {
+        ...baseSubmission,
+        activityKey: 'asg-activity-act-qs',
+        activityId: 'act-qs',
+        submissionType: 'online_text',
+        fileName: undefined,
+        fileUrl: undefined,
+        content: JSON.stringify({ 'q-1': 'My answer' }),
+      },
+    ];
+
+    render(<SpeedGraderModal />);
+
+    expect(screen.getByText('My answer')).toBeInTheDocument();
+    expect(screen.queryByText('No submission content')).not.toBeInTheDocument();
+  });
+
   test('falls back to Unknown student when neither the directory nor the row has a name', () => {
     // A raw user id stored in place of a name is not a usable label.
     mocks.users = [];
@@ -85,5 +119,33 @@ describe('SpeedGrader student name', () => {
 
     const trigger = screen.getByTestId('speedgrader-student-picker-trigger');
     expect(trigger.textContent).toContain('1. Unknown student');
+  });
+
+  test('navigates smoothly to next student via arrow button and keyboard', () => {
+    mocks.users = [
+      { id: 'usr-1', name: 'Student One', role: 'student' },
+      { id: 'usr-2', name: 'Student Two', role: 'student' },
+    ];
+    mocks.submissions = [
+      { ...baseSubmission, id: 'sub-1', studentId: 'usr-1' },
+      { ...baseSubmission, id: 'sub-2', studentId: 'usr-2' },
+    ];
+
+    const { rerender } = render(<SpeedGraderModal />);
+
+    expect(screen.getByText('1 of 2')).toBeInTheDocument();
+    expect(screen.getByText('Student One (usr-1)')).toBeInTheDocument();
+
+    // Trigger keyboard ArrowRight
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+    expect(mocks.openSpeedGrader).toHaveBeenCalledWith('sub-2');
+
+    // Simulate state update from openSpeedGrader
+    mocks.activeSpeedGraderSubmissionId = 'sub-2';
+    rerender(<SpeedGraderModal />);
+
+    // Shell remains stable, content reflects student two
+    expect(screen.getByText('2 of 2')).toBeInTheDocument();
+    expect(screen.getByText('Student Two (usr-2)')).toBeInTheDocument();
   });
 });

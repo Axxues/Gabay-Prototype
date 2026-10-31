@@ -93,7 +93,7 @@ describe('stepCompletion', () => {
         courseOutcomes: [],
         gradingSystem: { termFormula: '', finalFormula: '' },
         classroomPolicies: []
-      }))).toEqual(['Course Description', 'Course Outcomes', 'Term Formula', 'Final Formula', 'Classroom Policies']);
+      }))).toEqual(['Course Description', 'Course Outcomes', 'Classroom Policies']);
     });
   });
 
@@ -116,17 +116,22 @@ describe('stepCompletion', () => {
   });
 
   describe('learning-plan', () => {
-    it('requires a plan block with outcomes, topics, methodology and assessment', () => {
+    it('requires a plan block with outcomes, methodology and assessment', () => {
       expect(getMissingStepFields('learning-plan', d({ learningPlan: [] }))).toEqual(['Plan Block']);
       expect(getMissingStepFields('learning-plan', d({
         learningPlan: [{ week: '', hoursLec: 0, hoursLab: 0, learningOutcomes: [], topics: [], methodology: [], assessment: [] }]
       }))).toEqual([
         'Block Time Frame',
         'Block Learning Outcomes',
-        'Block Topics',
         'Block Methodology',
         'Block Assessment'
       ]);
+    });
+
+    it('does not require topics', () => {
+      expect(getMissingStepFields('learning-plan', d({
+        learningPlan: [{ week: '1', hoursLec: 3, hoursLab: 0, learningOutcomes: ['LO'], topics: [], methodology: ['Lecture'], assessment: ['Quiz'] }]
+      }))).toEqual([]);
     });
   });
 

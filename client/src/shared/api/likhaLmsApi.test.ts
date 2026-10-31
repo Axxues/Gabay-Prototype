@@ -69,7 +69,7 @@ describe('Likha LMS Direct API Client', () => {
 
     expect(fetchSpy).toHaveBeenCalledWith(
 
-      expect.stringContaining('/items/activities?filter%5Bcourse_id%5D%5B_eq%5D=c-1&fields=*,attachments.directus_files_id.*,questions.*'),
+      expect.stringContaining('/items/activities?filter%5Bcourse_id%5D%5B_eq%5D=c-1&fields=*,attachments.directus_files_id.*,questions.*,assessment_questions.*'),
 
       expect.any(Object)
 
@@ -77,6 +77,94 @@ describe('Likha LMS Direct API Client', () => {
 
     expect(activities[0].id).toBe('act-1');
 
+  });
+
+  it('normalizes assessment_questions into questions when questions array is empty', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        data: [{
+          id: 'act-1',
+          title: 'Activity with Questions',
+          questions: [],
+          assessment_questions: [
+            { id: 'q-1', text: 'Question 1', type: 'multiple_choice', points: 5, order: 1 },
+            { id: 'q-2', text: 'Question 2', type: 'short_answer', points: 10, order: 2 },
+          ],
+        }],
+      }),
+    } as any);
+
+    const activities = await likhaLmsApi.getActivitiesWithRelations('c-1');
+
+    expect(activities[0].questions).toEqual([
+      { id: 'q-1', text: 'Question 1', type: 'multiple_choice', points: 5, order: 1 },
+      { id: 'q-2', text: 'Question 2', type: 'short_answer', points: 10, order: 2 },
+    ]);
+  });
+
+  it('strips synthetic prefix from activity ID when fetching submissions', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        data: [{ id: 'sub-1', activity_id: 'act-1', student_id: 'stu-1' }],
+      }),
+    } as any);
+
+    await likhaLmsApi.submissions.getSubmissions('asg-activity-act-1', 'activity');
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining('filter%5Bactivity_id%5D%5B_eq%5D=act-1'),
+      expect.any(Object)
+    );
+  });
+
+  it('strips synthetic prefix from quiz ID when fetching submissions', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        data: [{ id: 'sub-1', quiz_id: 'quiz-1', student_id: 'stu-1' }],
+      }),
+    } as any);
+
+    await likhaLmsApi.submissions.getSubmissions('asg-quiz-quiz-1', 'quiz');
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining('filter%5Bquiz_id%5D%5B_eq%5D=quiz-1'),
+      expect.any(Object)
+    );
+  });
+
+  it('strips synthetic prefix from exam ID when fetching submissions', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        data: [{ id: 'sub-1', exam_id: 'exam-1', student_id: 'stu-1' }],
+      }),
+    } as any);
+
+    await likhaLmsApi.submissions.getSubmissions('asg-exam-exam-1', 'exam');
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining('filter%5Bexam_id%5D%5B_eq%5D=exam-1'),
+      expect.any(Object)
+    );
+  });
+
+  it('includes submission_answers.* in the query', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        data: [{ id: 'sub-1', activity_id: 'act-1', student_id: 'stu-1' }],
+      }),
+    } as any);
+
+    await likhaLmsApi.submissions.getSubmissions('act-1', 'activity');
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining('submission_answers.*'),
+      expect.any(Object)
+    );
   });
 
   it('createAnnouncement formats attachments with directus_files_id for M2M junction', async () => {
@@ -2138,6 +2226,28 @@ describe('Likha LMS Direct API Client', () => {
     });
 
 
+
+    it('getAnswers groups submission_answers rows by submission id', async () => {
+      const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: [
+            { id: 'sa-1', submission_id: 'sub-1', question_id: 'q-1', student_answer: 'A' },
+            { id: 'sa-2', submission_id: 'sub-1', question_id: 'q-2', student_answer: 'B' },
+            { id: 'sa-3', submission_id: 'sub-2', question_id: 'q-1', student_answer: 'C' },
+          ],
+        }),
+      } as any);
+
+      const grouped = await likhaLmsApi.submissions.getAnswers(['sub-1', 'sub-2']);
+
+      expect(grouped['sub-1']).toHaveLength(2);
+      expect(grouped['sub-1'][1].student_answer).toBe('B');
+      expect(grouped['sub-2']).toHaveLength(1);
+      const url = String(fetchSpy.mock.calls[0][0]);
+      expect(url).toContain('/items/submission_answers');
+      expect(url).toContain('filter%5Bsubmission_id%5D%5B_in%5D=sub-1,sub-2');
+    });
 
     it('submitActivity batches answers into a single bulk write', async () => {
 

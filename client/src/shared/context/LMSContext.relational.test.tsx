@@ -1,9 +1,29 @@
 // @vitest-environment jsdom
 import { describe, expect, test } from 'vitest';
-import { normalizeCourse, normalizeSubmission, resolveDirectusAssetUrl, resolveDirectusUserName } from './LMSContext';
+import { mapLikhaActivityRow, mapLikhaSubmissionRow, normalizeCourse, normalizeSubmission, resolveDirectusAssetUrl, resolveDirectusUserName } from './LMSContext';
 import { LIKHA_URL } from '../api/client';
 
 describe('LMSContext Directus relational & media normalizers', () => {
+  test('maps snake_case assessment_type to camelCase assessmentType for every assessment view filter', () => {
+    const scenarios: Array<{ assessment_type?: string; expected: string }> = [
+      { assessment_type: 'assignment', expected: 'assignment' },
+      { assessment_type: 'project', expected: 'project' },
+      { assessment_type: 'presentation', expected: 'presentation' },
+      { assessment_type: 'quiz', expected: 'quiz' },
+      { assessment_type: 'activity', expected: 'activity' },
+      { expected: 'activity' },
+    ];
+    for (const { assessment_type, expected } of scenarios) {
+      const row = mapLikhaActivityRow({ id: 'act-1', course_id: 'c-101', title: 'T', assessment_type });
+      expect(row.assessmentType).toBe(expected);
+    }
+  });
+
+  test('falls back to metadata.assessmentType for legacy rows without the column', () => {
+    const row = mapLikhaActivityRow({ id: 'act-2', course_id: 'c-101', metadata: { assessmentType: 'project' } });
+    expect(row.assessmentType).toBe('project');
+  });
+
   test('normalizes course with expanded instructor object and cover_image', () => {
     const rawCourse = {
       id: 'c-101',
@@ -69,6 +89,41 @@ describe('LMSContext Directus relational & media normalizers', () => {
     expect(submission.submissionType).toBe('file');
     expect(submission.fileName).toBe('exercise1_delacruz.pdf');
     expect(submission.fileUrl).toBe(`${LIKHA_URL}/assets/file-doc-123`);
+  });
+
+  test('folds question-set answers from the submission_answers relation into content', () => {
+    const mapped = mapLikhaSubmissionRow({
+      id: 'sub-qa-1',
+      activity_id: 'act-5',
+      student_id: 'student-1',
+      content: null,
+      answers: [
+        { id: 'sa-1', question_id: 'q-1', student_answer: 'Mitochondria' },
+        { id: 'sa-2', question_id: 'q-2', student_answer: '42' },
+      ],
+    });
+
+    expect(JSON.parse(mapped.content)).toEqual({ 'q-1': 'Mitochondria', 'q-2': '42' });
+  });
+
+  test('folds answers returned by the submit endpoint into content', () => {
+    const mapped = mapLikhaSubmissionRow({
+      id: 'sub-qa-2',
+      activity_id: 'act-5',
+      answers: [{ questionId: 'q-1', answer: 'Answer 1' }],
+    });
+
+    expect(JSON.parse(mapped.content)).toEqual({ 'q-1': 'Answer 1' });
+  });
+
+  test('keeps legacy JSON answer maps in content untouched', () => {
+    const mapped = mapLikhaSubmissionRow({
+      id: 'sub-legacy-1',
+      activity_id: 'act-5',
+      content: JSON.stringify({ 'q-9': 'Legacy answer' }),
+    });
+
+    expect(JSON.parse(mapped.content)).toEqual({ 'q-9': 'Legacy answer' });
   });
 
   test('resolveDirectusUserName formats first and last name or falls back gracefully', () => {

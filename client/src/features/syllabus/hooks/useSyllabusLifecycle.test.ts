@@ -450,4 +450,34 @@ describe('useSyllabusLifecycle', () => {
     expect(rec?.submissionAgreements).toEqual({ u1: true, u2: true });
     expect(rec?.status).toBe('ready_for_evaluation');
   });
+
+  it('allows an instructor to retract agreement after unanimous consensus was achieved before active evaluation', () => {
+    const onPersistMock = vi.fn();
+    const { result } = renderHook(() => useSyllabusLifecycle(mockCourses as any, 'col-1'));
+    const cspc103 = result.current.groups.find(g => g.courseCode === 'CSPC 103')!;
+
+    act(() => {
+      result.current.releaseCourses([cspc103.id], 'chair-1');
+      result.current.confirmAgreement(cspc103.id, 'u1', onPersistMock);
+      result.current.confirmAgreement(cspc103.id, 'u2', onPersistMock);
+    });
+
+    let rec = result.current.getRecord(cspc103.id);
+    expect(rec?.submissionAgreements).toEqual({ u1: true, u2: true });
+    expect(rec?.status).toBe('ready_for_evaluation');
+
+    // Instructor u1 retracts their submission agreement
+    act(() => {
+      result.current.retractAgreement(cspc103.id, 'u1', onPersistMock);
+    });
+
+    rec = result.current.getRecord(cspc103.id);
+    expect(rec?.submissionAgreements).toEqual({ u1: false, u2: true });
+    expect(rec?.status).toBe('submission_in_progress');
+    expect(onPersistMock).toHaveBeenLastCalledWith(expect.arrayContaining(['c1', 'c2']), 'submission_in_progress');
+
+    // Group effective status must also reflect submission_in_progress, not ready_for_evaluation
+    const updatedGroup = result.current.groups.find(g => g.id === cspc103.id)!;
+    expect(updatedGroup.status).toBe('submission_in_progress');
+  });
 });

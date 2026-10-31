@@ -13,6 +13,7 @@ interface CoInstructorSubmissionPanelProps {
   allAgreed: boolean;
   onAgreeToSubmit: () => void;
   onRetractAgreement?: () => void;
+  isEvaluationStarted?: boolean;
 }
 
 export const CoInstructorSubmissionPanel: React.FC<CoInstructorSubmissionPanelProps> = ({
@@ -20,7 +21,8 @@ export const CoInstructorSubmissionPanel: React.FC<CoInstructorSubmissionPanelPr
   instructors,
   allAgreed,
   onAgreeToSubmit,
-  onRetractAgreement
+  onRetractAgreement,
+  isEvaluationStarted = false
 }) => {
   const currentUserAgreed = instructors.find(i => i.id === currentUserId)?.hasAgreed;
   const isSolo = instructors.length === 1;
@@ -106,8 +108,8 @@ export const CoInstructorSubmissionPanel: React.FC<CoInstructorSubmissionPanelPr
         ))}
       </div>
 
-      {/* Toggle Agreement Action (disabled once submission/consensus is complete) */}
-      {!allAgreed && (
+      {/* Toggle Agreement Action (available until evaluation starts) */}
+      {!isEvaluationStarted && (
         <div className="pt-2 flex justify-end">
           <button
             type="button"

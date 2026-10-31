@@ -146,11 +146,12 @@ describe('Assessment Persistence & Child Relations', () => {
     expect(activities[0].rubric_criteria[0].title).toBe('Criterion 1');
   });
 
-  test('getSubmissions expands file.* relation for student attachment metadata', async () => {
+  test('getSubmissions expands file.* and submission_answers.* relations', async () => {
     await likhaLmsApi.submissions.getSubmissions('act-1', 'activity');
     const subReq = capturedRequests.find(r => r.url.includes('/items/submissions'));
     expect(subReq).toBeDefined();
     expect(subReq!.url).toContain('file.*');
+    expect(subReq!.url).toContain('submission_answers.*');
   });
 
   test('submitActivity records directus file UUID and answers', async () => {

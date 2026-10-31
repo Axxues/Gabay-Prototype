@@ -51,7 +51,6 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
     departments,
     getUnreadNotificationCount,
     markTabVisited,
-    isCourseGradeReady,
     hasCourseSyllabus
   } = useLMS();
 
@@ -447,7 +446,7 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
 
         {subTab === 'files' && <FilesView courseId={activeCourse.id} />}
 
-        {subTab === 'grades' && activeCourse && !isCourseGradeReady(activeCourse.id) && (
+        {subTab === 'grades' && activeCourse && !courseHasSyllabus && (
           <div className="bg-card border border-border rounded-2xl p-8 text-center" data-testid="grades-syllabus-gate">
             <h3 className="text-sm font-bold text-foreground">Syllabus required for grades</h3>
             <p className="text-xs text-muted-foreground mt-1">The grading formula lives in the syllabus under Course Requirements &amp; Official Grading Formula. {(activeRole === 'faculty' || activeRole === 'admin' || activeRole === 'superadmin') ? 'Upload a syllabus to enable the gradebook.' : 'Waiting for your instructor to upload the syllabus.'}</p>
@@ -456,11 +455,12 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ initialSubTab = 'modul
             )}
           </div>
         )}
-        {subTab === 'grades' && activeCourse && isCourseGradeReady(activeCourse.id) && (
+
+        {subTab === 'grades' && activeCourse && courseHasSyllabus && (
           activeRole === 'student' ? (
             <StudentGradebook courseId={activeCourse.id} />
           ) : (
-            <FacultyGradebook courseId={activeCourse.id} onGoToSyllabus={() => setSubTab('syllabus')} />
+            <FacultyGradebook courseId={activeCourse.id} />
           )
         )}
 

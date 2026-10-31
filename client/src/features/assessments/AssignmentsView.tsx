@@ -31,6 +31,7 @@ import { CreateAssignmentPage } from './CreateAssignmentPage';
 import { ActivityRunnerView } from './ActivityRunnerView';
 import { canManageCourseContent } from '../../shared/utils/roles';
 import { AssessmentFilePreviewModal, type AssessmentPreviewAttachment } from './components/AssessmentFilePreviewModal';
+import { RubricViewer } from './components/RubricViewer';
 
 interface AssignmentsViewProps {
   courseId: string;
@@ -494,22 +495,10 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
         })()}
 
         {/* Rubric section */}
-        {selectedAssignment.rubric && selectedAssignment.rubric.length > 0 && (
-          <div className="pt-4 border-t border-border space-y-2">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Rubric Criteria</h3>
-            <div className="space-y-2">
-              {selectedAssignment.rubric.map(r => (
-                <div key={r.id} className="rounded-xl border border-border p-3 text-xs bg-accent/30 flex justify-between items-start">
-                  <div>
-                    <div className="font-bold">{r.title}</div>
-                    <div className="text-muted-foreground mt-0.5">{r.description}</div>
-                  </div>
-                  <div className="font-bold text-primary shrink-0 ml-4">{r.points} pts</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        <RubricViewer
+          rubric={selectedAssignment.rubric}
+          title="Assignment Rubrics"
+        />
       </div>
 
       {/* Student Submission Card */}

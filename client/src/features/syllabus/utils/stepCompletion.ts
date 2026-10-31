@@ -61,43 +61,14 @@ export function getMissingStepFields(stepId: WizardStepId, data: Data): string[]
       if (!has(data?.courseInfo?.description)) missing.push('Course Description');
       if (!hasAny((data?.courseOutcomes || []).map(co => co.statement))) missing.push('Course Outcomes');
       
-      // Check term formula (object with classStandingPercent and examPercent)
-      const termFormula = data?.gradingSystem?.termFormula;
-      if (typeof termFormula === 'object') {
-        if (!has(termFormula.classStandingPercent)) missing.push('Term Formula Class Standing %');
-        if (!has(termFormula.examPercent)) missing.push('Term Formula Exam %');
-      } else if (!has(termFormula)) {
-        missing.push('Term Formula');
-      }
+      // Term and Final Grade Computation are now static (40%/60% splits), no validation needed
       
-      // Check final formula (object with midtermPercent and finalPercent)
-      const finalFormula = data?.gradingSystem?.finalFormula;
-      if (typeof finalFormula === 'object') {
-        if (!has(finalFormula.midtermPercent)) missing.push('Final Formula Midterm %');
-        if (!has(finalFormula.finalPercent)) missing.push('Final Formula Final %');
-      } else if (!has(finalFormula)) {
-        missing.push('Final Formula');
-      }
-      
-      // Check passing grade
-      if (!has(data?.gradingSystem?.passingGrade)) missing.push('Passing Grade Benchmark');
-      
-      // Check class standing components total equals 100%
+      // Check class standing components
       const components = data?.gradingSystem?.classStandingComponents || [];
       if (components.length > 0) {
-        const total = components.reduce((sum, comp) => {
-          const pct = typeof comp === 'string' ? 0 : parseFloat(comp.percentage) || 0;
-          return sum + pct;
-        }, 0);
-        if (Math.abs(total - 100) > 0.01) {
-          missing.push('Class Standing Components must total 100%');
-        }
-        // Check each component has title and percentage
         components.forEach((comp, idx) => {
           const title = typeof comp === 'string' ? comp : comp.title;
-          const pct = typeof comp === 'string' ? '' : comp.percentage;
           if (!has(title)) missing.push(`Component ${idx + 1} Title`);
-          if (!has(pct)) missing.push(`Component ${idx + 1} Weight`);
         });
       }
       
@@ -128,7 +99,6 @@ export function getMissingStepFields(stepId: WizardStepId, data: Data): string[]
         const label = rows.length > 1 ? `Block ${idx + 1}` : 'Block';
         if (!has(row.week)) missing.push(`${label} Time Frame`);
         if (!hasAny(row.learningOutcomes)) missing.push(`${label} Learning Outcomes`);
-        if (!hasAny(row.topics)) missing.push(`${label} Topics`);
         if (!hasAny(row.methodology)) missing.push(`${label} Methodology`);
         if (!hasAny(row.assessment)) missing.push(`${label} Assessment`);
         // Check SDG explanations if SDGs are assigned

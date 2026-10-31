@@ -6,13 +6,14 @@ import { CustomDropdown, type DropdownOption } from '../../../../shared/componen
 import type { SubmissionAttachment } from '../../../../shared/types/lms';
 import { PdfViewer } from '../../../../shared/components/common/PdfViewer';
 
-interface SpeedGraderContentProps {
-  currentSubmission: NonNullable<ReturnType<typeof useLMS>['db']['submissions'][number]>;
+type SubmissionItem = NonNullable<ReturnType<typeof useLMS>['db']['submissions'][number]>;
+
+interface SpeedGraderBodyProps {
+  currentSubmission: SubmissionItem;
+  assessment: ResolvedAssessment;
   db: ReturnType<typeof useLMS>['db'];
   isAdmin: boolean;
-  isClosing: boolean;
-  startClose: () => void;
-  openSpeedGrader: (subId: string) => void;
+  studentName: string;
   gradeSubmission: ReturnType<typeof useLMS>['gradeSubmission'];
 }
 
@@ -32,8 +33,8 @@ interface ResolvedAssessment {
  * exam) so title, points, rubric, and questions render correctly.
  */
 const resolveAssessment = (
-  submission: SpeedGraderContentProps['currentSubmission'],
-  db: SpeedGraderContentProps['db'],
+  submission: SubmissionItem,
+  db: ReturnType<typeof useLMS>['db'],
 ): ResolvedAssessment => {
   const key = submission.activityKey ?? '';
   const raw = submission as unknown as { quizId?: string; activityId?: string; examId?: string };
@@ -108,16 +109,27 @@ const resolveAssessment = (
   return { title: undefined, pointsPossible: 100, rubric: [], questions: [] };
 };
 
-/** Question-set submissions store answers as a JSON object in `content`. */
-const parseAnswerMap = (content?: string): Record<string, string> | null => {
-  if (!content || content.trim().startsWith('<')) return null;
-  try {
-    const parsed: unknown = JSON.parse(content);
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      return parsed as Record<string, string>;
+/** Question-set submissions store answers as a JSON object in `content` or child answers list. */
+const parseAnswerMap = (content?: string, submission?: any): Record<string, string> | null => {
+  if (content && typeof content === 'string' && !content.trim().startsWith('<')) {
+    try {
+      const parsed: unknown = JSON.parse(content);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, string>;
+      }
+    } catch {
+      // Plain-text submission — rendered verbatim below.
     }
-  } catch {
-    // Plain-text submission — rendered verbatim below.
+  }
+  if (submission && Array.isArray(submission.answers) && submission.answers.length > 0) {
+    const map: Record<string, string> = {};
+    for (const a of submission.answers) {
+      const qid = String(a?.questionId || a?.question_id || '');
+      if (qid) {
+        map[qid] = String(a?.studentAnswer ?? a?.student_answer ?? a?.answer ?? '');
+      }
+    }
+    return map;
   }
   return null;
 };
@@ -165,18 +177,14 @@ const renderSubmissionContent = (content: string) => {
   );
 };
 
-const SpeedGraderContent: React.FC<SpeedGraderContentProps> = ({
+const SpeedGraderBody: React.FC<SpeedGraderBodyProps> = ({
   currentSubmission,
-  db,
+  assessment,
+  db: _db,
   isAdmin,
-  isClosing,
-  startClose,
-  openSpeedGrader,
+  studentName,
   gradeSubmission,
 }) => {
-  const assessment = resolveAssessment(currentSubmission, db);
-  const course = db.courses.find(c => c.id === currentSubmission.courseId);
-
   // Every file attached to the submission (legacy rows store a single file).
   const submissionAttachments: SubmissionAttachment[] =
     currentSubmission.attachments && currentSubmission.attachments.length > 0
@@ -185,85 +193,52 @@ const SpeedGraderContent: React.FC<SpeedGraderContentProps> = ({
         ? [{ name: currentSubmission.fileName || 'Attachment', url: currentSubmission.fileUrl }]
         : [];
 
-  const activitySubmissions = db.submissions
-    .filter(s => s.activityKey === currentSubmission.activityKey)
-    .sort((a, b) => {
-      const t = new Date(a.submittedAt).getTime() - new Date(b.submittedAt).getTime();
-      if (t !== 0) return t;
-      return a.studentName.localeCompare(b.studentName);
-    });
-  const currentIndex = activitySubmissions.findIndex(s => s.id === currentSubmission.id);
-
-  // Submission rows carry no expanded `student` relation, so `studentName` is
-  // usually blank (or a raw user id). Resolve it from the user directory.
-  const displayNameOf = (sub: SpeedGraderContentProps['currentSubmission']): string => {
-    const fromDirectory = (db.users || []).find(
-      u => String(u.id) === String(sub.studentId ?? '')
-    )?.name;
-    if (fromDirectory) return fromDirectory;
-    const stored = (sub.studentName || '').trim();
-    if (stored && stored !== String(sub.studentId ?? '')) return stored;
-    return 'Unknown student';
-  };
-  const studentName = displayNameOf(currentSubmission);
-
   // Which of the student's attachments is open in the DocViewer.
   const [activeFileIdx, setActiveFileIdx] = useState(0);
   const activeFileIndex = Math.min(Math.max(activeFileIdx, 0), Math.max(submissionAttachments.length - 1, 0));
   const activeFile = submissionAttachments[activeFileIndex];
 
-  const studentOptions: DropdownOption[] = activitySubmissions.map((sub, idx) => ({
-    value: sub.id,
-    label: `${idx + 1}. ${displayNameOf(sub)}`,
-    ...(sub.grade !== undefined && sub.grade !== null
-      ? { icon: <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> }
-      : {}),
-  }));
+  const answerMap = parseAnswerMap(currentSubmission.content, currentSubmission);
+  const showQuestionAnswers = answerMap !== null && assessment.questions.length > 0;
 
-  const goToSubmission = (subId: string) => {
-    if (subId && subId !== currentSubmission.id) openSpeedGrader(subId);
+  const computeInitialQuestionScores = (): Record<string, number> => {
+    const scores: Record<string, number> = {};
+    const existingRubric = currentSubmission.rubricScores || {};
+    for (const q of assessment.questions) {
+      if (existingRubric[q.id] !== undefined && Number.isFinite(existingRubric[q.id])) {
+        scores[q.id] = existingRubric[q.id];
+        continue;
+      }
+      const ans = (answerMap?.[q.id] ?? '').trim();
+      const hasKey = q.correctAnswer !== undefined && q.correctAnswer !== '';
+      if (hasKey) {
+        const isCorrect = ans.toLowerCase() === q.correctAnswer!.trim().toLowerCase();
+        scores[q.id] = isCorrect ? (q.points || 0) : 0;
+      } else {
+        scores[q.id] = 0;
+      }
+    }
+    return scores;
   };
 
-  const stepSubmission = (delta: number) => {
-    const target = activitySubmissions[currentIndex + delta];
-    if (target) openSpeedGrader(target.id);
+  const computeInitialGrade = (initScores: Record<string, number>): string => {
+    if (currentSubmission.grade !== undefined && currentSubmission.grade !== null) {
+      return String(currentSubmission.grade);
+    }
+    if (showQuestionAnswers) {
+      const total = Object.values(initScores).reduce((sum, s) => sum + s, 0);
+      return String(Math.min(total, assessment.pointsPossible));
+    }
+    return '0';
   };
 
-  const [gradeText, setGradeText] = useState<string>(String(currentSubmission.grade ?? 0));
+  const [questionScores, setQuestionScores] = useState<Record<string, number>>(() => computeInitialQuestionScores());
+  const [gradeText, setGradeText] = useState<string>(() => computeInitialGrade(computeInitialQuestionScores()));
   const [rubricScores, setRubricScores] = useState<Record<string, number>>(currentSubmission.rubricScores || {});
   const [newComment, setNewComment] = useState('');
   const [isSaved, setIsSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Reset only when navigating to a different submission. Depending on
-  // grade/rubricScores here would wipe unsaved faculty input whenever any
-  // background db refresh lands mid-typing.
-  useEffect(() => {
-    setGradeText(String(currentSubmission.grade ?? 0));
-    setRubricScores(currentSubmission.rubricScores || {});
-    setIsSaved(false);
-    setIsSaving(false);
-    setActiveFileIdx(0);
-  }, [currentSubmission.id]);
-
-  // ← / → walk the roster while the grader is reading; ignored while typing or
-  // while the student picker is open (the dropdown owns arrows then).
-  useEffect(() => {
-    const handleNavKey = (e: KeyboardEvent) => {
-      if (e.altKey || e.ctrlKey || e.metaKey) return;
-      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-      const target = e.target as HTMLElement | null;
-      const tag = target?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) return;
-      if (document.querySelector('[role="listbox"]')) return;
-      const delta = e.key === 'ArrowLeft' ? -1 : 1;
-      if (!activitySubmissions[currentIndex + delta]) return;
-      e.preventDefault();
-      stepSubmission(delta);
-    };
-    window.addEventListener('keydown', handleNavKey);
-    return () => window.removeEventListener('keydown', handleNavKey);
-  });
 
   const pointsPossible = assessment.pointsPossible;
   const parsedGrade = Number(gradeText);
@@ -279,15 +254,30 @@ const SpeedGraderContent: React.FC<SpeedGraderContentProps> = ({
     setGradeText(String(Math.min(total, pointsPossible)));
   };
 
+  const handleQuestionScoreChange = (questionId: string, points: number) => {
+    if (isAdmin) return;
+    const q = assessment.questions.find(item => item.id === questionId);
+    const maxPts = q?.points ?? points;
+    const clampedPts = Math.min(Math.max(Number(points) || 0, 0), maxPts);
+    const updated = { ...questionScores, [questionId]: clampedPts };
+    setQuestionScores(updated);
+
+    const total = Object.values(updated).reduce((acc, curr) => acc + curr, 0);
+    setGradeText(String(Math.min(total, pointsPossible)));
+  };
+
   const handleSaveGrade = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isAdmin || isSaving || !isGradeValid) return;
     setIsSaving(true);
     try {
+      const mergedScores = showQuestionAnswers
+        ? { ...rubricScores, ...questionScores }
+        : rubricScores;
       await gradeSubmission(
         currentSubmission.id,
         clampedGrade,
-        rubricScores,
+        mergedScores,
         newComment.trim() ? newComment : undefined
       );
       setGradeText(String(clampedGrade));
@@ -301,107 +291,10 @@ const SpeedGraderContent: React.FC<SpeedGraderContentProps> = ({
     }
   };
 
-  const answerMap = parseAnswerMap(currentSubmission.content);
-  const showQuestionAnswers = answerMap !== null && assessment.questions.length > 0;
-
   return (
-    <ModalPortal>
-      <div className={`fixed inset-0 z-[100] overflow-hidden overlay-backdrop flex flex-col ${
-        isClosing ? 'animate-fade-out' : 'animate-fade-in'
-      }`}>
-      {/* SpeedGrader Top Header - Cellwego Glass style */}
-      <header className="h-14 bg-card/90 backdrop-blur-xl border-b border-border px-6 flex items-center justify-between text-foreground shrink-0 select-none shadow-subtle">
-        <div className="flex items-center space-x-3">
-          <div className="px-2.5 py-1 text-xs font-sans font-bold bg-primary/10 text-primary rounded-lg border border-primary/20">
-            SpeedGrader™ Workspace
-          </div>
-          {assessment.assessmentType && (
-            <span
-              className={`px-2 py-0.5 text-[11px] font-sans font-bold rounded-lg border capitalize ${
-                assessment.assessmentType === 'project'
-                  ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20'
-                  : assessment.assessmentType === 'presentation'
-                  ? 'bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/20'
-                  : assessment.assessmentType === 'assignment'
-                  ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20'
-                  : assessment.assessmentType === 'quiz'
-                  ? 'bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/20'
-                  : assessment.assessmentType === 'exam'
-                  ? 'bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border-indigo-500/20'
-                  : 'bg-sky-500/10 text-sky-700 dark:text-sky-400 border-sky-500/20'
-              }`}
-            >
-              {assessment.assessmentType}
-            </span>
-          )}
-          {isAdmin && (
-            <span className="px-2.5 py-0.5 text-[11px] font-sans font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-lg border border-amber-500/20">
-              Read-Only Audit Mode
-            </span>
-          )}
-          <span className="text-muted-foreground/60">|</span>
-          <span className="font-bold text-sm text-foreground">{assessment.title ?? 'Untitled assessment'}</span>
-          <span className="text-xs font-sans text-muted-foreground">({course?.code})</span>
-        </div>
-
-        {/* Student Navigator */}
-        <div className="flex items-center space-x-3">
-          <button
-            disabled={currentIndex <= 0}
-            onClick={() => {
-              if (currentIndex > 0) {
-                const prevSub = activitySubmissions[currentIndex - 1];
-                openSpeedGrader(prevSub.id);
-              }
-            }}
-            className="p-1.5 rounded-lg bg-card border border-border disabled:opacity-30 hover:bg-muted transition-colors shadow-soft"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-
-          <div className="w-52">
-            <CustomDropdown
-              value={currentSubmission.id}
-              onChange={goToSubmission}
-              options={studentOptions}
-              ariaLabel="Jump to student submission"
-              placeholder="Select student"
-              searchable={activitySubmissions.length > 5}
-              variant="compact"
-              testId="speedgrader-student-picker"
-            />
-          </div>
-
-          <div className="text-center font-sans text-xs whitespace-nowrap" title="Use ← and → to move between students">
-            <span className="font-bold text-foreground">{currentIndex + 1} of {activitySubmissions.length}</span>
-          </div>
-
-          <button
-            disabled={currentIndex >= activitySubmissions.length - 1}
-            onClick={() => {
-              if (currentIndex < activitySubmissions.length - 1) {
-                const nextSub = activitySubmissions[currentIndex + 1];
-                openSpeedGrader(nextSub.id);
-              }
-            }}
-            className="p-1.5 rounded-lg bg-card border border-border disabled:opacity-30 hover:bg-muted transition-colors shadow-soft"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
-
-          <button
-            onClick={() => startClose()}
-            className="p-1.5 text-muted-foreground hover:text-foreground rounded-lg bg-card hover:bg-muted border border-border ml-4 transition-colors shadow-soft cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-      </header>
-
-      {/* Split View Content */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left Pane: Student Document Preview */}
-        <div className="flex-1 bg-background p-6 overflow-y-auto flex flex-col space-y-4">
+    <>
+      {/* Left Pane: Student Document Preview */}
+        <div className="flex-1 bg-background p-6 overflow-y-auto sm:overflow-visible flex flex-col space-y-4">
           <div className="p-4 bg-card border border-border rounded-xl text-xs text-foreground shadow-subtle space-y-3">
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-start space-x-3 min-w-0">
@@ -460,27 +353,141 @@ const SpeedGraderContent: React.FC<SpeedGraderContentProps> = ({
               <span>{studentName}{currentSubmission.studentId ? ` (${currentSubmission.studentId})` : ''}</span>
             </div>
             {showQuestionAnswers ? (
-              <div className="space-y-3">
+              <div className="space-y-4">
+                <div className="p-3 bg-muted/20 border border-border rounded-xl flex items-center justify-between text-xs">
+                  <div className="font-semibold text-foreground flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-primary" />
+                    <span>Question Set Evaluation & Faculty Overrides</span>
+                  </div>
+                  <span className="text-muted-foreground font-sans text-[11px]">
+                    Auto-scored questions can be adjusted below.
+                  </span>
+                </div>
                 {(assessment.questions ?? []).map((q, idx) => {
                   const answer = answerMap?.[q.id] ?? '';
-                  const isCorrect = q.correctAnswer !== undefined && q.correctAnswer !== ''
-                    ? answer.trim().toLowerCase() === q.correctAnswer.trim().toLowerCase()
+                  const hasKey = q.correctAnswer !== undefined && q.correctAnswer !== '';
+                  const isAutoCorrect = hasKey
+                    ? answer.trim().toLowerCase() === q.correctAnswer!.trim().toLowerCase()
                     : null;
+                  const autoPoints = isAutoCorrect === true ? (q.points || 0) : 0;
+                  const awarded = questionScores[q.id] ?? autoPoints;
+                  const isOverridden = hasKey && awarded !== autoPoints;
+
                   return (
-                    <div key={q.id} className="p-3 bg-muted/30 border border-border rounded-xl space-y-1.5">
-                      <div className="flex justify-between gap-2 text-foreground">
-                        <span className="font-bold">Q{idx + 1}. {q.text || `Question ${idx + 1}`}</span>
-                        <span className="font-sans text-muted-foreground shrink-0">{q.points} pts</span>
-                      </div>
-                      <div className="text-foreground">
-                        <span className="text-muted-foreground">Answer: </span>
-                        <span className="font-semibold">{answer === '' ? '(no answer)' : answer}</span>
-                      </div>
-                      {isCorrect !== null && (
-                        <div className={`font-sans ${isCorrect ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                          {isCorrect ? '✓ Matches key' : `Key: ${q.correctAnswer}`}
+                    <div
+                      key={q.id}
+                      className="p-4 bg-muted/30 border border-border rounded-xl space-y-3 transition-colors hover:border-border/80 text-left whitespace-normal"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/50 pb-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="font-bold text-foreground text-xs">
+                            Q{idx + 1}. {q.text || `Question ${idx + 1}`}
+                          </span>
+                          <span className="px-2 py-0.5 text-[10px] font-sans font-semibold rounded-md bg-muted border border-border text-muted-foreground uppercase tracking-wider">
+                            {q.type.replace('_', ' ')}
+                          </span>
                         </div>
-                      )}
+                        <span className="font-sans font-bold text-muted-foreground text-xs shrink-0">
+                          {q.points} {q.points === 1 ? 'pt' : 'pts'}
+                        </span>
+                      </div>
+
+                      {/* Student's Answer */}
+                      <div className="text-xs space-y-1">
+                        <span className="text-muted-foreground text-[11px] font-medium">Student Answer:</span>
+                        <div className="p-2.5 bg-background border border-border rounded-lg text-foreground font-medium">
+                          {answer === '' ? (
+                            <span className="text-muted-foreground italic">(no answer provided)</span>
+                          ) : (
+                            <span>{answer}</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Auto-grade status & Answer key */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {hasKey ? (
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`px-2 py-0.5 rounded-md text-[11px] font-sans font-semibold border ${
+                                  isAutoCorrect
+                                    ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                                    : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20'
+                                }`}
+                              >
+                                {isAutoCorrect ? '✓ Auto: Correct' : '✗ Auto: Incorrect'}
+                              </span>
+                              <span className="text-muted-foreground text-[11px]">
+                                Key: <span className="font-mono font-semibold text-foreground">{q.correctAnswer}</span>
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-md text-[11px] font-sans font-semibold bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20">
+                              Manual Evaluation (Essay)
+                            </span>
+                          )}
+
+                          {isOverridden && (
+                            <span
+                              data-testid={`question-overridden-badge-${q.id}`}
+                              className="px-2 py-0.5 rounded-md text-[11px] font-sans font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30"
+                            >
+                              Faculty Override
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Faculty Correction Controls */}
+                        {!isAdmin && (
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              type="button"
+                              data-testid={`question-correct-btn-${q.id}`}
+                              onClick={() => handleQuestionScoreChange(q.id, q.points)}
+                              className={`px-2.5 py-1 rounded-lg text-xs font-bold font-sans border transition-all cursor-pointer flex items-center gap-1 ${
+                                awarded === q.points && awarded > 0
+                                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                                  : 'bg-card hover:bg-muted text-foreground border-border'
+                              }`}
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>Correct</span>
+                            </button>
+                            <button
+                              type="button"
+                              data-testid={`question-incorrect-btn-${q.id}`}
+                              onClick={() => handleQuestionScoreChange(q.id, 0)}
+                              className={`px-2.5 py-1 rounded-lg text-xs font-bold font-sans border transition-all cursor-pointer flex items-center gap-1 ${
+                                awarded === 0
+                                  ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                                  : 'bg-card hover:bg-muted text-foreground border-border'
+                              }`}
+                            >
+                              <X className="w-3.5 h-3.5" />
+                              <span>Incorrect</span>
+                            </button>
+                            <div className="flex items-center gap-1.5 ml-1">
+                              <span className="text-muted-foreground text-[11px]">Score:</span>
+                              <input
+                                type="number"
+                                min={0}
+                                max={q.points}
+                                step={1}
+                                data-testid={`question-score-input-${q.id}`}
+                                aria-label={`Score for Question ${idx + 1}`}
+                                value={awarded}
+                                onChange={e => {
+                                  const val = Number(e.target.value);
+                                  handleQuestionScoreChange(q.id, isNaN(val) ? 0 : val);
+                                }}
+                                className="w-14 px-2 py-1 bg-background border border-border rounded-lg text-xs font-bold text-center text-foreground focus:outline-hidden focus:ring-1 focus:ring-primary"
+                              />
+                              <span className="text-muted-foreground text-[11px]">/ {q.points}</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
@@ -551,7 +558,7 @@ const SpeedGraderContent: React.FC<SpeedGraderContentProps> = ({
         </div>
 
         {/* Right Sidebar Pane: Rubric & Score Input */}
-        <div className="w-96 bg-card border-l border-border p-6 overflow-y-auto space-y-6 text-xs text-foreground shrink-0 shadow-lifted animate-slide-in-right">
+        <div className="w-full sm:w-96 bg-card border-t sm:border-t-0 sm:border-l border-border p-6 space-y-6 text-xs text-foreground sm:shrink-0 shadow-lifted">
           <form onSubmit={handleSaveGrade} className="space-y-6">
             {/* Numerical Score Entry */}
             <div className="p-4 bg-muted/40 border border-border rounded-xl space-y-3">
@@ -695,9 +702,7 @@ const SpeedGraderContent: React.FC<SpeedGraderContentProps> = ({
             )}
           </form>
         </div>
-      </div>
-    </div>
-    </ModalPortal>
+    </>
   );
 };
 
@@ -714,6 +719,57 @@ export const SpeedGraderModal: React.FC = () => {
   const isReadOnly = false;
   const { isClosing, startClose } = useModalAnimate(closeSpeedGrader, 200);
 
+  const currentSubmission = activeSpeedGraderSubmissionId
+    ? db.submissions.find(s => s.id === activeSpeedGraderSubmissionId)
+    : undefined;
+
+  const assessment = currentSubmission ? resolveAssessment(currentSubmission, db) : null;
+  const course = currentSubmission ? db.courses.find(c => c.id === currentSubmission.courseId) : null;
+
+  const activitySubmissions = currentSubmission
+    ? db.submissions
+        .filter(s => s.activityKey === currentSubmission.activityKey)
+        .sort((a, b) => {
+          const t = new Date(a.submittedAt).getTime() - new Date(b.submittedAt).getTime();
+          if (t !== 0) return t;
+          return a.studentName.localeCompare(b.studentName);
+        })
+    : [];
+  const currentIndex = currentSubmission
+    ? activitySubmissions.findIndex(s => s.id === currentSubmission.id)
+    : -1;
+
+  // Submission rows carry no expanded `student` relation, so `studentName` is
+  // usually blank (or a raw user id). Resolve it from the user directory.
+  const displayNameOf = (sub: SubmissionItem): string => {
+    const fromDirectory = (db.users || []).find(
+      u => String(u.id) === String(sub.studentId ?? '')
+    )?.name;
+    if (fromDirectory) return fromDirectory;
+    const stored = (sub.studentName || '').trim();
+    if (stored && stored !== String(sub.studentId ?? '')) return stored;
+    return 'Unknown student';
+  };
+
+  const studentOptions: DropdownOption[] = activitySubmissions.map((sub, idx) => ({
+    value: sub.id,
+    label: `${idx + 1}. ${displayNameOf(sub)}`,
+    ...(sub.grade !== undefined && sub.grade !== null
+      ? { icon: <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> }
+      : {}),
+  }));
+
+  const goToSubmission = (subId: string) => {
+    if (subId && subId !== currentSubmission?.id) openSpeedGrader(subId);
+  };
+
+  const stepSubmission = (delta: number) => {
+    if (currentIndex >= 0) {
+      const target = activitySubmissions[currentIndex + delta];
+      if (target) openSpeedGrader(target.id);
+    }
+  };
+
   useEffect(() => {
     if (!activeSpeedGraderSubmissionId) return;
 
@@ -722,31 +778,138 @@ export const SpeedGraderModal: React.FC = () => {
         // An open picker (student dropdown) consumes Escape to close itself.
         if (document.querySelector('[role="listbox"]')) return;
         startClose();
+        return;
+      }
+
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        if (e.altKey || e.ctrlKey || e.metaKey) return;
+        const target = e.target as HTMLElement | null;
+        const tag = target?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) return;
+        if (document.querySelector('[role="listbox"]')) return;
+        const delta = e.key === 'ArrowLeft' ? -1 : 1;
+        if (!activitySubmissions[currentIndex + delta]) return;
+        e.preventDefault();
+        stepSubmission(delta);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeSpeedGraderSubmissionId, startClose]);
+  }, [activeSpeedGraderSubmissionId, currentIndex, activitySubmissions, startClose]);
 
-  if (!activeSpeedGraderSubmissionId) return null;
+  if (!activeSpeedGraderSubmissionId || !currentSubmission || !assessment) return null;
 
-  const currentSubmission = db.submissions.find(s => s.id === activeSpeedGraderSubmissionId);
-  if (!currentSubmission) return null;
-
-  // Remount per submission so grade/rubric/comment state never flashes
-  // the previous student's values while navigating.
   return (
-    <SpeedGraderContent
-      key={currentSubmission.id}
-      currentSubmission={currentSubmission}
-      db={db}
-      isAdmin={isReadOnly}
-      isClosing={isClosing}
-      startClose={startClose}
-      openSpeedGrader={openSpeedGrader}
-      gradeSubmission={gradeSubmission}
-    />
+    <ModalPortal>
+      <div className={`fixed inset-0 z-[100] overflow-hidden overlay-backdrop flex flex-col ${
+        isClosing ? 'animate-fade-out' : 'animate-fade-in'
+      }`}>
+        {/* SpeedGrader Top Header - Cellwego Glass style - persistently mounted & steady */}
+        <header className="min-h-14 py-2 bg-card/90 backdrop-blur-xl border-b border-border px-4 sm:px-6 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 text-foreground shrink-0 select-none shadow-subtle">
+          <div className="flex items-center space-x-3 flex-wrap min-w-0 gap-y-1">
+            <div className="px-2.5 py-1 text-xs font-sans font-bold bg-primary/10 text-primary rounded-lg border border-primary/20">
+              SpeedGrader™ Workspace
+            </div>
+            {assessment.assessmentType && (
+              <span
+                className={`px-2 py-0.5 text-[11px] font-sans font-bold rounded-lg border capitalize ${
+                  assessment.assessmentType === 'project'
+                    ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20'
+                    : assessment.assessmentType === 'presentation'
+                    ? 'bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/20'
+                    : assessment.assessmentType === 'assignment'
+                    ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20'
+                    : assessment.assessmentType === 'quiz'
+                    ? 'bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/20'
+                    : assessment.assessmentType === 'exam'
+                    ? 'bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border-indigo-500/20'
+                    : 'bg-sky-500/10 text-sky-700 dark:text-sky-400 border-sky-500/20'
+                }`}
+              >
+                {assessment.assessmentType}
+              </span>
+            )}
+            {isReadOnly && (
+              <span className="px-2.5 py-0.5 text-[11px] font-sans font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-lg border border-amber-500/20">
+                Read-Only Audit Mode
+              </span>
+            )}
+            <span className="text-muted-foreground/60">|</span>
+            <span className="font-bold text-sm text-foreground truncate">{assessment.title ?? 'Untitled assessment'}</span>
+            <span className="text-xs font-sans text-muted-foreground">({course?.code})</span>
+          </div>
+
+          {/* Student Navigator */}
+          <div className="flex items-center space-x-3">
+            <button
+              disabled={currentIndex <= 0}
+              onClick={() => {
+                if (currentIndex > 0) {
+                  const prevSub = activitySubmissions[currentIndex - 1];
+                  openSpeedGrader(prevSub.id);
+                }
+              }}
+              className="p-1.5 rounded-lg bg-card border border-border disabled:opacity-30 hover:bg-muted transition-colors shadow-soft cursor-pointer disabled:cursor-not-allowed"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+
+            <div className="w-40 sm:w-52">
+              <CustomDropdown
+                value={currentSubmission.id}
+                onChange={goToSubmission}
+                options={studentOptions}
+                ariaLabel="Jump to student submission"
+                placeholder="Select student"
+                searchable={activitySubmissions.length > 5}
+                variant="compact"
+                testId="speedgrader-student-picker"
+              />
+            </div>
+
+            <div className="text-center font-sans text-xs whitespace-nowrap" title="Use ← and → to move between students">
+              <span className="font-bold text-foreground">{currentIndex + 1} of {activitySubmissions.length}</span>
+            </div>
+
+            <button
+              disabled={currentIndex >= activitySubmissions.length - 1}
+              onClick={() => {
+                if (currentIndex < activitySubmissions.length - 1) {
+                  const nextSub = activitySubmissions[currentIndex + 1];
+                  openSpeedGrader(nextSub.id);
+                }
+              }}
+              className="p-1.5 rounded-lg bg-card border border-border disabled:opacity-30 hover:bg-muted transition-colors shadow-soft cursor-pointer disabled:cursor-not-allowed"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+
+            <button
+              onClick={() => startClose()}
+              className="p-1.5 text-muted-foreground hover:text-foreground rounded-lg bg-card hover:bg-muted border border-border ml-4 transition-colors shadow-soft cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </header>
+
+        {/* Split View Content - smooth student transition */}
+        <div
+          key={currentSubmission.id}
+          className="flex-1 flex flex-col sm:flex-row overflow-y-auto sm:overflow-hidden animate-fade-in"
+        >
+          <SpeedGraderBody
+            currentSubmission={currentSubmission}
+            assessment={assessment}
+            db={db}
+            isAdmin={isReadOnly}
+            studentName={displayNameOf(currentSubmission)}
+            gradeSubmission={gradeSubmission}
+          />
+        </div>
+      </div>
+    </ModalPortal>
   );
 };
 

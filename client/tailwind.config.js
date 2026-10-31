@@ -1,6 +1,12 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   darkMode: ["class"],
+  // MDN / WCAG 1.4.13: hover styling must not rely on the ability to hover,
+  // so hover: variants only apply when a hover-capable primary pointer is
+  // being used instead of triggering the wet/sticky hover on touch taps.
+  future: {
+    hoverOnlyWhenSupported: true,
+  },
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",

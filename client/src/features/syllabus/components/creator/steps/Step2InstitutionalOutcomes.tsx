@@ -3,6 +3,7 @@ import type { OfficialSyllabusData, CourseOutcome, ProgramOutcome, RubricRow } f
 import { OFFICIAL_SYLLABUS_CSPC112, OFFICIAL_INSTITUTIONAL_STATEMENTS, normalizeRubricLevels, createEmptyRubricRow } from '../../../../../shared/data/syllabusData';
 import { CustomDropdown } from '../../../../../shared/components/common';
 import { RequiredMark } from '../RequiredMark';
+import { CollapsibleCard } from '../CollapsibleCard';
 import {
   Landmark,
   Plus,
@@ -751,14 +752,11 @@ const addRubricRow = () => {
       </div>
 
       {/* 6. Course Specifications (Course Type, Credit, Description, Contact Hours, Prerequisites) */}
-      <div className="p-4 rounded-xl border border-border bg-card shadow-xs space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center space-x-1.5">
-            <BookOpen className="w-4 h-4 text-primary" />
-            <span>Course Catalog Specifications</span>
-          </h3>
-          <span className="text-[10px] text-muted-foreground italic">Catalog &amp; Hours</span>
-        </div>
+      <CollapsibleCard
+        icon={<BookOpen className="w-4 h-4 text-primary" />}
+        title="Course Catalog Specifications"
+        headerRight={<span className="text-[10px] text-muted-foreground italic">Catalog & Hours</span>}
+      >
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-1.5">
@@ -880,17 +878,14 @@ const addRubricRow = () => {
             />
           </div>
         </div>
-      </div>
+      </CollapsibleCard>
 
       {/* 7. Grading System */}
-      <div className="p-4 rounded-xl border border-border bg-card shadow-xs space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center space-x-1.5">
-            <ShieldCheck className="w-4 h-4 text-primary" />
-            <span>Grading System</span>
-          </h3>
-          <span className="text-[10px] text-muted-foreground italic">Evaluation Formulas</span>
-        </div>
+      <CollapsibleCard
+        icon={<ShieldCheck className="w-4 h-4 text-primary" />}
+        title="Grading System"
+        headerRight={<span className="text-[10px] text-muted-foreground italic">Evaluation Formulas</span>}
+      >
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-1.5">
@@ -983,21 +978,23 @@ const addRubricRow = () => {
             </div>
           </div>
         </div>
-      </div>
+      </CollapsibleCard>
 
       {/* Optional Rubrics for Group Project Presentation and Documentation */}
-      <div className="rounded-xl border border-border bg-card shadow-xs overflow-hidden">
-        <div className="flex items-center justify-between p-4 bg-muted/40 border-b border-border">
-          <div className="flex items-center space-x-2">
-            <Layers className="w-4 h-4 text-primary" />
+      <CollapsibleCard
+        icon={<Layers className="w-4 h-4 text-primary" />}
+        title={
+          <>
             <span className="font-bold text-xs text-foreground">
               Rubrics for Group Project Presentation and Documentation
             </span>
             <span className="text-[10px] px-2 py-0.5 rounded bg-muted text-muted-foreground font-medium">
               Optional
             </span>
-          </div>
-
+          </>
+        }
+        contentClassName=""
+        headerRight={
           <div className="flex items-center space-x-3">
             {projectRubrics.length > 0 && (
               <button
@@ -1032,7 +1029,8 @@ const addRubricRow = () => {
               <span className="text-xs font-medium text-foreground">Include in Syllabus</span>
             </label>
           </div>
-        </div>
+        }
+      >
 
 {projectRubrics.length > 0 ? (
             <div className="p-4 space-y-4">
@@ -1124,7 +1122,7 @@ const addRubricRow = () => {
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
                           {levels.map((level, lvIdx) => {
                             const levelNames = ['Beginning', 'Developing', 'Proficient', 'Exemplary'];
-                            const placeholder = `e.g. Level ${lvIdx + 1} (${levelNames[lvIdx] || 'Custom'})`;
+                            const placeholder = `e.g. Level ${lvIdx + 1} (${levelNames[lvIdx] || 'Custom'}), ${lvIdx + 1} point${lvIdx > 0 ? 's' : ''}`;
                             return (
                             <div key={lvIdx} className="space-y-1.5 p-2.5 rounded-lg border border-border bg-background">
                               <div className="space-y-1">
@@ -1196,16 +1194,18 @@ const addRubricRow = () => {
               </div>
             </div>
           )}
-      </div>
+      </CollapsibleCard>
 
       {/* 8. Classroom Policies */}
-      <div className="p-4 rounded-xl border border-border bg-card shadow-xs space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center space-x-1.5">
-            <ShieldCheck className="w-4 h-4 text-primary" />
+      <CollapsibleCard
+        icon={<ShieldCheck className="w-4 h-4 text-primary" />}
+        title={
+          <>
             <span>Classroom Policies</span>
             <RequiredMark />
-          </h3>
+          </>
+        }
+        headerRight={
           <button
             type="button"
             onClick={addPolicy}
@@ -1214,7 +1214,8 @@ const addRubricRow = () => {
             <Plus className="w-3.5 h-3.5" />
             <span>Add Policy</span>
           </button>
-        </div>
+        }
+      >
 
         <div className="space-y-1.5">
           <label className="text-xs font-semibold text-foreground">
@@ -1253,7 +1254,7 @@ const addRubricRow = () => {
             )}
           </div>
         </div>
-</div>
+      </CollapsibleCard>
     </div>
   );
 };

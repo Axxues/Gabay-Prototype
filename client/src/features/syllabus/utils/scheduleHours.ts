@@ -148,18 +148,24 @@ export function analyzeSectionSchedules(
   (facultyMembers || []).forEach((fac, facIdx) => {
     const sections = fac.sections && fac.sections.length > 0 ? fac.sections : [];
     sections.forEach((sec, secIdx) => {
-      const lectureHours = computeWeeklyHours((sec as any).lectureSchedule || '');
-      const labHours = computeWeeklyHours((sec as any).labSchedule || '');
+      const baseLectureHours = computeWeeklyHours((sec as any).lectureSchedule || '');
+      const additionalLectureHours = ((sec as any).lectureSchedules || []).reduce((sum: number, s: any) => sum + computeWeeklyHours(s.schedule || ''), 0);
+      const totalLectureHours = baseLectureHours + additionalLectureHours;
+
+      const baseLabHours = computeWeeklyHours((sec as any).labSchedule || '');
+      const additionalLabHours = ((sec as any).labSchedules || []).reduce((sum: number, s: any) => sum + computeWeeklyHours(s.schedule || ''), 0);
+      const totalLabHours = baseLabHours + additionalLabHours;
+
       allSections.push({
         facultyName: fac.name || `Faculty ${facIdx + 1}`,
         facIdx,
         secIdx,
         section: sec.section || `Section ${secIdx + 1}`,
         lectureSchedule: (sec as any).lectureSchedule || '',
-        lectureHours,
+        lectureHours: totalLectureHours,
         lectureRoom: (sec as any).lectureRoom || '',
         labSchedule: (sec as any).labSchedule || '',
-        labHours,
+        labHours: totalLabHours,
         labRoom: (sec as any).labRoom || '',
         hasLectureMismatch: false,
         hasLabMismatch: false
@@ -198,7 +204,7 @@ export function analyzeSectionSchedules(
   let lectureSummary: string | undefined;
   if (hasLectureMismatch) {
     const breakdown = allSections
-      .map(s => `${s.section} (${s.lectureHours > 0 ? `${s.lectureHours} hrs/wk` : 'no lecture schedule'})`)
+      .map(s => `${s.section} (${s.lectureHours > 0 ? `${s.lectureHours} hr${s.lectureHours === 1 ? '' : 's'}/wk` : 'no lecture schedule'})`)
       .join(', ');
     lectureSummary = `Lecture hours differ across sections: ${breakdown}. All sections must have identical lecture hours.`;
   }
@@ -206,7 +212,7 @@ export function analyzeSectionSchedules(
   let labSummary: string | undefined;
   if (hasLabMismatch) {
     const breakdown = allSections
-      .map(s => `${s.section} (${s.labHours > 0 ? `${s.labHours} hrs/wk` : 'no lab schedule'})`)
+      .map(s => `${s.section} (${s.labHours > 0 ? `${s.labHours} hr${s.labHours === 1 ? '' : 's'}/wk` : 'no lab schedule'})`)
       .join(', ');
     labSummary = `Lab hours differ across sections: ${breakdown}. All sections must have identical lab hours.`;
   }

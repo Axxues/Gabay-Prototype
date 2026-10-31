@@ -35,6 +35,7 @@ interface SyllabusWizardProps {
   allAgreed?: boolean;
   onAgreeToSubmit?: () => void;
   onRetractAgreement?: () => void;
+  isEvaluationStarted?: boolean;
   onStepChange?: (stepId: string) => void;
   presenceNotice?: string;
   collaborators?: CollaboratorInfo[];
@@ -51,6 +52,7 @@ export const SyllabusWizard: React.FC<SyllabusWizardProps> = ({
   allAgreed,
   onAgreeToSubmit,
   onRetractAgreement,
+  isEvaluationStarted = false,
   onStepChange,
   presenceNotice,
   collaborators: _collaborators
@@ -142,6 +144,7 @@ export const SyllabusWizard: React.FC<SyllabusWizardProps> = ({
             allAgreed={allAgreed}
             onAgreeToSubmit={onAgreeToSubmit}
             onRetractAgreement={onRetractAgreement}
+            isEvaluationStarted={isEvaluationStarted}
           />
         );
       default:

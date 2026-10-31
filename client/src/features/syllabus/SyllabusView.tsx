@@ -2518,18 +2518,6 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                         });
                       }} className={inputCls} />
                     </div>
-                    <div>
-                      <label className={labelCls}>Passing grade</label>
-                      <input type="text" value={draft.gradingSystem.passingGrade} onChange={e => {
-                        const v = e.target.value;
-                        setDraft(prev => {
-                          if (!prev) return prev;
-                          const next = cloneSyllabus(prev);
-                          next.gradingSystem.passingGrade = v;
-                          return next;
-                        });
-                      }} className={inputCls} />
-                    </div>
                   </div>
                   <div className="p-4 rounded-xl border border-border bg-muted/20 space-y-3">
                     <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -2690,9 +2678,6 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                         ? `Midterm ${data.gradingSystem.finalFormula.midtermPercent}% + Final ${data.gradingSystem.finalFormula.finalPercent}%`
                         : data.gradingSystem.finalFormula}
                     </div>
-                    <span className="text-[10px] text-muted-foreground block">
-                      Minimum passing mark: {data.gradingSystem.passingGrade}
-                    </span>
                   </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">

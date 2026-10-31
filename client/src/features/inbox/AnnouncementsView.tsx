@@ -294,7 +294,7 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({ courseId }
                 {/* Announcement Summary Header */}
                 <div
                   onClick={() => handleSelectAnnouncement(ann)}
-                  className="p-5 flex items-start justify-between gap-4 cursor-pointer hover:bg-muted/30 transition-colors"
+                  className="p-5 flex flex-wrap items-start justify-between gap-x-4 gap-y-3 cursor-pointer hover:bg-muted/30 transition-colors"
                 >
                   <div className="flex items-start space-x-3.5">
                     <UserAvatar

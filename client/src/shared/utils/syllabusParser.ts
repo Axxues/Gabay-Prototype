@@ -783,14 +783,10 @@ export function detectGradingSystem(
     ? compMatch[1].split(/;|,/).map(c => c.trim()).filter(Boolean)
     : (base?.classStandingComponents || ['Quizzes', 'Assignments', 'Laboratory Exercises']);
 
-  const passMatch = text.match(/(?:passing\s+grade|passing\s+mark)\s*[:\-–]?\s*([^\n\r]+)/i);
-  const passingGrade = passMatch?.[1]?.trim() || base?.passingGrade || '3.0 (75%)';
-
   return {
     termFormula,
     finalFormula,
-    classStandingComponents,
-    passingGrade
+    classStandingComponents
   };
 }
 

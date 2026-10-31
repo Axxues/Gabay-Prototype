@@ -138,17 +138,13 @@ def _extract_grading_content(syllabus: dict) -> str:
 
     if isinstance(grading, dict):
         lines: list[str] = []
-        passing = grading.get("passingGrade") or grading.get("passing_grade")
-        if passing is not None:
-            lines.append(f"Passing Grade: {passing}")
-
         term_formula = grading.get("termFormula") or grading.get("term_formula")
         if term_formula:
-            lines.append(f"Term Grade Formula: {term_formula}")
+            lines.append(f"Term Grade Computation: {term_formula}")
 
         final_formula = grading.get("finalFormula") or grading.get("final_formula")
         if final_formula:
-            lines.append(f"Final Grade Formula: {final_formula}")
+            lines.append(f"Final Grade Computation: {final_formula}")
 
         components = grading.get("classStandingComponents") or grading.get("class_standing_components") or grading.get("components")
         if components:

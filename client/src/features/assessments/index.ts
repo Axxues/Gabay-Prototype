@@ -13,6 +13,8 @@ export { QuizzesView } from './QuizzesView';
 export { SpeedGraderModal } from './components/grading/SpeedGraderModal';
 export { FacultyGradebook } from './components/grading/FacultyGradebook';
 export { StudentGradebook } from './components/grading/StudentGradebook';
+export { AssessmentWeightsPage } from './components/grading/AssessmentWeightsPage';
+export { RubricViewer, type RubricViewerProps } from './components/RubricViewer';
 export { AssessmentFilePreviewModal, type AssessmentPreviewAttachment } from './components/AssessmentFilePreviewModal';
 export {
   extractTitleSequenceNumber,

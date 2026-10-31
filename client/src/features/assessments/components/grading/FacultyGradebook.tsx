@@ -1,27 +1,30 @@
 import React, { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useLMS } from '../../../../shared/context/LMSContext';
-import { PageHeader } from '../../../../shared/components/common/PageHeader';
 import {
   ChevronDown,
   Download,
   Search,
   Lock,
   Globe,
-  Calculator
+  Calculator,
+  SlidersHorizontal,
 } from 'lucide-react';
 import {
   autoScoreFraction,
   bucketColumnsByTerm,
   buildAutoColumns,
-  classStandingPercent,
-  extractTermWeights,
   finalPercentTerms,
   resolveExamScore,
-  resolveSPRWeights,
   round2,
-  termGrade,
+  termGradeStatic,
+  resolveAssessmentCategory,
+  categoryWeightedClassStanding,
+  DEFAULT_CATEGORY_WEIGHTS,
+  getStoredCategoryWeights,
 } from '../../../../shared/utils/spr';
-import type { SPRColumn } from '../../../../shared/types/lms';
+import type { TermWeightsResult } from '../../../../shared/utils/spr';
+import type { SPRColumn, SPRWeights } from '../../../../shared/types/lms';
 import type { TermId } from '../../../../shared/utils/gradingTerms';
 import { normalizeTermId } from '../../../../shared/utils/gradingTerms';
 import { TERM_LABELS } from '../../../../shared/components/common/TermSelect';
@@ -29,7 +32,6 @@ import { exportSPRToExcel } from '../../../../shared/utils/sprExport';
 
 interface FacultyGradebookProps {
   courseId: string;
-  onGoToSyllabus?: () => void;
 }
 
 // Institutional CHED / University Transmutation Table (1.00 - 5.00)
@@ -55,8 +57,9 @@ export const getTransmutedGrade = (
 // blocks keep their pre-change "MT"/"FT" wording).
 const TERM_SHORT: Record<TermId, string> = { prelim: 'Prelim', midterm: 'MT', finals: 'FT' };
 
-export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, onGoToSyllabus }) => {
-  const { db, showAlert, effectiveTermsForCourse, isLoading = false, isSyncing = false, setGradesReleased, upsertManualExamGrade } = useLMS() as ReturnType<typeof useLMS> & { isLoading?: boolean; isSyncing?: boolean; setGradesReleased: (courseId: string, term: TermId, released: boolean) => void; upsertManualExamGrade?: (arg1: string, arg2: string, arg3: string | number, arg4?: number) => Promise<void> };
+export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId }) => {
+  const navigate = useNavigate();
+  const { db, showAlert, effectiveTermsForCourse, isLoading = false, isSyncing = false, setGradesReleased, upsertManualExamGrade, getSPRConfig } = useLMS();
 
   const course = db.courses.find(c => c.id === courseId);
   const releaseMap = course?.gradesReleased || {};
@@ -71,6 +74,7 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
 
   const [postingPolicy, setPostingPolicy] = useState<'manual' | 'automatic'>('manual');
   const [searchQuery, setSearchQuery] = useState('');
+
 
   // Syllabus-driven grading terms (Task 7): one period block per effective term.
   // Guarded like Task 6 consumers so mocked contexts without the provider fn
@@ -117,21 +121,30 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
       s.email.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const weights = useMemo(
-    () => resolveSPRWeights(course?.syllabus?.gradingSystem ?? null),
-    [course]
-  );
-  const hasParseError = weights.parseError === true;
+  // Static gradebook weights for UI display
+  const gradebookWeights: SPRWeights = {
+    csWeight: 40,
+    examWeight: 60,
+    mtWeight: 40,
+    ftWeight: 60,
+    formulaLabel: 'Term 40% Assessments + 60% Exam • Final 40% MT + 60% FT'
+  };
 
-  // Final weights per term parsed from the syllabus formula text (Task 2).
-  // For the classic pair this yields { midterm: 40, finals: 60 } (parsed or
-  // defaulted), so finalPercentTerms below equals the pre-change finalPercent.
-  const termWeightsResult = useMemo(
-    () => extractTermWeights(course?.syllabus?.gradingSystem ?? null, terms),
-    [course, terms]
-  );
-  const termWeights = termWeightsResult.weights;
-  const weightsDefaulted = termWeightsResult.defaulted;
+  // Static weights: term formula is always 40% CS + 60% Exam, final formula is always 40% MT + 60% FT
+  // Prelim (if present) is class-standing-only at 100%, Midterm at 40%, Finals at 60%
+  const termWeightsResult = useMemo((): TermWeightsResult => {
+    const weights: Record<TermId, number> = {} as Record<TermId, number>;
+    for (const term of terms) {
+      if (term === 'prelim') {
+        weights[term] = 100; // Prelim is class-standing-only
+      } else if (term === 'midterm') {
+        weights[term] = 40; // Final formula: 40% MT
+      } else if (term === 'finals') {
+        weights[term] = 60; // Final formula: 60% FT
+      }
+    }
+    return { weights, defaulted: false };
+  }, [terms]);
 
   const autoCols = useMemo(
     () => buildAutoColumns(courseId, { activities: db.activities, quizzes: db.quizzes }),
@@ -199,6 +212,17 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
     return db.quizzes.find(q => q.id === link.sourceId)?.title ?? null;
   };
 
+
+  // Helper to check if activity/quiz is included in grades
+  const isIncludedInGrades = (column: SPRColumn): boolean => {
+    const link = column.linkedSource;
+    if (!link) return true; // Include by default if no link
+    if (link.kind === 'activity') {
+      return (db.activities ?? []).find(a => a.id === link.sourceId)?.includeInGrades !== false;
+    }
+    return db.quizzes.find(q => q.id === link.sourceId)?.includeInGrades !== false;
+  };
+
   interface SPRRowCell {
     score: number | null;
     isManual: boolean;
@@ -217,6 +241,20 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
     final: number | null;
   }
 
+  // Helper to get category from an SPRColumn
+  const getCategory = (col: SPRColumn): string => {
+    const link = col.linkedSource;
+    if (!link) return 'Activities';
+    if (link.kind === 'quiz') return 'Quizzes';
+    
+    const activity = (db.activities || []).find(a => a.id === link.sourceId);
+    return resolveAssessmentCategory({
+      kind: link.kind,
+      category: activity?.category,
+      assessmentType: activity?.assessmentType,
+    });
+  };
+
   const sprRows: SPRRow[] = useMemo(() => {
     return filteredStudents.map(student => {
       const perTerm = {} as Record<TermId, SPRTermResult>;
@@ -228,26 +266,36 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
           if (fraction === null) return { score: null, isManual: false, sourceTitle };
           return { score: fraction * col.perfectScore, isManual: false, sourceTitle };
         });
-        const scores = cells.map(c => c.score);
-        const perfects = cols.map(c => c.perfectScore);
-        const cs = classStandingPercent(scores, perfects);
+        // Calculate weighted class standing percentage using category weights
+        const activeCategoryWeights = course?.assessmentCategoryWeights || getStoredCategoryWeights(courseId) || DEFAULT_CATEGORY_WEIGHTS;
+        const scoreItems = cells.map((cell, idx) => ({
+          score: cell.score,
+          perfectScore: cols[idx].perfectScore,
+          category: getCategory(cols[idx]),
+          includedInGrades: isIncludedInGrades(cols[idx]),
+        }));
+        const weightedCs = categoryWeightedClassStanding(scoreItems, activeCategoryWeights);
+        
         if (term === 'prelim') {
           // Prelim is class-standing-only: no exam component.
-          perTerm[term] = { cells, exam: null, grade: cols.length === 0 ? null : round2(cs) };
+          perTerm[term] = { cells, exam: null, grade: weightedCs === 0 ? null : round2(weightedCs) };
         } else {
           const exam = resolveExamScore(courseId, term, student.id, { exams: db.exams, submissions: db.submissions });
-          const hasCSData = cells.some(c => c.score !== null);
-          perTerm[term] = { cells, exam: exam.score, grade: termGrade(cs, exam.score, exam.perfect, weights, hasCSData || exam.score !== null) };
-        }
+          const hasCSData = cells.some(c => c.score !== null && isIncludedInGrades(cols[cells.indexOf(c)]));
+          perTerm[term] = { 
+            cells, 
+            exam: exam.score, 
+            grade: termGradeStatic(weightedCs, exam.score, exam.perfect, hasCSData || exam.score !== null) 
+          };
+      }
       }
       const termGrades = {} as Record<TermId, number | null>;
       for (const term of terms) termGrades[term] = perTerm[term].grade;
-      // 2-term path equals existing finalPercent(mt, ft, w): same weighted
-      // sum of the same term grades with { midterm: 40, finals: 60 }, round2.
-      const final = finalPercentTerms(termGrades, termWeights);
+      // Use static weights for final calculation: 40% midterm + 60% finals
+      const final = finalPercentTerms(termGrades, termWeightsResult.weights);
       return { studentId: student.id, terms: perTerm, final };
     });
-  }, [filteredStudents, columnsByTerm, db.exams, db.submissions, db.activities, db.quizzes, weights, termWeights, courseId, terms]);
+  }, [filteredStudents, columnsByTerm, db.exams, db.submissions, db.activities, db.quizzes, courseId, terms]);
 
   const sprRowById = useMemo(() => {
     const map = new Map<string, SPRRow>();
@@ -256,7 +304,7 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
   }, [sprRows]);
 
   const handleExportExcel = () => {
-    if (!course || hasParseError) return;
+    if (!course) return;
     const autoConfig = { courseId, prelimColumns: columnsByTerm.prelim, midtermColumns: columnsByTerm.midterm, finalColumns: columnsByTerm.finals, mtExamPerfect: examPerfectByTerm.midterm ?? 100, ftExamPerfect: examPerfectByTerm.finals ?? 100 };
     exportSPRToExcel({
       course,
@@ -312,30 +360,40 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
 
   const exportTitle = students.length === 0
     ? 'No students enrolled to export.'
-    : hasParseError
-      ? 'Fix the syllabus grading formula before exporting.'
-      : autoCols.length === 0
-        ? 'No published activities or quizzes to export.'
-        : 'Export SPR as Excel (.xlsx)';
-
+    : autoCols.length === 0
+      ? 'No published activities or quizzes to export.'
+      : 'Export SPR as Excel (.xlsx)';
   return (
     <div className="space-y-6 animate-fade-in font-sans">
-      {/* Header Controls */}
-      <PageHeader
-        title="Course Gradebook"
-        description={`${course?.code} (${course?.section}) • Official Institutional Grading Matrix`}
-        actions={
-          <>
+      {/* =============================================================== */}
+      {/* REVISED HEADER SECTION */}
+      {/* =============================================================== */}
+      <div className="gradebook-page-header border-b border-border/70 pb-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          {/* Left: Title and Course Info */}
+          <div className="min-w-0 max-w-3xl">
+            <h1 className="gradebook-title text-foreground">Course Gradebook</h1>
+            <p className="gradebook-subtitle">
+              {course?.code} ({course?.section}) • <span className="text-muted-foreground">Official Institutional Grading Matrix</span>
+            </p>
+            <div className="gradebook-formula flex items-center gap-2 mt-2">
+              <span className="w-2 h-2 rounded-full bg-indigo-500" />
+              <span>Formula: {gradebookWeights.formulaLabel}</span>
+            </div>
+          </div>
+          
+          {/* Right: Action Buttons */}
+          <div className="flex flex-wrap items-center gap-3 shrink-0">
             {/* Formula Badge */}
             <div className="hidden md:flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-primary/10 border border-primary/20 text-primary text-xs font-bold shadow-xs">
               <Calculator className="w-3.5 h-3.5" />
-              <span>{weights.formulaLabel}</span>
+              <span>{gradebookWeights.formulaLabel}</span>
             </div>
 
             <button
               type="button"
               onClick={() => setPostingPolicy(prev => (prev === 'manual' ? 'automatic' : 'manual'))}
-              className="px-3.5 py-2 rounded-xl border border-border text-xs font-bold flex items-center space-x-2 transition-all bg-card text-foreground hover:bg-muted shadow-subtle active:scale-98 cursor-pointer"
+              className="gradebook-action-btn"
             >
               {postingPolicy === 'manual' ? (
                 <>
@@ -352,42 +410,63 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
 
             <button
               type="button"
+              data-testid="gradebook-configure-assessments"
+              onClick={() => navigate(`/courses/${courseId}/assessment-weights`)}
+              title="Configure assessment weights"
+              className="gradebook-action-btn"
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5 text-primary" />
+              <span>Configure Assessments</span>
+            </button>
+
+            <button
+              type="button"
               data-testid="spr-export-excel"
               onClick={handleExportExcel}
-              disabled={students.length === 0 || autoCols.length === 0 || !course || hasParseError}
+              disabled={students.length === 0 || autoCols.length === 0 || !course}
               title={exportTitle}
-              className="px-4 py-2 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all flex items-center space-x-1.5 shadow-subtle active:scale-98 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className="gradebook-action-btn gradebook-action-btn-primary"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Export Excel</span>
             </button>
-          </>
-        }
-      />
+          </div>
+        </div>
+      </div>
 
-      {/* Search Input & Legend Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="relative w-full max-w-md">
+      {/* =============================================================== */}
+      {/* REVISED CONTROLS BAR */}
+      {/* =============================================================== */}
+      <div className="gradebook-controls">
+        {/* Search Input */}
+        <div className="gradebook-search relative">
           <Search className="w-4 h-4 text-muted-foreground absolute left-3.5 top-3" />
           <input
             type="text"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             placeholder="Search student by name or student ID (e.g. 2021-SLUC)..."
-            className="w-full pl-9 pr-4 py-2 bg-card border border-border rounded-xl text-xs text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/30 shadow-subtle"
+            className="w-full pl-9 pr-4 py-2.5 bg-card border border-border rounded-xl text-xs text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/30 shadow-subtle"
           />
         </div>
 
-        <div className="flex items-center flex-wrap gap-x-3 gap-y-1 text-[12px] text-muted-foreground">
-          {terms.map((t, i) => (
-            <React.Fragment key={t}>
-              {i > 0 ? <span aria-hidden="true">·</span> : null}
-              <span className="flex items-center space-x-1">
-                <span className={`w-2 h-2 rounded-full ${t === 'prelim' ? 'bg-sky-500' : t === 'midterm' ? 'bg-primary' : 'bg-emerald-500'}`} />
-                <span>{TERM_LABELS[t]}: <strong className="text-foreground">{termWeights[t]}%</strong></span>
-              </span>
-            </React.Fragment>
+        {/* Legend and Status */}
+        <div className="gradebook-legend">
+          {/* Term Weights */}
+          {terms.map(t => (
+            <span key={`legend-${t}`} className={`gradebook-term-badge gradebook-term-${t}`}>
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: t === 'prelim' ? '#0ea5e9' : t === 'midterm' ? '#3b82f6' : '#10b981' }} />
+              <span>{TERM_LABELS[t]}</span>
+              <span className="font-normal">:{t === 'prelim' ? 100 : t === 'midterm' ? gradebookWeights.mtWeight : gradebookWeights.ftWeight}%</span>
+            </span>
           ))}
+
+          {/* Passing Grade */}
+          <span className="px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-xs font-semibold">
+            Passing: 75% (3.00)
+          </span>
+
+          {/* Release Status */}
           {terms.map(t => {
             const released = releaseMap[t] === true;
             return (
@@ -406,87 +485,62 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
               </span>
             );
           })}
-          <span aria-hidden="true">·</span>
-          <span>Passing: <strong className="text-emerald-600 dark:text-emerald-400">75% (3.00)</strong></span>
-          <span aria-hidden="true">·</span>
-          <span className="flex items-center gap-1">
+
+          {/* Expand/Collapse All */}
+          <div className="flex items-center gap-1 ml-auto">
             <button
               type="button"
               onClick={expandAll}
               disabled={collapsedCount === 0}
-              className="font-semibold text-primary hover:underline disabled:opacity-40 disabled:no-underline disabled:cursor-default cursor-pointer"
+              className="px-3 py-1 text-[11px] font-semibold rounded-lg border border-border text-primary hover:bg-muted transition-all disabled:opacity-40 disabled:cursor-default"
             >
               Expand all
             </button>
-            <span aria-hidden="true">/</span>
+            <span className="text-muted-foreground">/</span>
             <button
               type="button"
               onClick={collapseAll}
               disabled={collapsedCount === terms.length}
-              className="font-semibold text-primary hover:underline disabled:opacity-40 disabled:no-underline disabled:cursor-default cursor-pointer"
+              className="px-3 py-1 text-[11px] font-semibold rounded-lg border border-border text-primary hover:bg-muted transition-all disabled:opacity-40 disabled:cursor-default"
             >
               Collapse all
             </button>
-          </span>
+          </div>
         </div>
       </div>
 
-      {weightsDefaulted || legacyUnmappedCount > 0 ? (
+      {legacyUnmappedCount > 0 ? (
         <div className="flex flex-col gap-1 text-[12px]">
-          {weightsDefaulted ? (
-            <div data-testid="grades-weights-defaulted" className="text-muted-foreground">
-              Weights defaulted — equal split (the syllabus formula did not parse into term weights).
-            </div>
-          ) : null}
-          {legacyUnmappedCount > 0 ? (
-            <div data-testid="grades-legacy-flag" className="text-muted-foreground">
-              {legacyUnmappedCount} item{legacyUnmappedCount === 1 ? '' : 's'} without a term counted under Midterm.
-            </div>
-          ) : null}
+          <div data-testid="grades-legacy-flag" className="text-muted-foreground">
+            {legacyUnmappedCount} item{legacyUnmappedCount === 1 ? '' : 's'} without a term counted under Midterm.
+          </div>
         </div>
       ) : null}
 
-      {hasParseError ? (
-        <div data-testid="grades-formula-error" className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-8 text-center shadow-subtle">
-          <div className="mx-auto max-w-md space-y-3">
-            <h3 className="text-sm font-bold text-foreground">Grading formula needs attention</h3>
-            <p className="text-xs text-muted-foreground">
-              Grading formula needs attention — the syllabus section &apos;Course Requirements &amp; Official Grading Formula&apos; could not be parsed. Fix it in the Syllabus tab to enable grades.
-            </p>
-            {onGoToSyllabus ? (
-              <button
-                type="button"
-                onClick={() => onGoToSyllabus()}
-                className="px-4 py-2 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all shadow-subtle active:scale-98 cursor-pointer"
-              >
-                Go to Syllabus
-              </button>
-            ) : null}
-          </div>
-        </div>
-      ) : (isLoading || isSyncing) && autoCols.length === 0 ? (
-        <div data-testid="spr-loading" className="bg-card border border-border rounded-2xl overflow-hidden" aria-hidden="true">
+      {(isLoading || isSyncing) && autoCols.length === 0 ? (
+        // Loading skeleton with new styling
+        <div data-testid="spr-loading" className="gradebook-table-container" aria-hidden="true">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
+            <table className="gradebook-table">
               <thead>
-                <tr className="border-b border-border bg-muted/60">
-                  <th className="px-5 py-3 min-w-[232px]">
+                <tr>
+                  <th className="min-w-[232px]">
                     <div className="h-4 w-40 rounded bg-muted animate-pulse" />
                   </th>
                   {terms.map(term => (
-                    <th key={`skeleton-group-${term}`} className="px-4 py-2 text-center border-l border-border">
+                    <th key={`skeleton-group-${term}`} className="text-center">
                       <div className="h-4 w-24 rounded bg-muted animate-pulse mx-auto" />
                     </th>
                   ))}
-                  <th className="px-4 py-2 text-center border-l border-border">
+                  <th className="text-center">
                     <div className="h-4 w-20 rounded bg-muted animate-pulse mx-auto" />
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border">
+              <tbody>
                 {Array.from({ length: 3 }).map((_, i) => (
                   <tr key={`spr-skeleton-${i}`}>
-                    <td className="px-5 py-3.5">
+                    <td className="gradebook-student-cell">
                       <div className="flex items-center space-x-2.5">
                         <div className="w-7 h-7 rounded-full bg-muted animate-pulse shrink-0" />
                         <div className="flex-1 space-y-1.5">
@@ -496,11 +550,11 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
                       </div>
                     </td>
                     {terms.map(term => (
-                      <td key={`spr-skeleton-${i}-${term}`} className="px-3 py-3.5 text-center border-l border-border">
+                      <td key={`spr-skeleton-${i}-${term}`} className="text-center">
                         <div className="h-5 w-14 rounded-full bg-muted animate-pulse mx-auto" />
                       </td>
                     ))}
-                    <td className="px-3 py-3.5 text-center border-l border-border">
+                    <td className="text-center">
                       <div className="h-5 w-14 rounded-lg bg-muted animate-pulse mx-auto" />
                     </td>
                   </tr>
@@ -510,7 +564,8 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
           </div>
         </div>
       ) : autoCols.length === 0 ? (
-        <div data-testid="spr-empty-state" className="bg-card border border-border rounded-2xl p-8 text-center shadow-subtle">
+        // Empty state with new styling
+        <div data-testid="spr-empty-state" className="gradebook-table-container p-8 text-center">
           <div className="mx-auto max-w-md space-y-3">
             <h3 className="text-sm font-bold text-foreground">No grade columns yet</h3>
             <p className="text-xs text-muted-foreground">
@@ -519,13 +574,11 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
           </div>
         </div>
       ) : (
-        <div className="bg-card border border-border rounded-2xl overflow-hidden">
+        // Main table with revised styling
+        <div className="gradebook-table-container">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
+            <table className="gradebook-table">
               <thead>
-                {/* Term-group band: one tinted block per grading period. Each
-                    group is a collapse toggle — collapsed terms keep only
-                    their grade column so wide courses stay scannable. */}
                 <tr className="border-b border-border bg-muted/60 text-[11.5px] font-semibold text-muted-foreground">
                   <th
                     rowSpan={2}
@@ -534,6 +587,7 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
                     Student roster name and ID
                   </th>
                   {terms.map(term => {
+                    const termColor = term === 'prelim' ? '#0ea5e9' : term === 'midterm' ? '#3b82f6' : '#10b981';
                     const collapsed = isCollapsed(term);
                     const itemCount = columnsByTerm[term]?.length ?? 0;
                     const hiddenCount = itemCount + (term === 'prelim' ? 0 : 1);
@@ -556,14 +610,11 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
                             className={`w-3.5 h-3.5 shrink-0 transition-transform duration-200 ${collapsed ? '-rotate-90' : 'rotate-0'}`}
                             aria-hidden="true"
                           />
-                          <span
-                            className={`w-2 h-2 rounded-full ${term === 'prelim' ? 'bg-sky-500' : term === 'midterm' ? 'bg-primary' : 'bg-emerald-500'}`}
-                            aria-hidden="true"
-                          />
-                          <span className="text-foreground">{TERM_LABELS[term]}</span>
-                          <span className="font-normal tabular-nums">{termWeights[term]}%</span>
+                          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: termColor }} />
+                          <span className="text-foreground font-semibold">{TERM_LABELS[term]}</span>
+                          <span className="font-normal tabular-nums text-muted-foreground">({term === 'prelim' ? 100 : term === 'midterm' ? gradebookWeights.mtWeight : gradebookWeights.ftWeight}%)</span>
                           {collapsed ? (
-                            <span className="font-normal text-[11px] tabular-nums">· {hiddenCount} hidden</span>
+                            <span className="font-normal text-[11px] tabular-nums text-muted-foreground">· {hiddenCount} hidden</span>
                           ) : null}
                         </button>
                       </th>
@@ -624,7 +675,7 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border">
+              <tbody>
                 {filteredStudents.length === 0 ? (
                   <tr>
                     <td colSpan={totalColumns} className="p-8 text-center text-muted-foreground">
@@ -642,18 +693,22 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
                   filteredStudents.map(student => {
                     const row = sprRowById.get(student.id);
                     const transmuted = getTransmutedGrade(row?.final ?? null);
+                    const finalStatus = row?.final !== null && row?.final !== undefined ? 
+                      (row.final >= 75 ? 'pass' : row.final >= 60 ? 'borderline' : 'fail') : 'empty';
+                    
                     return (
                       <tr key={student.id} className="hover:bg-muted/40 transition-colors">
-                        <td className="px-5 py-3.5 font-semibold text-[14px] tracking-tight text-foreground sticky left-0 bg-card z-10">
+                        {/* Student Cell */}
+                        <td className="gradebook-student-cell">
                           <div className="flex items-center space-x-2.5">
                             <img
                               src={student.avatar}
                               alt={student.name}
-                              className="w-7 h-7 rounded-full object-cover border border-border shrink-0"
+                              className="w-8 h-8 rounded-full object-cover border border-border shrink-0"
                             />
                             <div className="min-w-0">
-                              <div className="truncate">{student.name}</div>
-                              <div className="text-[11px] text-muted-foreground font-normal">
+                              <div className="gradebook-student-name">{student.name}</div>
+                              <div className="gradebook-student-meta">
                                 {student.studentId || '2021-SLUC-0492'} · {student.email}
                               </div>
                             </div>
@@ -665,34 +720,47 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
                           const termCols = columnsByTerm[term] ?? [];
                           const examValue = termResult?.exam;
                           const gradeValue = termResult?.grade;
+                          const termColor = term === 'prelim' ? '#0ea5e9' : term === 'midterm' ? '#3b82f6' : '#10b981';
+                          
                           if (isCollapsed(term)) {
                             return (
-                              <React.Fragment key={term}>
-                                <td className="px-2 py-2.5 text-center border-l border-border">
-                                  {gradeValue !== null && gradeValue !== undefined ? (
-                                    <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold border tabular-nums ${term === 'prelim' ? 'text-sky-700 dark:text-sky-400 bg-sky-500/10 border-sky-500/20' : term === 'midterm' ? 'text-primary bg-primary/10 border-primary/20' : 'text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20'}`}>
-                                      {gradeValue}%
-                                    </span>
-                                  ) : (
-                                    <span className="text-muted-foreground font-normal">—</span>
-                                  )}
-                                </td>
-                              </React.Fragment>
+                              <td key={term} className="px-4 py-3 text-center border-l border-border">
+                                {gradeValue !== null && gradeValue !== undefined ? (
+                                  <span 
+                                    className={`gradebook-grade-pill`}
+                                    style={{
+                                      color: termColor,
+                                      backgroundColor: term === 'prelim' ? 'rgba(14, 165, 233, 0.12)' : term === 'midterm' ? 'rgba(59, 130, 246, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+                                      borderColor: term === 'prelim' ? 'rgba(14, 165, 233, 0.3)' : term === 'midterm' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(16, 185, 129, 0.3)'
+                                    }}
+                                  >
+                                    {gradeValue}%
+                                  </span>
+                                ) : (
+                                  <span className="text-muted-foreground font-normal">—</span>
+                                )}
+                              </td>
                             );
                           }
                           return (
                             <React.Fragment key={term}>
+                              {/* Individual activity/quiz scores */}
                               {termCols.map((col, idx) => {
                                 const cell = termResult?.cells[idx];
                                 const score = cell?.score ?? null;
                                 const autoTitle = cell?.sourceTitle ?? null;
                                 return (
-                                  <td key={`${term}-${col.id}`} className={`px-2 py-2.5 text-center animate-gradebook-cell-in ${idx === 0 ? 'border-l border-border' : ''}`}>
+                                  <td key={`${term}-${col.id}`} className={`px-3 py-3 text-center animate-gradebook-cell-in ${idx === 0 ? 'border-l border-border' : ''}`}>
                                     <div className="flex items-center justify-center space-x-1.5">
-                                      <span className="inline-block px-1 py-1 text-center text-[13px] font-semibold tabular-nums text-foreground" title={cell?.sourceTitle ?? undefined}>
-                                        {score === null ? <span className="text-muted-foreground/40 font-normal">—</span> : round2(score)}
+                                      <span 
+                                        className={`inline-block px-2 py-1 text-center text-[13px] font-semibold tabular-nums ${
+                                          score !== null ? 'text-foreground' : 'text-muted-foreground/40 font-normal'
+                                        }`}
+                                        title={cell?.sourceTitle ?? undefined}
+                                      >
+                                        {score === null ? '—' : round2(score)}
                                       </span>
-                                      {!autoTitle ? null : (
+                                      {autoTitle && (
                                         <span data-testid="spr-auto-dot" title={`Auto from ${autoTitle}`} className="w-1.5 h-1.5 rounded-full bg-sky-500 shrink-0" />
                                       )}
                                     </div>
@@ -700,55 +768,60 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
                                 );
                               })}
 
-                              {term === 'prelim' ? null : (() => {
-
-                                const draftKey = `${term}:${student.id}`;
-                                const draft = manualDrafts[draftKey];
-                                const display = draft !== undefined ? draft : (examValue === null || examValue === undefined ? '' : String(round2(examValue)));
-                                const canEdit = Boolean(upsertManualExamGrade);
-                                return (
-                                  <td className={`px-2 py-2.5 text-center animate-gradebook-cell-in ${termCols.length === 0 ? 'border-l border-border' : ''}`}>
-                                    {canEdit ? (
-                                      <input
-                                        type="text"
-                                        inputMode="decimal"
-                                        value={display}
-                                        placeholder="—"
-                                        disabled={savingManual[draftKey]}
-                                        onChange={e => {
-                                          let val = e.target.value.replace(/[^0-9.]/g, '');
-                                          const parts = val.split('.');
-                                          if (parts.length > 2) val = parts[0] + '.' + parts.slice(1).join('');
-                                          setManualDrafts(prev => ({ ...prev, [draftKey]: val }));
-                                        }}
-                                        onBlur={() => {
-                                          if (draft !== undefined && draft.trim() !== '') {
-                                            void handleSaveManualExam(term, student.id);
-                                          }
-                                        }}
-                                        onKeyDown={e => {
-                                          if (e.key === 'Enter') {
-                                            e.preventDefault();
-                                            void handleSaveManualExam(term, student.id);
-                                          }
-                                        }}
-                                        title={`Manual ${TERM_SHORT[term]} exam score (Enter to save)`}
-                                        className="w-16 px-1.5 py-1 text-center text-[13px] font-semibold tabular-nums text-foreground bg-background border border-border rounded-lg outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                                      />
-                                    ) : (
-                                      <div className="flex items-center justify-center space-x-1">
-                                        <span className="inline-block px-1 py-1 text-center text-[13px] font-semibold tabular-nums text-foreground">
-                                          {examValue === null || examValue === undefined ? <span className="text-muted-foreground/40 font-normal">—</span> : round2(examValue)}
+                              {/* Exam score (for non-prelim terms) */}
+                              {term !== 'prelim' && (
+                                <td className={`px-3 py-3 text-center animate-gradebook-cell-in ${termCols.length === 0 ? 'border-l border-border' : ''}`}>
+                                  {termResult ? (
+                                    <div className="flex items-center justify-center space-x-1">
+                                      {upsertManualExamGrade ? (
+                                        <input
+                                          type="text"
+                                          inputMode="decimal"
+                                          value={manualDrafts[`${term}:${student.id}`] ?? (examValue === null || examValue === undefined ? '' : String(round2(examValue)))}
+                                          placeholder="—"
+                                          disabled={savingManual[`${term}:${student.id}`]}
+                                          onChange={e => {
+                                            let val = e.target.value.replace(/[^0-9.]/g, '');
+                                            const parts = val.split('.');
+                                            if (parts.length > 2) val = parts[0] + '.' + parts.slice(1).join('');
+                                            setManualDrafts(prev => ({ ...prev, [`${term}:${student.id}`]: val }));
+                                          }}
+                                          onBlur={() => {
+                                            const draft = manualDrafts[`${term}:${student.id}`];
+                                            if (draft !== undefined && draft.trim() !== '') {
+                                              void handleSaveManualExam(term, student.id);
+                                            }
+                                          }}
+                                          onKeyDown={e => {
+                                            if (e.key === 'Enter') {
+                                              e.preventDefault();
+                                              void handleSaveManualExam(term, student.id);
+                                            }
+                                          }}
+                                          title={`Manual ${TERM_SHORT[term]} exam score (Enter to save)`}
+                                          className="w-16 px-1.5 py-1 text-center text-[13px] font-semibold tabular-nums text-foreground bg-background border border-border rounded-lg outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                                        />
+                                      ) : (
+                                        <span className="inline-block px-2 py-1 text-center text-[13px] font-semibold tabular-nums text-foreground">
+                                          {examValue === null || examValue === undefined ? '—' : round2(examValue)}
                                         </span>
-                                      </div>
-                                    )}
-                                  </td>
-                                );
-                              })()}
+                                      )}
+                                    </div>
+                                  ) : null}
+                                </td>
+                              )}
 
-                              <td className={`px-2 py-2.5 text-center ${term === 'prelim' && termCols.length === 0 ? 'border-l border-border' : ''}`}>
+                              {/* Term grade */}
+                              <td className={`px-3 py-3 text-center ${term === 'prelim' && termCols.length === 0 ? 'border-l border-border' : ''}`}>
                                 {gradeValue !== null && gradeValue !== undefined ? (
-                                  <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold border tabular-nums ${term === 'prelim' ? 'text-sky-700 dark:text-sky-400 bg-sky-500/10 border-sky-500/20' : term === 'midterm' ? 'text-primary bg-primary/10 border-primary/20' : 'text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20'}`}>
+                                  <span 
+                                    className={`gradebook-grade-pill`}
+                                    style={{
+                                      color: termColor,
+                                      backgroundColor: term === 'prelim' ? 'rgba(14, 165, 233, 0.12)' : term === 'midterm' ? 'rgba(59, 130, 246, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+                                      borderColor: term === 'prelim' ? 'rgba(14, 165, 233, 0.3)' : term === 'midterm' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(16, 185, 129, 0.3)'
+                                    }}
+                                  >
                                     {gradeValue}%
                                   </span>
                                 ) : (
@@ -759,14 +832,15 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
                           );
                         })}
 
-                        <td className="px-2 py-2.5 border-l border-border text-center font-semibold text-sm bg-muted/30">
+                        {/* Final Percentage */}
+                        <td className="px-4 py-3 text-center border-l border-border gradebook-final-column">
                           {row?.final !== null && row?.final !== undefined ? (
-                            <span
-                              className={
-                                row.final >= 75
-                                  ? 'text-emerald-600 dark:text-emerald-400'
-                                  : 'text-rose-600 dark:text-rose-400'
-                              }
+                            <span 
+                              className={`font-bold text-sm tabular-nums ${
+                                finalStatus === 'pass' ? 'text-emerald-600 dark:text-emerald-400' :
+                                finalStatus === 'fail' ? 'text-rose-600 dark:text-rose-400' :
+                                'text-amber-600 dark:text-amber-400'
+                              }`}
                             >
                               {row.final}%
                             </span>
@@ -775,10 +849,11 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
                           )}
                         </td>
 
-                        <td className="p-2 text-center bg-muted/30">
-                          <span
-                            className={`inline-block px-2.5 py-0.5 rounded-lg text-xs font-black border ${transmuted.color}`}
-                          >
+                        {/* Numerical Grade */}
+                        <td className="px-4 py-3 text-center gradebook-final-column">
+                          <span className={`gradebook-numerical-badge ${
+                            transmuted.remark === 'Passed' ? 'gradebook-numerical-pass' : 'gradebook-numerical-fail'
+                          }`}>
                             {transmuted.grade}
                           </span>
                         </td>
@@ -791,6 +866,8 @@ export const FacultyGradebook: React.FC<FacultyGradebookProps> = ({ courseId, on
           </div>
         </div>
       )}
+      
+      {/* Assessment Weight Configuration Modal */}
     </div>
   );
 };

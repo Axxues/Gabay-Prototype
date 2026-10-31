@@ -36,6 +36,7 @@ import { CreateActivityPage } from './CreateActivityPage';
 import { ActivityRunnerView } from './ActivityRunnerView';
 import { PageHeader } from '../../shared/components/common/PageHeader';
 import { AssessmentFilePreviewModal, type AssessmentPreviewAttachment } from './components/AssessmentFilePreviewModal';
+import { RubricViewer } from './components/RubricViewer';
 import { EmptyState } from '../../shared/components/common/EmptyState';
 
 interface ActivitiesViewProps {
@@ -145,6 +146,12 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
   }, [allowFileUpload, allowOnlineText]);
   const [textContent, setTextContent] = useState('');
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  // A prior text response is shown in the box, locked until the student
+  // confirms they want to edit and overwrite it.
+  const [editConfirmed, setEditConfirmed] = useState(false);
+  // Track initial submission state to detect changes for resubmit button
+  const [initialText, setInitialText] = useState('');
+  const [initialFileCount, setInitialFileCount] = useState(0);
 
   const addFiles = (files: File[]) => {
     setSelectedFiles(prev => {
@@ -167,12 +174,42 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
     : undefined;
 
   // All files attached to the submission (legacy rows store a single file).
+  // A legacy file name with no file url behind it is not an attachment.
   const submissionFiles: SubmissionAttachment[] =
     currentSubmission?.attachments && currentSubmission.attachments.length > 0
       ? currentSubmission.attachments
-      : currentSubmission?.fileName
+      : currentSubmission?.fileName && currentSubmission?.fileUrl
         ? [{ name: currentSubmission.fileName, url: currentSubmission.fileUrl }]
         : [];
+
+  // A prior text response is shown in the box, locked until the student
+  // confirms they want to edit and overwrite it.
+  const priorText =
+    currentSubmission?.submissionType === 'online_text' &&
+    typeof currentSubmission.content === 'string' &&
+    currentSubmission.content.length > 0
+      ? currentSubmission.content
+      : undefined;
+  const submissionId = currentSubmission?.id;
+
+  useEffect(() => {
+    setEditConfirmed(false);
+    const prior = submissionId ? db.submissions.find(s => s.id === submissionId) : undefined;
+    // Each activity owns its own box: a submission prefills it, everything
+    // else starts empty (never carry text typed for another activity).
+    const priorContent =
+      prior?.submissionType === 'online_text' && typeof prior.content === 'string'
+        ? prior.content
+        : '';
+    setTextContent(priorContent);
+    setInitialText(priorContent);
+    setInitialFileCount(selectedFiles.length);
+  }, [selectedActivity?.id, submissionId]);
+
+  // Detect changes from initial submission state
+  const hasChanges = currentSubmission
+    ? textContent !== initialText || selectedFiles.length !== initialFileCount
+    : textContent.trim().length > 0 || selectedFiles.length > 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -184,6 +221,19 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
     }
     if (submissionType === 'file' && selectedFiles.length === 0) {
       showAlert("Please choose at least one file to attach.");
+      return;
+    }
+
+    // Confirm before resubmitting if there's a prior text response
+    if (priorText && !editConfirmed) {
+      showConfirm(
+        'You already submitted a response for this activity. Resubmitting will replace your previous answer.',
+        () => {
+          setEditConfirmed(true);
+          handleSubmit(e);
+        },
+        'Resubmit Activity?'
+      );
       return;
     }
 
@@ -216,7 +266,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
         selectedActivity.id,
         submissionType,
         textContent,
-        primary?.name ?? 'CMSC131_Lab_Submission.pdf',
+        primary?.name,
         undefined,
         primary?.url,
         primary?.id,
@@ -729,33 +779,10 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
         })()}
 
         {/* Rubric Criteria Summary */}
-        <div className="pt-2 space-y-3">
-          <h4 className="text-[13px] font-bold text-foreground flex items-center gap-1.5">
-            <Award className="w-4 h-4 text-muted-foreground" />
-            <span>Rubric</span>
-            <span className="text-[12px] font-semibold text-muted-foreground">· {(selectedActivity.rubric || []).length} criteria</span>
-          </h4>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {(selectedActivity.rubric || []).map(criterion => (
-              <div key={criterion.id} className="p-4 bg-muted/20 rounded-xl border border-border/70 space-y-2.5">
-                <div className="flex justify-between items-baseline gap-3">
-                  <span className="font-bold text-[13px] tracking-tight text-foreground">{criterion.title}</span>
-                  <span className="text-[12px] font-bold tabular-nums text-muted-foreground shrink-0">{criterion.points} pts</span>
-                </div>
-                <p className="text-[12.5px] leading-relaxed text-muted-foreground">{criterion.description}</p>
-                <div className="grid grid-cols-3 gap-1.5 pt-1">
-                  {(criterion.ratings || []).map(r => (
-                    <div key={r.points} className="px-2 py-2 bg-card border border-border/60 rounded-lg text-center">
-                      <div className="text-[12px] font-bold tabular-nums text-foreground">{r.points}</div>
-                      <div className="mt-0.5 text-[11px] leading-tight text-muted-foreground truncate">{r.description}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <RubricViewer
+          rubric={selectedActivity.rubric}
+          title="Activity Rubrics"
+        />
 
         {/* Grading entry point (faculty / staff) */}
         {activeRole !== 'student' && (
@@ -1024,7 +1051,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
             <div className="pt-2 flex justify-end">
               <button
                 type="submit"
-                disabled={isSubmitting}
+                disabled={!hasChanges || isSubmitting}
                 className="px-5 py-2.5 text-xs font-bold bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground rounded-xl transition-all shadow-primary-sm flex items-center space-x-2 cursor-pointer disabled:opacity-50"
               >
                 {isSubmitting ? (

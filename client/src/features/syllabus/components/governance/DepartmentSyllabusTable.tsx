@@ -313,7 +313,7 @@ export const DepartmentSyllabusTable: React.FC<DepartmentSyllabusTableProps> = (
                   const hasMultipleInstructors = group.instructorNames.length > 1;
 
                   return (
-                    <>
+                    <React.Fragment key={group.id}>
                       {group.instructorNames.map((instructorName, instIdx) => {
                         const instructorId = group.instructorIds[instIdx];
                         const instructorSections = group.instructorSections?.[instructorId] || [];
@@ -485,7 +485,7 @@ export const DepartmentSyllabusTable: React.FC<DepartmentSyllabusTableProps> = (
                           </tr>
                         );
                       })}
-                    </>
+                    </React.Fragment>
                   );
                 })
               )}

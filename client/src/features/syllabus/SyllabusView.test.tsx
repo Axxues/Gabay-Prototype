@@ -5,8 +5,12 @@ import { describe, expect, test, vi, beforeEach, afterEach } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { fireEvent, render, screen, waitFor, cleanup } from '@testing-library/react';
 import React from 'react';
-import type { OfficialSyllabusData } from '../../shared/data/syllabusData';
+import type { OfficialSyllabusData, ReferenceItem } from '../../shared/data/syllabusData';
 import type { SyllabusRevisionHeader } from '../../shared/types/syllabusApi';
+
+// Mutable per-test references for syllabusDoc(); read at call time inside the
+// vi.mock factory closure so each test can inject its own fixture.
+let testReferences: ReferenceItem[] = [];
 
 const mocks = vi.hoisted(() => ({
   updateCourseSyllabus: vi.fn(),
@@ -82,7 +86,7 @@ function syllabusDoc(): OfficialSyllabusData {
     courseOutline: [],
     learningPlan: [],
     courseMap: [],
-    references: [],
+    references: testReferences,
     signatories: {
       preparedBy: [{ name: 'Faculty One', title: 'Instructor' }],
       recommendingApproval: { name: '', title: '' },
@@ -134,12 +138,32 @@ beforeEach(() => {
 describe('SyllabusView revision editing', () => {
   afterEach(() => {
     cleanup();
+    testReferences = [];
   });
   test('draft revision renders the revision bar with status and number', () => {
     render(<SyllabusView courseId="c1" />);
     expect(screen.getByTestId('syllabus-revision-bar')).toBeInTheDocument();
     expect(screen.getByTestId('revision-status')).toHaveTextContent(/draft/i);
     expect(screen.getByTestId('revision-number')).toHaveTextContent(/revision 3/i);
+  });
+
+  test('references section commit stores references alphabetically', async () => {
+    const bookRef = { citation: 'Laplante, P. (2023). Zed Engineering. CRC Press.', authors: 'Laplante, P.', year: '2023', title: 'Zed Engineering', publisher: 'CRC Press' };
+    const alonzoRef = { citation: 'Alonzo, A. (2022). Alpha Design. MIT Press.', authors: 'Alonzo, A.', year: '2022', title: 'Alpha Design', publisher: 'MIT Press' };
+    testReferences = [bookRef, alonzoRef];
+    render(<SyllabusView courseId="c1" />);
+    const editButtons = screen.getAllByTitle('Edit section');
+    fireEvent.click(editButtons[editButtons.length - 1]!); // referencesSignatures is the last section
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    await waitFor(() => expect(mocks.updateSyllabusSection).toHaveBeenCalled());
+    const refCall = mocks.updateSyllabusSection.mock.calls.find(c => c[1] === 'references')!;
+    expect((refCall[2] as { authors: string }[]).map(r => r.authors)).toEqual(['Alonzo, A.', 'Laplante, P.']);
+  });
+
+  test('saved references render with APA italics', () => {
+    testReferences = [{ citation: 'Laplante, P. (2023). Zed Engineering. CRC Press.', authors: 'Laplante, P.', year: '2023', title: 'Zed Engineering', publisher: 'CRC Press' }];
+    render(<SyllabusView courseId="c1" />);
+    expect(screen.getByText('Zed Engineering').closest('em')).not.toBeNull();
   });
 
   test('published revisions are read-only until a draft is created', () => {

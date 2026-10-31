@@ -168,6 +168,7 @@ export interface Course {
   syllabus?: OfficialSyllabusData | null;
   gradingTerms?: TermId[] | null;
   gradesReleased?: Partial<Record<TermId, boolean>> | null;
+  assessmentCategoryWeights?: Record<string, number>;
   joinCode?: string;
   sectionIds?: string[];
   schoolYear?: string;
@@ -323,6 +324,7 @@ export interface Activity {
   submissionTypes?: string[];
   category?: string;
   weight?: number;
+  includeInGrades?: boolean;
   rubric?: RubricCriterion[];
   fileName?: string;
   fileUrl?: string;
@@ -413,6 +415,8 @@ export interface Quiz {
   availableFrom?: string;
   availableUntil?: string;
   questions: QuizQuestion[];
+  weight?: number;
+  includeInGrades?: boolean;
   fileName?: string;
   fileUrl?: string;
   fileSize?: string;
@@ -653,7 +657,7 @@ export interface CourseStudentGrade {
 
 export interface SPRSourceLink { kind: 'activity' | 'quiz' | 'exam'; sourceId: string }
 export interface SPRColumn { id: string; title: string; perfectScore: number; linkedSource?: SPRSourceLink }
-export interface SPRConfig { courseId: string; prelimColumns?: SPRColumn[]; midtermColumns: SPRColumn[]; finalColumns: SPRColumn[]; mtExamPerfect: number; ftExamPerfect: number }
+export interface SPRConfig { courseId: string; prelimColumns?: SPRColumn[]; midtermColumns: SPRColumn[]; finalColumns: SPRColumn[]; mtExamPerfect: number; ftExamPerfect: number; weights?: SPRWeights }
 export type SPRCellMap = Record<string, Record<string, number | null>>;
 export interface SPRWeights { csWeight: number; examWeight: number; mtWeight: number; ftWeight: number; formulaLabel: string; parseError?: boolean }
 

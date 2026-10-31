@@ -97,7 +97,12 @@ export function useSyllabusCollaboration(
   activeStep: string = 'course-info',
   canonicalCourseId?: string,
   onRemoteUpdate?: (syllabusData: OfficialSyllabusData, updatedAt?: number) => void,
-  onRemoteConsensusUpdate?: (agreements: Record<string, boolean>, status?: string, evaluators?: any[]) => void
+  onRemoteConsensusUpdate?: (
+    agreements: Record<string, boolean>,
+    status?: string,
+    evaluators?: any[],
+    remoteUpdatedAt?: number
+  ) => void
 ) {
   const [collaborators, setCollaborators] = useState<CollaboratorInfo[]>([]);
   const [syncStatus, setSyncStatus] = useState<SyllabusSaveStatus>('idle');
@@ -154,7 +159,7 @@ export function useSyllabusCollaboration(
     }
 
     if (onRemoteConsensusUpdate && (msg.submissionAgreements || msg.status || msg.evaluators)) {
-      onRemoteConsensusUpdate(msg.submissionAgreements || {}, msg.status, msg.evaluators);
+      onRemoteConsensusUpdate(msg.submissionAgreements || {}, msg.status, msg.evaluators, msg.timestamp);
     }
   }, [groupId, activeUser?.id, clientSessionId, isOwnSession, onRemoteUpdate, onRemoteConsensusUpdate]);
 
@@ -313,7 +318,7 @@ export function useSyllabusCollaboration(
                 }
 
                 if (onRemoteConsensusUpdate && (parsed.submissionAgreements || parsed.status || parsed.evaluators)) {
-                  onRemoteConsensusUpdate(parsed.submissionAgreements || {}, parsed.status, parsed.evaluators);
+                  onRemoteConsensusUpdate(parsed.submissionAgreements || {}, parsed.status, parsed.evaluators, remoteUpdatedAt);
                 }
               }
             }
@@ -382,7 +387,8 @@ export function useSyllabusCollaboration(
               onRemoteConsensusUpdate(
                 remote.payload.submissionAgreements || {},
                 remote.payload.status,
-                remote.payload.evaluators
+                remote.payload.evaluators,
+                remoteUpdatedAt
               );
             }
           }

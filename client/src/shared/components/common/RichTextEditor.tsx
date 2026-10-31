@@ -2,7 +2,7 @@ import React from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
-import { Bold, Italic, Underline as UnderlineIcon, List, ListOrdered } from 'lucide-react';
+import { List, ListOrdered } from 'lucide-react';
 
 // Create a named instance to avoid conflicts
 const CustomUnderline = Underline.extend({ name: 'customUnderline' });
@@ -51,31 +51,6 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   return (
     <div className={`border border-border rounded-lg bg-background focus-within:ring-1 focus-within:ring-primary focus-within:border-primary transition-all ${className}`}>
       <div className="flex items-center gap-1 px-2 py-1 border-b border-border bg-muted/30">
-        <button
-          type="button"
-          onClick={() => editor.chain().focus().toggleBold().run()}
-          className={`p-1.5 rounded hover:bg-muted transition-colors ${editor.isActive('bold') ? 'bg-muted text-primary' : 'text-muted-foreground'}`}
-          title="Bold"
-        >
-          <Bold className="w-4 h-4" />
-        </button>
-        <button
-          type="button"
-          onClick={() => editor.chain().focus().toggleItalic().run()}
-          className={`p-1.5 rounded hover:bg-muted transition-colors ${editor.isActive('italic') ? 'bg-muted text-primary' : 'text-muted-foreground'}`}
-          title="Italic"
-        >
-          <Italic className="w-4 h-4" />
-        </button>
-        <button
-          type="button"
-          onClick={() => editor.chain().focus().toggleUnderline().run()}
-          className={`p-1.5 rounded hover:bg-muted transition-colors ${editor.isActive('underline') ? 'bg-muted text-primary' : 'text-muted-foreground'}`}
-          title="Underline"
-        >
-          <UnderlineIcon className="w-4 h-4" />
-        </button>
-        <div className="w-px h-5 bg-border mx-1" />
         <button
           type="button"
           onClick={() => editor.chain().focus().toggleBulletList().run()}

@@ -1001,7 +1001,7 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
                           className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                             isLocked
                               ? 'bg-muted text-muted-foreground'
-                              : group.status === 'ready_for_evaluation'
+                              : group.status === 'ready_for_evaluation' || group.status === 'under_evaluation'
                               ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400'
                               : 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
                           }`}

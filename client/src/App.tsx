@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, Outlet, useLocation, useNavigate, useParams, u
 import { useLMS, LMSProvider } from './shared/context/LMSContext';
 import { GabayChatProvider } from './shared/context/GabayChatContext';
 import { AppRail } from './shared/components/layout/AppRail';
+import { RealtimeSyncBridge } from './features/realtime';
 import { LMSContextPanel } from './shared/components/layout/LMSContextPanel';
 import { Topbar } from './shared/components/layout/Topbar';
 import { LoginPage, RegisterPage, ProfilePage } from './features/auth';
@@ -33,6 +34,7 @@ const EditAccountPage = React.lazy(() => import('./features/accounts').then(m =>
 const AccountProfilePage = React.lazy(() => import('./features/accounts').then(m => ({ default: m.AccountProfilePage })));
 const GabayRAGPage = React.lazy(() => import('./features/rag').then(m => ({ default: m.GabayRAGPage })));
 const SpeedGraderModal = React.lazy(() => import('./features/assessments').then(m => ({ default: m.SpeedGraderModal })));
+const AssessmentWeightsPage = React.lazy(() => import('./features/assessments').then(m => ({ default: m.AssessmentWeightsPage })));
 const SyllabusCreatorPage = React.lazy(() => import('./features/syllabus').then(m => ({ default: m.SyllabusCreatorPage })));
 
 function useAppNavigation() {
@@ -252,6 +254,19 @@ const EditCourseRoute: React.FC<{ nav: ReturnType<typeof useAppNavigation> }> = 
   );
 };
 
+const AssessmentWeightsRoute: React.FC = () => {
+  const { courseId } = useParams<{ courseId?: string }>();
+  const { activeCourseId, setActiveCourseId } = useLMS();
+
+  useEffect(() => {
+    if (courseId && courseId !== activeCourseId) {
+      setActiveCourseId(decodeURIComponent(courseId));
+    }
+  }, [courseId, activeCourseId, setActiveCourseId]);
+
+  return <AssessmentWeightsPage />;
+};
+
 const EditAccountRoute: React.FC<{ nav: ReturnType<typeof useAppNavigation> }> = ({ nav }) => {
   const { userId } = useParams<{ userId: string }>();
   const { db } = useLMS();
@@ -373,7 +388,9 @@ export const AppShell: React.FC = () => {
   const handleCloseSidebar = React.useCallback(() => setSidebarOpen(false), []);
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden bg-muted font-sans selection:bg-primary/20 dark:bg-background">
+
+    <div className="h-dvh flex flex-col overflow-hidden bg-muted font-sans selection:bg-primary/20 dark:bg-background">
+      <RealtimeSyncBridge />
       <Topbar
         currentTab={currentTab}
         onNavigateTab={nav.handleNavigateTab}
@@ -482,6 +499,8 @@ export const AppContent: React.FC = () => {
         <Route path="/courses/chair-sheet" element={<RequireChair><AssignedCoursesRoute /></RequireChair>} />
         <Route path="/courses/new" element={<RequireChair><AssignedCoursesRoute /></RequireChair>} />
         <Route path="/courses/:courseId/edit" element={<RouteWithNav element={(nav) => <EditCourseRoute nav={nav} />} />} />
+        <Route path="/courses/:courseId/assessment-weights" element={<AssessmentWeightsRoute />} />
+        <Route path="/courses/:courseId/gradebook/assessment-weights" element={<AssessmentWeightsRoute />} />
         <Route path="/courses" element={<CoursesRoute />} />
         <Route path="/courses/:courseId" element={<CoursesRoute />} />
         <Route path="/courses/:courseId/:subTab" element={<CoursesRoute />} />

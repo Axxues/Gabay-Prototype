@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { EmptyState } from '../../shared/components/common/EmptyState';
 import { likhaLmsApi } from '../../shared/api/likhaLmsApi';
+import { useLiveSyncSuppression } from '../realtime';
 
 interface ActivityRunnerViewProps {
   courseId: string;
@@ -23,6 +24,22 @@ interface ActivityRunnerViewProps {
 }
 
 const questionSetKeyOf = (activityId: string) => `asg-activity-${activityId}`;
+
+/** Question-set submissions store answers as a JSON map in `content`. */
+function parseSubmittedAnswers(content?: string): Record<string, string> {
+  if (!content || content.trim().startsWith('<')) return {};
+  try {
+    const parsed: unknown = JSON.parse(content);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return Object.fromEntries(
+        Object.entries(parsed as Record<string, unknown>).map(([id, value]) => [id, String(value ?? '')])
+      );
+    }
+  } catch {
+    // Legacy plain-text content — nothing to render as an answer map.
+  }
+  return {};
+}
 
 /** Task 4 does not validate blank prompt text — never crash on empty strings. */
 function questionLabel(q: QuizQuestion, index: number): string {
@@ -68,14 +85,19 @@ export const ActivityRunnerView: React.FC<ActivityRunnerViewProps> = ({
   } = useLMS();
 
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [result, setResult] = useState<Submission | null>(null);
   // Instant-feedback score from the client scorer — the server row stays
   // 'submitted' until faculty grades in SpeedGrader.
   const [clientScore, setClientScore] = useState<ActivityScore | null>(null);
   const [localQuestions, setLocalQuestions] = useState<QuizQuestion[] | null>(null);
 
+  // Live sync must not swap activity data underneath an in-progress attempt.
+  useLiveSyncSuppression(Boolean(activityId) && activeRole === 'student');
+
   useEffect(() => {
     setAnswers({});
+    setIsSubmitting(false);
     setResult(null);
     setClientScore(null);
     setLocalQuestions(null);
@@ -169,8 +191,13 @@ export const ActivityRunnerView: React.FC<ActivityRunnerViewProps> = ({
       ? activitySubmissions.find(s => s.studentId === activeUser.id)
       : undefined;
 
+  const submittedAnswers = parseSubmittedAnswers(studentSubmission?.content);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // A submission is final: never POST twice for the same attempt.
+    if (isSubmitting || studentSubmission) return;
+    setIsSubmitting(true);
     try {
       // recordActivitySubmission hits the same endpoint as submitActivity
       // (POST /api/activities/:id/submit); Task-6 follow-up: unify the
@@ -182,6 +209,8 @@ export const ActivityRunnerView: React.FC<ActivityRunnerViewProps> = ({
       setResult(serverSub);
     } catch {
       // recordActivitySubmission already surfaced the alert.
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -300,25 +329,44 @@ export const ActivityRunnerView: React.FC<ActivityRunnerViewProps> = ({
         </div>
       )}
 
-      {/* ---------- Student runner ---------- */}
-      {activeRole === 'student' && !result && (
-        <>
-          {studentSubmission && (
-            <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-2xl text-xs text-blue-700 dark:text-blue-300 flex items-center space-x-3">
-              <FileText className="w-5 h-5 shrink-0" />
-              <div>
-                <span className="font-bold">
-                  {studentSubmission.status === 'graded'
-                    ? `Previously scored: ${studentSubmission.grade}%`
-                    : 'Previously submitted — pending faculty review.'}
+      {/* ---------- Student runner: locked after the first submission ---------- */}
+      {activeRole === 'student' && !result && studentSubmission && (
+        <div className="space-y-5">
+          <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-2xl text-xs text-blue-700 dark:text-blue-300 flex items-center space-x-3">
+            <FileText className="w-5 h-5 shrink-0" />
+            <div>
+              <span className="font-bold">
+                {studentSubmission.status === 'graded'
+                  ? `Graded: ${studentSubmission.grade}%`
+                  : 'Previously submitted — pending faculty review.'}
+              </span>
+              <p className="text-[11px] opacity-80 mt-0.5">
+                You have already answered this question set. Answers are locked and cannot be changed.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            {effectiveQuestions.map((q, idx) => (
+              <div key={q.id} className="p-5 rounded-2xl border border-border bg-card space-y-2 text-xs shadow-subtle">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                  Question {idx + 1} • {typeLabel(q.type)}
                 </span>
-                <p className="text-[11px] opacity-80 mt-0.5">
-                  Answering again replaces your previous submission.
+                <h4 className="font-bold text-foreground">{questionLabel(q, idx)}</h4>
+                <p className="text-muted-foreground font-sans">
+                  Your answer:{' '}
+                  {submittedAnswers[q.id]?.trim()
+                    ? submittedAnswers[q.id]
+                    : <em className="not-italic">(blank)</em>}
                 </p>
               </div>
-            </div>
-          )}
+            ))}
+          </div>
+        </div>
+      )}
 
+      {/* ---------- Student runner: first attempt ---------- */}
+      {activeRole === 'student' && !result && !studentSubmission && (
           <form onSubmit={handleSubmit} className="space-y-5">
             {effectiveQuestions.map((q, idx) => (
               <div key={q.id} className="p-5 bg-card rounded-2xl border border-border space-y-4 shadow-subtle">
@@ -433,14 +481,14 @@ export const ActivityRunnerView: React.FC<ActivityRunnerViewProps> = ({
             <div className="flex items-center justify-end pt-4 border-t border-border">
               <button
                 type="submit"
-                className="px-6 py-2.5 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all shadow-primary-sm flex items-center space-x-2 cursor-pointer active:scale-98"
+                disabled={isSubmitting}
+                className="px-6 py-2.5 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all shadow-primary-sm flex items-center space-x-2 cursor-pointer active:scale-98 disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <Send className="w-4 h-4" />
-                <span>Submit Activity Answers</span>
+                <span>{isSubmitting ? 'Submitting…' : 'Submit Activity Answers'}</span>
               </button>
             </div>
           </form>
-        </>
       )}
 
       {/* ---------- Student result panel ---------- */}
@@ -513,15 +561,6 @@ export const ActivityRunnerView: React.FC<ActivityRunnerViewProps> = ({
             })}
           </div>
 
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={() => setResult(null)}
-              className="px-4 py-2 text-xs font-bold bg-muted hover:bg-muted/80 text-foreground rounded-xl border border-border transition-all cursor-pointer"
-            >
-              Answer Again
-            </button>
-          </div>
         </div>
       )}
     </div>

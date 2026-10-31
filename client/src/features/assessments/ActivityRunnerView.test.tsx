@@ -6,6 +6,7 @@ import React from 'react';
 const mocks = vi.hoisted(() => ({
   db: { activities: [], submissions: [] } as any,
   onSelectActivity: vi.fn(),
+  recordActivitySubmission: vi.fn(),
 }));
 
 vi.mock('../../shared/context/LMSContext', () => ({
@@ -13,7 +14,7 @@ vi.mock('../../shared/context/LMSContext', () => ({
     activeRole: 'student',
     activeUser: { id: 'u-stu-1', name: 'Student', role: 'student' },
     db: mocks.db,
-    recordActivitySubmission: vi.fn(),
+    recordActivitySubmission: mocks.recordActivitySubmission,
     deleteActivity: vi.fn(),
     openSpeedGrader: vi.fn(),
     showAlert: vi.fn(),
@@ -57,6 +58,7 @@ function renderRunner(activityId: string | null) {
 describe('ActivityRunnerView', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.recordActivitySubmission.mockReset();
     mocks.db = { activities: [questionSet], submissions: [] } as any;
   });
 
@@ -71,6 +73,48 @@ describe('ActivityRunnerView', () => {
     renderRunner('act-1');
     fireEvent.click(screen.getByRole('button', { name: /back to activities list/i }));
     expect(mocks.onSelectActivity).toHaveBeenCalledWith(null);
+  });
+
+  test('locks the answers once the student has already submitted', () => {
+    mocks.db = {
+      activities: [questionSet],
+      submissions: [
+        {
+          id: 'sub-1',
+          activityKey: 'asg-activity-act-1',
+          studentId: 'u-stu-1',
+          studentName: 'Student',
+          status: 'submitted',
+          content: JSON.stringify({ q1: '4' }),
+          submittedAt: new Date().toISOString(),
+        },
+      ],
+    } as any;
+
+    renderRunner('act-1');
+
+    expect(screen.queryByRole('button', { name: /submit activity answers/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+    expect(screen.getByText(/answers are locked/i)).toBeInTheDocument();
+    expect(screen.getByText(/your answer:\s*4/i)).toBeInTheDocument();
+  });
+
+  test('does not offer to answer again after submitting', async () => {
+    mocks.recordActivitySubmission.mockResolvedValue({
+      id: 'sub-new',
+      activityKey: 'asg-activity-act-1',
+      studentId: 'u-stu-1',
+      status: 'submitted',
+      submittedAt: new Date().toISOString(),
+    });
+
+    renderRunner('act-1');
+    fireEvent.click(screen.getAllByRole('radio')[1]);
+    fireEvent.click(screen.getByRole('button', { name: /submit activity answers/i }));
+
+    await screen.findByText(/activity completed/i);
+    expect(mocks.recordActivitySubmission).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: /answer again/i })).not.toBeInTheDocument();
   });
 
   test('shows an empty state when the question set no longer exists', () => {

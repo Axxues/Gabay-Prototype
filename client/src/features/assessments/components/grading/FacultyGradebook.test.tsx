@@ -3,6 +3,16 @@ import { describe, expect, test, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 
+const mockNavigate = vi.fn();
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual('react-router-dom');
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+  };
+});
+
+
 const mocks = vi.hoisted(() => ({
   db: {} as any,
   isLoading: false,
@@ -192,5 +202,59 @@ describe('FacultyGradebook manual exam editing', () => {
     fireEvent.change(input, { target: { value: '85' } });
     fireEvent.blur(input);
     expect(mocks.upsertManualExamGrade).toHaveBeenCalledWith('c1', 'midterm', 'u-stud-1', 85);
+  });
+});
+
+
+describe('FacultyGradebook assessment weights configuration', () => {
+  beforeEach(() => {
+    mockNavigate.mockClear();
+    mocks.db = baseDb();
+    mocks.isLoading = false;
+    mocks.isSyncing = false;
+    localStorage.setItem('gabay-gradebook-collapsed-c1', JSON.stringify([]));
+  });
+
+  test('clicking Configure Assessments navigates to assessment-weights page', () => {
+    render(<FacultyGradebook courseId="c1" />);
+    const configBtn = screen.getByTestId('gradebook-configure-assessments');
+    expect(configBtn).toBeInTheDocument();
+    fireEvent.click(configBtn);
+    expect(mockNavigate).toHaveBeenCalledWith('/courses/c1/assessment-weights');
+  });
+
+  test('calculates class standing using course category weights', () => {
+    const db = baseDb();
+    db.activities = [
+      { id: 'act1', courseId: 'c1', title: 'MT Activity', published: true, pointsPossible: 100, term: 'midterm', format: 'classic', questions: [] },
+    ];
+    db.quizzes = [
+      { id: 'q1', courseId: 'c1', title: 'MT Quiz', published: true, term: 'midterm', questions: [{ id: 'qq1', points: 20 }] },
+    ];
+    db.courses[0].assessmentCategoryWeights = {
+      Activities: 50,
+      Quizzes: 50,
+      Assignments: 0,
+      Projects: 0,
+      Presentations: 0,
+    };
+    db.users = [
+      { id: 'u-stud-1', role: 'student', name: 'Student One', email: 'stud1@gmail.com', studentId: '2021-SLUC-0001', enrolledCourseIds: ['c1'] },
+    ];
+    // Student scored 100/100 on Activity (100%), and 50% on Quiz (50%)
+    db.submissions = [
+      { id: 'sub1', activityKey: 'act1', studentId: 'u-stud-1', grade: 100, status: 'graded' },
+      { id: 'sub2', activityKey: 'asg-quiz-q1', studentId: 'u-stud-1', grade: 50, status: 'graded' },
+      { id: 'sub3', examId: 'ex1', activityKey: 'asg-exam-ex1', studentId: 'u-stud-1', grade: 100, status: 'graded' },
+    ];
+    db.exams = [
+      { id: 'ex1', courseId: 'c1', term: 'midterm', published: true, questions: [{ id: 'eq1', points: 100 }] },
+    ];
+    mocks.db = db;
+
+    render(<FacultyGradebook courseId="c1" />);
+    // With category weights: Activities 100% * 50% + Quizzes 50% * 50% = 75% Class Standing
+    // Term grade = 40% CS (75%) + 60% Exam (100%) = 30 + 60 = 90%
+    expect(screen.getByText('90%')).toBeInTheDocument();
   });
 });

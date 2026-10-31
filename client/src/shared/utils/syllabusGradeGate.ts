@@ -4,8 +4,8 @@ interface GradeGateRevision {
 
 interface GradeGateSyllabus {
   gradingSystem?: {
-    termFormula?: string;
-    finalFormula?: string;
+    termFormula?: string | { classStandingPercent?: string; examPercent?: string };
+    finalFormula?: string | { midtermPercent?: string; finalPercent?: string };
   } | null;
 }
 
@@ -16,6 +16,17 @@ export function isSyllabusGradeReady(
   if (!syllabus) return false;
   if (revision && revision.status !== 'published') return false;
   const grading = syllabus.gradingSystem;
-  if (!grading?.termFormula?.trim() || !grading?.finalFormula?.trim()) return false;
-  return true;
+  if (!grading) return false;
+
+  const hasTerm =
+    typeof grading.termFormula === 'object' && grading.termFormula !== null
+      ? Boolean(grading.termFormula.classStandingPercent && grading.termFormula.examPercent)
+      : Boolean(typeof grading.termFormula === 'string' && grading.termFormula.trim());
+
+  const hasFinal =
+    typeof grading.finalFormula === 'object' && grading.finalFormula !== null
+      ? Boolean(grading.finalFormula.midtermPercent && grading.finalFormula.finalPercent)
+      : Boolean(typeof grading.finalFormula === 'string' && grading.finalFormula.trim());
+
+  return hasTerm && hasFinal;
 }

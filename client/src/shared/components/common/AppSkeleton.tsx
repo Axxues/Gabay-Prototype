@@ -8,7 +8,7 @@ export const ShellChromeSkeleton: React.FC<{ children: React.ReactNode }> = ({ c
   const isFullBleed = path.startsWith('/courses') || path === '/inbox' || path === '/gabay-rag';
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden bg-muted font-sans dark:bg-background" role="status" aria-label="Loading workspace">
+    <div className="h-dvh flex flex-col overflow-hidden bg-muted font-sans dark:bg-background" role="status" aria-label="Loading workspace">
       {/* Topbar placeholder */}
       <div className="h-16 shrink-0 border-b border-border/70 bg-background/80 px-4 sm:px-6 flex items-center justify-between">
         <div className="flex items-center gap-3">

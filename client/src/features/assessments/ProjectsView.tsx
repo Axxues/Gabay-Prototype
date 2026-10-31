@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useLMS } from '../../shared/context/LMSContext';
-import type { TermId } from '../../shared/types/lms';
+import type { TermId, SubmissionAttachment } from '../../shared/types/lms';
 import { normalizeTermId } from '../../shared/utils/gradingTerms';
 import { TERM_LABELS, TermFilterSelect } from '../../shared/components/common/TermSelect';
 import { buildAssessmentSourceIndex } from '../../shared/utils/assessmentSource';
@@ -24,6 +24,7 @@ import {
   Download,
   Eye,
   FileText,
+  X,
   Image as ImageIcon
 } from 'lucide-react';
 import { PageHeader } from '../../shared/components/common/PageHeader';
@@ -31,6 +32,8 @@ import { EmptyState } from '../../shared/components/common/EmptyState';
 import { CreateProjectPage } from './CreateProjectPage';
 import { canManageCourseContent } from '../../shared/utils/roles';
 import { AssessmentFilePreviewModal, type AssessmentPreviewAttachment } from './components/AssessmentFilePreviewModal';
+import { RubricViewer } from './components/RubricViewer';
+import { uploadFileToPublic, formatFileSize } from '../../shared/utils/fileUploader';
 
 interface ProjectsViewProps {
   courseId: string;
@@ -61,7 +64,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   const [repoUrl, setRepoUrl] = useState('');
   const [demoUrl, setDemoUrl] = useState('');
   const [textContent, setTextContent] = useState('');
-  const [simulatedFileName, setSimulatedFileName] = useState('');
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [previewAttachment, setPreviewAttachment] = useState<AssessmentPreviewAttachment | null>(null);
@@ -104,6 +108,16 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       )
     : undefined;
 
+  const addFiles = (files: File[]) => {
+    setSelectedFiles(prev => {
+      const next = [...prev];
+      for (const f of files) {
+        if (!next.some(existing => existing.name === f.name && existing.size === f.size)) next.push(f);
+      }
+      return next;
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedProject) return;
@@ -121,18 +135,45 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       .filter(Boolean)
       .join('\n\n');
 
-    if (!compiledContent && !simulatedFileName) {
+    if (!compiledContent && selectedFiles.length === 0) {
       showAlert('Please provide project submission details or attach files.');
       return;
     }
 
     setIsSubmitting(true);
     try {
+      const attachments: SubmissionAttachment[] = [];
+      if (selectedFiles.length > 0) {
+        for (const file of selectedFiles) {
+          try {
+            const res = await uploadFileToPublic(file);
+            attachments.push({
+              name: res.name || file.name,
+              url: res.url,
+              size: res.size,
+              id: (res as any).id || (res as any).fileId,
+            });
+          } catch {
+            attachments.push({
+              name: file.name,
+              url: `/likha/assets/mock-${encodeURIComponent(file.name)}`,
+              size: formatFileSize(file.size),
+            });
+          }
+        }
+      }
+
+      const primary = attachments[0];
       await submitActivity(
         selectedProject.id,
-        simulatedFileName ? 'file' : 'online_text',
+        attachments.length > 0 ? 'file' : 'online_text',
         compiledContent,
-        simulatedFileName || 'Project_Deliverable.zip'
+        primary?.name ?? 'Project_Deliverable.zip',
+        undefined,
+        primary?.url,
+        primary?.id,
+        primary?.size,
+        attachments.length > 0 ? attachments : undefined
       );
       showAlert({
         title: 'Project Submitted',
@@ -452,22 +493,10 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           );
         })()}
 
-        {selectedProject.rubric && selectedProject.rubric.length > 0 && (
-          <div className="pt-4 border-t border-border space-y-2">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Rubric Criteria</h3>
-            <div className="space-y-2">
-              {selectedProject.rubric.map(r => (
-                <div key={r.id} className="rounded-xl border border-border p-3 text-xs bg-accent/30 flex justify-between items-start">
-                  <div>
-                    <div className="font-bold">{r.title}</div>
-                    <div className="text-muted-foreground mt-0.5">{r.description}</div>
-                  </div>
-                  <div className="font-bold text-primary shrink-0 ml-4">{r.points} pts</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        <RubricViewer
+          rubric={selectedProject.rubric}
+          title="Project Rubrics"
+        />
       </div>
 
       {/* Student Submission Card */}
@@ -577,13 +606,92 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                     <Upload className="h-3.5 w-3.5" />
                     Deliverable Archive / Documentation (Optional)
                   </label>
-                  <input
-                    type="text"
-                    placeholder="Attach file (e.g. project-report.pdf or deliverable.zip)"
-                    value={simulatedFileName}
-                    onChange={e => setSimulatedFileName(e.target.value)}
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-xs"
-                  />
+                  <div
+                    onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
+                    onDragLeave={() => setIsDragging(false)}
+                    onDrop={e => {
+                      e.preventDefault();
+                      setIsDragging(false);
+                      const dropped = Array.from(e.dataTransfer.files || []);
+                      if (dropped.length) addFiles(dropped);
+                    }}
+                    className={`rounded-xl border border-dashed p-5 text-center space-y-3 transition-colors ${
+                      isDragging ? 'border-primary bg-primary/5' : 'border-border'
+                    }`}
+                  >
+                    {selectedFiles.length > 0 ? (
+                      <div className="mx-auto max-w-md space-y-2">
+                        {selectedFiles.map((file, idx) => (
+                          <div
+                            key={`${file.name}-${idx}`}
+                            className="p-3 bg-card border border-border rounded-xl flex items-center justify-between"
+                          >
+                            <div className="flex items-center space-x-3 truncate">
+                              <FileText className="w-5 h-5 text-primary shrink-0" />
+                              <div className="text-left truncate">
+                                <div className="font-bold text-foreground truncate text-xs">{file.name}</div>
+                                <div className="text-[11px] text-muted-foreground">{formatFileSize(file.size)}</div>
+                              </div>
+                            </div>
+                            <div className="flex items-center space-x-1 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const url = URL.createObjectURL(file);
+                                  setPreviewAttachment({ name: file.name, size: formatFileSize(file.size), url });
+                                }}
+                                className="p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg transition-colors cursor-pointer"
+                                title="Preview selected file"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedFiles(prev => prev.filter((_, i) => i !== idx))}
+                                className="p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg transition-colors cursor-pointer"
+                                title="Remove file"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                        <label className="block text-center text-[11px] font-semibold text-primary hover:underline cursor-pointer">
+                          + Add more files
+                          <input
+                            type="file"
+                            multiple
+                            className="hidden"
+                            onChange={e => {
+                              const list = Array.from(e.target.files || []);
+                              if (list.length) addFiles(list);
+                              e.target.value = '';
+                            }}
+                          />
+                        </label>
+                      </div>
+                    ) : (
+                      <>
+                        <Upload className="h-7 w-7 mx-auto text-muted-foreground" />
+                        <div className="text-xs text-muted-foreground">
+                          <label className="font-semibold text-primary hover:underline cursor-pointer">
+                            <span>Attach files</span>
+                            <input
+                              type="file"
+                              multiple
+                              className="hidden"
+                              onChange={e => {
+                                const list = Array.from(e.target.files || []);
+                                if (list.length) addFiles(list);
+                                e.target.value = '';
+                              }}
+                            />
+                          </label>
+                          <span> or drag and drop here (multiple files supported)</span>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
 

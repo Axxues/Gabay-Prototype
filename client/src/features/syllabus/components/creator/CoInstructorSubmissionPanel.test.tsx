@@ -48,7 +48,8 @@ describe('CoInstructorSubmissionPanel', () => {
     expect(onRetract).toHaveBeenCalledTimes(1);
   });
 
-  it('hides the action/edit button once all instructors have agreed (submission locked for evaluation)', () => {
+  it('allows an agreed instructor to edit/retract even when all instructors agreed, as long as evaluation has not started', () => {
+    const onRetract = vi.fn();
     render(
       <CoInstructorSubmissionPanel
         currentUserId="u1"
@@ -57,6 +58,29 @@ describe('CoInstructorSubmissionPanel', () => {
           { id: 'u2', name: 'Prof. Reyes (3B)', hasAgreed: true }
         ]}
         allAgreed={true}
+        isEvaluationStarted={false}
+        onAgreeToSubmit={vi.fn()}
+        onRetractAgreement={onRetract}
+      />
+    );
+
+    expect(screen.getByText(/Unanimous Instructor Consensus Achieved/i)).toBeInTheDocument();
+    const editBtn = screen.getByRole('button', { name: /edit syllabus/i });
+    expect(editBtn).toBeInTheDocument();
+    fireEvent.click(editBtn);
+    expect(onRetract).toHaveBeenCalledTimes(1);
+  });
+
+  it('hides the action/edit button once departmental evaluation has actively started', () => {
+    render(
+      <CoInstructorSubmissionPanel
+        currentUserId="u1"
+        instructors={[
+          { id: 'u1', name: 'Dr. Santos (3A)', hasAgreed: true },
+          { id: 'u2', name: 'Prof. Reyes (3B)', hasAgreed: true }
+        ]}
+        allAgreed={true}
+        isEvaluationStarted={true}
         onAgreeToSubmit={vi.fn()}
         onRetractAgreement={vi.fn()}
       />
@@ -66,20 +90,39 @@ describe('CoInstructorSubmissionPanel', () => {
     expect(screen.queryByRole('button', { name: /edit syllabus/i })).not.toBeInTheDocument();
   });
 
-  it('hides the action/edit button for a solo instructor once submitted', () => {
-    render(
+  it('allows a solo instructor to edit/retract before evaluation starts, but hides button when evaluation started', () => {
+    const onRetract = vi.fn();
+    const { rerender } = render(
       <CoInstructorSubmissionPanel
         currentUserId="u1"
         instructors={[
           { id: 'u1', name: 'Raymund Dilan (1-A)', hasAgreed: true }
         ]}
         allAgreed={true}
+        isEvaluationStarted={false}
         onAgreeToSubmit={vi.fn()}
-        onRetractAgreement={vi.fn()}
+        onRetractAgreement={onRetract}
       />
     );
 
     expect(screen.getByText(/Submission Confirmed/i)).toBeInTheDocument();
+    const editBtn = screen.getByRole('button', { name: /edit syllabus/i });
+    expect(editBtn).toBeInTheDocument();
+    fireEvent.click(editBtn);
+    expect(onRetract).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <CoInstructorSubmissionPanel
+        currentUserId="u1"
+        instructors={[
+          { id: 'u1', name: 'Raymund Dilan (1-A)', hasAgreed: true }
+        ]}
+        allAgreed={true}
+        isEvaluationStarted={true}
+        onAgreeToSubmit={vi.fn()}
+        onRetractAgreement={onRetract}
+      />
+    );
     expect(screen.queryByRole('button', { name: /edit syllabus/i })).not.toBeInTheDocument();
   });
 });

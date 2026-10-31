@@ -12,6 +12,7 @@ interface Step7ReviewSignatoriesProps {
   allAgreed?: boolean;
   onAgreeToSubmit?: () => void;
   onRetractAgreement?: () => void;
+  isEvaluationStarted?: boolean;
 }
 
 export const Step7ReviewSignatories: React.FC<Step7ReviewSignatoriesProps> = ({
@@ -19,7 +20,8 @@ export const Step7ReviewSignatories: React.FC<Step7ReviewSignatoriesProps> = ({
   currentUserId,
   allAgreed = false,
   onAgreeToSubmit,
-  onRetractAgreement
+  onRetractAgreement,
+  isEvaluationStarted = false
 }) => {
   return (
     <>
@@ -31,6 +33,7 @@ export const Step7ReviewSignatories: React.FC<Step7ReviewSignatoriesProps> = ({
           allAgreed={allAgreed}
           onAgreeToSubmit={onAgreeToSubmit}
           onRetractAgreement={onRetractAgreement}
+          isEvaluationStarted={isEvaluationStarted}
         />
       )}
     </>

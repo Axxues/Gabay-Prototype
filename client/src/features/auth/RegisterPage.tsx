@@ -363,7 +363,7 @@ export const RegisterPage: React.FC = () => {
   // Render Token Activation Flow Screen
   if (isActivationRoute) {
     return (
-      <div className="h-screen max-h-screen w-full bg-muted flex flex-col items-center justify-center p-4 sm:p-6 relative overflow-y-auto overflow-x-hidden text-foreground font-sans custom-scrollbar">
+      <div className="h-dvh max-h-dvh w-full bg-muted flex flex-col items-center justify-center p-4 sm:p-6 relative overflow-y-auto overflow-x-hidden text-foreground font-sans custom-scrollbar">
         {/* Subtle Background Glows */}
         <div className="fixed -top-32 -left-32 w-96 h-96 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
         <div className="fixed -bottom-32 -right-32 w-96 h-96 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
@@ -486,7 +486,7 @@ export const RegisterPage: React.FC = () => {
 
   // Registration Form Screen
   return (
-    <div className="h-screen max-h-screen w-full bg-muted flex flex-col items-center justify-center p-3 sm:p-6 relative overflow-y-auto overflow-x-hidden text-foreground font-sans custom-scrollbar">
+    <div className="h-dvh max-h-dvh w-full bg-muted flex flex-col items-center justify-center p-3 sm:p-6 relative overflow-y-auto overflow-x-hidden text-foreground font-sans custom-scrollbar">
       {/* Subtle Background Glows */}
       <div className="fixed -top-32 -left-32 w-96 h-96 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
       <div className="fixed -bottom-32 -right-32 w-96 h-96 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
@@ -505,7 +505,7 @@ export const RegisterPage: React.FC = () => {
 
       <div
         data-testid="register-card"
-        className="w-full max-w-xl max-h-[calc(100vh-2rem)] sm:max-h-[calc(100vh-3.5rem)] rounded-2xl border border-border bg-card p-6 sm:p-8 flex flex-col z-10 animate-scale-in my-auto shadow-sm overflow-hidden"
+        className="w-full max-w-xl max-h-[calc(100dvh-2rem)] sm:max-h-[calc(100dvh-3.5rem)] rounded-2xl border border-border bg-card p-6 sm:p-8 flex flex-col z-10 animate-scale-in my-auto shadow-sm overflow-hidden"
       >
         {/* Brand Header */}
         <div className="text-center space-y-2 shrink-0 pb-3">

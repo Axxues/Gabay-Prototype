@@ -27,6 +27,10 @@ export function resolveSPRWeights(
   const fin = typeof syllabusGrading.finalFormula === 'object'
     ? `${syllabusGrading.finalFormula.midtermPercent || 0}% + ${syllabusGrading.finalFormula.finalPercent || 0}%`
     : syllabusGrading.finalFormula ?? '';
+
+  if (!term.trim() && !fin.trim()) {
+    return { csWeight: 60, examWeight: 40, mtWeight: 40, ftWeight: 60, formulaLabel: 'Term 60% CS + 40% Exam · Final 40% MT + 60% FT' };
+  }
   
   const nums = (s: string) => [...s.matchAll(/(\d+(?:\.\d+)?)\s*%/g)].map(m => Number(m[1]));
   const tn = nums(term), fn = nums(fin);
@@ -187,7 +191,7 @@ export interface TermWeightsResult {
 }
 
 export function extractTermWeights(
-  grading: { termFormula?: string; finalFormula?: string } | null | undefined,
+  grading: { termFormula?: string | { classStandingPercent?: string; examPercent?: string }; finalFormula?: string | { midtermPercent?: string; finalPercent?: string } } | null | undefined,
   terms: TermId[],
 ): TermWeightsResult {
   const equalSplit = (): TermWeightsResult => {
@@ -202,7 +206,13 @@ export function extractTermWeights(
     }
     return { weights, defaulted: true };
   };
-  const text = `${grading?.termFormula ?? ''}\n${grading?.finalFormula ?? ''}`;
+  const termStr = typeof grading?.termFormula === 'object' && grading?.termFormula !== null
+    ? `${(grading.termFormula as any).classStandingPercent || ''}% ${(grading.termFormula as any).examPercent || ''}%`
+    : (grading?.termFormula ?? '');
+  const finStr = typeof grading?.finalFormula === 'object' && grading?.finalFormula !== null
+    ? `${(grading.finalFormula as any).midtermPercent || 0}% midterm ${(grading.finalFormula as any).finalPercent || 0}% finals`
+    : (grading?.finalFormula ?? '');
+  const text = `${termStr}\n${finStr}`;
   const found: Partial<Record<TermId, number>> = {};
   for (const term of terms) {
     const labels = term === 'prelim' ? ['prelim'] : term === 'midterm' ? ['midterm'] : ['final'];
@@ -278,3 +288,154 @@ export function bucketColumnsByTerm(
   }
   return { columnsByTerm, legacyUnmappedCount };
 }
+
+// ===================================================================
+// STATIC GRADING WEIGHTS (New Grading System)
+// Term grades: 40% assessments + 60% exam
+// Final grade: 40% midterm + 60% finals
+// ===================================================================
+
+export const STATIC_GRADING_WEIGHTS: SPRWeights = {
+  csWeight: 40,
+  examWeight: 60,
+  mtWeight: 40,
+  ftWeight: 60,
+  formulaLabel: 'Term 40% Assessments + 60% Exam • Final 40% MT + 60% FT',
+};
+
+// Calculate weighted class standing percentage from assessment scores with individual weights
+export function weightedClassStandingPercent(
+  items: Array<{ score: number | null; weight?: number }>,
+): number {
+  // Filter out null scores and items with weight <= 0 (excluded from grades)
+  const includedItems = items.filter(item => item.score !== null && (item.weight ?? 1) > 0);
+  if (includedItems.length === 0) return 0;
+  
+  // Calculate total weight of included items (default weight = 1)
+  const totalWeight = includedItems.reduce((sum, item) => {
+    return sum + (item.weight ?? 1);
+  }, 0);
+  
+  if (totalWeight <= 0) return 0;
+  
+  // Calculate weighted sum
+  const weightedSum = includedItems.reduce((sum, item) => {
+    const weight = item.weight ?? 1;
+    const score = item.score ?? 0;
+    return sum + (score * weight);
+  }, 0);
+  
+  return (weightedSum / totalWeight);
+}
+
+// Calculate term grade with static 40% assessments / 60% exam weights
+export function termGradeStatic(
+  csPercent: number,
+  examScore: number | null,
+  examPerfect: number,
+  hasClassStandingData?: boolean,
+): number | null {
+  // Static 40% assessments, 60% exam
+  if (examScore === null || examPerfect <= 0) {
+    if (hasClassStandingData) return round2(csPercent);
+    return null;
+  }
+  return round2((csPercent * 40 + ((examScore / examPerfect) * 100 * 60)) / 100);
+}
+
+export const DEFAULT_ASSESSMENT_CATEGORIES = [
+  'Activities',
+  'Quizzes',
+  'Assignments',
+  'Projects',
+  'Presentations',
+] as const;
+
+export type AssessmentCategory = typeof DEFAULT_ASSESSMENT_CATEGORIES[number];
+
+export const DEFAULT_CATEGORY_WEIGHTS: Record<AssessmentCategory, number> = {
+  Activities: 20,
+  Quizzes: 20,
+  Assignments: 20,
+  Projects: 20,
+  Presentations: 20,
+};
+
+export function resolveAssessmentCategory(item: {
+  assessmentType?: string;
+  category?: string;
+  kind?: string;
+}): AssessmentCategory {
+  if (item.kind === 'quiz') return 'Quizzes';
+  const raw = (item.category || item.assessmentType || '').toLowerCase();
+  if (raw.includes('quiz')) return 'Quizzes';
+  if (raw.includes('assign')) return 'Assignments';
+  if (raw.includes('proj')) return 'Projects';
+  if (raw.includes('presen')) return 'Presentations';
+  return 'Activities';
+}
+
+export interface AssessmentScoreItem {
+  score: number | null;
+  perfectScore: number;
+  category?: string;
+  includedInGrades?: boolean;
+}
+
+export function categoryWeightedClassStanding(
+  items: AssessmentScoreItem[],
+  categoryWeights?: Record<string, number> | null,
+): number {
+  const weights: Record<string, number> = {
+    ...DEFAULT_CATEGORY_WEIGHTS,
+    ...(categoryWeights || {}),
+  };
+
+  const categoryTotals: Record<string, { earned: number; perfect: number }> = {};
+
+  for (const item of items) {
+    if (item.includedInGrades === false || item.score === null || item.perfectScore <= 0) continue;
+    const cat = item.category || 'Activities';
+    if (!categoryTotals[cat]) {
+      categoryTotals[cat] = { earned: 0, perfect: 0 };
+    }
+    categoryTotals[cat].earned += Math.max(0, item.score);
+    categoryTotals[cat].perfect += item.perfectScore;
+  }
+
+  let totalWeighted = 0;
+  let activeWeightSum = 0;
+
+  for (const [cat, data] of Object.entries(categoryTotals)) {
+    if (data.perfect > 0) {
+      const weight = weights[cat] ?? 0;
+      if (weight > 0) {
+        const catPercent = (data.earned / data.perfect) * 100;
+        totalWeighted += catPercent * weight;
+        activeWeightSum += weight;
+      }
+    }
+  }
+
+  if (activeWeightSum <= 0) return 0;
+  return totalWeighted / activeWeightSum;
+}
+
+export function getStoredCategoryWeights(courseId: string): Record<string, number> | null {
+  try {
+    const raw = localStorage.getItem(`gabay_assessment_category_weights_${courseId}`);
+    if (raw) return JSON.parse(raw);
+  } catch {
+    // fallback
+  }
+  return null;
+}
+
+export function saveStoredCategoryWeights(courseId: string, weights: Record<string, number>): void {
+  try {
+    localStorage.setItem(`gabay_assessment_category_weights_${courseId}`, JSON.stringify(weights));
+  } catch {
+    // fallback
+  }
+}
+

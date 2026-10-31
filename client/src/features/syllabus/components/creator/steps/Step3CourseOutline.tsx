@@ -11,6 +11,23 @@ interface Step3CourseOutlineProps {
 
 type OutlineEntry = { timeFrame: string; title: string; topics: string[] };
 
+export const MAX_SEMESTER_WEEKS = 18;
+
+// "3" covers 1 week, "1 - 4" covers 4 inclusive weeks; anything non-numeric counts 0.
+export const weeksInTimeFrame = (timeFrame: string): number => {
+  const parts = (timeFrame || '').split('-').map(p => p.trim());
+  if (parts.length === 1) return /^[0-9]+$/.test(parts[0]) ? 1 : 0;
+  if (parts.length === 2 && parts[0] && parts[1]) {
+    const [a, b] = parts.map(p => parseInt(p, 10));
+    if (isNaN(a) || isNaN(b)) return 0;
+    return Math.abs(b - a) + 1;
+  }
+  return 0;
+};
+
+export const totalOutlineWeeks = (rows: Array<{ timeFrame?: string }>): number =>
+  rows.reduce((sum, row) => sum + weeksInTimeFrame(row.timeFrame || ''), 0);
+
 // Older builds seeded new rows with this template copy instead of leaving them
 // blank, which left syllabi holding two "default" rows for one empty entry.
 const TEMPLATE_TIME_FRAME = 'Weeks';
@@ -58,6 +75,7 @@ export function normalizeOutline(rows: Array<Partial<OutlineEntry>> = []): Outli
 export const Step3CourseOutline: React.FC<Step3CourseOutlineProps> = ({ data, onChange }) => {
   const { courseOutline = [] } = data;
   const didNormalize = useRef(false);
+  const totalWeeks = totalOutlineWeeks(courseOutline);
 
   // One default entry, never two: applies on mount so a draft that still carries
   // the old seeded rows collapses to a single blank entry.
@@ -111,7 +129,14 @@ export const Step3CourseOutline: React.FC<Step3CourseOutlineProps> = ({ data, on
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between">
+        <span
+          className={`text-[11px] font-semibold ${
+            totalWeeks > MAX_SEMESTER_WEEKS ? 'text-destructive' : 'text-muted-foreground'
+          }`}
+        >
+          Total Weeks: {totalWeeks} / {MAX_SEMESTER_WEEKS}
+        </span>
         <button
           type="button"
           onClick={addOutlineEntry}
@@ -164,6 +189,18 @@ export const Step3CourseOutline: React.FC<Step3CourseOutlineProps> = ({ data, on
                         });
 
                         if (isValid) {
+                          // Cap the semester at 18 weeks: block edits that push the
+                          // combined total higher, but never lock out corrections.
+                          const nextRows = courseOutline.map((item, i) =>
+                            i === idx ? { ...item, timeFrame: input } : item
+                          );
+                          const nextTotal = totalOutlineWeeks(nextRows);
+                          if (
+                            nextTotal > MAX_SEMESTER_WEEKS &&
+                            nextTotal > totalOutlineWeeks(courseOutline)
+                          ) {
+                            return;
+                          }
                           updateOutlineItem(idx, 'timeFrame', input);
                         }
                       }}
@@ -177,7 +214,7 @@ export const Step3CourseOutline: React.FC<Step3CourseOutlineProps> = ({ data, on
                           e.preventDefault();
                         }
                       }}
-                      placeholder="1 or 1 - 4"
+                      placeholder="e.g. 1 or 1 - 4"
                       className="w-full pl-14 pr-2.5 py-1.5 text-xs rounded-lg border border-border bg-background focus:ring-1 focus:ring-primary focus:border-primary outline-none font-mono"
                     />
                   </div>

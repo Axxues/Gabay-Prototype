@@ -52,8 +52,7 @@ export function createBaselineSyllabus(overrides?: Partial<OfficialSyllabusData>
     gradingSystem: {
       termFormula: '',
       finalFormula: '',
-      classStandingComponents: [],
-      passingGrade: ''
+      classStandingComponents: []
     },
     projectRubrics: [],
     classroomPolicies: [],

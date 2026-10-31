@@ -103,6 +103,8 @@ export interface LMSContextType {
   activeCourseId: string | null;
   setActiveCourseId: (id: string | null) => void;
   hydrateCourse: (courseId: string) => Promise<void>;
+  // Realtime (live sync) targeted refresh: force re-hydration of an already-hydrated course.
+  refreshCourseContent: (courseId: string) => Promise<void>;
   db: LMSDatabase;
   
   // SpeedGrader modal state
@@ -173,7 +175,7 @@ export interface LMSContextType {
     rubricScores: Record<string, number>,
     commentText?: string
   ) => Promise<void>;
-  upsertManualExamGrade: (
+  upsertManualExamGrade?: (
     courseIdOrExamId: string,
     termOrStudentId: string,
     studentIdOrGrade: string | number,
@@ -790,7 +792,7 @@ const mapLikhaModuleItemRow = (it: any): ModuleItem => {
     completionCondition: it.completion_condition ?? it.completionCondition ?? undefined,
     minScore: typeof it.min_score === 'number' ? it.min_score : (it.minScore ?? undefined),
     content: it.content ?? undefined,
-    activityId: it.activity_id ?? it.activityId ?? undefined,
+    activityId: it.activity_id ?? it.activityId ?? it.assignment_id ?? it.assignmentId ?? it.project_id ?? it.projectId ?? it.presentation_id ?? it.presentationId ?? undefined,
     quizId: it.quiz_id ?? it.quizId ?? undefined,
     fileUrl: resolvedFileUrl,
     fileName: resolvedFileName,
@@ -1195,7 +1197,7 @@ const mapLikhaExamRow = (row: any): any => ({
   questions: mapLikhaQuestions(row),
 });
 
-const mapLikhaActivityRow = (row: any): any => ({
+export const mapLikhaActivityRow = (row: any): any => ({
   ...row,
   id: String(row.id),
   courseId: String(row.course_id ?? row.courseId ?? ''),
@@ -1226,6 +1228,7 @@ const mapLikhaActivityRow = (row: any): any => ({
       : Array.isArray(row.submissionTypes)
         ? row.submissionTypes
         : undefined,
+  assessmentType: row.assessment_type ?? row.assessmentType ?? row.metadata?.assessmentType ?? 'activity',
   category: row.category ?? undefined,
   weight: typeof row.weight === 'number' ? row.weight : undefined,
   rubric: (() => {
@@ -1248,7 +1251,10 @@ const mapLikhaActivityRow = (row: any): any => ({
         title: r.title ?? r.criterion ?? '',
         description: r.description ?? '',
         points: Number(r.max_points ?? r.points) || 0,
-        ratings: Array.isArray(r.ratings) ? r.ratings : [],
+        ratings: Array.isArray(r.ratings) && r.ratings.length > 0 ? r.ratings : [
+          { points: Number(r.max_points ?? r.points) || 10, description: 'Exemplary Mastery' },
+          { points: 0, description: 'Needs Revision' },
+        ],
       }));
     }
     if (Array.isArray(row.rubric_criteria)) {
@@ -1303,9 +1309,16 @@ const mapLikhaSubmissionCommentRow = (c: any, fallbackAuthor: { id: string; name
   text: c.content ?? c.text ?? '',
 });
 
-const mapLikhaSubmissionRow = (row: any, courseId?: string): any => {
+export const mapLikhaSubmissionRow = (row: any, courseId?: string): any => {
   const quizId = row.quiz_id ?? row.quizId ?? undefined;
-  const activityId = row.activity_id ?? row.activityId ?? undefined;
+  // Split assessment types (assignments/projects/presentations) carry their
+  // own FK column on submissions; fold it back into the activityKey scheme.
+  const splitAssessmentId =
+    row.assignment_id ??
+    row.project_id ??
+    row.presentation_id ??
+    undefined;
+  const activityId = row.activity_id ?? row.activityId ?? splitAssessmentId ?? undefined;
   const examId = row.exam_id ?? row.examId ?? undefined;
   const rubricScores =
     row.rubricScores && typeof row.rubricScores === 'object' && !Array.isArray(row.rubricScores)
@@ -1352,10 +1365,36 @@ const mapLikhaSubmissionRow = (row: any, courseId?: string): any => {
     parsedContentData?.fileSize ??
     undefined;
 
+  // Question-set answers live in the `answers` O2M relation
+  // (`submission_answers`); `submissions.content` is empty for those rows.
+  // The SpeedGrader reads a JSON answer map from `content`, so fold the
+  // relation (or the submit endpoint's camelCase copy) back into it.
+  const answerRows: any[] = Array.isArray(row.answers)
+    ? row.answers
+    : Array.isArray(row.submission_answers)
+      ? row.submission_answers
+      : [];
+  const answersContent =
+    answerRows.length > 0
+      ? JSON.stringify(
+          Object.fromEntries(
+            answerRows
+              .filter(a => a && (a.question_id ?? a.questionId) !== undefined)
+              .map(a => [
+                String(a.question_id ?? a.questionId),
+                String(a.student_answer ?? a.answer ?? ''),
+              ])
+          )
+        )
+      : undefined;
+
+  const hasStoredContent =
+    typeof row.content === 'string' && row.content.trim() !== '' && row.content.trim() !== '{}';
+  const rawContent = answersContent ?? (hasStoredContent ? row.content : row.content ?? undefined);
   const content =
     parsedContentData && typeof parsedContentData === 'object' && 'note' in parsedContentData
       ? parsedContentData.note
-      : row.content ?? undefined;
+      : rawContent;
 
   const attachments =
     Array.isArray(parsedContentData?.attachments) && parsedContentData.attachments.length > 0
@@ -3563,9 +3602,9 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       const allSubmissions: Submission[] = [];
       const seenSubmissionIds = new Set<string>();
-      const assessmentItems: Array<{ id: string; type: 'quiz' | 'activity' | 'exam' }> = [
+      const assessmentItems: Array<{ id: string; type: 'quiz' | 'activity' | 'exam' | 'assignment' | 'project' | 'presentation' }> = [
         ...allQuizzes.map(q => ({ id: q.id, type: 'quiz' as const })),
-        ...allActivities.map(a => ({ id: a.id, type: 'activity' as const })),
+        ...allActivities.map(a => ({ id: a.id, type: ((a.assessmentType || 'activity') as 'quiz' | 'activity' | 'exam' | 'assignment' | 'project' | 'presentation') })),
         ...allExams.map(e => ({ id: e.id, type: 'exam' as const })),
       ];
       const submissionResults = await mapConcurrent(
@@ -3586,6 +3625,27 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           seenSubmissionIds.add(merged.id);
           allSubmissions.push(merged);
         }
+      }
+      // Child answers (submission_answers) folded for question sets whose content column was empty
+      if (allSubmissions.length > 0 && typeof likhaLmsApi?.submissions?.getAnswers === 'function') {
+        try {
+          const answersBySub = await likhaLmsApi.submissions.getAnswers(allSubmissions.map(s => String(s.id)));
+          for (const sub of allSubmissions) {
+            const childAnswers = answersBySub[String(sub.id)];
+            if (childAnswers && childAnswers.length > 0 && (!sub.content || sub.content.trim() === '')) {
+              sub.content = JSON.stringify(
+                Object.fromEntries(
+                  childAnswers
+                    .filter((a: any) => a && (a.question_id ?? a.questionId) !== undefined)
+                    .map((a: any) => [
+                      String(a.question_id ?? a.questionId),
+                      String(a.student_answer ?? a.answer ?? ''),
+                    ])
+                )
+              );
+            }
+          }
+        } catch {}
       }
       // Feedback threads ride in a second, failure-tolerant batch so students
       // and graders keep seeing comments across reloads.
@@ -4035,10 +4095,13 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ? (filesSettled.value as any[]).map(f => mapLikhaCourseFileRow(f, courseId))
         : [];
 
-      // Fetch submissions for assessments in this course
-      const assessments: Array<{ id: string; type: 'quiz' | 'activity' | 'exam' }> = [
+      // Fetch submissions for assessments in this course. Split assessment
+      // types query their own FK column (assignment_id, project_id,
+      // presentation_id) on submissions.
+      type SubmissionType = 'quiz' | 'activity' | 'exam' | 'assignment' | 'project' | 'presentation';
+      const assessments: Array<{ id: string; type: SubmissionType }> = [
         ...newQuizzes.map(q => ({ id: q.id, type: 'quiz' as const })),
-        ...newActivities.map(a => ({ id: a.id, type: 'activity' as const })),
+        ...newActivities.map(a => ({ id: a.id, type: ((a.assessmentType || 'activity') as SubmissionType) })),
         ...newExams.map(e => ({ id: e.id, type: 'exam' as const })),
       ];
       let newSubmissions: Submission[] = [];
@@ -4046,16 +4109,30 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const subSettled = await Promise.allSettled(
           assessments.map(async item => {
             const rows = (await likhaLmsApi.submissions.getSubmissions(item.id, item.type)) ?? [];
-            return (Array.isArray(rows) ? rows : []).map((s: any) =>
-              normalizeSubmission(mapLikhaSubmissionRow(s, courseId))
-            );
+            return Array.isArray(rows) ? rows : [];
           })
         );
+        const rawSubmissions: any[] = [];
         for (const res of subSettled) {
           if (res.status === 'fulfilled') {
-            newSubmissions.push(...res.value);
+            rawSubmissions.push(...res.value);
           }
         }
+        // `submissions` has no `answers` alias on Likha: read the child rows in
+        // one batched call per course and fold them onto each row so the mapper
+        // (and SpeedGrader) can render the student's answers.
+        const answersBySubmission =
+          rawSubmissions.length > 0 && typeof likhaLmsApi.submissions.getAnswers === 'function'
+            ? await likhaLmsApi.submissions.getAnswers(rawSubmissions.map(s => String(s.id)))
+            : {};
+        newSubmissions = rawSubmissions.map(raw =>
+          normalizeSubmission(
+            mapLikhaSubmissionRow(
+              { ...raw, answers: raw.answers ?? answersBySubmission[String(raw.id)] },
+              courseId
+            )
+          )
+        );
       }
       if (newSubmissions.length > 0) {
         newSubmissions = await attachSubmissionComments(newSubmissions, dbRef.current.users ?? []);
@@ -4097,6 +4174,15 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       hydratingCourseIdsRef.current.delete(courseId);
     }
   }, [currentUser]);
+
+  // Realtime live sync (WebSocket events) targeted refresh: clears the
+  // one-shot hydration guard and re-runs the existing hydrateCourse pipeline
+  // (cache invalidation happens in the realtime feature before this call).
+  const refreshCourseContent = async (courseId: string): Promise<void> => {
+    if (!courseId) return;
+    hydratedCourseIdsRef.current.delete(courseId);
+    await hydrateCourse(courseId);
+  };
 
   // Course state
   const [activeCourseId, setActiveCourseIdState] = useState<string | null>('crs-cmsc131');
@@ -4187,8 +4273,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const isCourseGradeReady = (courseId: string): boolean => {
-    const course = db.courses.find(c => String(c.id).trim() === String(courseId).trim());
-    return isSyllabusGradeReady(syllabusRevisions[courseId] ?? null, course?.syllabus ?? null);
+    return hasCourseSyllabus(courseId);
   };
 
   const hasCourseSyllabus = (courseId: string): boolean => {
@@ -5014,6 +5099,13 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         body.assessmentType = updates.assessmentType;
       }
       if (updates.metadata !== undefined) body.metadata = updates.metadata;
+      // Keep the write in the row's owning collection (assignments/
+      // projects/presentations) even when the caller never passes a type.
+      const cachedForType = (dbRef.current.activities || []).find(a => a.id === activityId);
+      if (body.assessmentType === undefined && cachedForType?.assessmentType) {
+        body.assessment_type = cachedForType.assessmentType;
+        body.assessmentType = cachedForType.assessmentType;
+      }
       const saved = await likhaLmsApi.assessments.saveActivity({ id: activityId, ...body });
       const normalized = normalizeActivity(mapLikhaActivityRow(saved));
       let merged: Activity = normalized;
@@ -5050,15 +5142,22 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Essay-pending status comes from the Likha row (status stays
     // 'submitted' until faculty grades in SpeedGrader).
     try {
+      const courseId = dbRef.current.activities?.find(a => a.id === activityId)?.courseId;
       // Likha ERP is the source of truth for submissions.
+      const cachedForType = (dbRef.current.activities || []).find(a => a.id === activityId);
       const saved = await likhaLmsApi.submissions.submitAssessment({
         activity_id: activityId,
+        ...(cachedForType?.assessmentType && cachedForType.assessmentType !== 'activity'
+          ? { assessment_type: cachedForType.assessmentType }
+          : {}),
         student_id: studentId,
+        course_id: courseId,
         answers,
+        content: JSON.stringify(answers),
+        submission_type: 'online_text',
         status: 'submitted',
         submitted_at: new Date().toISOString(),
       });
-      const courseId = dbRef.current.activities?.find(a => a.id === activityId)?.courseId;
       const merged = normalizeSubmission(mapLikhaSubmissionRow(saved, courseId));
       setDb(prev => {
         const updatedSubs = [...prev.submissions];
@@ -5084,7 +5183,8 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteActivity = async (activityId: string): Promise<void> => {
     try {
       // Likha ERP is the source of truth for activities.
-      await likhaLmsApi.assessments.deleteActivity(activityId);
+      const cachedDelete = (dbRef.current.activities || []).find(a => a.id === activityId);
+      await likhaLmsApi.assessments.deleteActivity(activityId, cachedDelete?.assessmentType);
       setDb(prev => ({
         ...prev,
         activities: (prev.activities || []).filter(a => a.id !== activityId),
@@ -7848,6 +7948,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           sub.id === submissionId
             ? {
                 ...graded,
+                content: sub.content || graded.content,
                 // Likha echoes the patched row; fall back to the
                 // just-submitted values if the row predates the column.
                 rubricScores:
@@ -8030,12 +8131,13 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ): Promise<void> => {
     const cached = dbRef.current.activities?.find(a => a.id === activityId);
     const useQuestionSetPath = answers !== undefined || cached?.format !== 'classic';
+    const courseId = cached?.courseId || dbRef.current.activities?.find(a => a.id === activityId)?.courseId;
     try {
-      const fileMetadata = submissionType === 'file'
+      const fileMetadata = (submissionType === 'file' || (attachments && attachments.length > 0))
         ? JSON.stringify({
-            fileName: fileName || '',
-            fileUrl: fileUrl || '',
-            fileSize: fileSize || '',
+            fileName: fileName || (attachments && attachments[0]?.name) || '',
+            fileUrl: fileUrl || (attachments && attachments[0]?.url) || '',
+            fileSize: fileSize || (attachments && attachments[0]?.size) || '',
             note: content || '',
             ...(attachments && attachments.length > 0 ? { attachments } : {})
           })
@@ -8043,6 +8145,10 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       const submissionPayload: Record<string, any> = {
         activity_id: activityId,
+        ...(courseId ? { course_id: courseId } : {}),
+        ...(cached?.assessmentType && cached.assessmentType !== 'activity'
+          ? { assessment_type: cached.assessmentType }
+          : {}),
         student_id: activeUser.id,
         submission_type: submissionType,
         status: 'submitted',
@@ -10705,6 +10811,7 @@ export const LMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         activeCourseId,
         setActiveCourseId,
         hydrateCourse,
+        refreshCourseContent,
         db,
         activeSpeedGraderSubmissionId,
         openSpeedGrader,

@@ -4,6 +4,13 @@ import type { Quiz, QuizQuestion, TermId } from '../../shared/types/lms';
 import { normalizeTermId } from '../../shared/utils/gradingTerms';
 import { TERM_LABELS, TermFilterSelect } from '../../shared/components/common/TermSelect';
 import { canManageCourseContent } from '../../shared/utils/roles';
+
+/** Quiz submissions across both stored key shapes (quizId / asg-quiz-<id>). */
+const quizSubmissionsFor = (
+  subs: any[] | undefined,
+  quizId: string
+) =>
+  (subs || []).filter(s => s.quizId === quizId || s.activityKey === `asg-quiz-${quizId}`);
 import { SourceFilterSelect } from '../../shared/components/common/SourceFilterSelect';
 import {
   buildAssessmentSourceIndex,
@@ -27,6 +34,7 @@ import {
   Lock
 } from 'lucide-react';
 import { CreateQuizPage } from './CreateQuizPage';
+import { useLiveSyncSuppression } from '../realtime';
 import { PageHeader } from '../../shared/components/common/PageHeader';
 import { EmptyState } from '../../shared/components/common/EmptyState';
 
@@ -50,13 +58,19 @@ export const QuizzesView: React.FC<QuizzesViewProps> = ({
     isLoading,
     isSyncing,
     recordQuizSubmission,
+    openSpeedGrader,
+    showAlert,
     effectiveTermsForCourse
   } = useLMS() as ReturnType<typeof useLMS> & { effectiveTermsForCourse?: (courseId: string) => TermId[] };
 
   const course = (db.courses || []).find(c => c.id === courseId);
   const isAssignedInstructor = canManageCourseContent(course, activeUser);
+  // Only students may answer assessments; faculty/admin get a read-only preview.
+  const canAnswer = activeRole === 'student';
   const courseQuizzes = (db.quizzes || []).filter(q => q.courseId === courseId);
   const [activeQuiz, setActiveQuiz] = useState<Quiz | null>(null);
+  // Live sync must not swap quiz data underneath an in-progress attempt.
+  useLiveSyncSuppression(Boolean(activeQuiz));
   const [userAnswers, setUserAnswers] = useState<Record<string, string>>({});
   const [quizSubmitted, setQuizSubmitted] = useState(false);
   const [score, setScore] = useState<number | null>(null);
@@ -92,20 +106,6 @@ export const QuizzesView: React.FC<QuizzesViewProps> = ({
     );
   }, [courseQuizzes, termFilter, sourceFilter, sourceIndex]);
 
-  // Sync activeQuiz when selectedQuizId changes (e.g. from Modules navigation)
-  useEffect(() => {
-    if (selectedQuizId) {
-      const q = courseQuizzes.find(item => item.id === selectedQuizId);
-      if (q) {
-        setActiveQuiz(q);
-        setUserAnswers({});
-        setQuizSubmitted(false);
-        setScore(null);
-        setCurrentPageIndex(0);
-      }
-    }
-  }, [selectedQuizId, courseId]);
-
   const handleStartQuiz = (quiz: Quiz) => {
     setActiveQuiz(quiz);
     setUserAnswers({});
@@ -114,8 +114,55 @@ export const QuizzesView: React.FC<QuizzesViewProps> = ({
     setCurrentPageIndex(0);
   };
 
+  // Students open the runner; instructors get SpeedGrader for rechecking when
+  // submissions exist, falling back to the read-only preview otherwise.
+  const handleOpenQuiz = (quiz: Quiz) => {
+    if (activeRole === 'student') {
+      handleStartQuiz(quiz);
+      return;
+    }
+    const subs = quizSubmissionsFor(db.submissions, quiz.id);
+    if (subs.length > 0) {
+      openSpeedGrader(subs[0].id);
+    } else {
+      handleStartQuiz(quiz);
+      showAlert(
+        'No student submissions to grade yet — showing a read-only preview.'
+      );
+    }
+  };
+
+  // Sync activeQuiz when selectedQuizId changes (e.g. Modules or Overview deep-links)
+  useEffect(() => {
+    if (selectedQuizId) {
+      const q = courseQuizzes.find(item => item.id === selectedQuizId);
+      if (q) {
+        if (activeRole !== 'student') {
+          const subs = quizSubmissionsFor(db.submissions, q.id);
+          if (subs.length > 0) {
+            openSpeedGrader(subs[0].id);
+            return;
+          }
+        }
+        setActiveQuiz(q);
+        setUserAnswers({});
+        setQuizSubmitted(false);
+        setScore(null);
+        setCurrentPageIndex(0);
+      }
+    }
+  }, [selectedQuizId, courseId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleSelectAnswer = (qId: string, ans: string) => {
     setUserAnswers(prev => ({ ...prev, [qId]: ans }));
+  };
+
+  const displaySubmittedAnswer = (q: QuizQuestion, val: string) => {
+    if (q.type === 'multiple_choice' && q.options && /^[A-Z]$/.test(val.trim())) {
+      const idx = val.trim().charCodeAt(0) - 65;
+      return q.options[idx] ?? val;
+    }
+    return val;
   };
 
   // Divide active quiz questions into Google Forms-style pages
@@ -152,6 +199,11 @@ export const QuizzesView: React.FC<QuizzesViewProps> = ({
   const handleSubmitQuiz = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeQuiz) return;
+
+    // Only students may submit quiz answers
+    if (!canAnswer) {
+      return;
+    }
 
     let totalPoints = 0;
     let earnedPoints = 0;
@@ -212,6 +264,27 @@ export const QuizzesView: React.FC<QuizzesViewProps> = ({
 
   // Quiz runner modal/screen
   if (activeQuiz) {
+    // One-shot lock: a student who already submitted sees a read-only answer
+    // review instead of the answering form (covers list + Overview deep-links).
+    const activeQuizSub =
+      activeRole === 'student'
+        ? quizSubmissionsFor(db.submissions, activeQuiz.id).find(s => s.studentId === activeUser.id)
+        : undefined;
+    const lockedReview = !!activeQuizSub && !quizSubmitted;
+    let lockedAnswers: Record<string, string> = {};
+    if (activeQuizSub?.content) {
+      try {
+        const parsed = JSON.parse(activeQuizSub.content);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          lockedAnswers = Object.fromEntries(
+            Object.entries(parsed as Record<string, unknown>).filter(
+              ([, v]) => typeof v === 'string'
+            ) as [string, string][]
+          );
+        }
+      } catch {}
+    }
+
     const quizPages = getQuizPages(activeQuiz);
     const currentPage = quizPages[currentPageIndex] || quizPages[0];
     const totalPages = quizPages.length;
@@ -304,7 +377,48 @@ export const QuizzesView: React.FC<QuizzesViewProps> = ({
         </div>
 
         {/* Section / Paginated Content */}
-        {!quizSubmitted ? (
+        {lockedReview ? (
+          /* One-shot locked answer review for students who already submitted */
+          <div className="space-y-5">
+            <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-2xl text-xs text-blue-700 dark:text-blue-300 flex items-center space-x-3">
+              <FileText className="w-5 h-5 shrink-0" />
+              <div>
+                <span className="font-bold">
+                  {activeQuizSub!.status === 'graded'
+                    ? `Graded: ${activeQuizSub!.grade}%`
+                    : 'Previously submitted — pending faculty review.'}
+                </span>
+                <p className="text-[11px] opacity-80 mt-0.5">
+                  You have already taken this quiz. Answers are locked and cannot be changed.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {activeQuiz.questions
+                .filter(q => q.type !== 'description' && q.type !== 'page_break')
+                .map((q, idx) => (
+                  <div
+                    key={q.id}
+                    className="p-5 rounded-2xl border border-border bg-card space-y-2 text-xs shadow-subtle"
+                  >
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                      Question {idx + 1} · {q.type}
+                    </span>
+                    <h4 className="font-bold text-foreground">{q.text}</h4>
+                    <p className="text-muted-foreground font-sans">
+                      Your answer:{' '}
+                      {lockedAnswers[q.id]?.trim() ? (
+                        displaySubmittedAnswer(q, lockedAnswers[q.id])
+                      ) : (
+                        <em className="not-italic">(blank)</em>
+                      )}
+                    </p>
+                  </div>
+                ))}
+            </div>
+          </div>
+        ) : !quizSubmitted ? (
           <form onSubmit={handleSubmitQuiz} className="space-y-6">
             {/* If section title differs from quiz title, show Section Banner */}
             {currentPage.sectionTitle && currentPage.sectionTitle !== activeQuiz.title && (
@@ -394,6 +508,7 @@ export const QuizzesView: React.FC<QuizzesViewProps> = ({
                                 value={letter}
                                 checked={isSelected}
                                 onChange={() => handleSelectAnswer(q.id, letter)}
+                                disabled={!canAnswer}
                                 className="text-primary focus:ring-primary accent-primary"
                               />
                               <span className="w-5 h-5 rounded-md bg-muted text-muted-foreground text-[11px] font-bold flex items-center justify-center shrink-0">
@@ -408,11 +523,13 @@ export const QuizzesView: React.FC<QuizzesViewProps> = ({
 
                     {/* B. Identification */}
                     {q.type === 'identification' && (
-                      <div className="space-y-2 pt-1">
-                        <input
+                      <div className="space-y-2 pt-1">                        <input
                           type="text"
                           required
+                          readOnly={!canAnswer}
                           value={userAnswers[q.id] || ''}
+
+
                           onChange={e => handleSelectAnswer(q.id, e.target.value)}
                           placeholder="Type your exact answer here..."
                           className="w-full px-3.5 py-2.5 bg-background border border-border rounded-xl text-xs font-medium text-foreground outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary shadow-inner"
@@ -434,6 +551,7 @@ export const QuizzesView: React.FC<QuizzesViewProps> = ({
                             <button
                               key={val}
                               type="button"
+                              disabled={!canAnswer}
                               onClick={() => handleSelectAnswer(q.id, val)}
                               className={`p-3 rounded-xl border text-xs font-bold flex items-center justify-center space-x-2 transition-all cursor-pointer ${
                                 isSelected
@@ -461,6 +579,7 @@ export const QuizzesView: React.FC<QuizzesViewProps> = ({
                         <textarea
                           rows={4}
                           required
+                          readOnly={!canAnswer}
                           value={userAnswers[q.id] || ''}
                           onChange={e => handleSelectAnswer(q.id, e.target.value)}
                           placeholder="Type your essay response in detail..."
@@ -501,6 +620,11 @@ export const QuizzesView: React.FC<QuizzesViewProps> = ({
                   <span>Next Page</span>
                   <ChevronRight className="w-4 h-4" />
                 </button>
+              ) : !canAnswer ? (
+                <div className="px-6 py-2.5 text-xs font-bold text-muted-foreground rounded-xl border border-border flex items-center space-x-2">
+                  <Lock className="w-4 h-4" />
+                  <span>Preview only — only students can answer this assessment</span>
+                </div>
               ) : (
                 <button
                   type="submit"
@@ -684,9 +808,8 @@ export const QuizzesView: React.FC<QuizzesViewProps> = ({
           </p>
         ) : (
           visibleQuizzes.map(quiz => {
-            const existingSub = db.submissions.find(
-              s => s.activityKey === `asg-quiz-${quiz.id}` && s.studentId === activeUser.id
-            );
+            const quizSubs = quizSubmissionsFor(db.submissions, quiz.id);
+            const existingSub = quizSubs.find(s => s.studentId === activeUser.id);
 
             const questionCount = quiz.questions.filter(
               q => q.type !== 'description' && q.type !== 'page_break'
@@ -767,14 +890,22 @@ export const QuizzesView: React.FC<QuizzesViewProps> = ({
                     </span>
                   )}
 
-                  {isScheduled && isStudent ? (
+                  {isStudent && existingSub ? (
+                    <button
+                      onClick={() => handleOpenQuiz(quiz)}
+                      className="px-4 py-2 text-xs font-bold bg-muted hover:bg-muted/80 text-foreground rounded-xl border border-border transition-all flex items-center space-x-1.5 cursor-pointer"
+                    >
+                      <Lock className="w-3.5 h-3.5" />
+                      <span>View Answers</span>
+                    </button>
+                  ) : isScheduled && isStudent ? (
                     <div className="px-4 py-2 text-xs font-bold bg-muted text-muted-foreground border border-border rounded-xl flex items-center space-x-1.5 opacity-80 cursor-not-allowed">
                       <Lock className="w-3.5 h-3.5" />
                       <span>Locked (Scheduled)</span>
                     </div>
                   ) : (
                     <button
-                      onClick={() => handleStartQuiz(quiz)}
+                      onClick={() => handleOpenQuiz(quiz)}
                       className={`px-4 py-2 text-xs font-bold rounded-xl transition-all shadow-primary-sm flex items-center space-x-1.5 cursor-pointer active:scale-98 ${
                         isScheduled
                           ? 'bg-amber-600 hover:bg-amber-700 text-white'
@@ -782,7 +913,7 @@ export const QuizzesView: React.FC<QuizzesViewProps> = ({
                       }`}
                     >
                       <Play className="w-3.5 h-3.5" />
-                      <span>{activeRole === 'admin' || activeRole === 'faculty' ? 'Preview Quiz' : isScheduled ? 'Preview (Scheduled)' : existingSub ? 'Retake Quiz' : 'Take Quiz'}</span>
+                      <span>{activeRole === 'admin' || activeRole === 'faculty' ? 'SpeedGrader' : isScheduled ? 'Preview (Scheduled)' : 'Take Quiz'}</span>
                     </button>
                   )}
                 </div>

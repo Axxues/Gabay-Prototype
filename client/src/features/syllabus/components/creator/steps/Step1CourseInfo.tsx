@@ -5,6 +5,7 @@ import { CustomDropdown } from '../../../../../shared/components/common/CustomDr
 import { TimeRangePicker } from '../../../../../shared/components/common';
 import { analyzeSectionSchedules, computeWeeklyHours, sectionDeviation } from '../../../utils/scheduleHours';
 import { RequiredMark } from '../RequiredMark';
+import { CollapsibleCard } from '../CollapsibleCard';
 
 interface Step1CourseInfoProps {
   data: OfficialSyllabusData;
@@ -136,16 +137,86 @@ export const Step1CourseInfo: React.FC<Step1CourseInfoProps> = ({
     onChange({ ...data, facultyMembers: updated });
   };
 
+  // ─── Additional lecture/lab schedule helpers ───────────────────────────────
+  const getLectureSchedules = (fIndex: number, sIndex: number): Array<{ schedule: string; room: string }> => {
+    const sec = effectiveFacultyMembers[fIndex]?.sections?.[sIndex];
+    return (sec as any)?.lectureSchedules || [];
+  };
+
+  const getLabSchedules = (fIndex: number, sIndex: number): Array<{ schedule: string; room: string }> => {
+    const sec = effectiveFacultyMembers[fIndex]?.sections?.[sIndex];
+    return (sec as any)?.labSchedules || [];
+  };
+
+  const addLectureSchedule = (fIndex: number, sIndex: number) => {
+    const updated = [...effectiveFacultyMembers];
+    const secList = [...(updated[fIndex].sections?.length ? updated[fIndex].sections : [blankSection])];
+    if (!secList[sIndex]) secList[sIndex] = { ...blankSection };
+    const currentSchedules = getLectureSchedules(fIndex, sIndex);
+    (secList[sIndex] as any).lectureSchedules = [...currentSchedules, { schedule: '', room: '' }];
+    updated[fIndex] = { ...updated[fIndex], sections: secList };
+    onChange({ ...data, facultyMembers: updated });
+  };
+
+  const removeLectureSchedule = (fIndex: number, sIndex: number, schedIndex: number) => {
+    const updated = [...effectiveFacultyMembers];
+    const secList = [...(updated[fIndex].sections?.length ? updated[fIndex].sections : [blankSection])];
+    if (!secList[sIndex]) secList[sIndex] = { ...blankSection };
+    const currentSchedules = getLectureSchedules(fIndex, sIndex);
+    (secList[sIndex] as any).lectureSchedules = currentSchedules.filter((_, i) => i !== schedIndex);
+    updated[fIndex] = { ...updated[fIndex], sections: secList };
+    onChange({ ...data, facultyMembers: updated });
+  };
+
+  const updateLectureSchedule = (fIndex: number, sIndex: number, schedIndex: number, field: 'schedule' | 'room', value: string) => {
+    const updated = [...effectiveFacultyMembers];
+    const secList = [...(updated[fIndex].sections?.length ? updated[fIndex].sections : [blankSection])];
+    if (!secList[sIndex]) secList[sIndex] = { ...blankSection };
+    const currentSchedules = getLectureSchedules(fIndex, sIndex);
+    currentSchedules[schedIndex] = { ...currentSchedules[schedIndex], [field]: value };
+    (secList[sIndex] as any).lectureSchedules = currentSchedules;
+    updated[fIndex] = { ...updated[fIndex], sections: secList };
+    onChange({ ...data, facultyMembers: updated });
+  };
+
+  const addLabSchedule = (fIndex: number, sIndex: number) => {
+    const updated = [...effectiveFacultyMembers];
+    const secList = [...(updated[fIndex].sections?.length ? updated[fIndex].sections : [blankSection])];
+    if (!secList[sIndex]) secList[sIndex] = { ...blankSection };
+    const currentSchedules = getLabSchedules(fIndex, sIndex);
+    (secList[sIndex] as any).labSchedules = [...currentSchedules, { schedule: '', room: '' }];
+    updated[fIndex] = { ...updated[fIndex], sections: secList };
+    onChange({ ...data, facultyMembers: updated });
+  };
+
+  const removeLabSchedule = (fIndex: number, sIndex: number, schedIndex: number) => {
+    const updated = [...effectiveFacultyMembers];
+    const secList = [...(updated[fIndex].sections?.length ? updated[fIndex].sections : [blankSection])];
+    if (!secList[sIndex]) secList[sIndex] = { ...blankSection };
+    const currentSchedules = getLabSchedules(fIndex, sIndex);
+    (secList[sIndex] as any).labSchedules = currentSchedules.filter((_, i) => i !== schedIndex);
+    updated[fIndex] = { ...updated[fIndex], sections: secList };
+    onChange({ ...data, facultyMembers: updated });
+  };
+
+  const updateLabSchedule = (fIndex: number, sIndex: number, schedIndex: number, field: 'schedule' | 'room', value: string) => {
+    const updated = [...effectiveFacultyMembers];
+    const secList = [...(updated[fIndex].sections?.length ? updated[fIndex].sections : [blankSection])];
+    if (!secList[sIndex]) secList[sIndex] = { ...blankSection };
+    const currentSchedules = getLabSchedules(fIndex, sIndex);
+    currentSchedules[schedIndex] = { ...currentSchedules[schedIndex], [field]: value };
+    (secList[sIndex] as any).labSchedules = currentSchedules;
+    updated[fIndex] = { ...updated[fIndex], sections: secList };
+    onChange({ ...data, facultyMembers: updated });
+  };
+
   return (
     <div className="space-y-6">
       {/* Institutional & Document Control Header - Non-Editable */}
-      <div className="p-4 rounded-xl border border-border bg-card shadow-xs space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center space-x-1.5">
-            <Landmark className="w-4 h-4 text-primary" />
-            <span>Institutional &amp; Document Control Header</span>
-          </h3>
-        </div>
+      <CollapsibleCard
+        icon={<Landmark className="w-4 h-4 text-primary" />}
+        title="Institutional & Document Control Header"
+      >
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-1.5">
@@ -204,22 +275,21 @@ export const Step1CourseInfo: React.FC<Step1CourseInfoProps> = ({
             />
           </div>
         </div>
-      </div>
+      </CollapsibleCard>
 
       {/* Basic Course Identification & Schedule (Table 0 in DMMMSU-INS-F003) */}
-      <div className="p-4 rounded-xl border border-border bg-card shadow-xs space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center space-x-1.5">
-            <Tag className="w-4 h-4 text-primary" />
-            <span>Basic Course Identification</span>
-          </h3>
-          {scheduleAnalysis.hasLectureMismatch && (
+      <CollapsibleCard
+        icon={<Tag className="w-4 h-4 text-primary" />}
+        title="Basic Course Identification"
+        headerRight={
+          scheduleAnalysis.hasLectureMismatch && (
             <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-destructive/10 text-destructive border border-destructive/30">
               <AlertTriangle className="w-3 h-3" />
               Lecture Hours Mismatch
             </span>
-          )}
-        </div>
+          )
+        }
+      >
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-1.5">
@@ -278,16 +348,13 @@ export const Step1CourseInfo: React.FC<Step1CourseInfoProps> = ({
             />
           </div>
         </div>
-      </div>
+      </CollapsibleCard>
 
       {/* Individual Faculty Member Schedules & Consultation */}
-      <div className="p-4 rounded-xl border border-border bg-card shadow-xs space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center space-x-1.5">
-            <Users className="w-4 h-4 text-primary" />
-            <span>Assigned Faculty Member(s) &amp; Schedules</span>
-          </h3>
-          <div className="flex items-center gap-2">
+      <CollapsibleCard
+        icon={<Users className="w-4 h-4 text-primary" />}
+        title="Assigned Faculty Member(s) & Schedules"
+        headerRight={
           <div className="flex items-center gap-1.5">
             <RequiredMark />
             <CustomDropdown
@@ -295,14 +362,14 @@ export const Step1CourseInfo: React.FC<Step1CourseInfoProps> = ({
               onChange={val => onChange({ ...data, courseInfo: { ...courseInfo, type: val } })}
               options={[
                 { value: 'Lecture', label: 'Lecture' },
-                { value: 'Lecture and Laboratory', label: 'Lecture and Laboratory' },
+                { value: 'Lecture and Laboratory', label: 'Lecture with Laboratory' },
                 { value: 'Laboratory', label: 'Laboratory' }
               ]}
               placeholder="Course Type"
             />
           </div>
-          </div>
-        </div>
+        }
+      >
 
         {scheduleMismatch && (
           <div className="flex items-center gap-2.5 p-3 rounded-xl border border-destructive/40 bg-destructive/5 text-destructive">
@@ -317,8 +384,16 @@ export const Step1CourseInfo: React.FC<Step1CourseInfoProps> = ({
               ? fac.sections
               : [blankSection];
             const slots = getSlots(facIdx);
-            const facLectureTotal = sections.reduce((sum, sec) => sum + computeWeeklyHours((sec as any).lectureSchedule || ''), 0);
-            const facLabTotal = sections.reduce((sum, sec) => sum + computeWeeklyHours((sec as any).labSchedule || ''), 0);
+            const facLectureTotal = sections.reduce((sum, sec) => {
+              const baseHours = computeWeeklyHours((sec as any).lectureSchedule || '');
+              const additionalHours = ((sec as any).lectureSchedules || []).reduce((h: number, s: any) => h + computeWeeklyHours(s.schedule || ''), 0);
+              return sum + baseHours + additionalHours;
+            }, 0);
+            const facLabTotal = sections.reduce((sum, sec) => {
+              const baseHours = computeWeeklyHours((sec as any).labSchedule || '');
+              const additionalHours = ((sec as any).labSchedules || []).reduce((h: number, s: any) => h + computeWeeklyHours(s.schedule || ''), 0);
+              return sum + baseHours + additionalHours;
+            }, 0);
 
             return (
               <div key={facIdx} className="p-4 rounded-xl border border-border/80 bg-muted/20 space-y-4">
@@ -367,8 +442,14 @@ export const Step1CourseInfo: React.FC<Step1CourseInfoProps> = ({
 
                       <div className="space-y-2">
                         {sections.map((sec, secIdx) => {
-                          const secLectureHours = computeWeeklyHours((sec as any).lectureSchedule || '');
-                          const secLabHours = computeWeeklyHours((sec as any).labSchedule || '');
+                          const baseLectureHours = computeWeeklyHours((sec as any).lectureSchedule || '');
+                          const additionalLectureHours = ((sec as any).lectureSchedules || []).reduce((sum: number, s: any) => sum + computeWeeklyHours(s.schedule || ''), 0);
+                          const secLectureHours = baseLectureHours + additionalLectureHours;
+
+                          const baseLabHours = computeWeeklyHours((sec as any).labSchedule || '');
+                          const additionalLabHours = ((sec as any).labSchedules || []).reduce((sum: number, s: any) => sum + computeWeeklyHours(s.schedule || ''), 0);
+                          const secLabHours = baseLabHours + additionalLabHours;
+
                           // "expected N hrs/wk" is only quoted when a majority of sections agrees on
                           // N; otherwise both sides of the disagreement get a plain Mismatched badge.
                           const lectureDeviation = sectionDeviation(scheduleAnalysis, 'lecture', secLectureHours);
@@ -417,14 +498,14 @@ export const Step1CourseInfo: React.FC<Step1CourseInfoProps> = ({
                                           {secLectureHours === 0
                                             ? isLectureDeviating
                                               ? lectureDeviation.expected > 0
-                                                ? `No lecture schedule (expected ${lectureDeviation.expected} hrs/wk)`
+                                                ? `No lecture schedule (expected ${lectureDeviation.expected} hr${lectureDeviation.expected === 1 ? '' : 's'}/wk)`
                                                 : 'No lecture schedule · Mismatched'
                                               : 'No lecture schedule'
                                             : isLectureDeviating
                                             ? lectureDeviation.expected > 0
                                               ? `${secLectureHours}h (expected ${lectureDeviation.expected}h)`
-                                              : `${secLectureHours} hrs/wk · Mismatched`
-                                            : `✓ ${secLectureHours} hrs/wk`}
+                                              : `${secLectureHours} hr${secLectureHours === 1 ? '' : 's'}/wk · Mismatched`
+                                            : `✓ ${secLectureHours} hr${secLectureHours === 1 ? '' : 's'}/wk`}
                                         </span>
                                       </span>
                                     )}
@@ -453,6 +534,55 @@ export const Step1CourseInfo: React.FC<Step1CourseInfoProps> = ({
                               </div>
                             )}
 
+                            {/* Additional lecture schedules */}
+                            {showLecture && (sec as any).lectureSchedules && (sec as any).lectureSchedules.length > 0 && (
+                              <div className="space-y-2 pt-2">
+                                {(sec as any).lectureSchedules.map((ls: any, lsIdx: number) => (
+                                  <div key={lsIdx} className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    <div className="space-y-1">
+                                      <TimeRangePicker
+                                        value={ls.schedule ?? ''}
+                                        onChange={val => updateLectureSchedule(facIdx, secIdx, lsIdx, 'schedule', val)}
+                                        placeholder="Click to set additional lecture time"
+                                        includeDays={true}
+                                      />
+                                    </div>
+                                    <div className="space-y-1">
+                                      <div className="flex gap-2">
+                                        <input
+                                          type="text"
+                                          value={ls.room ?? ''}
+                                          onChange={e => updateLectureSchedule(facIdx, secIdx, lsIdx, 'room', e.target.value)}
+                                          placeholder="e.g. LR115"
+                                          className="flex-1 px-2.5 py-1.5 text-xs rounded-lg border border-border bg-background focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() => removeLectureSchedule(facIdx, secIdx, lsIdx)}
+                                          className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors cursor-pointer"
+                                          title="Remove schedule"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Add lecture schedule button */}
+                            {showLecture && (
+                              <button
+                                type="button"
+                                onClick={() => addLectureSchedule(facIdx, secIdx)}
+                                className="flex items-center gap-1 text-[10px] font-semibold text-primary hover:text-primary/80 transition-colors cursor-pointer pt-1"
+                              >
+                                <Plus className="w-3 h-3" />
+                                Add lecture schedule
+                              </button>
+                            )}
+
                             {/* Lab fields */}
                             {showLab && (
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -474,14 +604,14 @@ export const Step1CourseInfo: React.FC<Step1CourseInfoProps> = ({
                                           {secLabHours === 0
                                             ? isLabDeviating
                                               ? labDeviation.expected > 0
-                                                ? `No lab schedule (expected ${labDeviation.expected} hrs/wk)`
+                                                ? `No lab schedule (expected ${labDeviation.expected} hr${labDeviation.expected === 1 ? '' : 's'}/wk)`
                                                 : 'No lab schedule · Mismatched'
                                               : 'No lab schedule'
                                             : isLabDeviating
                                             ? labDeviation.expected > 0
                                               ? `${secLabHours}h (expected ${labDeviation.expected}h)`
-                                              : `${secLabHours} hrs/wk · Mismatched`
-                                            : `✓ ${secLabHours} hrs/wk`}
+                                              : `${secLabHours} hr${secLabHours === 1 ? '' : 's'}/wk · Mismatched`
+                                            : `✓ ${secLabHours} hr${secLabHours === 1 ? '' : 's'}/wk`}
                                         </span>
                                       </span>
                                     )}
@@ -508,6 +638,55 @@ export const Step1CourseInfo: React.FC<Step1CourseInfoProps> = ({
                                   />
                                 </div>
                               </div>
+                            )}
+
+                            {/* Additional lab schedules */}
+                            {showLab && (sec as any).labSchedules && (sec as any).labSchedules.length > 0 && (
+                              <div className="space-y-2 pt-2">
+                                {(sec as any).labSchedules.map((labS: any, labSIdx: number) => (
+                                  <div key={labSIdx} className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    <div className="space-y-1">
+                                      <TimeRangePicker
+                                        value={labS.schedule ?? ''}
+                                        onChange={val => updateLabSchedule(facIdx, secIdx, labSIdx, 'schedule', val)}
+                                        placeholder="Click to set additional lab time"
+                                        includeDays={true}
+                                      />
+                                    </div>
+                                    <div className="space-y-1">
+                                      <div className="flex gap-2">
+                                        <input
+                                          type="text"
+                                          value={labS.room ?? ''}
+                                          onChange={e => updateLabSchedule(facIdx, secIdx, labSIdx, 'room', e.target.value)}
+                                          placeholder="e.g. CLR206"
+                                          className="flex-1 px-2.5 py-1.5 text-xs rounded-lg border border-border bg-background focus:ring-1 focus:ring-amber-500 focus:border-amber-500 outline-none"
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() => removeLabSchedule(facIdx, secIdx, labSIdx)}
+                                          className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors cursor-pointer"
+                                          title="Remove schedule"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Add lab schedule button */}
+                            {showLab && (
+                              <button
+                                type="button"
+                                onClick={() => addLabSchedule(facIdx, secIdx)}
+                                className="flex items-center gap-1 text-[10px] font-semibold text-amber-600 dark:text-amber-400 hover:text-amber-500 dark:hover:text-amber-300 transition-colors cursor-pointer pt-1"
+                              >
+                                <Plus className="w-3 h-3" />
+                                Add lab schedule
+                              </button>
                             )}
                           </div>
                         );
@@ -581,7 +760,7 @@ export const Step1CourseInfo: React.FC<Step1CourseInfoProps> = ({
             );
           })}
         </div>
-      </div>
+      </CollapsibleCard>
     </div>
   );
 };

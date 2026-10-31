@@ -24,13 +24,29 @@ import {
   Download,
   Eye,
   FileText,
-  Image as ImageIcon
+  Image as ImageIcon,
+  X,
 } from 'lucide-react';
 import { PageHeader } from '../../shared/components/common/PageHeader';
 import { EmptyState } from '../../shared/components/common/EmptyState';
 import { CreatePresentationPage } from './CreatePresentationPage';
 import { canManageCourseContent } from '../../shared/utils/roles';
 import { AssessmentFilePreviewModal, type AssessmentPreviewAttachment } from './components/AssessmentFilePreviewModal';
+import { RubricViewer } from './components/RubricViewer';
+import { uploadFileToPublic, formatFileSize, isFileTooLarge } from '../../shared/utils/fileUploader';
+import type { SubmissionAttachment } from '../../shared/types/lms';
+import { emitRealtimeChange } from '../realtime';
+
+export const isSubmissionForPresentation = (s: any, presId: string): boolean => {
+  if (!s || !presId) return false;
+  return (
+    s.activityId === presId ||
+    s.activityKey === presId ||
+    s.activityKey === `asg-activity-${presId}` ||
+    s.presentationId === presId ||
+    s.presentation_id === presId
+  );
+};
 
 interface PresentationsViewProps {
   courseId: string;
@@ -60,10 +76,25 @@ export const PresentationsView: React.FC<PresentationsViewProps> = ({
   const [termFilter, setTermFilter] = useState<'all' | TermId>('all');
   const [slideUrl, setSlideUrl] = useState('');
   const [textContent, setTextContent] = useState('');
-  const [simulatedFileName, setSimulatedFileName] = useState('');
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [previewAttachment, setPreviewAttachment] = useState<AssessmentPreviewAttachment | null>(null);
+
+  const addFiles = (files: File[]) => {
+    const valid: File[] = [];
+    for (const f of files) {
+      if (isFileTooLarge(f.size)) {
+        showAlert(`File "${f.name}" exceeds the maximum upload limit of 25MB.`);
+        continue;
+      }
+      valid.push(f);
+    }
+    if (valid.length > 0) {
+      setSelectedFiles(prev => [...prev, ...valid]);
+    }
+  };
 
   const currentCourse = (db.courses || []).find(c => c.id === courseId);
   const isAssignedInstructor = canManageCourseContent(currentCourse, activeUser);
@@ -99,15 +130,22 @@ export const PresentationsView: React.FC<PresentationsViewProps> = ({
 
   const currentSubmission = selectedPresentation
     ? (db.submissions || []).find(
-        s => (s.activityId === selectedPresentation.id || s.activityKey === selectedPresentation.id) && s.studentId === activeUser.id
+        s => isSubmissionForPresentation(s, selectedPresentation.id) && s.studentId === activeUser.id
       )
     : undefined;
+
+  const submissionFiles: SubmissionAttachment[] =
+    currentSubmission?.attachments && currentSubmission.attachments.length > 0
+      ? currentSubmission.attachments
+      : currentSubmission?.fileName
+        ? [{ name: currentSubmission.fileName, url: currentSubmission.fileUrl }]
+        : [];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedPresentation) return;
 
-    if (selectedPresentation.metadata?.slideDeckRequired && !slideUrl.trim() && !simulatedFileName.trim()) {
+    if (selectedPresentation.metadata?.slideDeckRequired && !slideUrl.trim() && selectedFiles.length === 0) {
       showAlert('Slide deck URL or slide file upload is required.');
       return;
     }
@@ -119,23 +157,60 @@ export const PresentationsView: React.FC<PresentationsViewProps> = ({
       .filter(Boolean)
       .join('\n\n');
 
-    if (!compiledContent && !simulatedFileName) {
-      showAlert('Please enter slide link, speaker notes, or upload slide file.');
+    if (!compiledContent && selectedFiles.length === 0) {
+      showAlert('Please enter slide link, speaker notes, or attach slide deck/handout files.');
       return;
     }
 
     setIsSubmitting(true);
     try {
+      const attachments: SubmissionAttachment[] = [];
+      if (selectedFiles.length > 0) {
+        for (const file of selectedFiles) {
+          try {
+            const res = await uploadFileToPublic(file);
+            attachments.push({
+              name: res.name || file.name,
+              url: res.url,
+              size: res.size,
+              id: (res as any).id || (res as any).fileId,
+            });
+          } catch {
+            attachments.push({
+              name: file.name,
+              url: `/likha/assets/mock-${encodeURIComponent(file.name)}`,
+              size: formatFileSize(file.size),
+            });
+          }
+        }
+      }
+
+      const primary = attachments[0];
       await submitActivity(
         selectedPresentation.id,
-        simulatedFileName ? 'file' : 'online_text',
+        attachments.length > 0 ? 'file' : 'online_text',
         compiledContent,
-        simulatedFileName || 'Presentation_Slides.pdf'
+        primary?.name ?? 'Presentation_Slides.pdf',
+        undefined,
+        primary?.url,
+        primary?.id,
+        primary?.size,
+        attachments.length > 0 ? attachments : undefined
       );
       showAlert({
         title: 'Presentation Materials Submitted',
         message: 'Your presentation materials have been submitted successfully.',
         type: 'success',
+      });
+      setSelectedFiles([]);
+      emitRealtimeChange({
+        collection: 'submissions',
+        path: '/items/submissions',
+        courseIds: [courseId],
+        parentIds: {
+          activity_id: [selectedPresentation.id],
+          presentation_id: [selectedPresentation.id],
+        },
       });
     } catch {
       // Handled in submitActivity
@@ -237,10 +312,10 @@ export const PresentationsView: React.FC<PresentationsViewProps> = ({
           <div className="grid grid-cols-1 gap-3">
             {visiblePresentations.map(pres => {
               const mySub = (db.submissions || []).find(
-                s => (s.activityId === pres.id || s.activityKey === pres.id) && s.studentId === activeUser.id
+                s => isSubmissionForPresentation(s, pres.id) && s.studentId === activeUser.id
               );
               const subs = (db.submissions || []).filter(
-                s => s.activityId === pres.id || s.activityKey === pres.id
+                s => isSubmissionForPresentation(s, pres.id)
               );
               const pendingGradeCount = subs.filter(s => s.status === 'submitted').length;
               const mode = getModeLabel(pres.metadata?.presentationMode);
@@ -363,7 +438,7 @@ export const PresentationsView: React.FC<PresentationsViewProps> = ({
                 type="button"
                 onClick={() => {
                   const subs = (db.submissions || []).filter(
-                    s => s.activityId === selectedPresentation.id || s.activityKey === selectedPresentation.id
+                    s => isSubmissionForPresentation(s, selectedPresentation.id)
                   );
                   if (subs.length > 0) openSpeedGrader(subs[0].id);
                   else showAlert('No student submissions to grade yet.');
@@ -476,22 +551,10 @@ export const PresentationsView: React.FC<PresentationsViewProps> = ({
           );
         })()}
 
-        {selectedPresentation.rubric && selectedPresentation.rubric.length > 0 && (
-          <div className="pt-4 border-t border-border space-y-2">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Presentation Rubrics</h3>
-            <div className="space-y-2">
-              {selectedPresentation.rubric.map(r => (
-                <div key={r.id} className="rounded-xl border border-border p-3 text-xs bg-accent/30 flex justify-between items-start">
-                  <div>
-                    <div className="font-bold">{r.title}</div>
-                    <div className="text-muted-foreground mt-0.5">{r.description}</div>
-                  </div>
-                  <div className="font-bold text-primary shrink-0 ml-4">{r.points} pts</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        <RubricViewer
+          rubric={selectedPresentation.rubric}
+          title="Presentation Rubrics"
+        />
       </div>
 
       {/* Student Submission Card */}
@@ -519,36 +582,47 @@ export const PresentationsView: React.FC<PresentationsViewProps> = ({
                   {currentSubmission.content}
                 </div>
               )}
-              {currentSubmission.fileName && (
-                <div className="text-xs font-mono text-muted-foreground flex items-center justify-between">
-                  <span>Slide file: {currentSubmission.fileName}</span>
-                  {currentSubmission.fileUrl && (
-                    <div className="flex items-center space-x-1.5">
-                      <button
-                        type="button"
-                        onClick={() => setPreviewAttachment({
-                          name: currentSubmission.fileName || 'Presentation Slides',
-                          url: currentSubmission.fileUrl,
-                        })}
-                        className="px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-muted/70 rounded-lg transition-colors cursor-pointer flex items-center space-x-1 border border-border"
-                        title={`View ${currentSubmission.fileName}`}
-                      >
-                        <Eye className="w-3.5 h-3.5 text-muted-foreground" />
-                        <span>View</span>
-                      </button>
-                      <a
-                        href={currentSubmission.fileUrl}
-                        download={currentSubmission.fileName}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary/10 rounded-lg transition-colors cursor-pointer flex items-center space-x-1 border border-primary/20"
-                        title={`Download ${currentSubmission.fileName}`}
-                      >
-                        <Download className="w-3 h-3" />
-                        <span>Download</span>
-                      </a>
+              {submissionFiles.length > 0 && (
+                <div className="space-y-1.5 pt-1">
+                  <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
+                    Attached Slide & Handout Files ({submissionFiles.length})
+                  </div>
+                  {submissionFiles.map((file, idx) => (
+                    <div
+                      key={`${file.name}-${idx}`}
+                      className="text-xs font-mono text-muted-foreground flex items-center justify-between p-2 rounded-lg bg-background border border-border"
+                    >
+                      <span className="truncate">{file.name}</span>
+                      {file.url && (
+                        <div className="flex items-center space-x-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setPreviewAttachment({
+                              name: file.name || 'Presentation Slides',
+                              size: file.size,
+                              url: file.url,
+                            })}
+                            className="px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-muted/70 rounded-lg transition-colors cursor-pointer flex items-center space-x-1 border border-border"
+                            title={`View ${file.name}`}
+                          >
+                            <Eye className="w-3.5 h-3.5 text-muted-foreground" />
+                            <span>View</span>
+                          </button>
+                          <a
+                            href={file.url}
+                            download={file.name}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary/10 rounded-lg transition-colors cursor-pointer flex items-center space-x-1 border border-primary/20"
+                            title={`Download ${file.name}`}
+                          >
+                            <Download className="w-3 h-3" />
+                            <span>Download</span>
+                          </a>
+                        </div>
+                      )}
                     </div>
-                  )}
+                  ))}
                 </div>
               )}
             </div>
@@ -585,15 +659,97 @@ export const PresentationsView: React.FC<PresentationsViewProps> = ({
                 <div>
                   <label className="block text-xs font-bold text-muted-foreground mb-1 flex items-center gap-1">
                     <Upload className="h-3.5 w-3.5" />
-                    Upload Slide Deck / Handout File (Optional)
+                    Upload Slide Deck / Handout Files (Optional)
                   </label>
-                  <input
-                    type="text"
-                    placeholder="Attach file (e.g. defense-slides.pdf)"
-                    value={simulatedFileName}
-                    onChange={e => setSimulatedFileName(e.target.value)}
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-xs"
-                  />
+                  <div
+                    onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
+                    onDragLeave={() => setIsDragging(false)}
+                    onDrop={e => {
+                      e.preventDefault();
+                      setIsDragging(false);
+                      const dropped = Array.from(e.dataTransfer.files || []);
+                      if (dropped.length) addFiles(dropped);
+                    }}
+                    className={`rounded-xl border border-dashed p-5 text-center space-y-3 transition-colors ${
+                      isDragging ? 'border-primary bg-primary/5' : 'border-border'
+                    }`}
+                  >
+                    {selectedFiles.length > 0 ? (
+                      <div className="mx-auto max-w-md space-y-2">
+                        {selectedFiles.map((file, idx) => (
+                          <div
+                            key={`${file.name}-${idx}`}
+                            className="p-3 bg-card border border-border rounded-xl flex items-center justify-between"
+                          >
+                            <div className="flex items-center space-x-3 truncate">
+                              <FileText className="w-5 h-5 text-primary shrink-0" />
+                              <div className="text-left truncate">
+                                <div className="font-bold text-foreground truncate text-xs">{file.name}</div>
+                                <div className="text-[11px] text-muted-foreground">{formatFileSize(file.size)}</div>
+                              </div>
+                            </div>
+                            <div className="flex items-center space-x-1 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const url = URL.createObjectURL(file);
+                                  setPreviewAttachment({ name: file.name, size: formatFileSize(file.size), url });
+                                }}
+                                className="p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg transition-colors cursor-pointer"
+                                title="Preview selected file"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedFiles(prev => prev.filter((_, i) => i !== idx))}
+                                className="p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg transition-colors cursor-pointer"
+                                title="Remove file"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                        <label className="block text-center text-[11px] font-semibold text-primary hover:underline cursor-pointer">
+                          + Add more files
+                          <input
+                            type="file"
+                            multiple
+                            className="hidden"
+                            onChange={e => {
+                              const list = Array.from(e.target.files || []);
+                              if (list.length) addFiles(list);
+                              e.target.value = '';
+                            }}
+                          />
+                        </label>
+                      </div>
+                    ) : (
+                      <>
+                        <Upload className="h-7 w-7 mx-auto text-muted-foreground" />
+                        <div className="text-xs text-muted-foreground">
+                          <label className="font-semibold text-primary hover:underline cursor-pointer">
+                            <span>Attach slide deck or handout files</span>
+                            <input
+                              type="file"
+                              multiple
+                              className="hidden"
+                              onChange={e => {
+                                const list = Array.from(e.target.files || []);
+                                if (list.length) addFiles(list);
+                                e.target.value = '';
+                              }}
+                            />
+                          </label>
+                          <span> or drag and drop here</span>
+                        </div>
+                        <div className="text-[11px] text-muted-foreground">
+                          Supported: PDF, PPTX, KEY, images, ZIPs (up to 25MB each)
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
 

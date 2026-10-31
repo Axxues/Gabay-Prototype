@@ -141,7 +141,7 @@ export const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="h-screen max-h-screen w-full bg-muted flex flex-col items-center justify-center p-4 relative overflow-y-auto overflow-x-hidden text-foreground font-sans custom-scrollbar">
+    <div className="h-dvh max-h-dvh w-full bg-muted flex flex-col items-center justify-center p-4 relative overflow-y-auto overflow-x-hidden text-foreground font-sans custom-scrollbar">
       {/* Subtle Background Glows */}
       <div className="fixed -top-32 -left-32 w-96 h-96 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
       <div className="fixed -bottom-32 -right-32 w-96 h-96 bg-primary/10 rounded-full blur-3xl pointer-events-none" />

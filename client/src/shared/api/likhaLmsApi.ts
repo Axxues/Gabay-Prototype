@@ -93,6 +93,26 @@ export const QUIZ_VALID_COLUMNS = new Set([
   'file_size',
 ]);
 
+/** Assessment router: rows of each type now live in their own collection. */
+export const ASSESSMENT_TYPES = ['activity', 'assignment', 'project', 'presentation'] as const;
+export const ASSESSMENT_COLLECTION_BY_TYPE: Record<string, string> = {
+  activity: 'activities',
+  assignment: 'assignments',
+  project: 'projects',
+  presentation: 'presentations',
+};
+/** FK column name on child collections (submissions, assessment_questions,
+ *  rubric_criteria, module_items) that points at the assessment id per type. */
+export const ASSESSMENT_FK_BY_TYPE: Record<string, string> = {
+  activity: 'activity_id',
+  assignment: 'assignment_id',
+  project: 'project_id',
+  presentation: 'presentation_id',
+};
+
+const normalizeAssessmentType = (value: any): string =>
+  ASSESSMENT_COLLECTION_BY_TYPE[value] ? value : 'activity';
+
 export const EXAM_VALID_COLUMNS = new Set([
   'id',
   'course_id',
@@ -112,6 +132,9 @@ export const SUBMISSION_VALID_COLUMNS = new Set([
   'activity_id',
   'quiz_id',
   'exam_id',
+  'assignment_id',
+  'project_id',
+  'presentation_id',
   'status',
   'submission_type',
   'score',
@@ -143,6 +166,9 @@ export const MODULE_ITEM_VALID_COLUMNS = new Set([
   'file_type',
   'activity_id',
   'quiz_id',
+  'assignment_id',
+  'project_id',
+  'presentation_id',
   'attachments',
 ]);
 
@@ -520,7 +546,7 @@ export const createBlankSyllabus = (courseId: string): OfficialSyllabusData => (
   programOutcomes: [],
   courseOutcomes: [],
   courseRequirements: { major: [], other: [] },
-  gradingSystem: { termFormula: '', finalFormula: '', classStandingComponents: [], passingGrade: '3.0' },
+  gradingSystem: { termFormula: '', finalFormula: '', classStandingComponents: [] },
   projectRubrics: [],
   classroomPolicies: [],
   courseOutline: [],
@@ -1018,6 +1044,15 @@ export const likhaLmsApi = {
         }
       }
 
+      // Keep the legacy plain-string activity_id link AND stamp the per-type
+      // FK column so the link is unambiguous.
+      if (payloadToSend.activity_id) {
+        const typeFk = ASSESSMENT_FK_BY_TYPE[String(payloadToSend.type ?? '')];
+        if (typeFk && typeFk !== 'activity_id') {
+          payloadToSend[typeFk] = payloadToSend.activity_id;
+        }
+      }
+
       const res = await likhaRequest('/items/module_items', {
         method: 'POST',
         body: JSON.stringify(payloadToSend),
@@ -1048,6 +1083,14 @@ export const likhaLmsApi = {
 
       if (Object.keys(payloadToSend).length === 0) {
         return { id, ...updates };
+      }
+
+      // Stamp the per-type FK column alongside the legacy activity_id link.
+      if (payloadToSend.activity_id) {
+        const typeFk = ASSESSMENT_FK_BY_TYPE[String(payloadToSend.type ?? '')];
+        if (typeFk && typeFk !== 'activity_id') {
+          payloadToSend[typeFk] = payloadToSend.activity_id;
+        }
       }
 
       const res = await likhaRequest(`/items/module_items/${encodeURIComponent(id)}`, {
@@ -1099,13 +1142,30 @@ export const likhaLmsApi = {
       return likhaLmsApi.saveActivity(activity);
     },
 
-    async deleteActivity(id: string): Promise<void> {
-      await likhaRequest(`/items/activities/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    async deleteActivity(id: string, assessmentType?: string): Promise<void> {
+      const collection = assessmentType
+        ? ASSESSMENT_COLLECTION_BY_TYPE[normalizeAssessmentType(assessmentType)]
+        : null;
+      if (collection) {
+        await likhaRequest(`/items/${collection}/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        return;
+      }
+      // Type unknown (legacy caller): activities first, then the split
+      // collections. A wrong-collection DELETE is a 404 that we treat as "not
+      // here", so idempotent deletes stay safe.
+      for (const c of ['activities', 'assignments', 'projects', 'presentations']) {
+        try {
+          await likhaRequest(`/items/${c}/${encodeURIComponent(id)}`, { method: 'DELETE' });
+          return;
+        } catch {
+          // try the next collection
+        }
+      }
     },
 
-    async getAssessmentQuestions(filter: { activity_id?: string; quiz_id?: string; exam_id?: string }): Promise<any[]> {
-      const field = filter.activity_id ? 'activity_id' : filter.quiz_id ? 'quiz_id' : 'exam_id';
-      const val = filter.activity_id || filter.quiz_id || filter.exam_id;
+    async getAssessmentQuestions(filter: { activity_id?: string; quiz_id?: string; exam_id?: string; assignment_id?: string; project_id?: string; presentation_id?: string }): Promise<any[]> {
+      const field = filter.activity_id ? 'activity_id' : filter.quiz_id ? 'quiz_id' : filter.exam_id ? 'exam_id' : filter.assignment_id ? 'assignment_id' : filter.project_id ? 'project_id' : 'presentation_id';
+      const val = filter.activity_id || filter.quiz_id || filter.exam_id || filter.assignment_id || filter.project_id || filter.presentation_id;
       if (!val) return [];
       return likhaRequest(`/items/assessment_questions?filter[${field}][_eq]=${encodeURIComponent(val)}&sort=order`).catch(() => []);
     },
@@ -1327,10 +1387,68 @@ export const likhaLmsApi = {
   // 5. SUBMISSIONS & SPEEDGRADER
   // =========================================================================
   submissions: {
-    async getSubmissions(assessmentId: string, type: 'activity' | 'quiz' | 'exam' = 'activity'): Promise<any[]> {
-      const field = type === 'quiz' ? 'quiz_id' : type === 'exam' ? 'exam_id' : 'activity_id';
-      const q = `/items/submissions?filter[${field}][_eq]=${encodeURIComponent(assessmentId)}&fields=*,file.*,answers.*`;
-      return likhaRequest(q);
+    async getSubmissions(assessmentId: string, type: 'activity' | 'quiz' | 'exam' | 'assignment' | 'project' | 'presentation' = 'activity'): Promise<any[]> {
+      // Handle synthetic keys (asg-activity-{id}, asg-quiz-{id}, asg-exam-{id})
+      const realId = assessmentId.startsWith('asg-activity-')
+        ? assessmentId.slice('asg-activity-'.length)
+        : assessmentId.startsWith('asg-quiz-')
+          ? assessmentId.slice('asg-quiz-'.length)
+          : assessmentId.startsWith('asg-exam-')
+            ? assessmentId.slice('asg-exam-'.length)
+            : assessmentId;
+
+      // Primary field: in Likha ERP, activities/presentations/assignments/projects all live in activities and reference activity_id
+      const primaryField = type === 'quiz' ? 'quiz_id' : type === 'exam' ? 'exam_id' : 'activity_id';
+      const q = `/items/submissions?filter%5B${encodeURIComponent(primaryField)}%5D%5B_eq%5D=${encodeURIComponent(realId)}&fields=*,file.*,submission_answers.*`;
+      try {
+        const rows = await likhaRequest<any[]>(q);
+        if (Array.isArray(rows) && rows.length > 0) return rows;
+      } catch {
+        // Query failed; try fallback if split column applies
+      }
+
+      const splitField = type === 'assignment' ? 'assignment_id' : type === 'project' ? 'project_id' : type === 'presentation' ? 'presentation_id' : null;
+      if (splitField) {
+        try {
+          const splitQ = `/items/submissions?filter%5B${encodeURIComponent(splitField)}%5D%5B_eq%5D=${encodeURIComponent(realId)}&fields=*,file.*,submission_answers.*`;
+          const rows = await likhaRequest<any[]>(splitQ);
+          if (Array.isArray(rows) && rows.length > 0) return rows;
+        } catch {
+          // Safe degrade
+        }
+      }
+
+      return [];
+    },
+
+    /**
+     * Child answer rows (`submission_answers`) for a set of submissions,
+     * grouped by submission id. Kept out of `getSubmissions`: if this
+     * collection is unreadable, the failure must degrade to "no answers"
+     * instead of taking the whole submissions list down with it.
+     */
+    async getAnswers(submissionIds: string[]): Promise<Record<string, any[]>> {
+      const ids = (submissionIds || []).filter(Boolean);
+      const grouped: Record<string, any[]> = {};
+      // Chunked so a whole-course bootstrap never builds a URL the gateway
+      // rejects, and small enough that the row cap covers every answer.
+      const CHUNK = 50;
+      for (let i = 0; i < ids.length; i += CHUNK) {
+        const chunk = ids.slice(i, i + CHUNK);
+        try {
+          const rows = await likhaRequest<any[]>(
+            `/items/submission_answers?filter%5Bsubmission_id%5D%5B_in%5D=${chunk.map(encodeURIComponent).join(',')}&fields=*&limit=1000`
+          );
+          for (const row of Array.isArray(rows) ? rows : []) {
+            const key = String(row?.submission_id ?? '');
+            if (!key) continue;
+            (grouped[key] ||= []).push(row);
+          }
+        } catch {
+          // Unreadable answers: leave this chunk empty rather than fail the load.
+        }
+      }
+      return grouped;
     },
 
     /**
@@ -2121,8 +2239,68 @@ export const likhaLmsApi = {
   },
 
   async getActivitiesWithRelations(courseId: string): Promise<any[]> {
-    const query = `filter[course_id][_eq]=${encodeURIComponent(courseId)}&fields=*,attachments.directus_files_id.*,questions.*`;
-    const activities = await likhaRequest(`/items/activities?${query}`);
+    const courseFilter = `filter%5Bcourse_id%5D%5B_eq%5D=${encodeURIComponent(courseId)}`;
+    const activities = await likhaRequest(`/items/activities?${courseFilter}&fields=*,attachments.directus_files_id.*,questions.*,assessment_questions.*`);
+
+    // The other assessment types live in their own collections; the merge
+    // tags each row so `assessment_type` is always present.
+    const SPLIT_SOURCES: Array<{ table: string; type: string }> = [
+      { table: 'assignments', type: 'assignment' },
+      { table: 'projects', type: 'project' },
+      { table: 'presentations', type: 'presentation' },
+    ];
+    const splitRows = await Promise.all(SPLIT_SOURCES.map(async ({ table, type }) => {
+      try {
+        const rows = await likhaRequest(`/items/${table}?${courseFilter}&fields=*`);
+        return (Array.isArray(rows) ? rows : []).map((r: any) => ({ ...r, assessment_type: type }));
+      } catch {
+        return [];
+      }
+    }));
+
+    for (const { type } of SPLIT_SOURCES) {
+      const list = splitRows.flat().filter((r: any) => r.assessment_type === type);
+      const ids = list.map((r: any) => r.id).filter(Boolean);
+      if (ids.length === 0) continue;
+      const fk = ASSESSMENT_FK_BY_TYPE[type];
+      const childFilter = `filter%5B${fk}%5D%5B_in%5D=${ids.map(encodeURIComponent).join(',')}`;
+      try {
+        const criteria = await likhaRequest(`/items/rubric_criteria?${childFilter}&sort=order`).catch(() => []);
+        if (Array.isArray(criteria) && criteria.length > 0) {
+          const byId = new Map<string, any[]>();
+          for (const c of criteria) {
+            const key = String(c[fk]);
+            const arr = byId.get(key) || [];
+            arr.push(c);
+            byId.set(key, arr);
+          }
+          for (const row of list) {
+            if ((!Array.isArray(row.rubric) || row.rubric.length === 0) && byId.has(row.id)) {
+              row.rubric_criteria = byId.get(row.id);
+            }
+          }
+        }
+      } catch {}
+      try {
+        const qRows = await likhaRequest(`/items/assessment_questions?${childFilter}&sort=order`).catch(() => []);
+        if (Array.isArray(qRows) && qRows.length > 0) {
+          const byId = new Map<string, any[]>();
+          for (const q of qRows) {
+            const key = String(q[fk]);
+            const arr = byId.get(key) || [];
+            arr.push(q);
+            byId.set(key, arr);
+          }
+          for (const row of list) {
+            if (!Array.isArray(row.questions) || row.questions.length === 0) {
+              row.questions = byId.get(row.id);
+            }
+          }
+        }
+      } catch {}
+    }
+
+    const splitList = splitRows.flat();
     if (Array.isArray(activities) && activities.length > 0) {
       const needRubric = activities.filter((a: any) => (!Array.isArray(a.rubric) || a.rubric.length === 0) && a.id);
       if (needRubric.length > 0) {
@@ -2148,7 +2326,11 @@ export const likhaLmsApi = {
       }
 
       // Fetch child assessment_questions (same pattern — Directus has no reverse O2M alias)
-      const needQuestions = activities.filter((a: any) => (!Array.isArray(a.questions) || a.questions.length === 0) && a.id);
+      const needQuestions = activities.filter((a: any) => {
+        const hasQuestions = Array.isArray(a.questions) && a.questions.length > 0;
+        const hasAssessmentQuestions = Array.isArray(a.assessment_questions) && a.assessment_questions.length > 0;
+        return !hasQuestions && !hasAssessmentQuestions && a.id;
+      });
       if (needQuestions.length > 0) {
         try {
           const filterStr = needQuestions.length === 1
@@ -2170,8 +2352,15 @@ export const likhaLmsApi = {
           }
         } catch {}
       }
+
+      // Normalize assessment_questions into questions if questions is still empty
+      for (const act of activities) {
+        if ((!Array.isArray(act.questions) || act.questions.length === 0) && Array.isArray(act.assessment_questions) && act.assessment_questions.length > 0) {
+          act.questions = act.assessment_questions;
+        }
+      }
     }
-    return activities;
+    return [...(Array.isArray(activities) ? activities : []), ...splitList];
   },
 
   async uploadFile(file: File): Promise<LikhaUploadedFile> {
@@ -2230,11 +2419,13 @@ export const likhaLmsApi = {
   async saveActivity(activity: any): Promise<any> {
     const { questions, rubric: directRubric, ...rootPayload } = activity;
     const rubric = directRubric !== undefined ? directRubric : (rootPayload as any).rubric;
+    const assessmentType = normalizeAssessmentType(rootPayload.assessmentType ?? rootPayload.assessment_type);
+    const collection = ASSESSMENT_COLLECTION_BY_TYPE[assessmentType];
     const isUpdate = Boolean(rootPayload.id);
     const actId = rootPayload.id || generateUuid();
     const url = isUpdate
-      ? `/items/activities/${encodeURIComponent(actId)}`
-      : `/items/activities`;
+      ? `/items/${collection}/${encodeURIComponent(actId)}`
+      : `/items/${collection}`;
 
     const totalPoints = typeof rootPayload.total_points === 'number'
       ? rootPayload.total_points
@@ -2275,6 +2466,12 @@ export const likhaLmsApi = {
       } else if (!INTERNAL_CLIENT_KEYS.has(key)) {
         extraMetadata[key] = value;
       }
+    }
+
+    // Non-activities collections have no assessment_type column; the owning
+    // collection itself is the discriminator.
+    if (assessmentType !== 'activity') {
+      delete payloadToSend.assessment_type;
     }
 
     if (Object.keys(extraMetadata).length > 0 || rootPayload.metadata) {
@@ -2331,9 +2528,10 @@ export const likhaLmsApi = {
     }
 
     if (Array.isArray(questions) && questions.length > 0) {
+      const parentFk = ASSESSMENT_FK_BY_TYPE[assessmentType];
       if (isUpdate) {
         try {
-          const existing = await likhaRequest(`/items/assessment_questions?filter[activity_id][_eq]=${encodeURIComponent(actId)}&fields=id`);
+          const existing = await likhaRequest(`/items/assessment_questions?filter%5B${parentFk}%5D%5B_eq%5D=${encodeURIComponent(actId)}&fields=id`);
           if (Array.isArray(existing) && existing.length > 0) {
             await likhaRequest('/items/assessment_questions', {
               method: 'DELETE',
@@ -2345,7 +2543,7 @@ export const likhaLmsApi = {
 
       const questionsPayload = questions.map((q, idx) => ({
         id: q.id || `q-${actId}-${idx}`,
-        activity_id: actId,
+        [parentFk]: actId,
         question_text: q.question_text || q.text || q.prompt || "",
         question_type: q.question_type || q.type || "essay",
         points: Number(q.points) || 10,
@@ -2360,9 +2558,10 @@ export const likhaLmsApi = {
     }
 
     if (rubric !== undefined) {
+      const parentFk = ASSESSMENT_FK_BY_TYPE[assessmentType];
       if (isUpdate) {
         try {
-          const existing = await likhaRequest(`/items/rubric_criteria?filter[activity_id][_eq]=${encodeURIComponent(actId)}&fields=id`);
+          const existing = await likhaRequest(`/items/rubric_criteria?filter%5B${parentFk}%5D%5B_eq%5D=${encodeURIComponent(actId)}&fields=id`);
           if (Array.isArray(existing) && existing.length > 0) {
             await likhaRequest('/items/rubric_criteria', {
               method: 'DELETE',
@@ -2375,7 +2574,7 @@ export const likhaLmsApi = {
       if (Array.isArray(rubric) && rubric.length > 0) {
         const rubricPayload = rubric.map((r, idx) => ({
           id: r.id || `rub-${actId}-${idx}`,
-          activity_id: actId,
+          [parentFk]: actId,
           title: r.title || r.criterion || "",
           description: r.description || "",
           max_points: Number(r.max_points ?? r.points ?? r.pointsPossible) || 10,
@@ -2394,18 +2593,48 @@ export const likhaLmsApi = {
   async submitActivity(submission: any): Promise<any> {
     const { answers, ...rootPayload } = submission;
     const subId = rootPayload.id || `sub-${Date.now().toString(36)}`;
+    const answersContent = answers !== undefined && answers !== null
+      ? (typeof answers === 'object' && !Array.isArray(answers)
+          ? JSON.stringify(answers)
+          : Array.isArray(answers)
+            ? JSON.stringify(
+                Object.fromEntries(
+                  answers.map((a: any) => [
+                    String(a.questionId || a.question_id || ''),
+                    String(a.answer || a.studentAnswer || a.student_answer || ''),
+                  ])
+                )
+              )
+            : undefined)
+      : undefined;
+
     const rawCandidate: Record<string, any> = {
       ...rootPayload,
       id: subId,
       status: rootPayload.status || "submitted",
       submitted_at: rootPayload.submitted_at || rootPayload.submittedAt || new Date().toISOString(),
-      ...(rootPayload.courseId ? { course_id: rootPayload.courseId } : {}),
-      ...(rootPayload.studentId ? { student_id: rootPayload.studentId } : {}),
-      ...(rootPayload.activityId ? { activity_id: rootPayload.activityId } : {}),
-      ...(rootPayload.quizId ? { quiz_id: rootPayload.quizId } : {}),
-      ...(rootPayload.examId ? { exam_id: rootPayload.examId } : {}),
-      ...(rootPayload.submissionType !== undefined ? { submission_type: rootPayload.submissionType } : {}),
-      ...(rootPayload.submission_type !== undefined ? { submission_type: rootPayload.submission_type } : {}),
+      ...(rootPayload.content !== undefined || answersContent !== undefined
+        ? { content: rootPayload.content ?? answersContent }
+        : {}),
+      ...(rootPayload.courseId || rootPayload.course_id
+        ? { course_id: rootPayload.courseId || rootPayload.course_id }
+        : {}),
+      ...(rootPayload.studentId || rootPayload.student_id
+        ? { student_id: rootPayload.studentId || rootPayload.student_id }
+        : {}),
+      ...(rootPayload.activityId || rootPayload.activity_id
+        ? { activity_id: rootPayload.activityId || rootPayload.activity_id }
+        : {}),
+      ...(rootPayload.quizId || rootPayload.quiz_id
+        ? { quiz_id: rootPayload.quizId || rootPayload.quiz_id }
+        : {}),
+      ...(rootPayload.examId || rootPayload.exam_id
+        ? { exam_id: rootPayload.examId || rootPayload.exam_id }
+        : {}),
+      submission_type:
+        rootPayload.submission_type ??
+        rootPayload.submissionType ??
+        (answersContent !== undefined ? 'online_text' : 'file'),
       ...(rootPayload.maxScore !== undefined ? { max_score: rootPayload.maxScore } : {}),
       ...(rootPayload.gradedAt !== undefined ? { graded_at: rootPayload.gradedAt } : {}),
       ...(rootPayload.gradedBy !== undefined ? { graded_by: rootPayload.gradedBy } : {}),
@@ -2418,10 +2647,36 @@ export const likhaLmsApi = {
       }
     }
 
-    const saved = await likhaRequest('/items/submissions', {
-      method: 'POST',
-      body: JSON.stringify(payloadToSend),
-    });
+    // In Likha ERP, assessments live in activities and submissions point to activity_id.
+    // If a split FK column is supported, also mirror it while preserving activity_id.
+    const submissionType = normalizeAssessmentType(rootPayload.assessmentType ?? rootPayload.assessment_type);
+    if (!payloadToSend.activity_id && rawCandidate.activity_id) {
+      payloadToSend.activity_id = rawCandidate.activity_id;
+    }
+    if (submissionType !== 'activity' && ASSESSMENT_FK_BY_TYPE[submissionType]) {
+      payloadToSend[ASSESSMENT_FK_BY_TYPE[submissionType]] = payloadToSend.activity_id;
+    }
+
+    let saved: any;
+    try {
+      saved = await likhaRequest('/items/submissions', {
+        method: 'POST',
+        body: JSON.stringify(payloadToSend),
+      });
+    } catch (err: any) {
+      // If Directus rejects split column (e.g. 403 on missing presentation_id), strip it and retry with activity_id
+      const splitCol = ASSESSMENT_FK_BY_TYPE[submissionType];
+      if (splitCol && payloadToSend[splitCol] && splitCol !== 'activity_id') {
+        const { [splitCol]: _stripped, ...fallbackPayload } = payloadToSend;
+        fallbackPayload.activity_id = fallbackPayload.activity_id || rawCandidate.activity_id || rawCandidate.activityId;
+        saved = await likhaRequest('/items/submissions', {
+          method: 'POST',
+          body: JSON.stringify(fallbackPayload),
+        });
+      } else {
+        throw err;
+      }
+    }
 
     const answersList = Array.isArray(answers)
       ? answers

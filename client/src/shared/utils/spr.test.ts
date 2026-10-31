@@ -341,3 +341,75 @@ describe('finalPercentTerms', () => {
     expect(finalPercentTerms({ prelim: null, midterm: 90, finals: 70 }, { prelim: 30, midterm: 30, finals: 40 })).toBeNull();
   });
 });
+
+
+import {
+  resolveAssessmentCategory,
+  categoryWeightedClassStanding,
+  DEFAULT_ASSESSMENT_CATEGORIES,
+  DEFAULT_CATEGORY_WEIGHTS,
+  getStoredCategoryWeights,
+  saveStoredCategoryWeights,
+} from './spr';
+
+describe('Assessment Category Weights & Class Standing', () => {
+  it('correctly resolves assessment categories', () => {
+    expect(resolveAssessmentCategory({ kind: 'quiz' })).toBe('Quizzes');
+    expect(resolveAssessmentCategory({ assessmentType: 'assignment' })).toBe('Assignments');
+    expect(resolveAssessmentCategory({ category: 'assignments' })).toBe('Assignments');
+    expect(resolveAssessmentCategory({ assessmentType: 'project' })).toBe('Projects');
+    expect(resolveAssessmentCategory({ category: 'Projects' })).toBe('Projects');
+    expect(resolveAssessmentCategory({ assessmentType: 'presentation' })).toBe('Presentations');
+    expect(resolveAssessmentCategory({ category: 'Presentations' })).toBe('Presentations');
+    expect(resolveAssessmentCategory({ assessmentType: 'activity' })).toBe('Activities');
+    expect(resolveAssessmentCategory({})).toBe('Activities');
+  });
+
+  it('calculates class standing using default 20% equal category distribution', () => {
+    // 5 categories, each 20% default
+    const items = [
+      { score: 100, perfectScore: 100, category: 'Activities' }, // 100%
+      { score: 16, perfectScore: 20, category: 'Quizzes' },      // 80%
+      { score: 45, perfectScore: 50, category: 'Assignments' },  // 90%
+      { score: 70, perfectScore: 100, category: 'Projects' },    // 70%
+      { score: 30, perfectScore: 50, category: 'Presentations' }, // 60%
+    ];
+    // Expected: (100*20 + 80*20 + 90*20 + 70*20 + 60*20) / 100 = (2000 + 1600 + 1800 + 1400 + 1200) / 100 = 8000 / 100 = 80%
+    expect(categoryWeightedClassStanding(items)).toBeCloseTo(80, 2);
+  });
+
+  it('normalizes proportionally when only some categories have active graded items', () => {
+    // Only Activities (20%) and Quizzes (20%) have items
+    const items = [
+      { score: 90, perfectScore: 100, category: 'Activities' }, // 90%
+      { score: 40, perfectScore: 50, category: 'Quizzes' },     // 80%
+    ];
+    // Active weights: 20 + 20 = 40.
+    // Weighted sum: 90*20 + 80*20 = 1800 + 1600 = 3400.
+    // Result: 3400 / 40 = 85%.
+    expect(categoryWeightedClassStanding(items)).toBeCloseTo(85, 2);
+  });
+
+  it('calculates class standing using custom configured category weights summing to 100%', () => {
+    const customWeights = {
+      Activities: 10,
+      Quizzes: 40,
+      Assignments: 20,
+      Projects: 20,
+      Presentations: 10,
+    };
+    const items = [
+      { score: 100, perfectScore: 100, category: 'Activities' }, // 100% * 10 = 1000
+      { score: 50, perfectScore: 100, category: 'Quizzes' },     // 50% * 40 = 2000
+    ];
+    // Active weights: 10 + 40 = 50. Total = 3000 / 50 = 60%.
+    expect(categoryWeightedClassStanding(items, customWeights)).toBeCloseTo(60, 2);
+  });
+
+  it('persists and retrieves category weights from localStorage', () => {
+    const weights = { Activities: 30, Quizzes: 30, Assignments: 20, Projects: 10, Presentations: 10 };
+    saveStoredCategoryWeights('course-123', weights);
+    const retrieved = getStoredCategoryWeights('course-123');
+    expect(retrieved).toEqual(weights);
+  });
+});

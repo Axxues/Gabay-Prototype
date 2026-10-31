@@ -8,8 +8,11 @@ import {
   resolveSPRWeights,
   resolveExamScore,
   autoScoreFraction,
-  classStandingPercent,
   termGrade,
+  categoryWeightedClassStanding,
+  resolveAssessmentCategory,
+  getStoredCategoryWeights,
+  DEFAULT_CATEGORY_WEIGHTS,
   extractTermWeights,
   finalPercentTerms,
   bucketColumnsByTerm,
@@ -69,7 +72,18 @@ const StudentGradebookComponent: React.FC<StudentGradebookProps> = ({ courseId }
         const f = autoScoreFraction({ column: col, studentId: activeUser.id, submissions: db.submissions, activities: db.activities ?? [], quizzes: db.quizzes });
         return f === null ? null : f * col.perfectScore;
       });
-      const cs = classStandingPercent(scores, cols.map(c => c.perfectScore));
+      const course = db.courses.find(c => c.id === courseId);
+      const activeCategoryWeights = course?.assessmentCategoryWeights || getStoredCategoryWeights(courseId) || DEFAULT_CATEGORY_WEIGHTS;
+      const scoreItems = cols.map((col, idx) => ({
+        score: scores[idx],
+        perfectScore: col.perfectScore,
+        category: resolveAssessmentCategory({
+          kind: col.linkedSource?.kind,
+          category: (db.activities || []).find(a => a.id === col.linkedSource?.sourceId)?.category,
+          assessmentType: (db.activities || []).find(a => a.id === col.linkedSource?.sourceId)?.assessmentType,
+        }),
+      }));
+      const cs = categoryWeightedClassStanding(scoreItems, activeCategoryWeights);
       if (term === 'prelim') {
         // Prelim is class-standing-only: no exam component.
         out[term] = cols.length === 0 ? null : round2(cs);

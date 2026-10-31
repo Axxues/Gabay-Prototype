@@ -271,8 +271,7 @@ export const Step4LearningPlan: React.FC<Step4LearningPlanProps> = ({ data, onCh
 
               <div className="space-y-1">
                 <label className="text-[11px] font-semibold text-muted-foreground inline-flex items-center gap-1">
-                  <span>Topics / Subject Matter</span>
-                  <RequiredMark />
+                  <span>Topics / Subject Matter (Optional)</span>
                 </label>
                 <RichTextEditor
                   content={(row.topics || [])[0] || ''}

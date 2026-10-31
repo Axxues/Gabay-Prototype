@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, test, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 const mocks = vi.hoisted(() => ({
@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   activeRole: 'faculty' as string,
   db: { activities: [], submissions: [] } as any,
   effectiveTerms: ['midterm', 'finals'] as string[],
+  submitActivity: vi.fn(),
+  showConfirm: vi.fn(),
 }));
 
 vi.mock('../../shared/context/LMSContext', () => ({
@@ -19,11 +21,11 @@ vi.mock('../../shared/context/LMSContext', () => ({
     effectiveTermsForCourse: () => mocks.effectiveTerms,
     isLoading: mocks.isLoading,
     isSyncing: mocks.isSyncing,
-    submitActivity: vi.fn(),
+    submitActivity: mocks.submitActivity,
     deleteActivity: vi.fn(),
     openSpeedGrader: vi.fn(),
     showAlert: vi.fn(),
-    showConfirm: vi.fn(),
+    showConfirm: mocks.showConfirm,
   }),
 }));
 
@@ -441,5 +443,258 @@ describe('ActivitiesView student submission badge', () => {
 
     expect(screen.getByText('Instructor Feedback:')).toBeInTheDocument();
     expect(screen.getByText('Pwede na')).toBeInTheDocument();
+  });
+});
+
+describe('ActivitiesView text-only submission has no phantom attachment', () => {
+  const textOnlyActivity = {
+    id: 'act-text',
+    courseId: 'c1',
+    title: 'Lab 1 (Text Entry)',
+    format: 'classic',
+    published: true,
+    term: 'midterm',
+    pointsPossible: 50,
+    category: 'Activities',
+    submissionTypes: ['online_text'],
+  };
+
+  beforeEach(() => {
+    mocks.isLoading = false;
+    mocks.isSyncing = false;
+    mocks.activeRole = 'student';
+    mocks.effectiveTerms = ['midterm', 'finals'];
+    mocks.submitActivity.mockReset();
+  });
+
+  test('does not list an Attached File for a text entry that has a stale legacy file name', () => {
+    // Legacy row persisted a fabricated file_name with no real file behind it.
+    mocks.db = {
+      activities: [textOnlyActivity],
+      submissions: [
+        {
+          id: 'sub-text',
+          activityKey: 'act-text',
+          activityId: 'act-text',
+          studentId: 'u-fac-1',
+          submittedAt: new Date().toISOString(),
+          submissionType: 'online_text',
+          status: 'submitted',
+          content: 'Eto yung sagot ko',
+          fileName: 'CMSC131_Lab_Submission.pdf',
+          rubricScores: {},
+          comments: [],
+        },
+      ],
+    } as any;
+
+    renderPage('act-text');
+
+    expect(screen.getByText('Online Text Content & Code Submissions:')).toBeInTheDocument();
+    expect(screen.queryByText(/Attached File/i)).not.toBeInTheDocument();
+    expect(screen.queryByText('CMSC131_Lab_Submission.pdf')).not.toBeInTheDocument();
+  });
+
+  test('still lists the Attached File when a real file url exists', () => {
+    mocks.db = {
+      activities: [textOnlyActivity],
+      submissions: [
+        {
+          id: 'sub-file',
+          activityKey: 'act-file',
+          activityId: 'act-file',
+          studentId: 'u-fac-1',
+          submittedAt: new Date().toISOString(),
+          submissionType: 'file',
+          status: 'submitted',
+          fileName: 'Real_Submission.pdf',
+          fileUrl: '/likha/assets/real-1',
+          rubricScores: {},
+          comments: [],
+        },
+      ],
+    } as any;
+    mocks.db.activities = [
+      { ...textOnlyActivity, id: 'act-file', submissionTypes: ['file'] },
+    ];
+
+    renderPage('act-file');
+
+    expect(screen.getByText('Attached File:')).toBeInTheDocument();
+    expect(screen.getByText('Real_Submission.pdf')).toBeInTheDocument();
+  });
+
+  test('submits a text entry without fabricating a file name', async () => {
+    mocks.db = { activities: [textOnlyActivity], submissions: [] } as any;
+
+    renderPage('act-text');
+
+    fireEvent.change(screen.getByPlaceholderText(/Paste your source code/i), {
+      target: { value: 'Eto yung sagot ko' },
+    });
+    fireEvent.click(screen.getByText('Submit Activity to GABAY'));
+
+    await waitFor(() => expect(mocks.submitActivity).toHaveBeenCalledTimes(1));
+    const calls = mocks.submitActivity.mock.calls;
+    expect(calls.length).toBe(1);
+    const [activityId, submissionType, content, fileName] = calls[0];
+    expect(activityId).toBe('act-text');
+    expect(submissionType).toBe('online_text');
+    expect(content).toBe('Eto yung sagot ko');
+    expect(fileName).toBeUndefined();
+  });
+});
+
+describe('ActivitiesView submitted text is visible and guarded before editing', () => {
+  const textActivity = {
+    id: 'act-text',
+    courseId: 'c1',
+    title: 'Lab 1 (Text Entry)',
+    format: 'classic',
+    published: true,
+    term: 'midterm',
+    pointsPossible: 50,
+    category: 'Activities',
+    submissionTypes: ['online_text'],
+  };
+
+  const submittedTextRow = {
+    id: 'sub-text',
+    activityKey: 'act-text',
+    activityId: 'act-text',
+    studentId: 'u-fac-1',
+    submittedAt: new Date().toISOString(),
+    submissionType: 'online_text',
+    status: 'submitted',
+    content: 'Eto yung sagot ko',
+    rubricScores: {},
+    comments: [],
+  };
+
+  beforeEach(() => {
+    mocks.isLoading = false;
+    mocks.isSyncing = false;
+    mocks.activeRole = 'student';
+    mocks.effectiveTerms = ['midterm', 'finals'];
+    mocks.submitActivity.mockReset();
+    mocks.showConfirm.mockReset();
+    mocks.db = { activities: [textActivity], submissions: [submittedTextRow] } as any;
+  });
+
+  test('prefills the editable box with the previously submitted text', () => {
+    renderPage('act-text');
+
+    expect(screen.getByDisplayValue('Eto yung sagot ko')).toBeInTheDocument();
+  });
+
+  test('shows confirmation when clicking Resubmit Activity with a prior text response', () => {
+    renderPage('act-text');
+
+    const box = screen.getByDisplayValue('Eto yung sagot ko');
+    fireEvent.change(box, { target: { value: 'Modified answer' } });
+
+    const submitButton = screen.getByText('Resubmit Activity');
+    fireEvent.click(submitButton);
+
+    expect(mocks.showConfirm).toHaveBeenCalledTimes(1);
+    expect(mocks.showConfirm).toHaveBeenCalledWith(
+      'You already submitted a response for this activity. Resubmitting will replace your previous answer.',
+      expect.any(Function),
+      'Resubmit Activity?'
+    );
+  });
+
+  test('does not resubmit when the confirmation is dismissed', () => {
+    renderPage('act-text');
+
+    const submitButton = screen.getByText('Resubmit Activity');
+    fireEvent.click(submitButton);
+
+    // Cancel by not calling the onConfirm callback
+    expect(mocks.submitActivity).not.toHaveBeenCalled();
+  });
+});
+
+describe('ActivitiesView scopes the text box to the selected activity', () => {
+  const classicTextActivity = (id: string, title: string) => ({
+    id,
+    courseId: 'c1',
+    title,
+    format: 'classic',
+    published: true,
+    term: 'midterm',
+    pointsPossible: 50,
+    category: 'Activities',
+    submissionTypes: ['online_text'],
+  });
+
+  beforeEach(() => {
+    mocks.isLoading = false;
+    mocks.isSyncing = false;
+    mocks.activeRole = 'student';
+    mocks.effectiveTerms = ['midterm', 'finals'];
+    mocks.submitActivity.mockReset();
+    mocks.showConfirm.mockReset();
+    mocks.db = {
+      activities: [
+        classicTextActivity('act-a', 'Activity A (Text Entry)'),
+        classicTextActivity('act-b', 'Activity B (Text Entry)'),
+      ],
+      submissions: [],
+    } as any;
+  });
+
+  test('does not carry typed text into another activity', () => {
+    const { rerender } = renderPage('act-a');
+
+    fireEvent.change(screen.getByPlaceholderText(/Paste your source code/i), {
+      target: { value: 'Eto yung sagot ko' },
+    });
+    expect(screen.getByPlaceholderText(/Paste your source code/i)).toHaveValue('Eto yung sagot ko');
+
+    rerender(
+      <ActivitiesView
+        courseId="c1"
+        selectedActivityId="act-b"
+        onSelectActivity={() => {}}
+        onBackToModules={() => {}}
+      />
+    );
+
+    expect(screen.getByPlaceholderText(/Paste your source code/i)).toHaveValue('');
+  });
+
+  test('clears a submitted activity response when moving to a new activity', () => {
+    mocks.db = {
+      ...mocks.db,
+      submissions: [
+        {
+          id: 'sub-a',
+          activityKey: 'act-a',
+          activityId: 'act-a',
+          studentId: 'u-fac-1',
+          submittedAt: new Date().toISOString(),
+          submissionType: 'online_text',
+          status: 'submitted',
+          content: 'Eto yung sagot ko',
+          rubricScores: {},
+          comments: [],
+        },
+      ],
+    };
+
+    const { rerender } = renderPage('act-a');
+    expect(screen.getByDisplayValue('Eto yung sagot ko')).toBeInTheDocument();
+
+    rerender(
+      <ActivitiesView
+        courseId="c1"
+        selectedActivityId="act-b"
+        onSelectActivity={() => {}}
+        onBackToModules={() => {}}
+      />
+    );
+
+    expect(screen.getByPlaceholderText(/Paste your source code/i)).toHaveValue('');
   });
 });

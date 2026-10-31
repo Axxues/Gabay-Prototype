@@ -30,4 +30,15 @@ describe('isSyllabusGradeReady', () => {
     expect(isSyllabusGradeReady(null, { gradingSystem: grading })).toBe(true);
     expect(isSyllabusGradeReady(undefined, { gradingSystem: grading })).toBe(true);
   });
+
+  it('returns true for object-format formulas', () => {
+    expect(
+      isSyllabusGradeReady({ status: 'published' }, {
+        gradingSystem: {
+          termFormula: { classStandingPercent: '60', examPercent: '40' },
+          finalFormula: { midtermPercent: '40', finalPercent: '60' },
+        },
+      }),
+    ).toBe(true);
+  });
 });

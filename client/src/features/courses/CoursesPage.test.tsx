@@ -102,6 +102,16 @@ describe('CoursesPage syllabus gating and lazy loading', () => {
     expect(screen.getByText('Syllabus required for assessments')).toBeInTheDocument();
   });
 
+  test('gates grades when no syllabus exists and displays syllabus required card', () => {
+    mockCourseSyllabus = null;
+    render(<CoursesPage initialSubTab="grades" />);
+
+    const gate = screen.getByTestId('grades-syllabus-gate');
+    expect(gate).toBeInTheDocument();
+    expect(screen.getByText('Syllabus required for grades')).toBeInTheDocument();
+    expect(screen.getByText(/upload a syllabus to enable the gradebook/i)).toBeInTheDocument();
+  });
+
   test('renders SectionSelectionPage when initialSubTab is section-selection and course has sections', () => {
     mockSections = [
       { id: 'sec-1', courseId: 'c1', name: 'Section A', enrolledCount: 10, capacity: 40 },
