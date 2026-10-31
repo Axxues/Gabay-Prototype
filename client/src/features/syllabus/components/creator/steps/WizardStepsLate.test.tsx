@@ -1,12 +1,19 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { Step4LearningPlan } from './Step4LearningPlan';
 import { Step5CourseMap } from './Step5CourseMap';
 import { Step6GradingPolicies } from './Step6GradingPolicies';
 import { OFFICIAL_SYLLABUS_CSPC112 } from '../../../../../shared/data/syllabusData';
 
 describe('Wizard Steps Late', () => {
+  afterEach(cleanup);
+
+  // CollapsibleCard's header is a div[role=button] whose accessible name
+  // contains all card text, so scope queries to real <button> elements.
+  const realButton = (name: RegExp) =>
+    screen.getAllByRole('button', { name }).find(el => el.tagName === 'BUTTON') as HTMLElement;
+
   it('Step 4 renders learning plan rows with SDG coherence and methodologies', () => {
     render(<Step4LearningPlan data={OFFICIAL_SYLLABUS_CSPC112} onChange={vi.fn()} />);
     expect(screen.getAllByText(/SDG 4/i).length).toBeGreaterThan(0);
@@ -42,32 +49,23 @@ describe('Wizard Steps Late', () => {
     const onChange = vi.fn();
     render(<Step6GradingPolicies data={OFFICIAL_SYLLABUS_CSPC112} onChange={onChange} />);
 
-    // Check type buttons in toolbar
-    expect(screen.getByRole('button', { name: /Add Book/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Add Journal/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Add Website/i })).toBeInTheDocument();
+    // Format selector tabs in the form area
+    expect(realButton(/^book$/i)).toBeInTheDocument();
+    expect(realButton(/Journal Article/i)).toBeInTheDocument();
+    expect(realButton(/^website$/i)).toBeInTheDocument();
 
-    // Add a Website reference
-    const addWebsiteBtn = screen.getByRole('button', { name: /Add Website/i });
-    fireEvent.click(addWebsiteBtn);
+    // Select the Website format and add a reference
+    fireEvent.click(realButton(/^website$/i));
+    fireEvent.click(realButton(/Add Reference/i));
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
       references: expect.arrayContaining([
         expect.objectContaining({ type: 'website' })
       ])
     }));
 
-    // Add a Journal reference
-    const addJournalBtn = screen.getByRole('button', { name: /Add Journal/i });
-    fireEvent.click(addJournalBtn);
-    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
-      references: expect.arrayContaining([
-        expect.objectContaining({ type: 'journal' })
-      ])
-    }));
-
-    // Test format selector tabs on first reference
-    const journalTab = screen.getAllByRole('button', { name: /Journal Article/i })[0];
-    fireEvent.click(journalTab);
+    // Switch to the Journal Article format and add another
+    fireEvent.click(realButton(/Journal Article/i));
+    fireEvent.click(realButton(/Add Reference/i));
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
       references: expect.arrayContaining([
         expect.objectContaining({ type: 'journal' })
@@ -81,11 +79,10 @@ describe('Wizard Steps Late', () => {
 
     // Grading and policy review fields have moved to Step 2
     expect(screen.queryByLabelText(/Passing Grade/i)).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(/Term Formula/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Term Grade Computation/i)).not.toBeInTheDocument();
 
-    // Verify adding a reference works properly
-    const addBookBtn = screen.getByRole('button', { name: /Add Book/i });
-    fireEvent.click(addBookBtn);
+    // Verify adding a reference works properly (book is the default format)
+    fireEvent.click(realButton(/Add Reference/i));
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
       references: expect.arrayContaining([
         expect.objectContaining({ type: 'book' })

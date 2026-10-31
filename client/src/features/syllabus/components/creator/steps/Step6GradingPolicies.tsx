@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import type { OfficialSyllabusData, ReferenceItem, ReferenceType } from '../../../../../shared/data/syllabusData';
-import { formatApa7Reference } from '../../../../../shared/data/syllabusData';
+import { formatApa7Reference, sortReferences } from '../../../../../shared/data/syllabusData';
+import { ApaReferenceText } from '../../ApaReferenceText';
 import { RequiredMark } from '../RequiredMark';
+import { CollapsibleCard } from '../CollapsibleCard';
 import { BookOpen, Plus, Trash2, Book, FileText, Globe, Pencil } from 'lucide-react';
 
 interface Step6GradingPoliciesProps {
@@ -86,7 +88,8 @@ export const Step6GradingPolicies: React.FC<Step6GradingPoliciesProps> = ({ data
       updated = [...references, updatedRef];
     }
 
-    onChange({ ...data, references: updated });
+    // APA 7 reference lists are alphabetical: store the array sorted on save.
+    onChange({ ...data, references: sortReferences(updated) });
     setEditingIndex(null);
     setFormData({
       type: 'book',
@@ -141,18 +144,12 @@ export const Step6GradingPolicies: React.FC<Step6GradingPoliciesProps> = ({ data
   return (
     <div className="space-y-6">
       {/* Part V References */}
-      <div className="p-4 rounded-xl border border-border bg-card space-y-4 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div>
-            <h3 className="text-sm font-bold text-foreground flex items-center space-x-1.5">
-              <BookOpen className="w-4 h-4 text-primary" />
-              <span>Prescribed Textbooks &amp; Academic References</span>
-            </h3>
-            <p className="text-xs text-muted-foreground">
-              Add books, accredited journal articles, or online references aligned with DMMMSU-INS-F003 Part V.
-            </p>
-          </div>
-        </div>
+      <CollapsibleCard
+        icon={<BookOpen className="w-4 h-4 text-primary" />}
+        title="Prescribed Textbooks & Academic References"
+        description="Add books, accredited journal articles, or online references aligned with DMMMSU-INS-F003 Part V."
+        contentClassName="space-y-4"
+      >
 
         {/* Single Reference Form Area */}
         <div className="p-4 rounded-xl bg-muted/30 border border-border/60 space-y-4">
@@ -538,7 +535,7 @@ export const Step6GradingPolicies: React.FC<Step6GradingPoliciesProps> = ({ data
                     )}
                   </div>
                   <p className="text-xs text-foreground leading-relaxed">
-                    {ref.citation || formatApa7Reference(ref)}
+                    <ApaReferenceText reference={ref} />
                   </p>
                 </div>
                 <div className="flex items-center gap-1">
@@ -563,7 +560,7 @@ export const Step6GradingPolicies: React.FC<Step6GradingPoliciesProps> = ({ data
             ))}
           </div>
         )}
-      </div>
+      </CollapsibleCard>
     </div>
   );
 };
