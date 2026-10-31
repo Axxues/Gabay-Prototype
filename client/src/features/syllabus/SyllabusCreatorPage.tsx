@@ -102,14 +102,16 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
 
   const hydratedGroupRef = useRef<string | null>(null);
 
-  // Sync URL with state: if groupId in URL changes, update activeGroupId
+  // Sync URL with state: if groupId in URL changes, update activeGroupId.
+  // Only depend on groupId (URL → state). Do NOT depend on activeGroupId
+  // to avoid circular sync when handleOpenStudio sets activeGroupId before navigate().
   useEffect(() => {
     if (groupId && groupId !== activeGroupId) {
       setActiveGroupId(groupId);
     } else if (!groupId && activeGroupId) {
       setActiveGroupId(null);
     }
-  }, [groupId, activeGroupId]);
+  }, [groupId]);
 
   // Hydrate remote draft agreements/evaluators once per opened studio group
   useEffect(() => {
