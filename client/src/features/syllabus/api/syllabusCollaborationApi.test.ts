@@ -6,6 +6,7 @@ import {
   saveRemoteDraft,
   sendRemotePresence
 } from './syllabusCollaborationApi';
+import type { EvaluationMatrix } from '../types/lifecycle';
 import * as likhaApiModule from '../../../shared/api/likhaLmsApi';
 
 describe('syllabusCollaborationApi', () => {
@@ -136,6 +137,79 @@ describe('syllabusCollaborationApi', () => {
 
     const result = await fetchRemoteDraft('course-uuid-123');
     expect(result?.payload.presence?.['sess-1'].senderName).toBe('Raymund Dilan');
+  });
+
+  // ===== Matrix snapshot round-trip (Task 6) =====
+
+  it('includes matrixSnapshot in saveRemoteDraft payload', async () => {
+    vi.spyOn(likhaApiModule, 'getValidToken').mockResolvedValue('mock-jwt-token');
+    const mockLikhaRequest = vi.fn().mockResolvedValue({ id: 'syl-draft-course-1' });
+    vi.spyOn(likhaApiModule, 'likhaRequest').mockImplementation(mockLikhaRequest);
+
+    const matrixSnapshot: EvaluationMatrix = {
+      version: 2,
+      updatedAt: '2026-10-31T00:00:00.000Z',
+      updatedBy: 'Chair',
+      sections: [{ id: 'fmt', title: 'FORMAT', criteria: [{ id: 'fmt-1', text: 'Test' }] }]
+    };
+
+    await saveRemoteDraft('course-1', { courseInfo: { title: 'SE' } } as any, 'u1', undefined, {}, 'under_evaluation', [], matrixSnapshot);
+
+    const calls = mockLikhaRequest.mock.calls;
+    expect(calls.length).toBeGreaterThan(0);
+    const lastCall = calls[calls.length - 1];
+    const body = JSON.parse(lastCall[1]?.body as string);
+    const payload = JSON.parse(body.content);
+    expect(payload.matrixSnapshot).toEqual(matrixSnapshot);
+  });
+
+  it('fetchRemoteDraft returns matrixSnapshot from stored content', async () => {
+    vi.spyOn(likhaApiModule, 'getValidToken').mockResolvedValue('mock-jwt-token');
+    const matrixSnapshot: EvaluationMatrix = {
+      version: 3,
+      updatedAt: '2026-10-31T00:00:00.000Z',
+      updatedBy: 'Chair',
+      sections: [{ id: 'fmt', title: 'FORMAT', criteria: [{ id: 'fmt-1', text: 'Test criterion' }] }]
+    };
+    const mockContent = JSON.stringify({
+      syllabusData: { courseInfo: { code: 'CSPC 112' } },
+      matrixSnapshot
+    });
+
+    vi.spyOn(likhaApiModule, 'likhaRequest').mockResolvedValue({
+      id: 'syl-draft-course-uuid-123',
+      content: mockContent
+    });
+
+    const result = await fetchRemoteDraft('course-uuid-123');
+    expect(result).not.toBeNull();
+    expect(result?.payload.matrixSnapshot).toEqual(matrixSnapshot);
+  });
+
+  it('fetchRemoteDraft returns matrixSnapshot from fallback query branch', async () => {
+    vi.spyOn(likhaApiModule, 'getValidToken').mockResolvedValue('mock-jwt-token');
+    const matrixSnapshot: EvaluationMatrix = {
+      version: 1,
+      updatedAt: '2026-10-31T00:00:00.000Z',
+      updatedBy: 'Chair',
+      sections: []
+    };
+    const mockContent = JSON.stringify({
+      syllabusData: { courseInfo: { code: 'CSPC 112' } },
+      matrixSnapshot
+    });
+
+    // First call (by draftId) returns null, second call (fallback query) returns the item
+    vi.spyOn(likhaApiModule, 'likhaRequest')
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce([{
+        id: 'syl-draft-course-uuid-123',
+        content: mockContent
+      }]);
+
+    const result = await fetchRemoteDraft('course-uuid-123');
+    expect(result).not.toBeNull();
+    expect(result?.payload.matrixSnapshot).toEqual(matrixSnapshot);
   });
 
   it('writes presence to its own column without touching content', async () => {

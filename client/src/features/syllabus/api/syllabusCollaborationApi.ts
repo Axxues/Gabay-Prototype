@@ -2,12 +2,15 @@ import { LIKHA_URL, getValidToken, likhaRequest } from '../../../shared/api/likh
 import type { OfficialSyllabusData } from '../../../shared/data/syllabusData';
 import type { CollaboratorInfo } from '../hooks/useSyllabusCollaboration';
 
+import type { EvaluationMatrix } from '../types/lifecycle';
+
 export interface GroupDraftPayload {
   syllabusData?: OfficialSyllabusData;
   presence?: Record<string, CollaboratorInfo>;
   submissionAgreements?: Record<string, boolean>;
   status?: string;
   evaluators?: any[];
+  matrixSnapshot?: EvaluationMatrix;
   lastUpdatedBy?: string;
   lastUpdatedBySessionId?: string;
   updatedAt?: number;
@@ -71,6 +74,7 @@ export async function fetchRemoteDraft(canonicalCourseId: string): Promise<{
         if (parsed?.submissionAgreements) payload.submissionAgreements = parsed.submissionAgreements;
         if (parsed?.status) payload.status = parsed.status;
         if (parsed?.evaluators) payload.evaluators = parsed.evaluators;
+        if (parsed?.matrixSnapshot) payload.matrixSnapshot = parsed.matrixSnapshot;
         return { id: row.id || draftId, payload };
       } catch {
         return null;
@@ -94,6 +98,7 @@ export async function fetchRemoteDraft(canonicalCourseId: string): Promise<{
       if (parsed?.submissionAgreements) payload.submissionAgreements = parsed.submissionAgreements;
       if (parsed?.status) payload.status = parsed.status;
       if (parsed?.evaluators) payload.evaluators = parsed.evaluators;
+      if (parsed?.matrixSnapshot) payload.matrixSnapshot = parsed.matrixSnapshot;
       return { id: first.id, payload };
     }
 
@@ -177,7 +182,8 @@ export function saveRemoteDraft(
   lastUpdatedBySessionId?: string,
   submissionAgreements?: Record<string, boolean>,
   status?: string,
-  evaluators?: any[]
+  evaluators?: any[],
+  matrixSnapshot?: EvaluationMatrix
 ): Promise<string | null> {
   const draftId = makeDraftId(canonicalCourseId);
   // Only `content` is written here. Presence has its own column, so a
@@ -189,6 +195,7 @@ export function saveRemoteDraft(
     submissionAgreements,
     status,
     evaluators,
+    matrixSnapshot,
     updatedAt: Date.now()
   };
 

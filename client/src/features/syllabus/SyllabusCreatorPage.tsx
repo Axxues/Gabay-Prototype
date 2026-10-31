@@ -78,7 +78,7 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
   }, [groups, activeUser?.id, activeUser?.name]);
 
   // Active view tab (Personal Sandbox is removed; authoring is strictly permitted through approved courses)
-  const [activeTab, setActiveTab] = useState<'governance' | 'my-courses' | 'evaluations'>(() => {
+  const [activeTab, setActiveTab] = useState<'governance' | 'my-courses' | 'evaluations' | 'matrix'>(() => {
     if (isLeadership) return 'governance';
     return 'my-courses';
   });
@@ -101,6 +101,7 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
   const [previewingGroup, setPreviewingGroup] = useState<SyllabusGroup | null>(null);
 
   const hydratedGroupRef = useRef<string | null>(null);
+  const hydratedTabsRef = useRef<Set<string>>(new Set());
 
   // Sync URL with state: if groupId in URL changes, update activeGroupId
   useEffect(() => {
@@ -131,12 +132,55 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
             groupId,
             remote.payload.submissionAgreements || {},
             remote.payload.status as any,
-            remote.payload.evaluators
+            remote.payload.evaluators,
+            remote.payload.matrixSnapshot
           );
         }
       }).catch(() => {});
     }
   }, [groupId, groups, syncRemoteAgreements]);
+
+  // Tab-level hydration: when governance/matrix/evaluations tab is active,
+  // fetch and sync remote drafts for visible groups with evaluators
+  useEffect(() => {
+    if (!['governance', 'matrix', 'evaluations'].includes(activeTab)) return;
+    if (!groups.length) return;
+
+    // Determine which groups to hydrate based on active tab
+    let groupsToHydrate: SyllabusGroup[] = [];
+    if (activeTab === 'governance' || activeTab === 'matrix') {
+      // Chair/Dean sees all groups with evaluators
+      groupsToHydrate = groups.filter(g => (g.evaluators?.length ?? 0) > 0 && 
+        ['under_evaluation', 'revisions_required', 'evaluator_approved'].includes(g.status));
+    } else if (activeTab === 'evaluations') {
+      // Evaluator sees only their assigned groups
+      groupsToHydrate = groups.filter(g => {
+        const myReview = g.evaluators.find(e => e.evaluatorId === activeUser?.id);
+        return myReview && ['under_evaluation', 'revisions_required', 'evaluator_approved'].includes(g.status);
+      });
+    }
+
+    for (const group of groupsToHydrate) {
+      const hydrateKey = `${group.id}:${activeTab}`;
+      if (hydratedTabsRef.current.has(hydrateKey)) continue;
+      hydratedTabsRef.current.add(hydrateKey);
+
+      const canonicalId = group.courseIds[0];
+      if (!canonicalId) continue;
+
+      fetchRemoteDraft(canonicalId).then(remote => {
+        if (remote?.payload?.submissionAgreements || remote?.payload?.status || remote?.payload?.evaluators || remote?.payload?.matrixSnapshot) {
+          syncRemoteAgreements(
+            group.id,
+            remote.payload.submissionAgreements || {},
+            remote.payload.status as any,
+            remote.payload.evaluators,
+            remote.payload.matrixSnapshot
+          );
+        }
+      }).catch(() => {});
+    }
+  }, [activeTab, groups, activeUser?.id, syncRemoteAgreements]);
 
   // Persist active studio state to localStorage (only when on studio route)
   useEffect(() => {
@@ -1163,11 +1207,13 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
           users={usersList}
           onClose={() => setEvaluatorAssignGroup(null)}
           onConfirm={(groupId, evaluators) => {
+            // Get the current matrix snapshot from the template hook
+            // For now, we pass undefined and Task 8/9 will wire the template properly
             assignEvaluators(groupId, evaluators, (courseIds, status) => {
               if (lms.updateCourseSyllabusStatus && courseIds.length > 0) {
                 void lms.updateCourseSyllabusStatus(courseIds, status, activeUser?.id);
               }
-            });
+            }, undefined);
             if (evaluatorAssignGroup.courseIds[0]) {
               saveRemoteDraft(
                 evaluatorAssignGroup.courseIds[0],
@@ -1176,7 +1222,8 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
                 undefined,
                 evaluatorAssignGroup.submissionAgreements,
                 'under_evaluation',
-                evaluators.map(e => ({ evaluatorId: e.id, evaluatorName: e.name, status: 'pending' }))
+                evaluators.map(e => ({ evaluatorId: e.id, evaluatorName: e.name, status: 'pending' })),
+                undefined // matrixSnapshot - Task 8 will wire this
               ).catch(() => {});
             }
             showAlert({
@@ -1195,12 +1242,29 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
           groupId={evaluatorReviewGroup.id}
           courseCode={evaluatorReviewGroup.courseCode}
           onClose={() => setEvaluatorReviewGroup(null)}
-          onReview={(groupId, status, remarks) => {
+          onReview={(groupId, status, remarks, matrix) => {
             if (activeUser?.id) {
-              submitEvaluatorReview(groupId, activeUser.id, status, remarks, (courseIds, nextStatus) => {
+              submitEvaluatorReview(groupId, activeUser.id, status, remarks, matrix, (courseIds, nextStatus) => {
                 if (lms.updateCourseSyllabusStatus && courseIds.length > 0) {
                   void lms.updateCourseSyllabusStatus(courseIds, nextStatus, activeUser.id);
                 }
+              });
+              // Build the updated evaluators array for remote sync
+              const updatedEvaluators = evaluatorReviewGroup.evaluators.map(e => {
+                if (e.evaluatorId === activeUser.id) {
+                  return {
+                    ...e,
+                    status,
+                    remarks: remarks || e.remarks,
+                    reviewedAt: new Date().toISOString(),
+                    ...(matrix ? {
+                      matrixResponses: matrix.matrixResponses,
+                      overallComments: matrix.overallComments,
+                      matrixVersion: matrix.matrixVersion
+                    } : {})
+                  };
+                }
+                return e;
               });
               if (evaluatorReviewGroup.courseIds[0]) {
                 saveRemoteDraft(
@@ -1209,7 +1273,9 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
                   activeUser.id,
                   undefined,
                   evaluatorReviewGroup.submissionAgreements,
-                  status === 'approved' ? 'evaluator_approved' : 'revisions_required'
+                  status === 'approved' ? 'evaluator_approved' : 'revisions_required',
+                  updatedEvaluators,
+                  evaluatorReviewGroup.matrixSnapshot // Pass matrixSnapshot for remote sync
                 ).catch(() => {});
               }
               showAlert({
