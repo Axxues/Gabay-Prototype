@@ -93,12 +93,12 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
   const renderHeaderBox = (includeAccessibleTitles: boolean = false) => (
     <table className="w-full border-collapse border border-black mb-3">
       <tbody>
-        <tr className="h-[75px]">
-          <td className="w-[27%] border border-black text-center align-middle p-1">
+        <tr className="h-[81pt]">
+          <td className="w-[27.05%] border border-black text-center align-middle p-1">
             <img
               src="/dmmmsu-seal.png"
               alt={institution.university || 'Don Mariano Marcos Memorial State University'}
-              className="h-[62px] w-[62px] object-contain mx-auto block"
+              className="h-[72pt] w-[72pt] object-contain mx-auto block"
               onError={(e) => {
                 (e.target as HTMLElement).style.display = 'none';
               }}
@@ -111,7 +111,7 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
               </span>
             )}
           </td>
-          <td className="w-[73%] border border-black text-center align-middle">
+          <td className="w-[72.95%] border border-black text-center align-middle">
             <h1 className="font-['Trebuchet_MS',Arial,sans-serif] text-[14pt] font-bold text-black tracking-normal">
               Course Syllabus
             </h1>
@@ -157,7 +157,7 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
         {renderHeaderBox(true)}
 
         {/* Centered Academic Semester & Year */}
-        <div className="text-center font-normal text-[10pt] mb-3 text-black">
+        <div className="text-center font-normal text-[10pt] mt-[13.4pt] mb-[23pt] text-black">
           {courseInfo.semester || 'First Semester'}, Academic Year {courseInfo.academicYear || '2025-2026'}
         </div>
 
@@ -166,7 +166,7 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
           {/* Left side: Course No & Descriptive Title + Faculty */}
           <div className="col-span-7 space-y-2">
             <div className="flex items-start">
-              <span className="w-56 shrink-0 text-black">Course No. &amp; Descriptive Title:</span>
+              <span className="w-[166pt] shrink-0 text-black">Course No. &amp; Descriptive Title:</span>
               <span className="font-bold text-black">
                 {courseInfo.code && courseInfo.title
                   ? (courseInfo.code.includes(' - ') || courseInfo.code.endsWith('-')
@@ -177,7 +177,7 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
             </div>
 
             <div className="flex items-start">
-              <span className="w-56 shrink-0 text-black">Name of Faculty Member/s:</span>
+              <span className="w-[166pt] shrink-0 text-black">Name of Faculty Member/s:</span>
               <div className="space-y-4">
                 {facultyMembers && facultyMembers.length > 0 ? (
                   facultyMembers.map((fac, idx) => (
