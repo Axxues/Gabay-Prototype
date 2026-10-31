@@ -23,7 +23,7 @@ We digitize that checklist: the chair builds a program-wide **Evaluation Matrix*
 
 ## Non-goals
 
-- No new Likha ERP collections, no backend schema changes (reuses the `syllabi` JSON-content pattern).
+- Only one new backend collection (`gabay_syllabus_eval_matrix`); evaluator responses keep riding the existing `syllabi` JSON-content pattern with no schema changes there.
 - No e-signature capture; evaluator identity + timestamp recorded digitally instead of the paper signature block.
 - No scoring/weights/points — strictly the Y/N + comments model of the paper form.
 - No per-criterion file attachments or screenshots.
@@ -39,14 +39,15 @@ We digitize that checklist: the chair builds a program-wide **Evaluation Matrix*
 
 - Feature-based folder architecture (AGENTS.md): everything lives inside `client/src/features/syllabus/`; new shared primitives go to `client/src/shared/` only if domain-agnostic; barrel `index.ts` exports for anything consumed outside the feature.
 - Token-efficiency: smallest complete diff; reuse `AnimatedModal`, existing Tailwind/shadcn-style tokens, existing lifecycle hook patterns.
-- Persistence follows the existing dual pattern: localStorage primary, Likha ERP `syllabi` collection JSON `content` for cross-device sync (PATCH-then-POST fallback, retry on 5xx/408/429, `User-Agent` handled by existing `likhaRequest`).
+- Matrix template persistence: dedicated Likha ERP collection `gabay_syllabus_eval_matrix` (see Backend setup), set up strictly per the `likha-erp-api` skill protocols. Evaluator responses keep the existing dual pattern: localStorage primary, Likha `syllabi` JSON `content` sync (PATCH-then-POST fallback, retry on 5xx/408/429, `User-Agent` handled by existing `likhaRequest`).
 - Zero runtime console errors; 100% green test suites; pressure-test concurrency and network failure paths (AGENTS.md production-readiness).
 
 ## Approaches considered
 
-1. **Extend the existing storage pattern (CHOSEN).** Matrix template + evaluator responses ride in localStorage + Likha `syllabi` JSON, same as evaluator assignments today. Snapshot the template onto each syllabus when evaluators are assigned; compute the summary live from individual responses. *Why: the whole governance flow already lives in this JSON blob; a derived summary cannot drift; no backend work; smallest diff.*
-2. **Same, but persist the computed summary** when the last evaluator submits. Matches "summarize once" literally and helps audit, but creates a second source of truth that can go stale. Rejected for now; a stored copy can be added later without changing the data model.
-3. **Dedicated Likha collection** for matrices. The "proper" long-term structure, but requires backend schema work via likha-erp-api protocols and is the heaviest option for the prototype. Rejected.
+1. **Template in the existing `syllabi` JSON pattern (superseded).** Matrix template rides in localStorage + Likha `syllabi` JSON like evaluator assignments. Initially chosen for smallest diff; **replaced by user decision** with a dedicated collection.
+2. **Dedicated Likha ERP collection for the matrix template (CHOSEN).** New collection `gabay_syllabus_eval_matrix` (app-prefix convention), one row per program scope; the chair **creates** the matrix row on first save and PATCHes updates. Evaluator responses keep riding the existing lifecycle records (localStorage + `syllabi` JSON) — they are per-syllabus, per-evaluator, and need no table of their own. *Why: a first-class, role-governed backend entity makes the program template durable and authoritative; responses stay in the already-synced records.*
+3. **Persist the computed consolidated summary** when the last evaluator submits. Rejected for now (second source of truth); the summary stays computed-on-read.
+4. **Fully normalized schema** (`matrix` + `sections` + `criteria` collections with O2M relations). Rejected: the template is small, read-as-a-whole, rarely edited — a JSON `sections` column on one row captures it with a fraction of the schema surface and none of the relation pitfalls.
 
 ## Decided design
 
@@ -92,9 +93,23 @@ Add to `SyllabusDevelopmentRecord`: `matrixSnapshot?: EvaluationMatrix` (copied 
 
 ### Persistence
 
-- **Template (per program):** localStorage key `gabay_syllabus_eval_matrix:{scopeId}` where `scopeId = record.departmentId || record.collegeId` (the chair's own scope). On first open with no stored template, seed with the **default template** below and persist.
-- **Template remote sync:** new small module `client/src/features/syllabus/api/evaluationMatrixApi.ts` mirroring `syllabusCollaborationApi.ts`'s pattern: reuse the `/items/syllabi` collection with draft id `syl-matrix-{scopeId}` (PATCH `/items/syllabi/{id}`, fallback POST with `course_id: 'matrix-{scopeId}'`), content envelope `{ matrix, updatedAt, lastUpdatedBy }`. Same retry rules (3 attempts on 5xx/408/429) and per-draft save queue. Fetch on tab open; localStorage wins if newer (`updatedAt` compare), remote fills other devices.
+- **Template (per program):** Likha ERP collection **`gabay_syllabus_eval_matrix`**, one row per program scope (`scope_id = departmentId || collegeId`). The chair **creates the row on first save** (POST) and PATCHes subsequent edits; each save bumps `version`. localStorage key `gabay_syllabus_eval_matrix:{scopeId}` becomes a read cache / offline fallback only — the collection row is the source of truth. When no row exists yet, the builder UI works against the seeded **default template** (below) in local draft state; it is only persisted to Likha when the chair saves.
+- **Template API:** new module `client/src/features/syllabus/api/evaluationMatrixApi.ts`: `GET /items/gabay_syllabus_eval_matrix?filter%5Bscope_id%5D%5B_eq%5D=...` (URL-encoded filter; a missing collection and a missing row both surface as 403/empty → treat as "no matrix yet"); POST on first save, PATCH afterwards; retry on 5xx/408/429 per `likhaLmsApi` conventions.
 - **Responses:** ride on `EvaluatorReview` inside the existing lifecycle records — localStorage `gabay_syllabus_lifecycle_records` + `GroupDraftPayload.evaluators` (already `any[]`) via `saveRemoteDraft`. No API signature changes needed beyond passing the extended objects through. `syncRemoteAgreements` merge keeps full evaluator objects (verify it doesn't strip unknown fields).
+
+## Backend setup (one-time — follow the `likha-erp-api` skill protocols)
+
+Performed programmatically via the API during implementation, never ad-hoc; writes carry a conventional User-Agent (existing `likhaRequest` does this):
+
+1. `POST /collections` → `gabay_syllabus_eval_matrix` with fields:
+   - `scope_id` — string, `schema.is_unique: true` (holds `departmentId || collegeId`)
+   - `sections` — json (array of `{id, title, criteria: [{id, text}]}`)
+   - `version` — integer, default 1
+   - `updated_by_name` — string (display convenience)
+   - Explicit audit fields `date_created`, `user_created`, `date_updated`, `user_updated` (timestamp/uuid with specials `date-created`/`user-created`/`date-updated`/`user-updated`, readonly + hidden) — `meta.accountability` alone does NOT create these.
+2. `POST /relations` (**never PATCH `/relations`**) for `user_created` / `user_updated` → `system_users`.
+3. Permissions: extend the existing chair role policy with create/update/read on the collection (create preset `{"user_created": "$CURRENT_USER"}` — `$CURRENT_USER` is invalid as a `schema.default_value`); dean policy read-only; faculty no access. Mirror however `syllabi` / `courses` policies are configured on the instance.
+4. `POST /utils/cache/clear` with `{"cache":"system"}` after schema/permission changes.
 
 ### Matrix template lifecycle & snapshot rule
 
@@ -110,7 +125,7 @@ Add to `SyllabusDevelopmentRecord`: `matrixSnapshot?: EvaluationMatrix` (copied 
 ### UI surfaces
 
 1. **New tab "Evaluation Matrix"** in `SyllabusCreatorPage.tsx` tab union (`'governance' | 'my-courses' | 'evaluations' | 'matrix'`) and pill bar (line ~81 and ~820), rendered **chair-only** (`isChairRole`). Dean gets read-only access if trivial (builder's call).
-   - **Section A — Matrix Builder:** section list with editable section titles; criteria rows with text inputs, add/remove criteria, add/remove/reorder sections; Save (bumps `version`); Reset to Default (confirm dialog); shows `version`, `updatedAt`, `updatedBy`.
+   - **Section A — Matrix Builder:** section list with editable section titles; criteria rows with text inputs, add/remove criteria, add/remove/reorder sections; Save (first save **creates** the collection row as the chair; afterwards PATCH with a `version` bump); Reset to Default (confirm dialog, PATCH); shows `version`, `updatedAt`, `updatedBy`.
    - **Section B — Evaluation Progress:** list of groups with a `matrixSnapshot` (i.e. evaluators assigned): per evaluator a submitted/pending chip; "View Consolidated Matrix" opens a read-only summary modal (the same renderer used elsewhere); "View Individual" to inspect one evaluator's responses.
 2. **Evaluator form:** `EvaluatorReviewModal.tsx` becomes the matrix form — renders the record's `matrixSnapshot` sections as the checklist table (criterion | Y/N toggle | comment input), overall "Comments and Suggestions" textarea, then Approve / Request Revisions with the gating above. Unchanged modal shell (`AnimatedModal`), same props plus the extended `onReview` payload.
 3. **Governance table:** `DepartmentSyllabusTable.tsx` row actions gain a "Matrix" action for groups with a snapshot (opens consolidated matrix modal; available to chair/dean from assignment onward).
@@ -123,7 +138,7 @@ Add to `SyllabusDevelopmentRecord`: `matrixSnapshot?: EvaluationMatrix` (copied 
 - `syllabusCollaborationApi.ts:5` `GroupDraftPayload.evaluators` is `any[]` — responses flow through; `:173` `saveRemoteDraft` passes them.
 - `types/lifecycle.ts:17-49` type extensions.
 - `EvaluatorReviewModal.tsx` full rework; `DepartmentSyllabusTable.tsx:417-483` action column; `RevisionRemarksBanner.tsx` feedback link.
-- New files: `api/evaluationMatrixApi.ts`, `utils/matrixSummary.ts`, `utils/defaultMatrixTemplate.ts`, `components/matrix/MatrixChecklistTable.tsx` (shared renderer: fill-in and read-only modes), `components/matrix/MatrixBuilder.tsx`, `components/matrix/ConsolidatedMatrixModal.tsx`. Export via feature `index.ts`.
+- New files: `api/evaluationMatrixApi.ts` (targets `gabay_syllabus_eval_matrix`), `utils/matrixSummary.ts`, `utils/defaultMatrixTemplate.ts`, `components/matrix/MatrixChecklistTable.tsx` (shared renderer: fill-in and read-only modes), `components/matrix/MatrixBuilder.tsx`, `components/matrix/ConsolidatedMatrixModal.tsx`. Export via feature `index.ts`.
 
 ## Default template (transcribed from the university checklist)
 
@@ -189,7 +204,7 @@ Plus, below the criteria table (per evaluator, merged in the summary): **"Commen
 - **Unit:** summarizer (N-wins; comment merge with attribution; comment⇒N invariant; pending criteria; all-Y consolidation), default template shape, Approve gating logic, comment-forces-N interaction logic, snapshot-on-assign, template version bump + reset-to-default.
 - **Component/integration:** builder add/remove/edit + save; evaluator modal fill + submit through `submitEvaluatorReview` (state transitions unchanged); consolidated modal for chair/dean; instructor feedback link on `revisions_required`.
 - **Extend existing tests:** `useSyllabusLifecycle.test.ts`, `EvaluatorReviewModal.test.tsx`, `SyllabusCreatorPage.lifecycle.test.tsx`, `SyllabusLifecycleE2E.test.tsx`.
-- **Pressure:** two evaluators submitting near-simultaneously (remote sync merge keeps both response sets); template save racing evaluator fetch; localStorage unavailable; Likha 5xx/403 on template save (retry then graceful localStorage-only); 40+ criteria × 6 evaluators render without UI lockup; RBAC — evaluator matrix tab hidden from faculty/dean; faculty cannot write template (UI-level; prototype has no server-side rule).
+- **Pressure:** two evaluators submitting near-simultaneously (remote sync merge keeps both response sets); template save racing evaluator fetch; localStorage unavailable; Likha 5xx on template save (retry, then keep local draft with a clear error); 403/empty on template fetch (missing row or collection) → fall back to default template; 40+ criteria × 6 evaluators render without UI lockup; RBAC — matrix tab hidden from faculty; collection permissions enforce faculty no-access and dean read-only server-side.
 - Zero console errors across all flows.
 
 ## What's left to the builder
