@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { OfficialSyllabusData, CourseOutcome, ProgramOutcome, RubricRow } from '../../../../../shared/data/syllabusData';
-import { OFFICIAL_SYLLABUS_CSPC112, OFFICIAL_INSTITUTIONAL_STATEMENTS, normalizeRubricLevels, createEmptyRubricRow } from '../../../../../shared/data/syllabusData';
+import { OFFICIAL_SYLLABUS_CSPC112, OFFICIAL_INSTITUTIONAL_STATEMENTS, normalizeRubricLevels, createEmptyRubricRow, DEFAULT_RUBRIC_LEVEL_TITLES } from '../../../../../shared/data/syllabusData';
 import { CustomDropdown } from '../../../../../shared/components/common';
 import { RequiredMark } from '../RequiredMark';
 import { CollapsibleCard } from '../CollapsibleCard';
@@ -35,8 +35,9 @@ const resizeRubricLevels = (rows: RubricRow[], count: number): RubricRow[] =>
   (rows || []).map(row => {
     const levels = normalizeRubricLevels(row.levels).slice(0, count);
     while (levels.length < count) {
+      const idx = levels.length;
       levels.push({
-        title: '',
+        title: DEFAULT_RUBRIC_LEVEL_TITLES[idx] || '',
         description: ''
       });
     }
@@ -837,7 +838,7 @@ const addRubricRow = () => {
                   type="text"
                   disabled
                   value={lectureHoursValue}
-                  placeholder={lectureMismatch ? 'Lecture hours is Mismatched' : 'e.g. 2'}
+                  placeholder={lectureMismatch ? 'Lecture schedules are mismatched' : 'e.g. 2'}
                   className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-muted/50 text-muted-foreground cursor-not-allowed outline-none select-none transition-all"
                 />
                 <span className="text-xs text-muted-foreground whitespace-nowrap">hours/week</span>
@@ -856,7 +857,7 @@ const addRubricRow = () => {
                   type="text"
                   disabled
                   value={labHoursValue}
-                  placeholder={labMismatch ? 'Lab hours is Mismatched' : 'e.g. 3'}
+                  placeholder={labMismatch ? 'Lab schedules are mismatched' : 'e.g. 3'}
                   className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-muted/50 text-muted-foreground cursor-not-allowed outline-none select-none transition-all"
                 />
                 <span className="text-xs text-muted-foreground whitespace-nowrap">hours/week</span>

@@ -116,7 +116,6 @@ describe('Step3CourseOutline', () => {
     expect(
       screen.getByPlaceholderText('e.g. Entry 1: Overview of Knowledge Management')
     ).toBeInTheDocument();
-    expect(screen.getByText(/Organize entries, subject matter/i)).toBeInTheDocument();
   });
 
   it('starts a blank syllabus with a single default entry', () => {

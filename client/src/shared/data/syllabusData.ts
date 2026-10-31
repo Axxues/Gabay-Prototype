@@ -46,18 +46,18 @@ export function normalizeRubricLevels(levels: any): RubricLevel[] {
   }
   if (levels && typeof levels === 'object') {
     const entries = Object.entries(levels).sort((a, b) => Number(a[0]) - Number(b[0]));
-    return entries.map(([key, val]) => {
-      return { title: '', description: typeof val === 'string' ? val : '' };
+    return entries.map(([key, val], idx) => {
+      return { title: DEFAULT_RUBRIC_LEVEL_TITLES[idx] || '', description: typeof val === 'string' ? val : '' };
     });
   }
-  return DEFAULT_RUBRIC_LEVEL_TITLES.map(() => ({ title: '', description: '' }));
+  return DEFAULT_RUBRIC_LEVEL_TITLES.map(title => ({ title, description: '' }));
 }
 
 /** Build a fresh empty rubric row with the given number of levels. */
 export function createEmptyRubricRow(levelCount: number): RubricRow {
   return {
     category: '',
-    levels: Array.from({ length: levelCount }, () => ({ title: '', description: '' }))
+    levels: Array.from({ length: levelCount }, (_, idx) => ({ title: DEFAULT_RUBRIC_LEVEL_TITLES[idx] || '', description: '' }))
   };
 }
 

@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import type { OfficialSyllabusData, ReferenceItem } from '../../../../shared/data/syllabusData';
+import type { OfficialSyllabusData, ReferenceItem, LearningPlanWeek, CourseMapEntry, CourseOutlineEntry } from '../../../../shared/data/syllabusData';
 import { OFFICIAL_INSTITUTIONAL_STATEMENTS, normalizeRubricLevels, sortReferences } from '../../../../shared/data/syllabusData';
 import { ApaReferenceText } from '../ApaReferenceText';
 import { Printer, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 
 const REFERENCES_PER_SHEET = 12;
+const LEARNING_PLAN_ROWS_PER_SHEET = 2;
+const COURSE_MAP_ROWS_PER_SHEET = 5;
 
 interface SyllabusDocumentPreviewProps {
   syllabus?: OfficialSyllabusData;
@@ -146,6 +148,298 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
       </div>
     </div>
   );
+
+  // ============================================================
+  // DYNAMIC CONTENT RENDERERS (replace hardcoded CSPC112 data)
+  // ============================================================
+
+  // Render Part II: Course Outline from user data
+  const buildCourseOutlineSheets = (): ((pageNo: number, total: number) => React.ReactNode)[] => {
+    const outline = courseOutline && courseOutline.length > 0 ? courseOutline : [];
+    if (outline.length === 0) return [];
+
+    const builders: ((pageNo: number, total: number) => React.ReactNode)[] = [];
+    let currentSheetContent: React.ReactNode[] = [];
+    let isFirstSheet = true;
+
+    const flushSheet = () => {
+      if (currentSheetContent.length === 0) return;
+      const content = currentSheetContent;
+      builders.push((pageNo, total) => (
+        <div
+          key={`sheet-${pageNo}`}
+          className="syllabus-page-sheet bg-white text-black font-['Trebuchet_MS',Arial,sans-serif] text-[10pt] leading-[1.3] w-[13in] min-w-[13in] min-h-[8.5in] h-[8.5in] p-[0.5in_0.6in_0.45in_0.6in] shadow-md border border-neutral-300 dark:border-neutral-700 flex flex-col justify-between"
+        >
+          <div>
+            {renderHeaderBox()}
+            {isFirstSheet && <div className="font-bold text-[10pt] mb-1 text-black">Part II: Course Outline and Time Frame</div>}
+            <table className="w-full border-collapse border border-black text-[10pt] leading-[1.16]">
+              <thead>
+                <tr className="border-b border-black font-bold">
+                  <th className="w-[20.6%] p-[1.5pt_4pt] border border-black text-left">Time Frame</th>
+                  <th className="p-[1.5pt_4pt] border border-black text-left">Course Content/Subject Matter</th>
+                </tr>
+              </thead>
+              <tbody>
+                {content}
+              </tbody>
+            </table>
+          </div>
+          {renderFooter(pageNo, total)}
+        </div>
+      ));
+      currentSheetContent = [];
+      isFirstSheet = false;
+    };
+
+    outline.forEach((entry, idx) => {
+      const isExam = entry.title.toUpperCase().includes('EXAMINATION') || entry.timeFrame.toLowerCase().includes('exam');
+      const topics = entry.topics && entry.topics.length > 0
+        ? entry.topics.map((t, ti) => (
+            <div key={ti} className="pl-4 m-0 p-0 leading-[1.16]">● {t.replace(/<[^>]*>/g, '')}</div>
+          ))
+        : <div className="m-0 p-0 leading-[1.16] text-neutral-500 italic">No subtopics specified</div>;
+
+      const row = (
+        <tr key={idx} className={`border-b border-black align-top ${isExam ? 'font-bold' : ''}`}>
+          <td className="p-[1.5pt_4pt] border border-black">{entry.timeFrame || `Week ${idx + 1}`}</td>
+          <td className="p-[1.5pt_4pt] border border-black">
+            <div className="m-0 p-0 leading-[1.16]">{entry.title}</div>
+            {topics}
+          </td>
+        </tr>
+      );
+
+      currentSheetContent.push(row);
+
+      // Flush after ~8 rows per sheet (fits 8.5" height)
+      if (currentSheetContent.length >= 8) {
+        flushSheet();
+      }
+    });
+
+    // Flush remaining
+    if (currentSheetContent.length > 0) {
+      flushSheet();
+    }
+
+    return builders;
+  };
+
+  // Render Part III: Learning Plan from user data
+  const buildLearningPlanSheets = (): ((pageNo: number, total: number) => React.ReactNode)[] => {
+    const plan = learningPlan && learningPlan.length > 0 ? learningPlan : [];
+    if (plan.length === 0) return [];
+
+    const builders: ((pageNo: number, total: number) => React.ReactNode)[] = [];
+    let currentRows: React.ReactNode[] = [];
+    let isFirstSheet = true;
+
+    const flushSheet = () => {
+      if (currentRows.length === 0) return;
+      const rows = currentRows;
+      builders.push((pageNo, total) => (
+        <div
+          key={`sheet-${pageNo}`}
+          className="syllabus-page-sheet bg-white text-black font-['Trebuchet_MS',Arial,sans-serif] text-[9pt] leading-[1.25] w-[13in] min-w-[13in] min-h-[8.5in] h-[8.5in] p-[0.5in_0.6in_0.45in_0.6in] shadow-md border border-neutral-300 dark:border-neutral-700 flex flex-col justify-between"
+        >
+          <div>
+            {renderHeaderBox()}
+            {isFirstSheet && <div className="font-bold text-[10pt] mb-1 text-black">Part III: Learning Plan</div>}
+            <table className="w-full border-collapse border border-black text-[9pt] leading-tight text-center">
+              <thead>
+                <tr className="border-b border-black font-bold">
+                  <th className="w-[18%] p-1.5 border border-black">Learning Outcomes</th>
+                  <th className="w-[18%] p-1.5 border border-black">Topics</th>
+                  <th className="w-[16%] p-1.5 border border-black">SDG Coherence</th>
+                  <th className="w-[10%] p-1.5 border border-black">Time Allotment Week (hour)</th>
+                  <th className="w-[13%] p-1.5 border border-black">Methodology</th>
+                  <th className="w-[13%] p-1.5 border border-black">Resources</th>
+                  <th className="w-[12%] p-1.5 border border-black">Assessment</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows}
+              </tbody>
+            </table>
+          </div>
+          {renderFooter(pageNo, total)}
+        </div>
+      ));
+      currentRows = [];
+      isFirstSheet = false;
+    };
+
+    plan.forEach((week, idx) => {
+      // Learning Outcomes
+      const outcomes = week.learningOutcomes && week.learningOutcomes.length > 0
+        ? week.learningOutcomes.map((o, oi) => (
+            <div key={oi} className="m-0 p-0 leading-[1.2]">{o.replace(/<[^>]*>/g, '')}</div>
+          ))
+        : <div className="m-0 p-0 leading-[1.2] text-neutral-500 italic">—</div>;
+
+      // Topics
+      const topics = week.topics && week.topics.length > 0
+        ? week.topics.map((t, ti) => (
+            <div key={ti} className="m-0 p-0 leading-[1.2]">{t.replace(/<[^>]*>/g, '')}</div>
+          ))
+        : <div className="m-0 p-0 leading-[1.2] text-neutral-500 italic">—</div>;
+
+      // SDG Coherence
+      const sdgs = week.sdgCoherence && week.sdgCoherence.length > 0
+        ? week.sdgCoherence.map((s, si) => (
+            <div key={si} className="m-0 p-0 leading-[1.2]">
+              <div className="font-bold">{s.goal}: {s.title}</div>
+              <div className="text-[8pt]">{s.description}</div>
+              {s.explanation && <div className="text-[8pt] italic">{s.explanation}</div>}
+            </div>
+          ))
+        : <div className="m-0 p-0 leading-[1.2] text-neutral-500 italic">No SDG assigned</div>;
+
+      // Time Allotment
+      const weekCount = week.week ? (week.week.includes('-') ? 
+        (parseInt(week.week.split('-')[1]) - parseInt(week.week.split('-')[0]) + 1) : 1) : 1;
+      const timeAllotment = (
+        <div className="m-0 p-0 leading-[1.2] text-center font-semibold">
+          {week.week || `Week ${idx + 1}`}<br />
+          {week.hoursLab > 0 && `${week.hoursLab} hours (lab)`}<br />
+          {week.hoursLec > 0 && `${week.hoursLec} hours (lec)`}
+        </div>
+      );
+
+      // Methodology
+      const methodology = week.methodology && week.methodology.length > 0
+        ? week.methodology.map((m, mi) => (
+            <div key={mi} className="m-0 p-0 leading-[1.2]">● {m.replace(/<[^>]*>/g, '')}</div>
+          ))
+        : <div className="m-0 p-0 leading-[1.2] text-neutral-500 italic">—</div>;
+
+      // Resources
+      const resources = week.resources && week.resources.length > 0
+        ? week.resources.map((r, ri) => (
+            <div key={ri} className="m-0 p-0 leading-[1.2]">● {r.replace(/<[^>]*>/g, '')}</div>
+          ))
+        : <div className="m-0 p-0 leading-[1.2] text-neutral-500 italic">—</div>;
+
+      // Assessment
+      const assessment = week.assessment && week.assessment.length > 0
+        ? week.assessment.map((a, ai) => (
+            <div key={ai} className="m-0 p-0 leading-[1.2]">● {a.replace(/<[^>]*>/g, '')}</div>
+          ))
+        : <div className="m-0 p-0 leading-[1.2] text-neutral-500 italic">—</div>;
+
+      const row = (
+        <tr key={idx} className="border-b border-black align-top">
+          <td className="p-1.5 border border-black">{outcomes}</td>
+          <td className="p-1.5 border border-black">{topics}</td>
+          <td className="p-1.5 border border-black">{sdgs}</td>
+          <td className="p-1.5 border border-black">{timeAllotment}</td>
+          <td className="p-1.5 border border-black">{methodology}</td>
+          <td className="p-1.5 border border-black">{resources}</td>
+          <td className="p-1.5 border border-black">{assessment}</td>
+        </tr>
+      );
+
+      currentRows.push(row);
+
+      if (currentRows.length >= LEARNING_PLAN_ROWS_PER_SHEET) {
+        flushSheet();
+      }
+    });
+
+    if (currentRows.length > 0) {
+      flushSheet();
+    }
+
+    return builders;
+  };
+
+  // Render Part IV: Course Map from user data
+  const buildCourseMapSheets = (): ((pageNo: number, total: number) => React.ReactNode)[] => {
+    const map = courseMap && courseMap.length > 0 ? courseMap : [];
+    const pos = programOutcomes && programOutcomes.length > 0 ? programOutcomes : [];
+    if (map.length === 0 || pos.length === 0) return [];
+
+    const builders: ((pageNo: number, total: number) => React.ReactNode)[] = [];
+    let currentRows: React.ReactNode[] = [];
+    let isFirstSheet = true;
+
+    const flushSheet = () => {
+      if (currentRows.length === 0) return;
+      const rows = currentRows;
+      builders.push((pageNo, total) => (
+        <div
+          key={`sheet-${pageNo}`}
+          className="syllabus-page-sheet bg-white text-black font-['Trebuchet_MS',Arial,sans-serif] text-[9pt] leading-[1.25] w-[13in] min-w-[13in] min-h-[8.5in] h-[8.5in] p-[0.5in_0.6in_0.45in_0.6in] shadow-md border border-neutral-300 dark:border-neutral-700 flex flex-col justify-between"
+        >
+          <div>
+            {renderHeaderBox()}
+            {isFirstSheet && <div className="font-bold text-[10pt] mb-1 text-black">Part IV: Course Map</div>}
+            <table className="w-full border-collapse border border-black text-[9pt] leading-tight">
+              <thead>
+                <tr className="border-b border-black font-bold text-center">
+                  <th rowSpan={2} className="w-[48%] p-1.5 border border-black text-center align-middle">
+                    Course Outcomes (CO)
+                  </th>
+                  <th colSpan={pos.length} className="p-1 border border-black text-center">
+                    Program Outcomes
+                  </th>
+                </tr>
+                <tr className="border-b border-black font-bold text-center text-[8pt]">
+                  {pos.map(po => (
+                    <th key={po.number} className="p-1 border border-black text-center min-w-[28px]">
+                      {po.number === 10 ? 'PO10' : po.number === 11 ? 'PO11' : `PO\n${po.number}`}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows}
+              </tbody>
+            </table>
+            {isFirstSheet && (
+              <div className="font-bold text-[9pt] mb-3 text-black mt-2">
+                Legend: I - Introduced, P - Practiced, D – Demonstrate
+              </div>
+            )}
+          </div>
+          {renderFooter(pageNo, total)}
+        </div>
+      ));
+      currentRows = [];
+      isFirstSheet = false;
+    };
+
+    map.forEach((entry, idx) => {
+      const row = (
+        <tr key={entry.coNumber} className="border-b border-black align-middle">
+          <td className="p-1.5 border border-black text-left">
+            {entry.coNumber}. {entry.coStatement}
+          </td>
+          {pos.map(po => {
+            const val = entry.poAlignments?.[po.number] || '';
+            return (
+              <td key={po.number} className="p-1 border border-black text-center font-bold min-w-[28px]">
+                {val}
+              </td>
+            );
+          })}
+        </tr>
+      );
+
+      currentRows.push(row);
+
+      if (currentRows.length >= COURSE_MAP_ROWS_PER_SHEET) {
+        flushSheet();
+      }
+    });
+
+    if (currentRows.length > 0) {
+      flushSheet();
+    }
+
+    return builders;
+  };
 
   // Determine if this is a full official syllabus (e.g., CSPC112 with rubrics, learning plan, etc.)
   const hasLearningPlan = learningPlan && learningPlan.length > 0;
@@ -563,19 +857,17 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
     ));
 
     // ----------------------------------------------------
-    // SHEET 6: Rubric 10, Policies, Consultation, Part II Start
+    // Rubric 10 (if exists)
     // ----------------------------------------------------
-    sheetBuilders.push((pageNo, total) => (
-      <div
-        key={`sheet-${pageNo}`}
-        className="syllabus-page-sheet bg-white text-black font-['Trebuchet_MS',Arial,sans-serif] text-[10pt] leading-[1.3] w-[13in] min-w-[13in] min-h-[8.5in] h-[8.5in] p-[0.5in_0.6in_0.45in_0.6in] shadow-md border border-neutral-300 dark:border-neutral-700 flex flex-col justify-between"
-      >
-        <div>
-          {renderHeaderBox()}
-
-          {/* Rubric Category 10 */}
-          {projectRubrics[9] && (
-            <table className="w-full border-collapse border border-black text-[9pt] leading-tight mb-2">
+    if (projectRubrics[9]) {
+      sheetBuilders.push((pageNo, total) => (
+        <div
+          key={`sheet-${pageNo}`}
+          className="syllabus-page-sheet bg-white text-black font-['Trebuchet_MS',Arial,sans-serif] text-[10pt] leading-[1.3] w-[13in] min-w-[13in] min-h-[8.5in] h-[8.5in] p-[0.5in_0.6in_0.45in_0.6in] shadow-md border border-neutral-300 dark:border-neutral-700 flex flex-col justify-between"
+        >
+          <div>
+            {renderHeaderBox()}
+            <table className="w-full border-collapse border border-black text-[9pt] leading-tight">
               <tbody>
                 {(() => {
                   const r10 = projectRubrics[9];
@@ -593,9 +885,22 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
                 })()}
               </tbody>
             </table>
-          )}
+          </div>
+          {renderFooter(pageNo, total)}
+        </div>
+      ));
+    }
 
-          {/* Policies & Consultation */}
+    // ----------------------------------------------------
+    // Policies & Consultation (dynamic from data)
+    // ----------------------------------------------------
+    sheetBuilders.push((pageNo, total) => (
+      <div
+        key={`sheet-${pageNo}`}
+        className="syllabus-page-sheet bg-white text-black font-['Trebuchet_MS',Arial,sans-serif] text-[10pt] leading-[1.3] w-[13in] min-w-[13in] min-h-[8.5in] h-[8.5in] p-[0.5in_0.6in_0.45in_0.6in] shadow-md border border-neutral-300 dark:border-neutral-700 flex flex-col justify-between"
+      >
+        <div>
+          {renderHeaderBox()}
           <table className="w-full border-collapse border border-black text-[10pt] leading-[1.16] mb-3">
             <tbody>
               {classroomPolicies && classroomPolicies.length > 0 && (
@@ -612,36 +917,105 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
               <tr>
                 <td className="w-[20.6%] p-[1.5pt_4pt] font-bold border-r border-black align-top m-0">Consultation Hours</td>
                 <td className="p-[1.5pt_4pt] align-top m-0">
-                  <div className="m-0 p-0 leading-[1.16]">E.O.Bacungan - MTWTHF 02:00PM - 03:00PM</div>
-                  <div className="m-0 p-0 leading-[1.16]">R.E.Dilan - MWF 1:00-2:00, TTh 9:30-10:30</div>
+                  {facultyMembers.map((fac, fi) => (
+                    (fac.consultationSlots || []).map((slot, si) => (
+                      <div key={`${fi}-${si}`} className="m-0 p-0 leading-[1.16]">
+                        {fac.name} - {slot.days?.join(',') || ''} {slot.time || ''}
+                      </div>
+                    ))
+                  ))}
                 </td>
               </tr>
             </tbody>
           </table>
+        </div>
+        {renderFooter(pageNo, total)}
+      </div>
+    ));
 
-          {/* Part II: Header & First Row */}
-          <div className="font-bold text-[10pt] mb-1 text-black">Part II: Course Outline and Time Frame</div>
-          <table className="w-full border-collapse border border-black text-[10pt] leading-[1.16]">
-            <thead>
-              <tr className="border-b border-black font-bold">
-                <th className="w-[20.6%] p-[1.5pt_4pt] border border-black text-left">Time Frame</th>
-                <th className="p-[1.5pt_4pt] border border-black text-left">Course Content/Subject Matter</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr className="border-b border-black align-top">
-                <td className="p-[1.5pt_4pt] border border-black">Week 1-7</td>
-                <td className="p-[1.5pt_4pt] border border-black">
-                  <div className="m-0 p-0 leading-[1.16]">VGMO presentation and orientation</div>
-                  <div className="m-0 p-0 leading-[1.16]">Presentation of the course syllabus</div>
-                  <div className="m-0 p-0 leading-[1.16]">Review of Software Engineering 1</div>
-                  <div className="m-0 p-0 leading-[1.16]">Software Design and Architectural Patterns</div>
-                  <div className="pl-4 m-0 p-0 leading-[1.16]">● Design patterns</div>
-                  <div className="pl-4 m-0 p-0 leading-[1.16]">● Architectural patterns</div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+    // ----------------------------------------------------
+    // Part II: Course Outline (dynamic)
+    // ----------------------------------------------------
+    sheetBuilders.push(...buildCourseOutlineSheets());
+
+    // ----------------------------------------------------
+    // Part III: Learning Plan (dynamic)
+    // ----------------------------------------------------
+    sheetBuilders.push(...buildLearningPlanSheets());
+
+    // ----------------------------------------------------
+    // Part IV: Course Map (dynamic)
+    // ----------------------------------------------------
+    sheetBuilders.push(...buildCourseMapSheets());
+
+    // Part V: real, alphabetized references (paginated; skipped when empty)
+    sheetBuilders.push(...referenceSheetBuilders);
+
+    // ----------------------------------------------------
+    // Signatories (dynamic)
+    // ----------------------------------------------------
+    sheetBuilders.push((pageNo, total) => (
+      <div
+        key={`sheet-${pageNo}`}
+        className="syllabus-page-sheet bg-white text-black font-['Trebuchet_MS',Arial,sans-serif] text-[9.5pt] leading-[1.3] w-[13in] min-w-[13in] min-h-[8.5in] h-[8.5in] p-[0.5in_0.6in_0.45in_0.6in] shadow-md border border-neutral-300 dark:border-neutral-700 flex flex-col justify-between"
+      >
+        <div>
+          {renderHeaderBox()}
+          {/* BORDERLESS Signatories Section */}
+          <div className="grid grid-cols-3 gap-8 mt-12 text-[10pt] leading-normal">
+            <div>
+              <div className="font-bold text-black mb-6">Prepared by:</div>
+              <div className="space-y-6">
+                <div>
+                  <div className="font-bold uppercase text-black">
+                    {signatories?.preparedBy?.[0]?.name || primaryFaculty?.name || 'Faculty Member'}
+                  </div>
+                  <div className="text-black">
+                    {signatories?.preparedBy?.[0]?.title || 'Faculty Member'}
+                  </div>
+                  <div className="text-black">Date: _____________</div>
+                </div>
+
+                {facultyMembers.length > 1 && (
+                  <div>
+                    <div className="font-bold uppercase text-black">
+                      {signatories?.preparedBy?.[1]?.name || facultyMembers[1]?.name || 'Faculty Member'}
+                    </div>
+                    <div className="text-black">
+                      {signatories?.preparedBy?.[1]?.title || 'Faculty Member'}
+                    </div>
+                    <div className="text-black">Date: _____________</div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <div className="font-bold text-black mb-6">Recommending Approval:</div>
+              <div>
+                <div className="font-bold uppercase text-black">
+                  {signatories?.recommendingApproval?.name || 'Program Chairperson'}
+                </div>
+                <div className="text-black">
+                  {signatories?.recommendingApproval?.title || 'Program Chairperson'}
+                </div>
+                <div className="text-black">Date: _____________</div>
+              </div>
+            </div>
+
+            <div>
+              <div className="font-bold text-black mb-6">Approved:</div>
+              <div>
+                <div className="font-bold uppercase text-black">
+                  {signatories?.approved?.name || 'Dean / Institute Director'}
+                </div>
+                <div className="text-black">
+                  {signatories?.approved?.title || 'Dean / Institute Director'}
+                </div>
+                <div className="text-black">Date: _____________</div>
+              </div>
+            </div>
+          </div>
         </div>
 
         {renderFooter(pageNo, total)}
