@@ -586,7 +586,7 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
   if (activeGroupId && activeGroup) {
     if (activeGroup.status === 'locked') {
       return (
-        <div className="w-full space-y-4 animate-fade-in pb-16">
+        <div className="w-full space-y-4 pb-16">
           <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-xs font-semibold flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Lock className="w-4 h-4 shrink-0" />
@@ -608,7 +608,7 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
     }
 
     return (
-      <div className="flex-1 w-full space-y-6 animate-fade-in pb-16">
+      <div className="flex-1 w-full space-y-6 pb-16">
         {/* Studio Navigation Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-border">
           <div>
@@ -801,7 +801,7 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
   }
 
   return (
-    <div className="flex-1 w-full space-y-6 animate-fade-in pb-16">
+    <div className="flex-1 w-full space-y-6 pb-16">
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-border/80">
         <div>
