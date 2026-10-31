@@ -726,7 +726,12 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
 
         {/* Revision Remarks Banner if Revisions are Required */}
         {activeRecord?.status === 'revisions_required' && activeRecord.evaluators && (
-          <RevisionRemarksBanner evaluators={activeRecord.evaluators} />
+          <RevisionRemarksBanner
+            evaluators={activeRecord.evaluators}
+            matrixSnapshot={activeRecord.matrixSnapshot}
+            courseCode={activeGroup?.courseCode}
+            instructorNames={activeGroup?.instructorNames}
+          />
         )}
 
         {/* Wizard Editor */}
@@ -950,6 +955,7 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
             userRole={activeRole}
             isChair={isChair}
             canRelease={isChair}
+            onOpenMatrix={setConsolidatedGroup}
             onReleaseCourses={async ids => {
               if (!isChair) {
                 showAlert({
