@@ -44,7 +44,9 @@ function toMatrix(row: any, fallback: EvaluationMatrix): EvaluationMatrix {
   };
 }
 
-export async function fetchMatrixTemplate(scopeId: string): Promise<EvaluationMatrix | null> {
+export async function fetchMatrixTemplate(
+  scopeId: string
+): Promise<{ id: string; matrix: EvaluationMatrix } | null> {
   const token = await getValidToken();
   if (!token) return null;
 
@@ -59,10 +61,13 @@ export async function fetchMatrixTemplate(scopeId: string): Promise<EvaluationMa
     const sections = parseSections(row.sections);
     if (!sections) return null;
     return {
-      version: row.version ?? 1,
-      updatedAt: row.date_updated || '',
-      updatedBy: row.updated_by_name || undefined,
-      sections
+      id: String(row.id),
+      matrix: {
+        version: row.version ?? 1,
+        updatedAt: row.date_updated || '',
+        updatedBy: row.updated_by_name || undefined,
+        sections
+      }
     };
   } catch {
     return null;
@@ -77,6 +82,8 @@ function isRetryableSaveError(err: any): boolean {
   return status >= 500 || status === 408 || status === 429;
 }
 
+// A retried POST after an ambiguous 5xx is safe: scope_id is UNIQUE server-side,
+// so a duplicate insert fails the constraint instead of creating a second template.
 async function saveWithRetry<T>(write: () => Promise<T>): Promise<T | null> {
   const maxAttempts = 3;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {

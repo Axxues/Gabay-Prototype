@@ -40,10 +40,13 @@ describe('evaluationMatrixApi', () => {
     const result = await fetchMatrixTemplate('bscs');
 
     expect(result).toEqual({
-      version: 3,
-      updatedAt: '2026-10-30T10:00:00.000Z',
-      updatedBy: 'Dr. Santos',
-      sections
+      id: 'row-1',
+      matrix: {
+        version: 3,
+        updatedAt: '2026-10-30T10:00:00.000Z',
+        updatedBy: 'Dr. Santos',
+        sections
+      }
     });
     expect(String(spy.mock.calls[0][0])).toContain(
       '/items/gabay_syllabus_eval_matrix?filter%5Bscope_id%5D%5B_eq%5D=bscs'
