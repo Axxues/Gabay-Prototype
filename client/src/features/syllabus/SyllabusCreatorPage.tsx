@@ -5,6 +5,7 @@ import { createBaselineSyllabus } from './hooks/useSyllabusDraftsStorage';
 import { OFFICIAL_SYLLABUS_CSPC112, OFFICIAL_INSTITUTIONAL_STATEMENTS } from '../../shared/data/syllabusData';
 import { useSyllabusLifecycle, normalizeCourseCode } from './hooks/useSyllabusLifecycle';
 import { useSyllabusCollaboration } from './hooks/useSyllabusCollaboration';
+import { useEvaluationMatrix } from './hooks/useEvaluationMatrix';
 import { fetchRemoteDraft, saveRemoteDraft } from './api/syllabusCollaborationApi';
 import { SyllabusWizard } from './components/creator/SyllabusWizard';
 import { AttachToCourseModal } from './components/creator/AttachToCourseModal';
@@ -14,7 +15,7 @@ import { EvaluatorReviewModal } from './components/governance/EvaluatorReviewMod
 import { ApprovalActionModal } from './components/governance/ApprovalActionModal';
 import { RevisionRemarksBanner } from './components/creator/RevisionRemarksBanner';
 import { SyllabusDocumentPreview } from './components/creator/SyllabusDocumentPreview';
-import type { SyllabusGroup } from './types/lifecycle';
+import type { SyllabusGroup, EvaluationMatrix } from './types/lifecycle';
 import { isChairRole, isDeanRole } from '../../shared/utils/roles';
 import { formatSemesterLabel } from '../../shared/utils/academicSemester';
 import {
@@ -62,10 +63,17 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
     syncRemoteAgreements,
     assignEvaluators,
     submitEvaluatorReview,
+    ensureMatrixSnapshot,
     chairApprove,
     deanApprove,
     updateSyllabusData
   } = useSyllabusLifecycle(coursesList, activeUser?.collegeId, db?.users);
+
+  const { template: matrixTemplate, getSnapshotForAssign } = useEvaluationMatrix(
+    activeUser?.department,
+    activeUser?.collegeId || '',
+    activeUser?.name
+  );
 
   // Faculty Assigned Courses (Filtered to current user)
   const myAssignedGroups = useMemo(() => {
@@ -94,6 +102,7 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
   const [isAttachOpen, setIsAttachOpen] = useState(false);
   const [evaluatorAssignGroup, setEvaluatorAssignGroup] = useState<SyllabusGroup | null>(null);
   const [evaluatorReviewGroup, setEvaluatorReviewGroup] = useState<SyllabusGroup | null>(null);
+  const [evaluatorSnapshot, setEvaluatorSnapshot] = useState<EvaluationMatrix | null>(null);
   const [approvalModalConfig, setApprovalModalConfig] = useState<{
     type: 'chair' | 'dean';
     group: SyllabusGroup;
@@ -1170,7 +1179,13 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
                   <div className="pt-3 border-t border-border flex items-center justify-between">
                     {canEvaluate ? (
                       <button
-                        onClick={() => setEvaluatorReviewGroup(group)}
+                        onClick={() => {
+                          const record = getRecord(group.id);
+                          const snapshot = record?.matrixSnapshot ?? matrixTemplate;
+                          if (!record?.matrixSnapshot) ensureMatrixSnapshot(group.id, snapshot);
+                          setEvaluatorSnapshot(snapshot);
+                          setEvaluatorReviewGroup(group);
+                        }}
                         className="px-4 py-2 rounded-xl text-xs font-bold bg-purple-600 text-white hover:bg-purple-700 transition-all flex items-center gap-1.5"
                       >
                         <ClipboardCheck className="w-3.5 h-3.5" />
@@ -1206,29 +1221,29 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
           group={evaluatorAssignGroup}
           users={usersList}
           onClose={() => setEvaluatorAssignGroup(null)}
-          onConfirm={(groupId, evaluators) => {
-            // Get the current matrix snapshot from the template hook
-            // For now, we pass undefined and Task 8/9 will wire the template properly
+          onConfirm={async (groupId, evaluators) => {
+            const group = evaluatorAssignGroup;
+            const snapshot = await getSnapshotForAssign().catch(() => matrixTemplate);
             assignEvaluators(groupId, evaluators, (courseIds, status) => {
               if (lms.updateCourseSyllabusStatus && courseIds.length > 0) {
                 void lms.updateCourseSyllabusStatus(courseIds, status, activeUser?.id);
               }
-            }, undefined);
-            if (evaluatorAssignGroup.courseIds[0]) {
+            }, snapshot);
+            if (group.courseIds[0]) {
               saveRemoteDraft(
-                evaluatorAssignGroup.courseIds[0],
-                evaluatorAssignGroup.syllabusData || ({} as any),
+                group.courseIds[0],
+                group.syllabusData || ({} as any),
                 activeUser?.id,
                 undefined,
-                evaluatorAssignGroup.submissionAgreements,
+                group.submissionAgreements,
                 'under_evaluation',
                 evaluators.map(e => ({ evaluatorId: e.id, evaluatorName: e.name, status: 'pending' })),
-                undefined // matrixSnapshot - Task 8 will wire this
+                snapshot
               ).catch(() => {});
             }
             showAlert({
               title: 'Evaluators Assigned',
-              message: `${evaluators.length} evaluator(s) assigned to ${evaluatorAssignGroup.courseCode}.`,
+              message: `${evaluators.length} evaluator(s) assigned to ${group.courseCode}.`,
               type: 'success'
             });
           }}
@@ -1241,7 +1256,11 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
           isOpen={Boolean(evaluatorReviewGroup)}
           groupId={evaluatorReviewGroup.id}
           courseCode={evaluatorReviewGroup.courseCode}
-          onClose={() => setEvaluatorReviewGroup(null)}
+          snapshot={evaluatorSnapshot}
+          onClose={() => {
+            setEvaluatorReviewGroup(null);
+            setEvaluatorSnapshot(null);
+          }}
           onReview={(groupId, status, remarks, matrix) => {
             if (activeUser?.id) {
               submitEvaluatorReview(groupId, activeUser.id, status, remarks, matrix, (courseIds, nextStatus) => {
@@ -1249,23 +1268,12 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
                   void lms.updateCourseSyllabusStatus(courseIds, nextStatus, activeUser.id);
                 }
               });
-              // Build the updated evaluators array for remote sync
-              const updatedEvaluators = evaluatorReviewGroup.evaluators.map(e => {
-                if (e.evaluatorId === activeUser.id) {
-                  return {
-                    ...e,
-                    status,
-                    remarks: remarks || e.remarks,
-                    reviewedAt: new Date().toISOString(),
-                    ...(matrix ? {
-                      matrixResponses: matrix.matrixResponses,
-                      overallComments: matrix.overallComments,
-                      matrixVersion: matrix.matrixVersion
-                    } : {})
-                  };
-                }
-                return e;
-              });
+              const now = new Date().toISOString();
+              const nextEvaluators = evaluatorReviewGroup.evaluators.map(e =>
+                e.evaluatorId === activeUser.id
+                  ? { ...e, status, remarks, reviewedAt: now, ...matrix }
+                  : e
+              );
               if (evaluatorReviewGroup.courseIds[0]) {
                 saveRemoteDraft(
                   evaluatorReviewGroup.courseIds[0],
@@ -1274,8 +1282,8 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
                   undefined,
                   evaluatorReviewGroup.submissionAgreements,
                   status === 'approved' ? 'evaluator_approved' : 'revisions_required',
-                  updatedEvaluators,
-                  evaluatorReviewGroup.matrixSnapshot // Pass matrixSnapshot for remote sync
+                  nextEvaluators,
+                  evaluatorSnapshot ?? undefined
                 ).catch(() => {});
               }
               showAlert({

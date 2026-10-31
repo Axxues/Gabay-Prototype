@@ -1,31 +1,77 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { AnimatedModal } from '../../../../shared/components/common/ModalPortal';
 import { CheckCircle2, AlertTriangle, ShieldCheck, MessageSquare } from 'lucide-react';
+import { MatrixChecklistTable } from '../matrix/MatrixChecklistTable';
+import type { EvaluationMatrix, EvaluatorMatrixResponse } from '../../types/lifecycle';
 
 interface EvaluatorReviewModalProps {
   isOpen: boolean;
   groupId: string;
   courseCode: string;
+  snapshot: EvaluationMatrix | null;
   onClose: () => void;
-  onReview: (groupId: string, status: 'approved' | 'revisions_requested', remarks?: string) => void;
+  onReview: (
+    groupId: string,
+    status: 'approved' | 'revisions_requested',
+    remarks: string | undefined,
+    matrix: { matrixResponses: EvaluatorMatrixResponse[]; overallComments?: string; matrixVersion?: number }
+  ) => void;
 }
 
 export const EvaluatorReviewModal: React.FC<EvaluatorReviewModalProps> = ({
   isOpen,
   groupId,
   courseCode,
+  snapshot,
   onClose,
   onReview
 }) => {
   const [remarks, setRemarks] = useState('');
+  const [overallComments, setOverallComments] = useState('');
+  const [responses, setResponses] = useState<Record<string, EvaluatorMatrixResponse>>({});
   const [error, setError] = useState<string | null>(null);
+  const submittedRef = useRef(false);
 
   if (!isOpen) return null;
 
-  const handleApprove = () => {
+  const criteria = snapshot?.sections.flatMap(s => s.criteria) ?? [];
+  const getResponse = (id: string): EvaluatorMatrixResponse =>
+    responses[id] ?? { criterionId: id, compliant: false, comment: '' };
+  const hasComment = (r: EvaluatorMatrixResponse) => Boolean(r.comment?.trim());
+
+  const allCompliant = criteria.every(c => {
+    const r = getResponse(c.id);
+    return r.compliant && !hasComment(r);
+  });
+  const hasUncommentedNo = criteria.some(c => {
+    const r = getResponse(c.id);
+    return !r.compliant && !hasComment(r);
+  });
+
+  const buildMatrix = () => ({
+    matrixResponses: criteria.map(c => {
+      const r = getResponse(c.id);
+      return {
+        criterionId: c.id,
+        compliant: r.compliant && !hasComment(r),
+        comment: r.comment?.trim() || undefined
+      };
+    }),
+    overallComments: overallComments.trim() || undefined,
+    matrixVersion: snapshot?.version
+  });
+
+  const submit = (status: 'approved' | 'revisions_requested', finalRemarks?: string) => {
+    if (submittedRef.current) return;
+    submittedRef.current = true;
     setError(null);
-    onReview(groupId, 'approved', undefined);
+    onReview(groupId, status, finalRemarks, snapshot ? buildMatrix() : { matrixResponses: [] });
     onClose();
+  };
+
+  const handleApprove = () => {
+    if (snapshot && !allCompliant) return;
+    submit('approved');
   };
 
   const handleRequestRevisions = () => {
@@ -33,14 +79,25 @@ export const EvaluatorReviewModal: React.FC<EvaluatorReviewModalProps> = ({
       setError('Please enter revision remarks explaining the required changes.');
       return;
     }
-    setError(null);
-    onReview(groupId, 'revisions_requested', remarks.trim());
-    onClose();
+    if (snapshot && hasUncommentedNo) {
+      setError('Please add a comment to every non-compliant criterion before submitting.');
+      return;
+    }
+    submit('revisions_requested', remarks.trim());
+  };
+
+  const handleCriterionChange = (id: string, patch: { compliant?: boolean; comment?: string }) => {
+    setResponses(prev => ({ ...prev, [id]: { ...getResponse(id), ...patch, criterionId: id } }));
+    if (error) setError(null);
   };
 
   return (
     <AnimatedModal isOpen={isOpen} onClose={onClose}>
-      <div className="p-6 space-y-5 max-w-lg w-full bg-card text-foreground">
+      <div
+        className={`p-6 space-y-5 w-full bg-card text-foreground ${
+          snapshot ? 'max-w-4xl max-h-[85vh] overflow-y-auto' : 'max-w-lg'
+        }`}
+      >
         {/* Header */}
         <div>
           <div className="flex items-center space-x-2 text-xs font-semibold text-primary uppercase tracking-wider mb-1">
@@ -54,6 +111,17 @@ export const EvaluatorReviewModal: React.FC<EvaluatorReviewModalProps> = ({
             Submit your evaluation findings. You may endorse this syllabus for Chairperson review or request mandatory revisions from the assigned instructors.
           </p>
         </div>
+
+        {snapshot && (
+          <MatrixChecklistTable
+            sections={snapshot.sections}
+            mode="fill"
+            responses={responses}
+            onCriterionChange={handleCriterionChange}
+            overallComments={overallComments}
+            onOverallCommentsChange={setOverallComments}
+          />
+        )}
 
         {/* Remarks Input */}
         <div className="space-y-1.5">
@@ -99,7 +167,8 @@ export const EvaluatorReviewModal: React.FC<EvaluatorReviewModalProps> = ({
 
             <button
               onClick={handleApprove}
-              className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm transition-all flex items-center gap-1.5"
+              disabled={Boolean(snapshot) && !allCompliant}
+              className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <CheckCircle2 className="w-3.5 h-3.5" />
               <span>Approve Syllabus</span>
