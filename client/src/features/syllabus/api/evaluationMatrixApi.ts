@@ -1,6 +1,11 @@
 import { getValidToken, likhaRequest } from '../../../shared/api/likhaLmsApi';
 import type { EvaluationMatrix, MatrixSection } from '../types/lifecycle';
 
+interface MatrixWithId {
+  id: string;
+  matrix: EvaluationMatrix;
+}
+
 const COLLECTION = '/items/gabay_syllabus_eval_matrix';
 const CACHE_PREFIX = 'gabay_syllabus_eval_matrix:';
 
@@ -18,7 +23,7 @@ export function readCachedMatrix(scopeId: string): EvaluationMatrix | null {
   }
 }
 
-function writeCachedMatrix(scopeId: string, matrix: EvaluationMatrix): void {
+export function writeCachedMatrix(scopeId: string, matrix: EvaluationMatrix): void {
   try {
     localStorage.setItem(CACHE_PREFIX + scopeId, JSON.stringify(matrix));
   } catch {
@@ -46,7 +51,7 @@ function toMatrix(row: any, fallback: EvaluationMatrix): EvaluationMatrix {
 
 export async function fetchMatrixTemplate(
   scopeId: string
-): Promise<{ id: string; matrix: EvaluationMatrix } | null> {
+): Promise<MatrixWithId | null> {
   const token = await getValidToken();
   if (!token) return null;
 
@@ -104,7 +109,7 @@ export async function createMatrixTemplate(
   scopeId: string,
   matrix: EvaluationMatrix,
   updatedByName?: string
-): Promise<EvaluationMatrix | null> {
+): Promise<MatrixWithId | null> {
   const token = await getValidToken();
   if (!token) return null;
 
@@ -123,14 +128,14 @@ export async function createMatrixTemplate(
 
   const saved = toMatrix(stored, { ...matrix, updatedBy: updatedByName ?? matrix.updatedBy });
   writeCachedMatrix(scopeId, saved);
-  return saved;
+  return { id: String(stored.id), matrix: saved };
 }
 
 export async function updateMatrixTemplate(
   id: string,
   matrix: EvaluationMatrix,
   updatedByName?: string
-): Promise<EvaluationMatrix | null> {
+): Promise<MatrixWithId | null> {
   const token = await getValidToken();
   if (!token) return null;
 
@@ -148,5 +153,5 @@ export async function updateMatrixTemplate(
 
   const saved = toMatrix(stored, { ...matrix, updatedBy: updatedByName ?? matrix.updatedBy });
   if (stored.scope_id) writeCachedMatrix(stored.scope_id, saved);
-  return saved;
+  return { id, matrix: saved };
 }
