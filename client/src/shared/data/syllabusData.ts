@@ -125,7 +125,20 @@ export interface ReferenceItem {
   url?: string;
 }
 
-export function formatApa7Reference(ref: Partial<ReferenceItem>): string {
+export interface ApaSegment {
+  text: string;
+  italic?: boolean;
+}
+
+type ApaPart = ApaSegment[];
+
+function cleanApaText(text: string): string {
+  return text.replace(/\s+/g, ' ');
+}
+
+// Assembles each legacy string `part` as an array of styled sub-segments so the
+// joined output stays byte-identical to the old `parts.join(' ')` behavior.
+function buildApaParts(ref: Partial<ReferenceItem>): ApaPart[] {
   const type = ref.type || 'book';
   const rawYear = (ref.year || '').trim();
   const yearStr = rawYear ? (rawYear.startsWith('(') ? rawYear : `(${rawYear}).`) : '(n.d.).';
@@ -134,66 +147,84 @@ export function formatApa7Reference(ref: Partial<ReferenceItem>): string {
 
   if (type === 'book') {
     const titleStr = (ref.title || '').trim();
-    const editionStr = (ref.edition || '').trim() ? ` (${ref.edition?.trim()})` : '';
+    const editionStr = (ref.edition || '').trim() ? ` (${ref.edition!.trim()})` : '';
     const publisherStr = ((ref.publisher || ref.doiOrPublisher) || '').trim();
     const urlStr = (ref.url || '').trim();
 
-    const parts = [
-      authorsStr,
-      yearStr,
-      titleStr ? `${titleStr}${editionStr}.` : '',
-      publisherStr ? (publisherStr.endsWith('.') ? publisherStr : `${publisherStr}.`) : '',
-      urlStr
-    ].filter(Boolean);
-
-    return parts.join(' ').replace(/\s+/g, ' ').trim();
+    const parts: ApaPart[] = [];
+    if (authorsStr) parts.push([{ text: cleanApaText(authorsStr) }]);
+    if (yearStr) parts.push([{ text: cleanApaText(yearStr) }]);
+    if (titleStr) parts.push([{ text: cleanApaText(titleStr), italic: true }, { text: `${editionStr}.` }]);
+    if (publisherStr) parts.push([{ text: cleanApaText(publisherStr.endsWith('.') ? publisherStr : `${publisherStr}.`) }]);
+    if (urlStr) parts.push([{ text: cleanApaText(urlStr) }]);
+    return parts;
   }
 
   if (type === 'journal') {
     const titleStr = (ref.title || '').trim();
-    const titleWithPeriod = titleStr ? (titleStr.endsWith('.') ? titleStr : `${titleStr}.`) : '';
     const journalStr = (ref.journal || '').trim();
-    let volIssuePages = '';
-    if ((ref.volume || '').trim()) {
-      volIssuePages += ref.volume!.trim();
-      if ((ref.issue || '').trim()) {
-        volIssuePages += `(${ref.issue!.trim()})`;
-      }
-    }
-    if ((ref.pages || '').trim()) {
-      volIssuePages += volIssuePages ? `, ${ref.pages!.trim()}` : ref.pages!.trim();
-    }
+    const volumeStr = (ref.volume || '').trim();
+    const issueStr = (ref.issue || '').trim();
+    const pagesStr = (ref.pages || '').trim();
     const pubDoi = (ref.url || ref.doiOrPublisher || '').trim();
 
-    const parts = [
-      authorsStr,
-      yearStr,
-      titleWithPeriod,
-      journalStr ? `${journalStr}${volIssuePages ? `, ${volIssuePages}.` : '.'}` : (volIssuePages ? `${volIssuePages}.` : ''),
-      pubDoi
-    ].filter(Boolean);
+    const volSubs: ApaSegment[] = [];
+    if (volumeStr) {
+      volSubs.push({ text: cleanApaText(volumeStr), italic: true });
+      if (issueStr) volSubs.push({ text: `(${issueStr})` });
+    }
+    if (pagesStr) volSubs.push({ text: volSubs.length ? `, ${pagesStr}` : pagesStr });
 
-    return parts.join(' ').replace(/\s+/g, ' ').trim();
+    const parts: ApaPart[] = [];
+    if (authorsStr) parts.push([{ text: cleanApaText(authorsStr) }]);
+    if (yearStr) parts.push([{ text: cleanApaText(yearStr) }]);
+    if (titleStr) parts.push([{ text: cleanApaText(titleStr), italic: true }, { text: '.' }]);
+    if (journalStr) {
+      const journalPart: ApaPart = [{ text: cleanApaText(journalStr), italic: true }];
+      if (volSubs.length) {
+        journalPart.push({ text: ', ' });
+        journalPart.push(...volSubs);
+      }
+      journalPart.push({ text: '.' });
+      parts.push(journalPart);
+    } else if (volSubs.length) {
+      parts.push([...volSubs, { text: '.' }]);
+    }
+    if (pubDoi) parts.push([{ text: cleanApaText(pubDoi) }]);
+    return parts;
   }
 
   if (type === 'website') {
     const titleStr = (ref.title || '').trim();
-    const titleWithPeriod = titleStr ? (titleStr.endsWith('.') ? titleStr : `${titleStr}.`) : '';
     const siteStr = (ref.websiteName || ref.doiOrPublisher || '').trim();
     const urlStr = (ref.url || '').trim();
 
-    const parts = [
-      authorsStr,
-      yearStr,
-      titleWithPeriod,
-      siteStr ? (siteStr.endsWith('.') ? siteStr : `${siteStr}.`) : '',
-      urlStr
-    ].filter(Boolean);
-
-    return parts.join(' ').replace(/\s+/g, ' ').trim();
+    const parts: ApaPart[] = [];
+    if (authorsStr) parts.push([{ text: cleanApaText(authorsStr) }]);
+    if (yearStr) parts.push([{ text: cleanApaText(yearStr) }]);
+    if (titleStr) parts.push([{ text: cleanApaText(titleStr), italic: true }, { text: '.' }]);
+    if (siteStr) parts.push([{ text: cleanApaText(siteStr.endsWith('.') ? siteStr : `${siteStr}.`) }]);
+    if (urlStr) parts.push([{ text: cleanApaText(urlStr) }]);
+    return parts;
   }
 
-  return ref.citation || '';
+  // Legacy fallback: citation-only refs keep their text raw, as before.
+  return ref.citation ? [[{ text: ref.citation }]] : [];
+}
+
+export function formatApa7ReferenceSegments(ref: Partial<ReferenceItem>): ApaSegment[] {
+  const segments: ApaSegment[] = [];
+  buildApaParts(ref).forEach((part, partIdx) => {
+    if (partIdx > 0) segments.push({ text: ' ' });
+    for (const sub of part) {
+      segments.push({ text: sub.text, italic: sub.italic });
+    }
+  });
+  return segments;
+}
+
+export function formatApa7Reference(ref: Partial<ReferenceItem>): string {
+  return formatApa7ReferenceSegments(ref).map(s => s.text).join('');
 }
 
 export interface OfficialSyllabusData {
