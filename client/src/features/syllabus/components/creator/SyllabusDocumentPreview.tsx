@@ -72,10 +72,20 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
     ? courseOutcomes.filter(co => (co.statement || '').trim())
     : [];
 
-  // Fallback graduate attributes & core values
-  const gradAttrs = institutionalStatements?.graduateAttributes?.length
-    ? institutionalStatements.graduateAttributes
-    : OFFICIAL_INSTITUTIONAL_STATEMENTS.graduateAttributes;
+  // Institutional statement values matching official university standard
+  const philosophyText = institutionalStatements?.philosophy && institutionalStatements.philosophy !== 'Total human development'
+    ? institutionalStatements.philosophy
+    : 'Total human development with appropriate competencies.';
+
+  const visionText = institutionalStatements?.vision && !institutionalStatements.vision.includes('A Premier University of the North')
+    ? institutionalStatements.vision
+    : 'By 2030, DMMMSU IS A globally ranked university.';
+
+  const missionText = institutionalStatements?.mission && !institutionalStatements.mission.includes('Develop human capital for nation building')
+    ? institutionalStatements.mission
+    : 'Excellence in instruction, research and extension.';
+
+  const goalText = institutionalStatements?.goal || 'To lead in transforming human resources into productive, self-reliant citizens, and responsible leaders.';
 
   const coreVals = institutionalStatements?.coreValues?.length
     ? institutionalStatements.coreValues
@@ -140,7 +150,7 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
   const hasCourseOutline = courseOutline && courseOutline.length > 0;
   const hasCourseMap = courseMap && courseMap.length > 0 && activePOs.length > 0;
   const hasReferences = references && references.length > 0;
-  const hasGrading = gradingSystem && (gradingSystem.termFormula || gradingSystem.finalFormula || (gradingSystem.classStandingComponents && gradingSystem.classStandingComponents.length > 0) || gradingSystem.passingGrade);
+  const hasGrading = gradingSystem && (gradingSystem.termFormula || gradingSystem.finalFormula || (gradingSystem.classStandingComponents && gradingSystem.classStandingComponents.length > 0));
 
   // Build the list of sheets dynamically
   const sheetBuilders: ((pageNo: number, total: number) => React.ReactNode)[] = [];
@@ -217,45 +227,77 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
         <div className="font-bold text-[10pt] mb-1 text-black">Part I:</div>
 
         {/* Part I: Table Start (Philosophy to Graduate Attributes) */}
-        <table className="w-full border-collapse border border-black text-[10pt] leading-tight">
+        <table className="w-full border-collapse border border-black text-[10pt] leading-[1.16]">
           <tbody>
             <tr className="border-b border-black">
-              <td className="w-[20.6%] p-1.5 font-bold border-r border-black align-top">Philosophy</td>
-              <td className="p-1.5 align-top">
-                {institutionalStatements?.philosophy || 'Total human development with appropriate competencies.'}
+              <td className="w-[20.6%] p-[1.5pt_4pt] font-bold border-r border-black align-top m-0">Philosophy</td>
+              <td className="p-[1.5pt_4pt] align-top m-0">
+                {philosophyText}
               </td>
             </tr>
             <tr className="border-b border-black">
-              <td className="w-[20.6%] p-1.5 font-bold border-r border-black align-top">Vision</td>
-              <td className="p-1.5 align-top">
-                {institutionalStatements?.vision || 'A Premier University of the North by 2030 – excellent across disciplines, globally competitive and futures-ready'}
+              <td className="w-[20.6%] p-[1.5pt_4pt] font-bold border-r border-black align-top m-0">Vision</td>
+              <td className="p-[1.5pt_4pt] align-top m-0">
+                {visionText}
               </td>
             </tr>
             <tr className="border-b border-black">
-              <td className="w-[20.6%] p-1.5 font-bold border-r border-black align-top">Mission</td>
-              <td className="p-1.5 align-top">
-                {institutionalStatements?.mission || 'Develop human capital for nation building and foster entrepreneurship by providing inclusive and relevant instruction, research, and extension services'}
+              <td className="w-[20.6%] p-[1.5pt_4pt] font-bold border-r border-black align-top m-0">Mission</td>
+              <td className="p-[1.5pt_4pt] align-top m-0">
+                {missionText}
               </td>
             </tr>
             <tr className="border-b border-black">
-              <td className="w-[20.6%] p-1.5 font-bold border-r border-black align-top">Goal</td>
-              <td className="p-1.5 align-top">
-                {institutionalStatements?.goal || 'To lead in transforming human resources into productive, self-reliant citizens, and responsible leaders.'}
+              <td className="w-[20.6%] p-[1.5pt_4pt] font-bold border-r border-black align-top m-0">Goal</td>
+              <td className="p-[1.5pt_4pt] align-top m-0">
+                {goalText}
               </td>
             </tr>
             <tr>
-              <td className="w-[20.6%] p-1.5 font-bold border-r border-black align-top">Graduate Attributes</td>
-              <td className="p-1.5 align-top">
-                <div>
-                  DMMMSU aims to produce highly competent, specialized, and globally competitive professionals. This is operationalized into graduate attributes that should be attained by the time students will graduate from the University.
-                </div>
-                <div className="mt-1 space-y-0.5 text-[9.5pt]">
-                  {gradAttrs.map((ga, idx) => (
-                    <div key={idx} className="pl-4">
-                      <span className="font-bold">{idx + 1}. {ga.title}</span>
-                      <div className="pl-4 text-black">{ga.description}</div>
+              <td className="w-[20.6%] p-[1.5pt_4pt] font-bold border-r border-black align-top m-0">Graduate Attributes</td>
+              <td className="p-[1.5pt_4pt] align-top m-0">
+                <div style={{ margin: 0, padding: 0, lineHeight: 1.16 }}>
+                  <div>
+                    DMMMSU aims to produce highly competent, specialized, and globally competitive professionals. This is operationalized into graduate attributes that should be attained by the time students will graduate from the University.
+                  </div>
+                  <div>
+                    <div className="font-bold text-black" style={{ margin: 0, paddingTop: 0, paddingBottom: 0, paddingLeft: '21.7pt', lineHeight: 1.16 }}>
+                      1.  Professionally competent
                     </div>
-                  ))}
+                    <div className="text-black" style={{ margin: 0, paddingTop: 0, paddingBottom: 0, paddingLeft: '40.7pt', lineHeight: 1.16 }}>
+                      Exemplify the competencies and value required of their professions;
+                    </div>
+                    <div className="font-bold text-black" style={{ margin: 0, paddingTop: 0, paddingBottom: 0, paddingLeft: '21.7pt', lineHeight: 1.16 }}>
+                      2.  Committed and responsible leader
+                    </div>
+                    <div className="text-black" style={{ margin: 0, paddingTop: 0, paddingBottom: 0, paddingLeft: '40.7pt', lineHeight: 1.16 }}>
+                      Demonstrate professional, social and ethical responsibility consistent with their roles as local and global citizens;
+                    </div>
+                    <div className="font-bold text-black" style={{ margin: 0, paddingTop: 0, paddingBottom: 0, paddingLeft: '21.7pt', lineHeight: 1.16 }}>
+                      3.  Effective communicator and collaborator
+                    </div>
+                    <div className="text-black" style={{ margin: 0, paddingTop: 0, paddingBottom: 0, paddingLeft: '40.7pt', lineHeight: 1.16 }}>
+                      Can effectively communicate and work in multi-disciplinary teams;
+                    </div>
+                    <div className="font-bold text-black" style={{ margin: 0, paddingTop: 0, paddingBottom: 0, paddingLeft: '21.7pt', lineHeight: 1.16 }}>
+                      4.  Critical thinker and innovator
+                    </div>
+                    <div className="text-black" style={{ margin: 0, paddingTop: 0, paddingBottom: 0, paddingLeft: '40.7pt', lineHeight: 1.16 }}>
+                      Use relevant information and research drawn facts in rendering sound decisions and developing insights for new knowledge;
+                    </div>
+                    <div className="font-bold text-black" style={{ margin: 0, paddingTop: 0, paddingBottom: 0, paddingLeft: '21.7pt', lineHeight: 1.16 }}>
+                      5.  Reflective lifelong learner
+                    </div>
+                    <div className="text-black" style={{ margin: 0, paddingTop: 0, paddingBottom: 0, paddingLeft: '40.7pt', lineHeight: 1.16 }}>
+                      Engage in lifelong learning for continuous professional growth and development; and
+                    </div>
+                    <div className="font-bold text-black" style={{ margin: 0, paddingTop: 0, paddingBottom: 0, paddingLeft: '21.7pt', lineHeight: 1.16 }}>
+                      6.  Responsible environment steward
+                    </div>
+                    <div className="text-black" style={{ margin: 0, paddingTop: 0, paddingBottom: 0, paddingLeft: '40.7pt', lineHeight: 1.16 }}>
+                      Manage a sustainable environment, promoting peace and prosperity for mankind.
+                    </div>
+                  </div>
                 </div>
               </td>
             </tr>
@@ -278,13 +320,13 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
       <div>
         {renderHeaderBox()}
 
-        <table className="w-full border-collapse border border-black text-[10pt] leading-tight">
+        <table className="w-full border-collapse border border-black text-[10pt] leading-[1.16]">
           <tbody>
             <tr className="border-b border-black">
-              <td className="w-[20.6%] p-1.5 font-bold border-r border-black align-top">Core Values</td>
-              <td className="p-1.5 align-top space-y-0.5">
+              <td className="w-[20.6%] p-[1.5pt_4pt] font-bold border-r border-black align-top m-0">Core Values</td>
+              <td className="p-[1.5pt_4pt] align-top m-0">
                 {coreVals.map((cv, idx) => (
-                  <div key={idx}>
+                  <div key={idx} className="m-0 p-0 leading-[1.16]">
                     <span className="font-bold uppercase">{cv.keyword || cv.acronym}:</span>{' '}
                     <span>{cv.description}</span>
                   </div>
@@ -293,24 +335,24 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
             </tr>
             {activePOs.length > 0 && (
               <tr>
-                <td className="w-[20.6%] p-1.5 font-bold border-r border-black align-top">Program Outcomes</td>
-                <td className="p-1.5 align-top space-y-1">
-                  <div>Upon graduation, successful BSCS graduates will attain the following program outcomes:</div>
-                  <ol className="space-y-0.5 text-[9.5pt] pl-4">
+                <td className="w-[20.6%] p-[1.5pt_4pt] font-bold border-r border-black align-top m-0">Program Outcomes</td>
+                <td className="p-[1.5pt_4pt] align-top m-0">
+                  <div className="m-0 p-0 leading-[1.16]">Upon graduation, successful BSCS graduates will attain the following program outcomes:</div>
+                  <div className="m-0 p-0">
                     {activePOs.map((po, idx) => (
-                      <li key={idx} className="list-decimal pl-1">
-                        <span className="font-semibold">PO{po.number}</span>
+                      <div key={idx} className="m-0 p-0 leading-[1.16] pl-6 -indent-6">
+                        <span className="font-bold">PO{po.number}</span>
                         <span>: {po.description}</span>
-                      </li>
+                      </div>
                     ))}
-                  </ol>
+                  </div>
                 </td>
               </tr>
             )}
             {!hasLearningPlan && courseInfo.description && (
               <tr>
-                <td className="w-[20.6%] p-1.5 font-bold border-r border-black align-top">Course Description</td>
-                <td className="p-1.5 align-top leading-relaxed text-justify">
+                <td className="w-[20.6%] p-[1.5pt_4pt] font-bold border-r border-black align-top m-0">Course Description</td>
+                <td className="p-[1.5pt_4pt] align-top m-0 leading-[1.16] text-justify">
                   {courseInfo.description}
                 </td>
               </tr>
@@ -336,41 +378,41 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
         <div>
           {renderHeaderBox()}
 
-          <table className="w-full border-collapse border border-black text-[10pt] leading-tight">
+          <table className="w-full border-collapse border border-black text-[10pt] leading-[1.16]">
             <tbody>
               <tr className="border-b border-black">
-                <td className="w-[20.6%] p-1.5 font-bold border-r border-black align-top">Course Type</td>
-                <td className="p-1.5 align-top">{courseInfo.type || 'Lecture and Laboratory'}</td>
+                <td className="w-[20.6%] p-[1.5pt_4pt] font-bold border-r border-black align-top m-0">Course Type</td>
+                <td className="p-[1.5pt_4pt] align-top m-0">{courseInfo.type || 'Lecture and Laboratory'}</td>
               </tr>
               <tr className="border-b border-black">
-                <td className="w-[20.6%] p-1.5 font-bold border-r border-black align-top">Course Credit</td>
-                <td className="p-1.5 align-top">{courseInfo.credit || '3 units'}</td>
+                <td className="w-[20.6%] p-[1.5pt_4pt] font-bold border-r border-black align-top m-0">Course Credit</td>
+                <td className="p-[1.5pt_4pt] align-top m-0">{courseInfo.credit || '3 units'}</td>
               </tr>
               <tr className="border-b border-black">
-                <td className="w-[20.6%] p-1.5 font-bold border-r border-black align-top">Course Description</td>
-                <td className="p-1.5 align-top leading-relaxed text-justify">
+                <td className="w-[20.6%] p-[1.5pt_4pt] font-bold border-r border-black align-top m-0">Course Description</td>
+                <td className="p-[1.5pt_4pt] align-top m-0 leading-[1.16] text-justify">
                   {courseInfo.description}
                 </td>
               </tr>
               <tr className="border-b border-black">
-                <td className="w-[20.6%] p-1.5 font-bold border-r border-black align-top">Contact Hours/Week</td>
-                <td className="p-1.5 align-top">
-                  <div>Lecture – {courseInfo.lectureHours || '2 hours/week'}</div>
-                  <div>Laboratory – {courseInfo.labHours || '3 hours/week'}</div>
+                <td className="w-[20.6%] p-[1.5pt_4pt] font-bold border-r border-black align-top m-0">Contact Hours/Week</td>
+                <td className="p-[1.5pt_4pt] align-top m-0">
+                  <div className="m-0 p-0 leading-[1.16]">Lecture – {courseInfo.lectureHours || '2 hours/week'}</div>
+                  <div className="m-0 p-0 leading-[1.16]">Laboratory – {courseInfo.labHours || '3 hours/week'}</div>
                 </td>
               </tr>
               <tr className="border-b border-black">
-                <td className="w-[20.6%] p-1.5 font-bold border-r border-black align-top">Course Prerequisite/s</td>
-                <td className="p-1.5 align-top">{courseInfo.prerequisite || 'CSPC 111 - Software Engineering 1'}</td>
+                <td className="w-[20.6%] p-[1.5pt_4pt] font-bold border-r border-black align-top m-0">Course Prerequisite/s</td>
+                <td className="p-[1.5pt_4pt] align-top m-0">{courseInfo.prerequisite || 'CSPC 111 - Software Engineering 1'}</td>
               </tr>
               {activeCOs.length > 0 && (
                 <tr className="border-b border-black">
-                  <td className="w-[20.6%] p-1.5 font-bold border-r border-black align-top">Course Outcomes</td>
-                  <td className="p-1.5 align-top">
-                    <div>By the end of the course, students should be able to:</div>
-                    <div className="space-y-0.5 mt-0.5 text-[9.5pt]">
+                  <td className="w-[20.6%] p-[1.5pt_4pt] font-bold border-r border-black align-top m-0">Course Outcomes</td>
+                  <td className="p-[1.5pt_4pt] align-top m-0">
+                    <div className="m-0 p-0 leading-[1.16]">By the end of the course, students should be able to:</div>
+                    <div className="m-0 p-0">
                       {activeCOs.map((co, idx) => (
-                        <div key={idx} className="pl-4">
+                        <div key={idx} className="pl-6 -indent-6 m-0 p-0 leading-[1.16]">
                           <span>{idx + 1}) </span>
                           <span>{co.statement}</span>
                         </div>
@@ -381,12 +423,12 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
               )}
               {courseRequirements?.major && courseRequirements.major.length > 0 && (
                 <tr className="border-b border-black">
-                  <td className="w-[20.6%] p-1.5 font-bold border-r border-black align-top">Course Requirements</td>
-                  <td className="p-1.5 align-top space-y-1">
-                    <div className="font-bold">Major Requirements and Assessments</div>
-                    <div className="pl-4 space-y-0.5">
+                  <td className="w-[20.6%] p-[1.5pt_4pt] font-bold border-r border-black align-top m-0">Course Requirements</td>
+                  <td className="p-[1.5pt_4pt] align-top m-0">
+                    <div className="font-bold m-0 p-0 leading-[1.16]">Major Requirements and Assessments</div>
+                    <div className="pl-6 m-0 p-0">
                       {courseRequirements.major.map((m, idx) => (
-                        <div key={idx}>{m}</div>
+                        <div key={idx} className="m-0 p-0 leading-[1.16]">● {m}</div>
                       ))}
                     </div>
                   </td>
@@ -394,8 +436,8 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
               )}
               {hasGrading && (
                 <tr>
-                  <td className="w-[20.6%] p-1.5 font-bold border-r border-black align-top">Grading System</td>
-                  <td className="p-1.5 align-top">
+                  <td className="w-[20.6%] p-[1.5pt_4pt] font-bold border-r border-black align-top m-0">Grading System</td>
+                  <td className="p-[1.5pt_4pt] align-top m-0 leading-[1.16]">
                     Class Standing (Quizzes, assignments, presentations, individual and group activity, project)
                   </td>
                 </tr>
@@ -525,24 +567,24 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
           )}
 
           {/* Policies & Consultation */}
-          <table className="w-full border-collapse border border-black text-[10pt] leading-tight mb-3">
+          <table className="w-full border-collapse border border-black text-[10pt] leading-[1.16] mb-3">
             <tbody>
               {classroomPolicies && classroomPolicies.length > 0 && (
                 <tr className="border-b border-black">
-                  <td className="w-[20.6%] p-1.5 font-bold border-r border-black align-top">Classroom Policies</td>
-                  <td className="p-1.5 align-top space-y-1">
+                  <td className="w-[20.6%] p-[1.5pt_4pt] font-bold border-r border-black align-top m-0">Classroom Policies</td>
+                  <td className="p-[1.5pt_4pt] align-top m-0">
                     {classroomPolicies.map((pol, idx) => (
-                      <div key={idx}>{pol}</div>
+                      <div key={idx} className="m-0 p-0 leading-[1.16]">{pol}</div>
                     ))}
-                    <div className="pt-1">Your workstation must be kept in a clean and orderly manner for the next class.</div>
+                    <div className="m-0 p-0 leading-[1.16]">Your workstation must be kept in a clean and orderly manner for the next class.</div>
                   </td>
                 </tr>
               )}
               <tr>
-                <td className="w-[20.6%] p-1.5 font-bold border-r border-black align-top">Consultation Hours</td>
-                <td className="p-1.5 align-top space-y-0.5">
-                  <div>E.O.Bacungan - MTWTHF 02:00PM - 03:00PM</div>
-                  <div>R.E.Dilan - MWF 1:00-2:00, TTh 9:30-10:30</div>
+                <td className="w-[20.6%] p-[1.5pt_4pt] font-bold border-r border-black align-top m-0">Consultation Hours</td>
+                <td className="p-[1.5pt_4pt] align-top m-0">
+                  <div className="m-0 p-0 leading-[1.16]">E.O.Bacungan - MTWTHF 02:00PM - 03:00PM</div>
+                  <div className="m-0 p-0 leading-[1.16]">R.E.Dilan - MWF 1:00-2:00, TTh 9:30-10:30</div>
                 </td>
               </tr>
             </tbody>
@@ -550,23 +592,23 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
 
           {/* Part II: Header & First Row */}
           <div className="font-bold text-[10pt] mb-1 text-black">Part II: Course Outline and Time Frame</div>
-          <table className="w-full border-collapse border border-black text-[10pt] leading-tight">
+          <table className="w-full border-collapse border border-black text-[10pt] leading-[1.16]">
             <thead>
               <tr className="border-b border-black font-bold">
-                <th className="w-[20.6%] p-1.5 border border-black text-left">Time Frame</th>
-                <th className="p-1.5 border border-black text-left">Course Content/Subject Matter</th>
+                <th className="w-[20.6%] p-[1.5pt_4pt] border border-black text-left">Time Frame</th>
+                <th className="p-[1.5pt_4pt] border border-black text-left">Course Content/Subject Matter</th>
               </tr>
             </thead>
             <tbody>
               <tr className="border-b border-black align-top">
-                <td className="p-1.5 border border-black">Week 1-7</td>
-                <td className="p-1.5 border border-black space-y-0.5">
-                  <div>VGMO presentation and orientation</div>
-                  <div>Presentation of the course syllabus</div>
-                  <div>Review of Software Engineering 1</div>
-                  <div>Software Design and Architectural Patterns</div>
-                  <div className="pl-4">● Design patterns</div>
-                  <div className="pl-4">● Architectural patterns</div>
+                <td className="p-[1.5pt_4pt] border border-black">Week 1-7</td>
+                <td className="p-[1.5pt_4pt] border border-black">
+                  <div className="m-0 p-0 leading-[1.16]">VGMO presentation and orientation</div>
+                  <div className="m-0 p-0 leading-[1.16]">Presentation of the course syllabus</div>
+                  <div className="m-0 p-0 leading-[1.16]">Review of Software Engineering 1</div>
+                  <div className="m-0 p-0 leading-[1.16]">Software Design and Architectural Patterns</div>
+                  <div className="pl-4 m-0 p-0 leading-[1.16]">● Design patterns</div>
+                  <div className="pl-4 m-0 p-0 leading-[1.16]">● Architectural patterns</div>
                 </td>
               </tr>
             </tbody>
@@ -588,54 +630,54 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
         <div>
           {renderHeaderBox()}
 
-          <table className="w-full border-collapse border border-black text-[10pt] leading-tight mb-4">
+          <table className="w-full border-collapse border border-black text-[10pt] leading-[1.16] mb-4">
             <tbody>
               <tr className="border-b border-black align-top">
-                <td className="w-[20.6%] p-1.5 border border-black"></td>
-                <td className="p-1.5 border border-black">Software analysis and design tools</td>
+                <td className="w-[20.6%] p-[1.5pt_4pt] border border-black"></td>
+                <td className="p-[1.5pt_4pt] border border-black">Software analysis and design tools</td>
               </tr>
               <tr className="border-b border-black align-top">
-                <td className="p-1.5 border border-black">Week 8</td>
-                <td className="p-1.5 border border-black space-y-0.5">
-                  <div>Program Coding Practices and Techniques</div>
-                  <div className="pl-4">● Coding Practices and techniques</div>
-                  <div className="pl-4">● Mechanisms for building quality programs</div>
-                  <div className="pl-4">● Defensive and secure coding practices</div>
-                  <div className="pl-4">● Exception handling mechanisms</div>
-                  <div className="pl-4">● Coding standards</div>
-                  <div className="pl-4">● Potential security problems in programs</div>
+                <td className="p-[1.5pt_4pt] border border-black">Week 8</td>
+                <td className="p-[1.5pt_4pt] border border-black">
+                  <div className="m-0 p-0 leading-[1.16]">Program Coding Practices and Techniques</div>
+                  <div className="pl-4 m-0 p-0 leading-[1.16]">● Coding Practices and techniques</div>
+                  <div className="pl-4 m-0 p-0 leading-[1.16]">● Mechanisms for building quality programs</div>
+                  <div className="pl-4 m-0 p-0 leading-[1.16]">● Defensive and secure coding practices</div>
+                  <div className="pl-4 m-0 p-0 leading-[1.16]">● Exception handling mechanisms</div>
+                  <div className="pl-4 m-0 p-0 leading-[1.16]">● Coding standards</div>
+                  <div className="pl-4 m-0 p-0 leading-[1.16]">● Potential security problems in programs</div>
                 </td>
               </tr>
               <tr className="border-b border-black align-top font-bold">
-                <td className="p-1.5 border border-black">Week 9</td>
-                <td className="p-1.5 border border-black">MIDTERM EXAMINATION</td>
+                <td className="p-[1.5pt_4pt] border border-black">Week 9</td>
+                <td className="p-[1.5pt_4pt] border border-black">MIDTERM EXAMINATION</td>
               </tr>
               <tr className="border-b border-black align-top">
-                <td className="p-1.5 border border-black">Week 10-12</td>
-                <td className="p-1.5 border border-black space-y-0.5">
-                  <div>Managing Changes in Software Engineering</div>
-                  <div className="pl-4">● Configuration management</div>
-                  <div className="pl-4">● Version control</div>
-                  <div className="pl-4">● Release management</div>
+                <td className="p-[1.5pt_4pt] border border-black">Week 10-12</td>
+                <td className="p-[1.5pt_4pt] border border-black">
+                  <div className="m-0 p-0 leading-[1.16]">Managing Changes in Software Engineering</div>
+                  <div className="pl-4 m-0 p-0 leading-[1.16]">● Configuration management</div>
+                  <div className="pl-4 m-0 p-0 leading-[1.16]">● Version control</div>
+                  <div className="pl-4 m-0 p-0 leading-[1.16]">● Release management</div>
                 </td>
               </tr>
               <tr className="border-b border-black align-top">
-                <td className="p-1.5 border border-black">Week 13-15</td>
-                <td className="p-1.5 border border-black space-y-0.5">
-                  <div>Software Testing and Maintenance</div>
-                  <div className="pl-4">● Software Testing Introduction</div>
-                  <div className="pl-4">● Software Validation and Verification</div>
-                  <div className="pl-4">● Testing Documentation</div>
-                  <div className="pl-4">● Software Maintenance</div>
+                <td className="p-[1.5pt_4pt] border border-black">Week 13-15</td>
+                <td className="p-[1.5pt_4pt] border border-black">
+                  <div className="m-0 p-0 leading-[1.16]">Software Testing and Maintenance</div>
+                  <div className="pl-4 m-0 p-0 leading-[1.16]">● Software Testing Introduction</div>
+                  <div className="pl-4 m-0 p-0 leading-[1.16]">● Software Validation and Verification</div>
+                  <div className="pl-4 m-0 p-0 leading-[1.16]">● Testing Documentation</div>
+                  <div className="pl-4 m-0 p-0 leading-[1.16]">● Software Maintenance</div>
                 </td>
               </tr>
               <tr className="border-b border-black align-top">
-                <td className="p-1.5 border border-black">Week 16-17</td>
-                <td className="p-1.5 border border-black">Group Project Presentation</td>
+                <td className="p-[1.5pt_4pt] border border-black">Week 16-17</td>
+                <td className="p-[1.5pt_4pt] border border-black">Group Project Presentation</td>
               </tr>
               <tr className="border-b border-black align-top font-bold">
-                <td className="p-1.5 border border-black">Week 18</td>
-                <td className="p-1.5 border border-black">FINAL EXAMINATION</td>
+                <td className="p-[1.5pt_4pt] border border-black">Week 18</td>
+                <td className="p-[1.5pt_4pt] border border-black">FINAL EXAMINATION</td>
               </tr>
             </tbody>
           </table>
@@ -1364,7 +1406,7 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
           </div>
 
           <div className="font-bold text-[10pt] mb-2 text-black">Part V: References</div>
-          <div className="space-y-1.5 text-[9.5pt] pl-8 -indent-8 leading-normal text-justify">
+          <div className="text-[9.5pt] pl-8 -indent-8 leading-[1.16] text-justify">
             <div>Dilan, R., Ancheta, J. (2023). Software Engineering 2 Module. DMMMSU, College of Computer Science.</div>
             <div>Diamantopoulos, T. &amp; Symeonidis, A. L. (2020). Mining Software Engineering Data for Software Reuse. Springer.</div>
             <div>Langer, A. M. (2020). Analysis and Design of Next-Generation Software Architectures. doi:10.1007/978-3-030-36899-9</div>
@@ -1391,7 +1433,7 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
         <div>
           {renderHeaderBox()}
 
-          <div className="space-y-1.5 text-[9.5pt] pl-8 -indent-8 leading-normal text-justify mb-8">
+          <div className="text-[9.5pt] pl-8 -indent-8 leading-[1.16] text-justify mb-8">
             <div>Ravichandran, A., Taylor, K., and Waterhouse, P. (2016). DevOps for Digital Leaders Reignite Business with a Modern DevOps-Enabled Software Factory. Apress Open. DOI 10.1007/978-1-4842-1842-6.</div>
             <div>Rosen, C. (2020). Guide to Software Systems Development. Springer. https://doi.org/10.1007/978-3-030-39730-2</div>
             <div>Sadowski, C. and Zimmermann, T. (2019). Rethinking Productivity in Software Engineering. Apress Open. https://doi.org/10.1007/978-1-4842-4221.6.</div>
@@ -1579,6 +1621,26 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
 
       {/* Embedded Print & Page Break Stylesheet */}
       <style>{`
+        #official-syllabus-document table {
+          border-collapse: collapse !important;
+          width: 100% !important;
+        }
+        #official-syllabus-document table td,
+        #official-syllabus-document table th {
+          padding: 1.5pt 4pt !important;
+          line-height: 1.16 !important;
+          vertical-align: top !important;
+        }
+        #official-syllabus-document table p,
+        #official-syllabus-document table ul,
+        #official-syllabus-document table ol,
+        #official-syllabus-document table li {
+          margin-top: 0 !important;
+          margin-bottom: 0 !important;
+          padding-top: 0 !important;
+          padding-bottom: 0 !important;
+          line-height: 1.16 !important;
+        }
         @media print {
           @page {
             size: 13in 8.5in;

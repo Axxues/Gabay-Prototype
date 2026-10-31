@@ -167,6 +167,7 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
   // Compare remote timestamps here before trusting them. This keeps the
   // "sometimes it doesn't save" moment from being re-triggered after a refresh.
   const lastLocalTimestampRef = useRef<number>(0);
+  const lastLocalConsensusActionRef = useRef<number>(0);
 
   // Real-time Collaboration Hook for the actively opened group
   const handleRemoteUpdate = useCallback((remoteData: any, remoteUpdatedAt?: number) => {
@@ -190,8 +191,11 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
   }, [activeGroupId, updateSyllabusData]);
 
   const handleRemoteConsensusUpdate = useCallback(
-    (agreements: Record<string, boolean>, status?: string, evaluators?: any[]) => {
+    (agreements: Record<string, boolean>, status?: string, evaluators?: any[], remoteUpdatedAt?: number) => {
       if (!activeGroupId) return;
+      if (remoteUpdatedAt && remoteUpdatedAt <= lastLocalConsensusActionRef.current) {
+        return;
+      }
       syncRemoteAgreements(activeGroupId, agreements, status as any, evaluators);
     },
     [activeGroupId, syncRemoteAgreements]
@@ -359,9 +363,15 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
     }
 
     const institutionalStatements = {
-      philosophy: (rawData.institutionalStatements?.philosophy && rawData.institutionalStatements.philosophy.trim()) || OFFICIAL_INSTITUTIONAL_STATEMENTS.philosophy,
-      vision: (rawData.institutionalStatements?.vision && rawData.institutionalStatements.vision.trim()) || OFFICIAL_INSTITUTIONAL_STATEMENTS.vision,
-      mission: (rawData.institutionalStatements?.mission && rawData.institutionalStatements.mission.trim()) || OFFICIAL_INSTITUTIONAL_STATEMENTS.mission,
+      philosophy: (rawData.institutionalStatements?.philosophy?.trim() && rawData.institutionalStatements.philosophy.trim() !== 'Total human development')
+        ? rawData.institutionalStatements.philosophy.trim()
+        : OFFICIAL_INSTITUTIONAL_STATEMENTS.philosophy,
+      vision: (rawData.institutionalStatements?.vision?.trim() && !rawData.institutionalStatements.vision.includes('A Premier University of the North'))
+        ? rawData.institutionalStatements.vision.trim()
+        : OFFICIAL_INSTITUTIONAL_STATEMENTS.vision,
+      mission: (rawData.institutionalStatements?.mission?.trim() && !rawData.institutionalStatements.mission.includes('Develop human capital for nation building'))
+        ? rawData.institutionalStatements.mission.trim()
+        : OFFICIAL_INSTITUTIONAL_STATEMENTS.mission,
       goal: (rawData.institutionalStatements?.goal && rawData.institutionalStatements.goal.trim()) || OFFICIAL_INSTITUTIONAL_STATEMENTS.goal,
       coreValues: (rawData.institutionalStatements?.coreValues && rawData.institutionalStatements.coreValues.length > 0)
         ? rawData.institutionalStatements.coreValues
@@ -695,8 +705,12 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
           coInstructors={coInstructorAgreements}
           currentUserId={activeUser?.id}
           allAgreed={allCoInstructorsAgreed}
+          isEvaluationStarted={['under_evaluation', 'evaluator_approved', 'chair_approved', 'approved'].includes(
+            activeGroup?.status || activeRecord?.status || ''
+          )}
           onAgreeToSubmit={() => {
             if (activeUser?.id && activeGroup) {
+              lastLocalConsensusActionRef.current = Date.now();
               const instructors = activeRecord?.instructorIds || activeGroup.instructorIds || [activeUser.id];
               const newAgreements: Record<string, boolean> = {
                 ...(activeRecord?.submissionAgreements || {}),
@@ -706,8 +720,9 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
               const nextStatus = allAgreed ? 'ready_for_evaluation' : 'submission_in_progress';
 
               confirmAgreement(activeGroup.id, activeUser.id, (courseIds, status) => {
-                if (lms.updateCourseSyllabusStatus && courseIds.length > 0) {
-                  void lms.updateCourseSyllabusStatus(courseIds, status, activeUser.id);
+                const targetIds = Array.from(new Set([...courseIds, ...(activeGroup.courseIds || [])]));
+                if (lms.updateCourseSyllabusStatus && targetIds.length > 0) {
+                  void lms.updateCourseSyllabusStatus(targetIds, status, activeUser.id);
                 }
               });
 
@@ -737,6 +752,7 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
           }}
           onRetractAgreement={() => {
             if (activeUser?.id && activeGroup) {
+              lastLocalConsensusActionRef.current = Date.now();
               const retractedAgreements: Record<string, boolean> = {
                 ...(activeRecord?.submissionAgreements || {}),
                 [activeUser.id]: false
@@ -745,8 +761,9 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
               const nextStatus = anyAgreed ? 'submission_in_progress' : 'in_development';
 
               retractAgreement(activeGroup.id, activeUser.id, (courseIds, status) => {
-                if (lms.updateCourseSyllabusStatus && courseIds.length > 0) {
-                  void lms.updateCourseSyllabusStatus(courseIds, status, activeUser.id);
+                const targetIds = Array.from(new Set([...courseIds, ...(activeGroup.courseIds || [])]));
+                if (lms.updateCourseSyllabusStatus && targetIds.length > 0) {
+                  void lms.updateCourseSyllabusStatus(targetIds, status, activeUser.id);
                 }
               });
 

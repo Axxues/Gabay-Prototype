@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { OfficialSyllabusData, CourseOutcome, ProgramOutcome, RubricRow } from '../../../../../shared/data/syllabusData';
 import { OFFICIAL_SYLLABUS_CSPC112, OFFICIAL_INSTITUTIONAL_STATEMENTS, normalizeRubricLevels, createEmptyRubricRow } from '../../../../../shared/data/syllabusData';
-import { CustomDropdown, PercentageInput, PercentageSplitInput } from '../../../../../shared/components/common';
+import { CustomDropdown } from '../../../../../shared/components/common';
 import { RequiredMark } from '../RequiredMark';
 import {
   Landmark,
@@ -62,9 +62,15 @@ export const Step2InstitutionalOutcomes: React.FC<Step2InstitutionalOutcomesProp
   } = data;
 
   const effectiveInstitutional = {
-    philosophy: institutionalStatements?.philosophy?.trim() || OFFICIAL_INSTITUTIONAL_STATEMENTS.philosophy,
-    vision: institutionalStatements?.vision?.trim() || OFFICIAL_INSTITUTIONAL_STATEMENTS.vision,
-    mission: institutionalStatements?.mission?.trim() || OFFICIAL_INSTITUTIONAL_STATEMENTS.mission,
+    philosophy: (institutionalStatements?.philosophy?.trim() && institutionalStatements.philosophy.trim() !== 'Total human development')
+      ? institutionalStatements.philosophy.trim()
+      : OFFICIAL_INSTITUTIONAL_STATEMENTS.philosophy,
+    vision: (institutionalStatements?.vision?.trim() && !institutionalStatements.vision.includes('A Premier University of the North'))
+      ? institutionalStatements.vision.trim()
+      : OFFICIAL_INSTITUTIONAL_STATEMENTS.vision,
+    mission: (institutionalStatements?.mission?.trim() && !institutionalStatements.mission.includes('Develop human capital for nation building'))
+      ? institutionalStatements.mission.trim()
+      : OFFICIAL_INSTITUTIONAL_STATEMENTS.mission,
     goal: institutionalStatements?.goal?.trim() || OFFICIAL_INSTITUTIONAL_STATEMENTS.goal,
     coreValues: (institutionalStatements?.coreValues && institutionalStatements.coreValues.length > 0)
       ? institutionalStatements.coreValues
@@ -329,43 +335,22 @@ export const Step2InstitutionalOutcomes: React.FC<Step2InstitutionalOutcomesProp
   };
 
   const addComponent = () => {
-    const current = gradingSystem?.classStandingComponents || [];
-    const currentTotal = current.reduce((sum, comp) => {
-      const pct = typeof comp === 'string' ? 0 : parseFloat(comp.percentage) || 0;
-      return sum + pct;
-    }, 0);
-    const remaining = 100 - currentTotal;
-    updateGrading('classStandingComponents', [...current, { title: '', percentage: remaining.toFixed(1).replace(/\.0$/, '') }]);
+    const current = (gradingSystem?.classStandingComponents || []) as any[];
+    if (current.length > 0 && typeof current[0] === 'string') {
+      updateGrading('classStandingComponents', [...current, '']);
+    } else {
+      updateGrading('classStandingComponents', [...current, { title: '', percentage: '' }]);
+    }
   };
 
   const updateComponentItem = (index: number, field: 'title' | 'percentage', value: string) => {
-    const current = [...(gradingSystem?.classStandingComponents || [])];
+    const current = [...(gradingSystem?.classStandingComponents || [])] as any[];
     
     // Handle legacy string format
     if (typeof current[index] === 'string') {
-      current[index] = { title: value, percentage: '' };
+      current[index] = value;
     } else {
       current[index] = { ...current[index], [field]: value };
-    }
-    
-    // If percentage changed, redistribute to keep total at 100
-    if (field === 'percentage') {
-      const numValue = parseFloat(value) || 0;
-      const clamped = Math.max(0, Math.min(100, numValue));
-      const otherComponents = current.filter((_, i) => i !== index);
-      const remaining = 100 - clamped;
-
-      if (otherComponents.length > 0) {
-        const eachShare = remaining / otherComponents.length;
-        otherComponents.forEach((comp) => {
-          const idx = current.indexOf(comp);
-          if (idx !== -1 && typeof current[idx] !== 'string') {
-            current[idx] = { ...current[idx], percentage: eachShare.toFixed(1).replace(/\.0$/, '') };
-          }
-        });
-      }
-      
-      current[index] = { ...current[index], percentage: clamped.toFixed(1).replace(/\.0$/, '') };
     }
     
     updateGrading('classStandingComponents', current);
@@ -910,46 +895,36 @@ const addRubricRow = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-foreground inline-flex items-center gap-1">
-              <span>Term Formula</span>
+              <span>Term Grade Computation</span>
               <RequiredMark />
             </label>
-            <PercentageSplitInput
-              label1="Class Standing"
-              label2="Exam"
-              value1={typeof gradingSystem?.termFormula === 'object' ? gradingSystem.termFormula.classStandingPercent : '60'}
-              value2={typeof gradingSystem?.termFormula === 'object' ? gradingSystem.termFormula.examPercent : '40'}
-              onChange1={val => updateGrading('termFormula', { ...(typeof gradingSystem?.termFormula === 'object' ? gradingSystem.termFormula : { classStandingPercent: '', examPercent: '' }), classStandingPercent: val })}
-              onChange2={val => updateGrading('termFormula', { ...(typeof gradingSystem?.termFormula === 'object' ? gradingSystem.termFormula : { classStandingPercent: '', examPercent: '' }), examPercent: val })}
-            />
+            <div className="p-3 rounded-xl border border-border bg-muted/30 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Class Standing</span>
+                <span className="text-sm font-mono font-semibold text-foreground">40%</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Exam</span>
+                <span className="text-sm font-mono font-semibold text-foreground">60%</span>
+              </div>
+            </div>
           </div>
 
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-foreground inline-flex items-center gap-1">
-              <span>Final Grade Formula</span>
+              <span>Final Grade Computation</span>
               <RequiredMark />
             </label>
-            <PercentageSplitInput
-              label1="Midterm Grade"
-              label2="Final Term Grade"
-              value1={typeof gradingSystem?.finalFormula === 'object' ? gradingSystem.finalFormula.midtermPercent : '40'}
-              value2={typeof gradingSystem?.finalFormula === 'object' ? gradingSystem.finalFormula.finalPercent : '60'}
-              onChange1={val => updateGrading('finalFormula', { ...(typeof gradingSystem?.finalFormula === 'object' ? gradingSystem.finalFormula : { midtermPercent: '', finalPercent: '' }), midtermPercent: val })}
-              onChange2={val => updateGrading('finalFormula', { ...(typeof gradingSystem?.finalFormula === 'object' ? gradingSystem.finalFormula : { midtermPercent: '', finalPercent: '' }), finalPercent: val })}
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <label htmlFor="passing-grade" className="text-xs font-semibold text-foreground inline-flex items-center gap-1">
-              <span>Passing Grade Benchmark</span>
-              <RequiredMark />
-            </label>
-            <PercentageInput
-              id="passing-grade"
-              value={gradingSystem?.passingGrade || ''}
-              onChange={val => updateGrading('passingGrade', val)}
-              placeholder="e.g. 75"
-              className="w-full"
-            />
+            <div className="p-3 rounded-xl border border-border bg-muted/30 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Midterm Grade</span>
+                <span className="text-sm font-mono font-semibold text-foreground">40%</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Final Term Grade</span>
+                <span className="text-sm font-mono font-semibold text-foreground">60%</span>
+              </div>
+            </div>
           </div>
 
           <div className="space-y-2 md:col-span-2">
@@ -987,26 +962,10 @@ const addRubricRow = () => {
                             className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
                           />
                         </div>
-                        <div className="w-24 space-y-1.5">
-                          <label className="text-[11px] font-semibold text-muted-foreground inline-flex items-center gap-1">
-                            <span>Weight</span>
-                            <RequiredMark />
-                          </label>
-                          <div className="relative">
-                            <input
-                              type="text"
-                              value={typeof comp === 'string' ? '' : comp.percentage}
-                              onChange={e => updateComponentItem(idx, 'percentage', e.target.value)}
-                              placeholder="0"
-                              className="w-full px-2 py-1.5 text-sm font-mono text-center rounded-lg border border-border bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
-                            />
-                            <span className="absolute right-6 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">%</span>
-                          </div>
-                        </div>
                         <button
                           type="button"
                           onClick={() => removeComponent(idx)}
-                          className="mt-[32px] p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors cursor-pointer"
+                          className="mt-6 p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors cursor-pointer"
                           title="Remove component"
                           aria-label={`Remove component ${idx + 1}`}
                         >
@@ -1015,38 +974,6 @@ const addRubricRow = () => {
                       </div>
                     </div>
                   ))}
-                  <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-muted/20 border border-border/50">
-                    <span className="text-[11px] font-semibold text-muted-foreground">Total Weight</span>
-                    <span className={`text-xs font-bold ${(() => {
-                      const total = gradingSystem.classStandingComponents.reduce((sum, comp) => {
-                        const pct = typeof comp === 'string' ? 0 : parseFloat(comp.percentage) || 0;
-                        return sum + pct;
-                      }, 0);
-                      return Math.abs(total - 100) < 0.01 ? 'text-primary' : 'text-destructive';
-                    })()}`}>
-                      {gradingSystem.classStandingComponents.reduce((sum, comp) => {
-                        const pct = typeof comp === 'string' ? 0 : parseFloat(comp.percentage) || 0;
-                        return sum + pct;
-                      }, 0).toFixed(1)}%
-                    </span>
-                  </div>
-                  {(() => {
-                    const total = gradingSystem.classStandingComponents.reduce((sum, comp) => {
-                      const pct = typeof comp === 'string' ? 0 : parseFloat(comp.percentage) || 0;
-                      return sum + pct;
-                    }, 0);
-                    if (Math.abs(total - 100) > 0.01) {
-                      return (
-                        <div className="px-3 py-2 rounded-lg bg-destructive/10 border border-destructive/30 flex items-center gap-2">
-                          <AlertTriangle className="w-3 h-3 text-destructive flex-shrink-0" />
-                          <span className="text-xs text-destructive font-bold">
-                            Class Standing Components must total 100%
-                          </span>
-                        </div>
-                      );
-                    }
-                    return null;
-                  })()}
                 </>
               ) : (
                 <div className="text-xs text-muted-foreground italic py-1">

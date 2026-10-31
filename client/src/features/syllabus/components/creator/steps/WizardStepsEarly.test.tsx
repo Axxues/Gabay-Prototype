@@ -75,9 +75,9 @@ describe('Wizard Steps Early', () => {
     const visionInput = screen.getByLabelText(/Vision/i) as HTMLTextAreaElement;
     const goalInput = screen.getByLabelText(/Goals/i) as HTMLTextAreaElement;
 
-    expect(philInput.value).toBe('Total human development');
-    expect(missionInput.value).toContain('Develop human capital for nation building');
-    expect(visionInput.value).toContain('A Premier University of the North by 2030');
+    expect(philInput.value).toBe('Total human development with appropriate competencies.');
+    expect(missionInput.value).toContain('Excellence in instruction, research and extension.');
+    expect(visionInput.value).toContain('By 2030, DMMMSU IS A globally ranked university.');
     expect(goalInput.value).toContain('To lead in transforming human resources');
     expect(philInput).toBeDisabled();
     expect(missionInput).toBeDisabled();

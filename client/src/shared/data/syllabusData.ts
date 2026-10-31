@@ -1,4 +1,4 @@
-﻿export interface GraduateAttribute {
+export interface GraduateAttribute {
   number: number;
   title: string;
   description: string;
@@ -99,6 +99,8 @@ export interface FacultySchedule {
     lectureRoom: string;
     labSchedule: string;
     labRoom: string;
+    lectureSchedules?: Array<{ schedule: string; room: string }>;
+    labSchedules?: Array<{ schedule: string; room: string }>;
   }>;
   consultation?: string;
   consultationSlots: ConsultationSlot[];
@@ -239,7 +241,6 @@ export interface OfficialSyllabusData {
       finalPercent: string;
     };
     classStandingComponents: Array<{ title: string; percentage: string }>;
-    passingGrade: string;
   };
   projectRubrics: RubricRow[];
   classroomPolicies: string[];
@@ -266,9 +267,9 @@ export interface OfficialSyllabusData {
 }
 
 export const OFFICIAL_INSTITUTIONAL_STATEMENTS = {
-  philosophy: 'Total human development',
-  vision: 'A Premier University of the North by 2030 – excellent across disciplines, globally competitive and futures-ready',
-  mission: 'Develop human capital for nation building and foster entrepreneurship by providing inclusive and relevant instruction, research, and extension services',
+  philosophy: 'Total human development with appropriate competencies.',
+  vision: 'By 2030, DMMMSU IS A globally ranked university.',
+  mission: 'Excellence in instruction, research and extension.',
   goal: 'To lead in transforming human resources into productive, self-reliant citizens, and responsible leaders.',
   coreValues: [
     { acronym: 'S', keyword: 'SERVICE', description: 'Service to our stakeholders' },
@@ -479,8 +480,7 @@ export const OFFICIAL_SYLLABUS_CSPC112: OfficialSyllabusData = {
       { title: 'Oral Presentations', percentage: '20' },
       { title: 'Individual & Group Laboratory Activities', percentage: '20' },
       { title: 'Software Engineering Group Project', percentage: '20' }
-    ],
-    passingGrade: '75% (Passing standard based on institutional DMMMSU handbook)'
+    ]
   },
   projectRubrics: [
     {
