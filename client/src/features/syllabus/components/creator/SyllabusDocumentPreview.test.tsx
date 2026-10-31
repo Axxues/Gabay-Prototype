@@ -6,11 +6,20 @@ import { OFFICIAL_SYLLABUS_CSPC112 } from '../../../../shared/data/syllabusData'
 import { createBaselineSyllabus } from '../../hooks/useSyllabusDraftsStorage';
 
 describe('SyllabusDocumentPreview', () => {
-  it('renders institutional header, form code, and course descriptive title', () => {
-    render(<SyllabusDocumentPreview syllabus={OFFICIAL_SYLLABUS_CSPC112} />);
-    expect(screen.getByText(/Don Mariano Marcos Memorial State University/i)).toBeInTheDocument();
-    expect(screen.getAllByText(/DMMMSU-INS-F003/i).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/Software Engineering 2/i).length).toBeGreaterThan(0);
+  it('renders stacked 13x8.5 landscape sheets with repeating header and running footers', () => {
+    const { container } = render(<SyllabusDocumentPreview syllabus={OFFICIAL_SYLLABUS_CSPC112} />);
+    const sheets = container.querySelectorAll('.syllabus-page-sheet');
+    expect(sheets.length).toBeGreaterThanOrEqual(10);
+
+    // Every sheet must have the official header box and Course Syllabus title
+    const titles = screen.getAllByRole('heading', { level: 1, name: /Course Syllabus/i });
+    expect(titles.length).toBe(sheets.length);
+
+    // First sheet must have Page 1 of N
+    expect(screen.getByText(new RegExp(`Page 1 of ${sheets.length}`, 'i'))).toBeInTheDocument();
+
+    // Schedule and Room Assignment must be present without a bordered table wrapper
+    expect(screen.getByText(/Schedule and Room Assignment/i)).toBeInTheDocument();
   });
 
   it('renders all 5 parts and signatories block', () => {
