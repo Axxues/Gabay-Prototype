@@ -227,6 +227,37 @@ export function formatApa7Reference(ref: Partial<ReferenceItem>): string {
   return formatApa7ReferenceSegments(ref).map(s => s.text).join('');
 }
 
+function stripApaAccents(text: string): string {
+  return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+function apaYearKey(year: string | undefined): number {
+  const match = (year || '').trim().match(/\d{4}/);
+  return match ? parseInt(match[0], 10) : 0;
+}
+
+function apaTitleKey(title: string | undefined): string {
+  return stripApaAccents((title || '').trim().toLowerCase()).replace(/^(the|a|an)\s+/, '');
+}
+
+// APA 7 reference-list order: author surname, then year, then title, then citation.
+// Non-mutating — returns a new sorted array.
+export function sortReferences(refs: ReferenceItem[]): ReferenceItem[] {
+  const keyOf = (ref: ReferenceItem): [string, number, string, string] => {
+    const authors = stripApaAccents((ref.authors || '').trim().toLowerCase());
+    const citation = stripApaAccents((ref.citation || '').trim().toLowerCase());
+    return [authors || citation, apaYearKey(ref.year), apaTitleKey(ref.title), citation];
+  };
+  return [...refs].sort((a, b) => {
+    const ka = keyOf(a);
+    const kb = keyOf(b);
+    for (let i = 0; i < ka.length; i++) {
+      if (ka[i] !== kb[i]) return ka[i] < kb[i] ? -1 : 1;
+    }
+    return 0;
+  });
+}
+
 export interface OfficialSyllabusData {
   courseId?: string; // Strictly bounded to this specific course
   institution: {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatApa7Reference, formatApa7ReferenceSegments } from './syllabusData';
+import { formatApa7Reference, formatApa7ReferenceSegments, sortReferences } from './syllabusData';
 
 describe('formatApa7ReferenceSegments', () => {
   it('book: italic title only; edition/publisher/period plain; string output identical to legacy', () => {
@@ -32,5 +32,39 @@ describe('formatApa7ReferenceSegments', () => {
   it('citation-only ref with a year: legacy book-branch parity (citation ignored by formatter)', () => {
     const ref = { citation: 'Some legacy citation text.', year: '2020' };
     expect(formatApa7ReferenceSegments(ref)).toEqual([{ text: '(2020).' }]);
+  });
+});
+
+describe('sortReferences', () => {
+  const mk = (authors: string, year: string, title = 'T') => ({ citation: `${authors || title} (${year}).`, authors, year, title });
+
+  it('orders by author surname, then year, case/accent-insensitively; does not mutate input', () => {
+    const zed = mk('Zulueta, Z.', '2020');
+    const emile = mk('émile, D.', '2021');
+    const emileUpper = mk('EMILE, D.', '2022');
+    const alonzo = mk('Alonzo, A.', '2023');
+    const input = [zed, emile, emileUpper, alonzo];
+    const out = sortReferences(input);
+    expect(out.map(r => r.year)).toEqual(['2023', '2021', '2022', '2020']);
+    expect(input.map(r => r.year)).toEqual(['2020', '2021', '2022', '2023']);
+  });
+
+  it('same author: earlier year first; missing year (n.d.) first', () => {
+    const out = sortReferences([mk('Dalkir, K.', '2023'), mk('Dalkir, K.', '2019'), mk('Dalkir, K.', '')]);
+    expect(out.map(r => r.year)).toEqual(['', '2019', '2023']);
+  });
+
+  it('exact ties keep input order (stable)', () => {
+    const a = { ...mk('Alonzo, A.', '2020', 'First'), publisher: 'One' };
+    const b = { ...mk('Alonzo, A.', '2020', 'First'), publisher: 'Two' };
+    expect(sortReferences([b, a])).toEqual([b, a]);
+  });
+
+  it('refs without authors sort by citation text; leading The/A/An ignored in the title tiebreak', () => {
+    const noAuthor1 = { citation: 'Anonymous report on testing. (2020).', year: '2020' };
+    const noAuthor2 = { citation: 'The complete guide to testing. (2021).', year: '2021' };
+    const titled = mk('', '2019', 'The Complete Guide to Testing');
+    expect(sortReferences([noAuthor2, noAuthor1]).map(r => r.year)).toEqual(['2020', '2021']);
+    expect(sortReferences([titled, noAuthor2])[0].year).toBe('2019');
   });
 });
