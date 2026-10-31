@@ -93,16 +93,20 @@ Add to `SyllabusDevelopmentRecord`: `matrixSnapshot?: EvaluationMatrix` (copied 
 
 ### Persistence
 
-- **Template (per program):** Likha ERP collection **`gabay_syllabus_eval_matrix`**, one row per program scope (`scope_id = departmentId || collegeId`). The chair **creates the row on first save** (POST) and PATCHes subsequent edits; each save bumps `version`. localStorage key `gabay_syllabus_eval_matrix:{scopeId}` becomes a read cache / offline fallback only — the collection row is the source of truth. When no row exists yet, the builder UI works against the seeded **default template** (below) in local draft state; it is only persisted to Likha when the chair saves.
+- **Template (per program):** Likha ERP collection **`gabay_syllabus_eval_matrix`**, one row per program scope (`scope_id = normalize(activeUser.department || activeUser.collegeId)`). The chair **creates the row on first save** (POST) and PATCHes subsequent edits; each save bumps `version`. localStorage key `gabay_syllabus_eval_matrix:{scopeId}` becomes a read cache / offline fallback only — the collection row is the source of truth. When no row exists yet, the builder UI works against the seeded **default template** (below) in local draft state; it is only persisted to Likha when the chair saves.
 - **Template API:** new module `client/src/features/syllabus/api/evaluationMatrixApi.ts`: `GET /items/gabay_syllabus_eval_matrix?filter%5Bscope_id%5D%5B_eq%5D=...` (URL-encoded filter; a missing collection and a missing row both surface as 403/empty → treat as "no matrix yet"); POST on first save, PATCH afterwards; retry on 5xx/408/429 per `likhaLmsApi` conventions.
-- **Responses:** ride on `EvaluatorReview` inside the existing lifecycle records — localStorage `gabay_syllabus_lifecycle_records` + `GroupDraftPayload.evaluators` (already `any[]`) via `saveRemoteDraft`. No API signature changes needed beyond passing the extended objects through. `syncRemoteAgreements` merge keeps full evaluator objects (verify it doesn't strip unknown fields).
+- **Responses:** ride on `EvaluatorReview` inside the existing lifecycle records — localStorage `gabay_syllabus_lifecycle_records` + `GroupDraftPayload.evaluators` (already `any[]`) via `saveRemoteDraft`. **Verified sync gaps this feature must fix** (builder check):
+  - the evaluator-submit persist call (`SyllabusCreatorPage.tsx` ~:1206) currently omits the `evaluators` argument, wiping the remote array on every submission — pass the post-submit evaluators array;
+  - `syncRemoteAgreements` replaces the evaluators array wholesale (last-write-wins) — merge by `evaluatorId`, newest `reviewedAt` wins, so concurrent submissions never overwrite each other;
+  - `matrixSnapshot` is record-level and absent from `GroupDraftPayload` — add it (and read it back in `fetchRemoteDraft`) so evaluators on other sessions render the same form;
+  - hydration currently runs only on the studio route — the governance, Evaluation Matrix, and My Evaluations tabs must fetch-and-sync remote drafts on mount for their visible groups.
 
 ## Backend setup (one-time — follow the `likha-erp-api` skill protocols)
 
 Performed programmatically via the API during implementation, never ad-hoc; writes carry a conventional User-Agent (existing `likhaRequest` does this):
 
 1. `POST /collections` → `gabay_syllabus_eval_matrix` with fields:
-   - `scope_id` — string, `schema.is_unique: true` (holds `departmentId || collegeId`)
+   - `scope_id` — string, `schema.is_unique: true` (holds the chair's program scope: normalized `activeUser.department || activeUser.collegeId` — department-first so two program chairs in one college never clobber each other; college fallback when department is blank)
    - `sections` — json (array of `{id, title, criteria: [{id, text}]}`)
    - `version` — integer, default 1
    - `updated_by_name` — string (display convenience)
@@ -113,8 +117,9 @@ Performed programmatically via the API during implementation, never ad-hoc; writ
 
 ### Matrix template lifecycle & snapshot rule
 
-- `assignEvaluators(...)` (`useSyllabusLifecycle.ts:676`) additionally copies the current program template into the record: `matrixSnapshot = currentTemplate`. Evaluators answer against the snapshot; later template edits never alter in-flight evaluations. `matrixVersion` records which version they answered.
+- `assignEvaluators(...)` (`useSyllabusLifecycle.ts:676`) gains an optional `matrixSnapshot` argument; the **caller** resolves the template before assigning: local cache → remote fetch (`evaluationMatrixApi`) → seeded default as last resort. The hook copies the resolved template into the record: `matrixSnapshot = resolved`. Evaluators answer against the snapshot; later template edits never alter in-flight evaluations. `matrixVersion` records which version they answered.
 - Chair template edits take effect for **future** evaluator assignments only.
+- **Legacy records** (assigned before this feature; evaluators exist but no `matrixSnapshot`): lazily seeded from the current program template the first time the evaluator form or any matrix view opens for that record — the one intentional exception to the future-only rule, so existing demo data and tests keep flowing through the new UI.
 
 ### Rules (enforced at three layers)
 
@@ -134,7 +139,7 @@ Performed programmatically via the API during implementation, never ad-hoc; writ
 ### Integration points (verified)
 
 - `SyllabusCreatorPage.tsx:81` tab union; `:820-869` tab bar; `:872-961` governance content block (pattern for a new block).
-- `useSyllabusLifecycle.ts:676` `assignEvaluators` (add snapshot); `:711` `submitEvaluatorReview` (accept + persist `matrixResponses`, `overallComments`, `matrixVersion`; status logic unchanged).
+- `useSyllabusLifecycle.ts:676` `assignEvaluators` (add snapshot argument); `:711` `submitEvaluatorReview` (accept + persist `matrixResponses`, `overallComments`, `matrixVersion`; status logic unchanged); the submit persist call in `SyllabusCreatorPage.tsx` (~:1206) must start passing `evaluators`.
 - `syllabusCollaborationApi.ts:5` `GroupDraftPayload.evaluators` is `any[]` — responses flow through; `:173` `saveRemoteDraft` passes them.
 - `types/lifecycle.ts:17-49` type extensions.
 - `EvaluatorReviewModal.tsx` full rework; `DepartmentSyllabusTable.tsx:417-483` action column; `RevisionRemarksBanner.tsx` feedback link.
