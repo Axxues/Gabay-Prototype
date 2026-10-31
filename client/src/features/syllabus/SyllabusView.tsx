@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useLMS } from '../../shared/context/LMSContext';
-import { createDefaultSyllabusForCourse, type OfficialSyllabusData, type FacultySchedule, normalizeRubricLevels, createEmptyRubricRow, type RubricLevel } from '../../shared/data/syllabusData';
+import { createDefaultSyllabusForCourse, type OfficialSyllabusData, type FacultySchedule, normalizeRubricLevels, createEmptyRubricRow, type RubricLevel, sortReferences } from '../../shared/data/syllabusData';
+import { ApaReferenceText } from './components/ApaReferenceText';
 import { scanSyllabusDocument, type ScanResult } from '../../shared/utils/syllabusParser';
 import { parseFormattedSize, formatFileSize } from '../../shared/utils/fileUploader';
 import { resolveSPRWeights } from '../../shared/utils/spr';
@@ -300,6 +301,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
         : (base?.courseOutline || []),
       references: Array.isArray(rawData.references) && rawData.references.length > 0
         ? rawData.references.map((r: any) => ({
+            ...r,
             citation: r.citation || r.title || 'Course Handout',
             year: String(r.year || new Date().getFullYear()),
             doiOrPublisher: r.doiOrPublisher || r.author || undefined,
@@ -485,9 +487,14 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
     }
     setIsSaving(true);
     try {
-      const payloads = syllabusEditorSectionPayloads(editingSection, draft);
+      // APA 7 reference lists are alphabetical: sort on commit for the
+      // references section. Mid-edit state is never re-ordered.
+      const draftToSave = editingSection === 'referencesSignatures'
+        ? { ...draft, references: sortReferences(draft.references ?? []) }
+        : draft;
+      const payloads = syllabusEditorSectionPayloads(editingSection, draftToSave);
       if (payloads.length === 0) {
-        await updateCourseSyllabus(courseId, draft);
+        await updateCourseSyllabus(courseId, draftToSave);
       } else {
         for (const [section, value] of payloads) {
           await updateSyllabusSection(courseId, section, value);
@@ -3882,7 +3889,7 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({ courseId }) => {
                       key={idx}
                       className="p-3 rounded-xl bg-muted/20 border border-border text-xs leading-relaxed space-y-1 hover:border-primary/40 transition-colors"
                     >
-                      <p className="text-foreground/90">{ref.citation}</p>
+                      <p className="text-foreground/90"><ApaReferenceText reference={ref} /></p>
                       {ref.doiOrPublisher && (
                         <span className="text-[10px] font-sans text-muted-foreground block">
                           {ref.doiOrPublisher}

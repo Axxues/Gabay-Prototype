@@ -163,6 +163,8 @@ describe('SyllabusView revision editing', () => {
   test('saved references render with APA italics', () => {
     testReferences = [{ citation: 'Laplante, P. (2023). Zed Engineering. CRC Press.', authors: 'Laplante, P.', year: '2023', title: 'Zed Engineering', publisher: 'CRC Press' }];
     render(<SyllabusView courseId="c1" />);
+    // Expand the References & Signatures section (collapsed by default)
+    fireEvent.click(screen.getByText(/Official Textbook References & Institutional Approvals/i));
     expect(screen.getByText('Zed Engineering').closest('em')).not.toBeNull();
   });
 
