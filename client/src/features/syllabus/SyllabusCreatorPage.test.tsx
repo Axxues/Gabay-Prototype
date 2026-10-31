@@ -233,6 +233,31 @@ describe('SyllabusCreatorPage', () => {
     expect(collabApi.saveRemoteDraft).not.toHaveBeenCalled();
   });
 
+  it('shows the Evaluation Matrix tab to chairs only', () => {
+    vi.spyOn(LMSContext, 'useLMS').mockReturnValue({
+      activeUser: { id: 'usr-9', name: 'Chair Person', role: 'faculty', title: 'Department Chairperson', collegeId: 'col-1' },
+      activeRole: 'faculty',
+      courses: [],
+      db: { courses: [] },
+      showAlert: vi.fn()
+    } as any);
+    const { unmount } = renderWithRouter();
+    const tab = screen.getByRole('button', { name: /Evaluation Matrix/i });
+    fireEvent.click(tab);
+    expect(screen.getByRole('button', { name: /Save Template/i })).toBeInTheDocument();
+    unmount();
+
+    vi.spyOn(LMSContext, 'useLMS').mockReturnValue({
+      activeUser: mockFacultyUser,
+      activeRole: 'faculty',
+      courses: [],
+      db: { courses: [] },
+      showAlert: vi.fn()
+    } as any);
+    renderWithRouter();
+    expect(screen.queryByRole('button', { name: /Evaluation Matrix/i })).not.toBeInTheDocument();
+  });
+
   it('blocks opening studio and editing when syllabus development is locked', () => {
     const showAlert = vi.fn();
     vi.spyOn(LMSContext, 'useLMS').mockReturnValue({

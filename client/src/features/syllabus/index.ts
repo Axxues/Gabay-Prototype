@@ -14,5 +14,7 @@ export { CoInstructorSubmissionPanel } from './components/creator/CoInstructorSu
 export { ApprovalActionModal } from './components/governance/ApprovalActionModal';
 export { ConsolidatedMatrixModal } from './components/matrix/ConsolidatedMatrixModal';
 export type { ConsolidatedMatrixModalProps } from './components/matrix/ConsolidatedMatrixModal';
+export { MatrixBuilder } from './components/matrix/MatrixBuilder';
+export type { MatrixBuilderProps } from './components/matrix/MatrixBuilder';
 export { summarizeMatrix } from './utils/matrixSummary';
 export type { ConsolidatedMatrix, ConsolidatedSection, ConsolidatedRow, ConsolidatedComment } from './utils/matrixSummary';

@@ -30,8 +30,11 @@ import {
   Radio,
   CheckCircle2,
   Loader2,
-  CloudOff
+  CloudOff,
+  ListChecks
 } from 'lucide-react';
+import { MatrixBuilder } from './components/matrix/MatrixBuilder';
+import { ConsolidatedMatrixModal } from './components/matrix/ConsolidatedMatrixModal';
 
 interface SyllabusCreatorPageProps {
   onNavigateTab?: (tab: string) => void;
@@ -69,11 +72,14 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
     updateSyllabusData
   } = useSyllabusLifecycle(coursesList, activeUser?.collegeId, db?.users);
 
-  const { template: matrixTemplate, getSnapshotForAssign } = useEvaluationMatrix(
-    activeUser?.department,
-    activeUser?.collegeId || '',
-    activeUser?.name
-  );
+  const {
+    template: matrixTemplate,
+    getSnapshotForAssign,
+    saveTemplate: saveMatrixTemplate,
+    resetTemplate: resetMatrixTemplate
+  } = useEvaluationMatrix(activeUser?.department, activeUser?.collegeId || '', activeUser?.name);
+  const [matrixSaving, setMatrixSaving] = useState(false);
+  const [consolidatedGroup, setConsolidatedGroup] = useState<SyllabusGroup | null>(null);
 
   // Faculty Assigned Courses (Filtered to current user)
   const myAssignedGroups = useMemo(() => {
@@ -886,6 +892,20 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
             </button>
           )}
 
+          {isChair && (
+            <button
+              onClick={() => setActiveTab('matrix')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                activeTab === 'matrix'
+                  ? 'bg-card text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <ListChecks className="w-3.5 h-3.5" />
+              <span>Evaluation Matrix</span>
+            </button>
+          )}
+
           <button
             onClick={() => setActiveTab('my-courses')}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
@@ -1011,6 +1031,100 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
             onOpenPreview={group => setPreviewingGroup(group)}
           />
         </div>
+      )}
+
+      {/* TAB: Evaluation Matrix (Chair) */}
+      {isChair && activeTab === 'matrix' && (
+        <div className="space-y-8">
+          <section className="space-y-3">
+            <h3 className="text-sm font-bold text-foreground">Evaluation Checklist Template</h3>
+            <MatrixBuilder
+              template={matrixTemplate}
+              saving={matrixSaving}
+              onSave={sections => {
+                setMatrixSaving(true);
+                void saveMatrixTemplate(sections)
+                  .then(ok =>
+                    showAlert({
+                      title: ok ? 'Template Saved' : 'Save Failed',
+                      message: ok
+                        ? 'The evaluation matrix template was saved. It applies to evaluators assigned from now on.'
+                        : 'The evaluation matrix template could not be saved. Please try again.',
+                      type: ok ? 'success' : 'error'
+                    })
+                  )
+                  .finally(() => setMatrixSaving(false));
+              }}
+              onReset={() => {
+                setMatrixSaving(true);
+                void resetMatrixTemplate()
+                  .then(ok =>
+                    showAlert({
+                      title: ok ? 'Template Reset' : 'Reset Failed',
+                      message: ok
+                        ? 'The evaluation matrix template was restored to the institutional default.'
+                        : 'The evaluation matrix template could not be reset. Please try again.',
+                      type: ok ? 'success' : 'error'
+                    })
+                  )
+                  .finally(() => setMatrixSaving(false));
+              }}
+            />
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-sm font-bold text-foreground">Evaluation Progress</h3>
+            {groups.filter(g => (g.evaluators?.length ?? 0) > 0).length === 0 ? (
+              <p className="text-xs text-muted-foreground">No courses have evaluators assigned yet.</p>
+            ) : (
+              groups
+                .filter(g => (g.evaluators?.length ?? 0) > 0)
+                .map(g => (
+                  <div
+                    key={g.id}
+                    className="p-4 bg-card border border-border rounded-2xl flex flex-wrap items-center justify-between gap-3"
+                  >
+                    <div className="space-y-1.5">
+                      <div className="text-sm font-bold text-foreground">{g.courseCode}</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {g.evaluators.map(e => {
+                          const submitted = e.status !== 'pending';
+                          return (
+                            <span
+                              key={e.evaluatorId}
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                submitted ? 'bg-emerald-500/15 text-emerald-600' : 'bg-amber-500/15 text-amber-600'
+                              }`}
+                            >
+                              {e.evaluatorName}: {submitted ? 'Submitted' : 'Pending'}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setConsolidatedGroup(g)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-bold bg-primary text-primary-foreground cursor-pointer"
+                    >
+                      View Consolidated Matrix
+                    </button>
+                  </div>
+                ))
+            )}
+          </section>
+        </div>
+      )}
+
+      {consolidatedGroup && (
+        <ConsolidatedMatrixModal
+          isOpen
+          courseCode={consolidatedGroup.courseCode}
+          instructorNames={consolidatedGroup.instructorNames}
+          snapshot={getRecord(consolidatedGroup.id)?.matrixSnapshot ?? matrixTemplate}
+          evaluators={consolidatedGroup.evaluators}
+          onClose={() => setConsolidatedGroup(null)}
+        />
       )}
 
       {/* TAB 2: My Assigned Courses (Faculty) */}
