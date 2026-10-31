@@ -1,11 +1,13 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
-import { describe, it, expect } from 'vitest';
+import { render, screen, cleanup } from '@testing-library/react';
+import { describe, it, expect, afterEach } from 'vitest';
 import { SyllabusDocumentPreview } from './SyllabusDocumentPreview';
 import { OFFICIAL_SYLLABUS_CSPC112 } from '../../../../shared/data/syllabusData';
 import { createBaselineSyllabus } from '../../hooks/useSyllabusDraftsStorage';
 
 describe('SyllabusDocumentPreview', () => {
+  afterEach(cleanup);
+
   it('renders stacked 13x8.5 landscape sheets with repeating header and running footers', () => {
     const { container } = render(<SyllabusDocumentPreview syllabus={OFFICIAL_SYLLABUS_CSPC112} />);
     const sheets = container.querySelectorAll('.syllabus-page-sheet');
@@ -102,7 +104,7 @@ describe('SyllabusDocumentPreview', () => {
     render(<SyllabusDocumentPreview syllabus={baseline} />);
 
     // 1. Course No. & Descriptive Title
-    expect(screen.getByText(/CSPC 112 – Software Engineering 2/i)).toBeInTheDocument();
+    expect(screen.getByText(/CSPC 112 \u2013 Software Engineering 2/i)).toBeInTheDocument();
     // 2. Name of Faculty Member/s
     expect(screen.getAllByText('Dr. Santos').length).toBeGreaterThanOrEqual(1);
     // 3. Philosophy
@@ -127,5 +129,40 @@ describe('SyllabusDocumentPreview', () => {
     expect(screen.queryByText(/Class Standing \(Quizzes/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Class attendance and punctuality must be observed/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Orientation & Foundations of Computing/i)).not.toBeInTheDocument();
+  });
+
+  const structuredRefs = [
+    { citation: 'Laplante, P. (2023). What Every Engineer Should Know About Software Engineering. CRC Press.', authors: 'Laplante, P.', year: '2023', title: 'What Every Engineer Should Know About Software Engineering', publisher: 'CRC Press' },
+    { citation: 'Alonzo, A. (2022). Alpha Design. MIT Press.', authors: 'Alonzo, A.', year: '2022', title: 'Alpha Design', publisher: 'MIT Press' },
+    { type: 'journal' as const, citation: 'Dalkir, K. (2019). Knowledge management in practice. Journal of Knowledge Management, 85(7/8), 162-171.', authors: 'Dalkir, K.', year: '2019', title: 'Knowledge management in practice', journal: 'Journal of Knowledge Management', volume: '85', issue: '7/8', pages: '162-171' },
+    { citation: 'Legacy plain citation. (2020).', year: '2020' },
+  ];
+
+  it('renders the real references in Part V, alphabetized, with APA italics; sample text removed', () => {
+    const { container } = render(<SyllabusDocumentPreview syllabus={{ ...OFFICIAL_SYLLABUS_CSPC112, references: [...structuredRefs].reverse() }} />);
+    expect(screen.queryByText(/Dilan, R\./)).not.toBeInTheDocument();
+    const emTexts = Array.from(container.querySelectorAll('em')).map(e => e.textContent);
+    expect(emTexts).toContain('What Every Engineer Should Know About Software Engineering');
+    expect(emTexts).toContain('Journal of Knowledge Management');
+    // Legacy citation-only ref renders plain, no crash.
+    expect(screen.getByText('Legacy plain citation. (2020).')).toBeInTheDocument();
+    // Alphabetical: Alonzo citation appears before Laplante citation in document order.
+    const text = container.textContent || '';
+    expect(text.indexOf('Alonzo, A.')).toBeLessThan(text.indexOf('Laplante, P.'));
+  });
+
+  it('chunks references: 13 refs render one more sheet than 12 refs (12 per sheet)', () => {
+    const mkMany = (n: number) => Array.from({ length: n }, (_, i) => ({ citation: `Author ${String.fromCharCode(65 + i)}. (${2020 + (i % 5)}). Book ${i + 1}. Press.`, authors: `Author ${String.fromCharCode(65 + i)}.`, year: String(2020 + (i % 5)), title: `Book ${i + 1}`, publisher: 'Press' }));
+    const { container: with12 } = render(<SyllabusDocumentPreview syllabus={{ ...OFFICIAL_SYLLABUS_CSPC112, references: mkMany(12) }} />);
+    const sheets12 = with12.querySelectorAll('.syllabus-page-sheet').length;
+    cleanup();
+    const { container: with13 } = render(<SyllabusDocumentPreview syllabus={{ ...OFFICIAL_SYLLABUS_CSPC112, references: mkMany(13) }} />);
+    expect(with13.querySelectorAll('.syllabus-page-sheet').length).toBe(sheets12 + 1);
+  });
+
+  it('zero references: no Part V sheet, no crash', () => {
+    const { container } = render(<SyllabusDocumentPreview syllabus={{ ...OFFICIAL_SYLLABUS_CSPC112, references: [] }} />);
+    expect(screen.queryByText(/Part V: References/i)).not.toBeInTheDocument();
+    expect(container.querySelectorAll('.syllabus-page-sheet').length).toBeGreaterThan(0);
   });
 });

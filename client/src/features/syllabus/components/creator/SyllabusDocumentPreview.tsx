@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
-import type { OfficialSyllabusData } from '../../../../shared/data/syllabusData';
-import { OFFICIAL_INSTITUTIONAL_STATEMENTS, normalizeRubricLevels } from '../../../../shared/data/syllabusData';
+import type { OfficialSyllabusData, ReferenceItem } from '../../../../shared/data/syllabusData';
+import { OFFICIAL_INSTITUTIONAL_STATEMENTS, normalizeRubricLevels, sortReferences } from '../../../../shared/data/syllabusData';
+import { ApaReferenceText } from '../ApaReferenceText';
 import { Printer, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+
+const REFERENCES_PER_SHEET = 12;
 
 interface SyllabusDocumentPreviewProps {
   syllabus?: OfficialSyllabusData;
@@ -150,6 +153,32 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
   const hasCourseOutline = courseOutline && courseOutline.length > 0;
   const hasCourseMap = courseMap && courseMap.length > 0 && activePOs.length > 0;
   const hasReferences = references && references.length > 0;
+  // APA 7 reference lists are alphabetical; Part V paginates REFERENCES_PER_SHEET
+  // entries per landscape sheet (defensively sorted — stored data should be).
+  const sortedReferences = sortReferences(references ?? []);
+  const referenceChunks: ReferenceItem[][] = [];
+  for (let i = 0; i < sortedReferences.length; i += REFERENCES_PER_SHEET) {
+    referenceChunks.push(sortedReferences.slice(i, i + REFERENCES_PER_SHEET));
+  }
+  const referenceSheetBuilders: ((pageNo: number, total: number) => React.ReactNode)[] = referenceChunks.map((chunk, chunkIdx) => (pageNo: number, total: number) => (
+    <div
+      key={`sheet-${pageNo}`}
+      className="syllabus-page-sheet bg-white text-black font-['Trebuchet_MS',Arial,sans-serif] text-[9.5pt] leading-[1.3] w-[13in] min-w-[13in] min-h-[8.5in] h-[8.5in] p-[0.5in_0.6in_0.45in_0.6in] shadow-md border border-neutral-300 dark:border-neutral-700 flex flex-col justify-between"
+    >
+      <div>
+        {renderHeaderBox()}
+        {chunkIdx === 0 && <div className="font-bold text-[10pt] mb-2 text-black">Part V: References</div>}
+        <div className="text-[9.5pt] pl-8 -indent-8 leading-[1.16] text-justify">
+          {chunk.map((ref, refIdx) => (
+            <div key={refIdx}>
+              <ApaReferenceText reference={ref} />
+            </div>
+          ))}
+        </div>
+      </div>
+      {renderFooter(pageNo, total)}
+    </div>
+  ));
   const hasGrading = gradingSystem && (gradingSystem.termFormula || gradingSystem.finalFormula || (gradingSystem.classStandingComponents && gradingSystem.classStandingComponents.length > 0));
 
   // Build the list of sheets dynamically
@@ -1404,23 +1433,14 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
           <div className="font-bold text-[9pt] mb-3 text-black">
             Legend: I - Introduced, P - Practiced, D – Demonstrate
           </div>
-
-          <div className="font-bold text-[10pt] mb-2 text-black">Part V: References</div>
-          <div className="text-[9.5pt] pl-8 -indent-8 leading-[1.16] text-justify">
-            <div>Dilan, R., Ancheta, J. (2023). Software Engineering 2 Module. DMMMSU, College of Computer Science.</div>
-            <div>Diamantopoulos, T. &amp; Symeonidis, A. L. (2020). Mining Software Engineering Data for Software Reuse. Springer.</div>
-            <div>Langer, A. M. (2020). Analysis and Design of Next-Generation Software Architectures. doi:10.1007/978-3-030-36899-9</div>
-            <div>Laplante, P. (2023). What Every Engineer Should Know About Software Engineering. CRC Press.</div>
-            <div>Mason, H. (2022). Fundamentals of Software Engineering. Murphy &amp; Moore Publishing.</div>
-            <div>McNeil R. (2023). Modern Software Engineering. Clanrye International.</div>
-            <div>Nguyen-Duc, A., Munch, J., Prikladnicki, R., Wang, X., &amp; Abrahamsson, P. (Eds.). (2020). Fundamentals of Software Startups. doi:10.1007/978-3-030-35983-6</div>
-            <div>Pressman, R. S., &amp; Maxim, B. R. (2019). Software engineering: A practitioner's approach (9th ed.). McGraw-Hill Education.</div>
-          </div>
         </div>
 
         {renderFooter(pageNo, total)}
       </div>
     ));
+
+    // Part V: real, alphabetized references (paginated; skipped when empty)
+    sheetBuilders.push(...referenceSheetBuilders);
 
     // ----------------------------------------------------
     // SHEET 17: References (Batch 2) & Borderless Signatories
@@ -1433,15 +1453,6 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
         <div>
           {renderHeaderBox()}
 
-          <div className="text-[9.5pt] pl-8 -indent-8 leading-[1.16] text-justify mb-8">
-            <div>Ravichandran, A., Taylor, K., and Waterhouse, P. (2016). DevOps for Digital Leaders Reignite Business with a Modern DevOps-Enabled Software Factory. Apress Open. DOI 10.1007/978-1-4842-1842-6.</div>
-            <div>Rosen, C. (2020). Guide to Software Systems Development. Springer. https://doi.org/10.1007/978-3-030-39730-2</div>
-            <div>Sadowski, C. and Zimmermann, T. (2019). Rethinking Productivity in Software Engineering. Apress Open. https://doi.org/10.1007/978-1-4842-4221.6.</div>
-            <div>Sommervile, I. (2016). Software Engineering, 10 Ed. Pearson.</div>
-            <div>Staron, M. (2020). Action Research in Software Engineering. doi:10.1007/978-3-030-32610-4</div>
-            <div>Voorhees, D. P. (2020). Guide to Efficient Software Design. Texts in Computer Science. doi:10.1007/978-3-030-28501-2</div>
-            <div>Zeng, D., Gu, L., Pan, S., &amp; Guo, S. (2020). Software Defined Systems, Sensing, Communication, and Computation. Springer.</div>
-          </div>
 
           {/* BORDERLESS Signatories Section */}
           <div className="grid grid-cols-3 gap-8 mt-12 text-[10pt] leading-normal">
@@ -1504,6 +1515,9 @@ export const SyllabusDocumentPreview: React.FC<SyllabusDocumentPreviewProps> = (
       </div>
     ));
   } else {
+    // Part V: real, alphabetized references (paginated; skipped when empty)
+    sheetBuilders.push(...referenceSheetBuilders);
+
     // Sparse / baseline syllabus: add a final sheet with signatories so signatories are always present
     sheetBuilders.push((pageNo, total) => (
       <div
