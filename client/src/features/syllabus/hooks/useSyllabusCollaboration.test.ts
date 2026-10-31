@@ -254,4 +254,51 @@ describe('useSyllabusCollaboration', () => {
     expect(receivedAgreements).toEqual({ 'u-raymund': true });
     expect(receivedStatus).toBe('submission_in_progress');
   });
+
+  it('does not abort a WebSocket that is still connecting when the effect re-runs', async () => {
+    vi.spyOn(likhaApiModule, 'getValidToken').mockResolvedValue('tok-123');
+    vi.spyOn(collaborationApi, 'fetchRemoteDraft').mockResolvedValue(undefined as any);
+    vi.spyOn(collaborationApi, 'sendRemotePresence').mockResolvedValue(undefined as any);
+    vi.spyOn(collaborationApi, 'removeRemotePresence').mockResolvedValue(undefined as any);
+
+    const created: any[] = [];
+    class FakeWebSocket {
+      static CONNECTING = 0;
+      static OPEN = 1;
+      readyState = FakeWebSocket.CONNECTING;
+      onopen: ((ev?: unknown) => void) | null = null;
+      onmessage: ((ev: { data: string }) => void) | null = null;
+      onerror: ((ev?: unknown) => void) | null = null;
+      onclose: ((ev?: unknown) => void) | null = null;
+      url: string;
+      close = vi.fn();
+      send = vi.fn();
+      constructor(url: string) {
+        this.url = url;
+        created.push(this);
+      }
+    }
+    vi.stubGlobal('WebSocket', FakeWebSocket);
+
+    try {
+      const user = { id: 'u1', name: 'Dr. Santos' };
+      const { rerender } = renderHook(
+        ({ step }: { step: string }) => useSyllabusCollaboration('grp-1', user, step, 'course-1'),
+        { initialProps: { step: 'course-info' } }
+      );
+
+      await waitFor(() => expect(created).toHaveLength(1));
+
+      // Step change re-runs the effect while socket #1 is still CONNECTING.
+      rerender({ step: 'outcomes' });
+      await waitFor(() => expect(created.length).toBeGreaterThanOrEqual(2));
+
+      // Closing a CONNECTING socket makes the browser log
+      // "WebSocket is closed before the connection is established".
+      // The deferred isDisposed path in onopen closes it cleanly instead.
+      expect(created[0].close).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

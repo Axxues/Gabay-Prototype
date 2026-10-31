@@ -406,7 +406,12 @@ export function useSyllabusCollaboration(
       clearInterval(syncInterval);
       if (ws) {
         try {
-          ws.close();
+          // Closing a CONNECTING socket aborts it and makes the browser log
+          // "WebSocket is closed before the connection is established".
+          // Leave it; the isDisposed guard in onopen closes it cleanly once open.
+          if (ws.readyState !== WebSocket.CONNECTING) {
+            ws.close();
+          }
         } catch {
           // Ignore
         }
