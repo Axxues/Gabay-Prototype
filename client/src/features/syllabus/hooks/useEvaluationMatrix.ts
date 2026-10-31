@@ -30,6 +30,7 @@ export function useEvaluationMatrix(
   const [loading, setLoading] = useState(true);
   const [remoteId, setRemoteId] = useState<string | null>(null);
   const savingRef = useRef(false);
+  const savedVersionRef = useRef(0);
 
   // Load template on mount
   useEffect(() => {
@@ -50,11 +51,11 @@ export function useEvaluationMatrix(
         if (!mounted) return;
 
         if (remote) {
-          // Remote wins only if version is newer
-          if (remote.matrix.version > (cached?.version ?? 0)) {
+          setRemoteId(prev => prev ?? remote.id);
+          // Remote wins only if version is newer than the cache and any save made while loading
+          if (remote.matrix.version > Math.max(cached?.version ?? 0, savedVersionRef.current)) {
             setTemplate(remote.matrix);
             writeCachedMatrix(scopeId, remote.matrix);
-            setRemoteId(remote.id);
           }
         } else if (!cached) {
           // No cache, no remote - seed with default
@@ -89,8 +90,7 @@ export function useEvaluationMatrix(
 
       let newRemoteId: string | null = null;
       if (remoteId) {
-        await updateMatrixTemplate(remoteId, updatedMatrix, userName);
-        newRemoteId = remoteId;
+        if (await updateMatrixTemplate(remoteId, updatedMatrix, userName)) newRemoteId = remoteId;
       } else {
         const result = await createMatrixTemplate(scopeId, updatedMatrix, userName);
         if (result) newRemoteId = result.id; // fetchMatrixTemplate returns { id, matrix }
@@ -99,6 +99,7 @@ export function useEvaluationMatrix(
       if (!newRemoteId) return false;
 
       const finalMatrix = { ...updatedMatrix, id: newRemoteId };
+      savedVersionRef.current = nextVersion;
       setTemplate(finalMatrix);
       writeCachedMatrix(scopeId, finalMatrix);
       setRemoteId(newRemoteId);
@@ -124,13 +125,15 @@ export function useEvaluationMatrix(
       };
 
       if (remoteId) {
-        await updateMatrixTemplate(remoteId, defaultMatrix, userName);
+        if (!(await updateMatrixTemplate(remoteId, defaultMatrix, userName))) return false;
       } else {
         const result = await createMatrixTemplate(scopeId, defaultMatrix, userName);
         if (!result) return false;
+        setRemoteId(result.id);
       }
 
       const finalMatrix = { ...defaultMatrix };
+      savedVersionRef.current = nextVersion;
       setTemplate(finalMatrix);
       writeCachedMatrix(scopeId, finalMatrix);
       return true;

@@ -759,7 +759,7 @@ export function useSyllabusLifecycle(
         const allApproved = nextReviews.length > 0 && nextReviews.every(r => r.status === 'approved');
         if (allApproved) {
           nextStatus = 'evaluator_approved';
-        } else {
+        } else if (existing.status !== 'revisions_required') {
           nextStatus = 'under_evaluation';
         }
       }
@@ -856,7 +856,7 @@ export function useSyllabusLifecycle(
         const statusSame = existing.status === nextStatus;
         const agreementsSame = JSON.stringify(existing.submissionAgreements || {}) === JSON.stringify(mergedAgreements);
         const evaluatorsSame = JSON.stringify(existing.evaluators || []) === JSON.stringify(nextEvaluators);
-        const matrixSame = JSON.stringify(existing.matrixSnapshot || null) === JSON.stringify(matrixSnapshot || null);
+        const matrixSame = JSON.stringify(existing.matrixSnapshot || null) === JSON.stringify((matrixSnapshot ?? existing.matrixSnapshot) || null);
         if (statusSame && agreementsSame && evaluatorsSame && matrixSame) {
           return prev;
         }

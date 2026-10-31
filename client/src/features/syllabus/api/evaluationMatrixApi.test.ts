@@ -89,8 +89,8 @@ describe('evaluationMatrixApi', () => {
       version: 3,
       updated_by_name: 'Dr. Santos'
     });
-    expect(saved?.updatedAt).toBe('2026-10-31T01:00:00.000Z');
-    expect(readCachedMatrix('bscs')).toEqual(saved);
+    expect(saved?.matrix.updatedAt).toBe('2026-10-31T01:00:00.000Z');
+    expect(readCachedMatrix('bscs')).toEqual(saved?.matrix);
   });
 
   it('returns null from PATCH after retrying transient failures', async () => {
