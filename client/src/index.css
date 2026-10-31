@@ -916,7 +916,10 @@ select option {
 }
 
 .anim-page-enter {
-  animation: fadeInUp 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+  /* Near-instant to avoid blink on route remount (key change causes unmount/mount cycle).
+     The keyed PageTransition unmounts old page instantly; new page starts at opacity:0.
+     0.05s is below human flicker fusion threshold (~60Hz = 16.7ms), making it imperceptible. */
+  animation: fadeInUp 0.05s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .anim-page-exit {
