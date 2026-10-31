@@ -1,12 +1,22 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { AlertTriangle, Clock, MessageSquare } from 'lucide-react';
-import type { EvaluatorReview } from '../../types/lifecycle';
+import type { EvaluationMatrix, EvaluatorReview } from '../../types/lifecycle';
+import { ConsolidatedMatrixModal } from '../matrix/ConsolidatedMatrixModal';
 
 interface RevisionRemarksBannerProps {
   evaluators: EvaluatorReview[];
+  matrixSnapshot?: EvaluationMatrix;
+  courseCode?: string;
+  instructorNames?: string[];
 }
 
-export const RevisionRemarksBanner: React.FC<RevisionRemarksBannerProps> = ({ evaluators }) => {
+export const RevisionRemarksBanner: React.FC<RevisionRemarksBannerProps> = ({
+  evaluators,
+  matrixSnapshot,
+  courseCode = '',
+  instructorNames = []
+}) => {
+  const [matrixOpen, setMatrixOpen] = useState(false);
   const rejectedReviews = evaluators.filter(
     e => e.status === 'revisions_requested' && Boolean(e.remarks)
   );
@@ -48,6 +58,26 @@ export const RevisionRemarksBanner: React.FC<RevisionRemarksBannerProps> = ({ ev
       <p className="text-[11px] text-muted-foreground">
         Please address all comments across the wizard steps. Once updated, all co-instructors must re-confirm agreement to resubmit for evaluation.
       </p>
+
+      {matrixSnapshot && (
+        <>
+          <button
+            type="button"
+            onClick={() => setMatrixOpen(true)}
+            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-destructive text-destructive-foreground cursor-pointer"
+          >
+            View Evaluation Matrix
+          </button>
+          <ConsolidatedMatrixModal
+            isOpen={matrixOpen}
+            courseCode={courseCode}
+            instructorNames={instructorNames}
+            snapshot={matrixSnapshot}
+            evaluators={evaluators}
+            onClose={() => setMatrixOpen(false)}
+          />
+        </>
+      )}
     </div>
   );
 };

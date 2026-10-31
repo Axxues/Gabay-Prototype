@@ -5,6 +5,7 @@ import { createBaselineSyllabus } from './hooks/useSyllabusDraftsStorage';
 import { OFFICIAL_SYLLABUS_CSPC112, OFFICIAL_INSTITUTIONAL_STATEMENTS } from '../../shared/data/syllabusData';
 import { useSyllabusLifecycle, normalizeCourseCode } from './hooks/useSyllabusLifecycle';
 import { useSyllabusCollaboration } from './hooks/useSyllabusCollaboration';
+import { useEvaluationMatrix } from './hooks/useEvaluationMatrix';
 import { fetchRemoteDraft, saveRemoteDraft } from './api/syllabusCollaborationApi';
 import { SyllabusWizard } from './components/creator/SyllabusWizard';
 import { AttachToCourseModal } from './components/creator/AttachToCourseModal';
@@ -14,7 +15,7 @@ import { EvaluatorReviewModal } from './components/governance/EvaluatorReviewMod
 import { ApprovalActionModal } from './components/governance/ApprovalActionModal';
 import { RevisionRemarksBanner } from './components/creator/RevisionRemarksBanner';
 import { SyllabusDocumentPreview } from './components/creator/SyllabusDocumentPreview';
-import type { SyllabusGroup } from './types/lifecycle';
+import type { SyllabusGroup, EvaluationMatrix } from './types/lifecycle';
 import { isChairRole, isDeanRole } from '../../shared/utils/roles';
 import { formatSemesterLabel } from '../../shared/utils/academicSemester';
 import {
@@ -29,8 +30,11 @@ import {
   Radio,
   CheckCircle2,
   Loader2,
-  CloudOff
+  CloudOff,
+  ListChecks
 } from 'lucide-react';
+import { MatrixBuilder } from './components/matrix/MatrixBuilder';
+import { ConsolidatedMatrixModal } from './components/matrix/ConsolidatedMatrixModal';
 
 interface SyllabusCreatorPageProps {
   onNavigateTab?: (tab: string) => void;
@@ -62,10 +66,20 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
     syncRemoteAgreements,
     assignEvaluators,
     submitEvaluatorReview,
+    ensureMatrixSnapshot,
     chairApprove,
     deanApprove,
     updateSyllabusData
   } = useSyllabusLifecycle(coursesList, activeUser?.collegeId, db?.users);
+
+  const {
+    template: matrixTemplate,
+    getSnapshotForAssign,
+    saveTemplate: saveMatrixTemplate,
+    resetTemplate: resetMatrixTemplate
+  } = useEvaluationMatrix(activeUser?.department, activeUser?.collegeId || '', activeUser?.name);
+  const [matrixSaving, setMatrixSaving] = useState(false);
+  const [consolidatedGroup, setConsolidatedGroup] = useState<SyllabusGroup | null>(null);
 
   // Faculty Assigned Courses (Filtered to current user)
   const myAssignedGroups = useMemo(() => {
@@ -78,7 +92,7 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
   }, [groups, activeUser?.id, activeUser?.name]);
 
   // Active view tab (Personal Sandbox is removed; authoring is strictly permitted through approved courses)
-  const [activeTab, setActiveTab] = useState<'governance' | 'my-courses' | 'evaluations'>(() => {
+  const [activeTab, setActiveTab] = useState<'governance' | 'my-courses' | 'evaluations' | 'matrix'>(() => {
     if (isLeadership) return 'governance';
     return 'my-courses';
   });
@@ -94,6 +108,7 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
   const [isAttachOpen, setIsAttachOpen] = useState(false);
   const [evaluatorAssignGroup, setEvaluatorAssignGroup] = useState<SyllabusGroup | null>(null);
   const [evaluatorReviewGroup, setEvaluatorReviewGroup] = useState<SyllabusGroup | null>(null);
+  const [evaluatorSnapshot, setEvaluatorSnapshot] = useState<EvaluationMatrix | null>(null);
   const [approvalModalConfig, setApprovalModalConfig] = useState<{
     type: 'chair' | 'dean';
     group: SyllabusGroup;
@@ -101,6 +116,7 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
   const [previewingGroup, setPreviewingGroup] = useState<SyllabusGroup | null>(null);
 
   const hydratedGroupRef = useRef<string | null>(null);
+  const hydratedTabsRef = useRef<Set<string>>(new Set());
 
   // Sync URL with state: if groupId in URL changes, update activeGroupId.
   // Only depend on groupId (URL → state). Do NOT depend on activeGroupId
@@ -133,12 +149,55 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
             groupId,
             remote.payload.submissionAgreements || {},
             remote.payload.status as any,
-            remote.payload.evaluators
+            remote.payload.evaluators,
+            remote.payload.matrixSnapshot
           );
         }
       }).catch(() => {});
     }
   }, [groupId, groups, syncRemoteAgreements]);
+
+  // Tab-level hydration: when governance/matrix/evaluations tab is active,
+  // fetch and sync remote drafts for visible groups with evaluators
+  useEffect(() => {
+    if (!['governance', 'matrix', 'evaluations'].includes(activeTab)) return;
+    if (!groups.length) return;
+
+    // Determine which groups to hydrate based on active tab
+    let groupsToHydrate: SyllabusGroup[] = [];
+    if (activeTab === 'governance' || activeTab === 'matrix') {
+      // Chair/Dean sees all groups with evaluators
+      groupsToHydrate = groups.filter(g => (g.evaluators?.length ?? 0) > 0 && 
+        ['under_evaluation', 'revisions_required', 'evaluator_approved'].includes(g.status));
+    } else if (activeTab === 'evaluations') {
+      // Evaluator sees only their assigned groups
+      groupsToHydrate = groups.filter(g => {
+        const myReview = g.evaluators.find(e => e.evaluatorId === activeUser?.id);
+        return myReview && ['under_evaluation', 'revisions_required', 'evaluator_approved'].includes(g.status);
+      });
+    }
+
+    for (const group of groupsToHydrate) {
+      const hydrateKey = `${group.id}:${activeTab}`;
+      if (hydratedTabsRef.current.has(hydrateKey)) continue;
+      hydratedTabsRef.current.add(hydrateKey);
+
+      const canonicalId = group.courseIds[0];
+      if (!canonicalId) continue;
+
+      fetchRemoteDraft(canonicalId).then(remote => {
+        if (remote?.payload?.submissionAgreements || remote?.payload?.status || remote?.payload?.evaluators || remote?.payload?.matrixSnapshot) {
+          syncRemoteAgreements(
+            group.id,
+            remote.payload.submissionAgreements || {},
+            remote.payload.status as any,
+            remote.payload.evaluators,
+            remote.payload.matrixSnapshot
+          );
+        }
+      }).catch(() => {});
+    }
+  }, [activeTab, groups, activeUser?.id, syncRemoteAgreements]);
 
   // Persist active studio state to localStorage (only when on studio route)
   useEffect(() => {
@@ -669,7 +728,12 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
 
         {/* Revision Remarks Banner if Revisions are Required */}
         {activeRecord?.status === 'revisions_required' && activeRecord.evaluators && (
-          <RevisionRemarksBanner evaluators={activeRecord.evaluators} />
+          <RevisionRemarksBanner
+            evaluators={activeRecord.evaluators}
+            matrixSnapshot={activeRecord.matrixSnapshot}
+            courseCode={activeGroup?.courseCode}
+            instructorNames={activeGroup?.instructorNames}
+          />
         )}
 
         {/* Wizard Editor */}
@@ -835,6 +899,20 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
             </button>
           )}
 
+          {isChair && (
+            <button
+              onClick={() => setActiveTab('matrix')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                activeTab === 'matrix'
+                  ? 'bg-card text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <ListChecks className="w-3.5 h-3.5" />
+              <span>Evaluation Matrix</span>
+            </button>
+          )}
+
           <button
             onClick={() => setActiveTab('my-courses')}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
@@ -879,6 +957,7 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
             userRole={activeRole}
             isChair={isChair}
             canRelease={isChair}
+            onOpenMatrix={setConsolidatedGroup}
             onReleaseCourses={async ids => {
               if (!isChair) {
                 showAlert({
@@ -960,6 +1039,100 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
             onOpenPreview={group => setPreviewingGroup(group)}
           />
         </div>
+      )}
+
+      {/* TAB: Evaluation Matrix (Chair) */}
+      {isChair && activeTab === 'matrix' && (
+        <div className="space-y-8">
+          <section className="space-y-3">
+            <h3 className="text-sm font-bold text-foreground">Evaluation Checklist Template</h3>
+            <MatrixBuilder
+              template={matrixTemplate}
+              saving={matrixSaving}
+              onSave={sections => {
+                setMatrixSaving(true);
+                void saveMatrixTemplate(sections)
+                  .then(ok =>
+                    showAlert({
+                      title: ok ? 'Template Saved' : 'Save Failed',
+                      message: ok
+                        ? 'The evaluation matrix template was saved. It applies to evaluators assigned from now on.'
+                        : 'The evaluation matrix template could not be saved. Please try again.',
+                      type: ok ? 'success' : 'error'
+                    })
+                  )
+                  .finally(() => setMatrixSaving(false));
+              }}
+              onReset={() => {
+                setMatrixSaving(true);
+                void resetMatrixTemplate()
+                  .then(ok =>
+                    showAlert({
+                      title: ok ? 'Template Reset' : 'Reset Failed',
+                      message: ok
+                        ? 'The evaluation matrix template was restored to the institutional default.'
+                        : 'The evaluation matrix template could not be reset. Please try again.',
+                      type: ok ? 'success' : 'error'
+                    })
+                  )
+                  .finally(() => setMatrixSaving(false));
+              }}
+            />
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-sm font-bold text-foreground">Evaluation Progress</h3>
+            {groups.filter(g => (g.evaluators?.length ?? 0) > 0).length === 0 ? (
+              <p className="text-xs text-muted-foreground">No courses have evaluators assigned yet.</p>
+            ) : (
+              groups
+                .filter(g => (g.evaluators?.length ?? 0) > 0)
+                .map(g => (
+                  <div
+                    key={g.id}
+                    className="p-4 bg-card border border-border rounded-2xl flex flex-wrap items-center justify-between gap-3"
+                  >
+                    <div className="space-y-1.5">
+                      <div className="text-sm font-bold text-foreground">{g.courseCode}</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {g.evaluators.map(e => {
+                          const submitted = e.status !== 'pending';
+                          return (
+                            <span
+                              key={e.evaluatorId}
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                submitted ? 'bg-emerald-500/15 text-emerald-600' : 'bg-amber-500/15 text-amber-600'
+                              }`}
+                            >
+                              {e.evaluatorName}: {submitted ? 'Submitted' : 'Pending'}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setConsolidatedGroup(g)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-bold bg-primary text-primary-foreground cursor-pointer"
+                    >
+                      View Consolidated Matrix
+                    </button>
+                  </div>
+                ))
+            )}
+          </section>
+        </div>
+      )}
+
+      {consolidatedGroup && (
+        <ConsolidatedMatrixModal
+          isOpen
+          courseCode={consolidatedGroup.courseCode}
+          instructorNames={consolidatedGroup.instructorNames}
+          snapshot={getRecord(consolidatedGroup.id)?.matrixSnapshot ?? matrixTemplate}
+          evaluators={consolidatedGroup.evaluators}
+          onClose={() => setConsolidatedGroup(null)}
+        />
       )}
 
       {/* TAB 2: My Assigned Courses (Faculty) */}
@@ -1128,7 +1301,13 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
                   <div className="pt-3 border-t border-border flex items-center justify-between">
                     {canEvaluate ? (
                       <button
-                        onClick={() => setEvaluatorReviewGroup(group)}
+                        onClick={() => {
+                          const record = getRecord(group.id);
+                          const snapshot = record?.matrixSnapshot ?? matrixTemplate;
+                          if (!record?.matrixSnapshot) ensureMatrixSnapshot(group.id, snapshot);
+                          setEvaluatorSnapshot(snapshot);
+                          setEvaluatorReviewGroup(group);
+                        }}
                         className="px-4 py-2 rounded-xl text-xs font-bold bg-purple-600 text-white hover:bg-purple-700 transition-all flex items-center gap-1.5"
                       >
                         <ClipboardCheck className="w-3.5 h-3.5" />
@@ -1164,26 +1343,29 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
           group={evaluatorAssignGroup}
           users={usersList}
           onClose={() => setEvaluatorAssignGroup(null)}
-          onConfirm={(groupId, evaluators) => {
+          onConfirm={async (groupId, evaluators) => {
+            const group = evaluatorAssignGroup;
+            const snapshot = await getSnapshotForAssign().catch(() => matrixTemplate);
             assignEvaluators(groupId, evaluators, (courseIds, status) => {
               if (lms.updateCourseSyllabusStatus && courseIds.length > 0) {
                 void lms.updateCourseSyllabusStatus(courseIds, status, activeUser?.id);
               }
-            });
-            if (evaluatorAssignGroup.courseIds[0]) {
+            }, snapshot);
+            if (group.courseIds[0]) {
               saveRemoteDraft(
-                evaluatorAssignGroup.courseIds[0],
-                evaluatorAssignGroup.syllabusData || ({} as any),
+                group.courseIds[0],
+                group.syllabusData || ({} as any),
                 activeUser?.id,
                 undefined,
-                evaluatorAssignGroup.submissionAgreements,
+                group.submissionAgreements,
                 'under_evaluation',
-                evaluators.map(e => ({ evaluatorId: e.id, evaluatorName: e.name, status: 'pending' }))
+                evaluators.map(e => ({ evaluatorId: e.id, evaluatorName: e.name, status: 'pending' })),
+                snapshot
               ).catch(() => {});
             }
             showAlert({
               title: 'Evaluators Assigned',
-              message: `${evaluators.length} evaluator(s) assigned to ${evaluatorAssignGroup.courseCode}.`,
+              message: `${evaluators.length} evaluator(s) assigned to ${group.courseCode}.`,
               type: 'success'
             });
           }}
@@ -1196,14 +1378,24 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
           isOpen={Boolean(evaluatorReviewGroup)}
           groupId={evaluatorReviewGroup.id}
           courseCode={evaluatorReviewGroup.courseCode}
-          onClose={() => setEvaluatorReviewGroup(null)}
-          onReview={(groupId, status, remarks) => {
+          snapshot={evaluatorSnapshot}
+          onClose={() => {
+            setEvaluatorReviewGroup(null);
+            setEvaluatorSnapshot(null);
+          }}
+          onReview={(groupId, status, remarks, matrix) => {
             if (activeUser?.id) {
-              submitEvaluatorReview(groupId, activeUser.id, status, remarks, (courseIds, nextStatus) => {
+              submitEvaluatorReview(groupId, activeUser.id, status, remarks, matrix, (courseIds, nextStatus) => {
                 if (lms.updateCourseSyllabusStatus && courseIds.length > 0) {
                   void lms.updateCourseSyllabusStatus(courseIds, nextStatus, activeUser.id);
                 }
               });
+              const now = new Date().toISOString();
+              const nextEvaluators = evaluatorReviewGroup.evaluators.map(e =>
+                e.evaluatorId === activeUser.id
+                  ? { ...e, status, remarks, reviewedAt: now, ...matrix }
+                  : e
+              );
               if (evaluatorReviewGroup.courseIds[0]) {
                 saveRemoteDraft(
                   evaluatorReviewGroup.courseIds[0],
@@ -1211,7 +1403,9 @@ export const SyllabusCreatorPage: React.FC<SyllabusCreatorPageProps> = ({ onNavi
                   activeUser.id,
                   undefined,
                   evaluatorReviewGroup.submissionAgreements,
-                  status === 'approved' ? 'evaluator_approved' : 'revisions_required'
+                  status === 'approved' ? 'evaluator_approved' : 'revisions_required',
+                  nextEvaluators,
+                  evaluatorSnapshot ?? undefined
                 ).catch(() => {});
               }
               showAlert({

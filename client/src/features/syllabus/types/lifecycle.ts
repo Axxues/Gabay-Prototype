@@ -14,12 +14,39 @@ export const SYLLABUS_LIFECYCLE_STATUSES = [
 
 export type SyllabusLifecycleStatus = (typeof SYLLABUS_LIFECYCLE_STATUSES)[number];
 
+export interface MatrixCriterion {
+  id: string;
+  text: string;
+}
+
+export interface MatrixSection {
+  id: string;
+  title: string;
+  criteria: MatrixCriterion[];
+}
+
+export interface EvaluationMatrix {
+  version: number;
+  updatedAt: string;
+  updatedBy?: string;
+  sections: MatrixSection[];
+}
+
+export interface EvaluatorMatrixResponse {
+  criterionId: string;
+  compliant: boolean;
+  comment?: string;
+}
+
 export interface EvaluatorReview {
   evaluatorId: string;
   evaluatorName: string;
   status: 'pending' | 'approved' | 'revisions_requested';
   remarks?: string;
   reviewedAt?: string;
+  matrixResponses?: EvaluatorMatrixResponse[];
+  overallComments?: string;
+  matrixVersion?: number;
 }
 
 export interface SyllabusDevelopmentRecord {
@@ -45,6 +72,7 @@ export interface SyllabusDevelopmentRecord {
   deanApprovedAt?: string;
   deanApprovedBy?: string;
   syllabusData?: OfficialSyllabusData | null;
+  matrixSnapshot?: EvaluationMatrix;
   updatedAt: string;
 }
 
@@ -65,5 +93,6 @@ export interface SyllabusGroup {
   submissionAgreements: Record<string, boolean>;
   evaluators: EvaluatorReview[];
   syllabusData?: OfficialSyllabusData | null;
+  matrixSnapshot?: EvaluationMatrix;
   updatedAt: string;
 }

@@ -480,4 +480,200 @@ describe('useSyllabusLifecycle', () => {
     const updatedGroup = result.current.groups.find(g => g.id === cspc103.id)!;
     expect(updatedGroup.status).toBe('submission_in_progress');
   });
+
+  // ===== Matrix evaluation extensions (Task 5) =====
+
+  it('assignEvaluators stores the matrix snapshot on the record', () => {
+    const { result } = renderHook(() => useSyllabusLifecycle(mockCourses as any, 'col-1'));
+    const cspc103 = result.current.groups.find(g => g.courseCode === 'CSPC 103')!;
+
+    act(() => {
+      result.current.releaseCourses([cspc103.id], 'chair-1');
+      result.current.confirmAgreement(cspc103.id, 'u1');
+      result.current.confirmAgreement(cspc103.id, 'u2');
+    });
+
+    const mockMatrix = {
+      version: 1,
+      updatedAt: '2026-10-31T00:00:00.000Z',
+      updatedBy: 'Chair',
+      sections: [
+        { id: 'format', title: 'FORMAT', criteria: [{ id: 'fmt-1', text: 'Test criterion' }] }
+      ]
+    };
+
+    act(() => {
+      result.current.assignEvaluators(
+        cspc103.id,
+        [{ id: 'eval-1', name: 'Dr. Eval' }],
+        undefined,
+        mockMatrix
+      );
+    });
+
+    const record = result.current.getRecord(cspc103.id);
+    expect(record?.matrixSnapshot).toEqual(mockMatrix);
+    expect(record?.status).toBe('under_evaluation');
+  });
+
+  it('submitEvaluatorReview persists matrixResponses, overallComments and matrixVersion', () => {
+    const { result } = renderHook(() => useSyllabusLifecycle(mockCourses as any, 'col-1'));
+    const cspc103 = result.current.groups.find(g => g.courseCode === 'CSPC 103')!;
+
+    act(() => {
+      result.current.releaseCourses([cspc103.id], 'chair-1');
+      result.current.confirmAgreement(cspc103.id, 'u1');
+      result.current.confirmAgreement(cspc103.id, 'u2');
+    });
+
+    const mockMatrix = {
+      version: 1,
+      updatedAt: '2026-10-31T00:00:00.000Z',
+      updatedBy: 'Chair',
+      sections: [
+        { id: 'format', title: 'FORMAT', criteria: [{ id: 'fmt-1', text: 'Test criterion' }] }
+      ]
+    };
+
+    act(() => {
+      result.current.assignEvaluators(
+        cspc103.id,
+        [{ id: 'eval-1', name: 'Dr. Eval' }],
+        undefined,
+        mockMatrix
+      );
+    });
+
+    act(() => {
+      result.current.submitEvaluatorReview(
+        cspc103.id,
+        'eval-1',
+        'approved',
+        'Great work!',
+        {
+          matrixResponses: [{ criterionId: 'fmt-1', compliant: true }],
+          overallComments: 'All criteria met',
+          matrixVersion: 1
+        }
+      );
+    });
+
+    const record = result.current.getRecord(cspc103.id);
+    expect(record?.evaluators).toHaveLength(1);
+    expect(record?.evaluators[0].matrixResponses).toEqual([{ criterionId: 'fmt-1', compliant: true }]);
+    expect(record?.evaluators[0].overallComments).toBe('All criteria met');
+    expect(record?.evaluators[0].matrixVersion).toBe(1);
+  });
+
+  it('syncRemoteAgreements merges concurrent submissions by evaluatorId, newest reviewedAt wins', () => {
+    const { result } = renderHook(() => useSyllabusLifecycle(mockCourses as any, 'col-1'));
+    const cspc103 = result.current.groups.find(g => g.courseCode === 'CSPC 103')!;
+
+    // Initial state: evaluator A submitted, evaluator B pending
+    const remoteNow = new Date(Date.now() + 5000).toISOString(); // clearly in the future vs local submit
+    const freshA = { evaluatorId: 'eval-a', evaluatorName: 'Eval A', status: 'revisions_requested' as const, reviewedAt: remoteNow, remarks: 'Fix it' };
+    const newB = { evaluatorId: 'eval-b', evaluatorName: 'Eval B', status: 'approved' as const, reviewedAt: remoteNow };
+
+    // Set up local record with evaluator A (approved)
+    act(() => {
+      result.current.assignEvaluators(
+        cspc103.id,
+        [
+          { id: 'eval-a', name: 'Eval A' },
+          { id: 'eval-b', name: 'Eval B' }
+        ],
+        undefined,
+        { version: 1, updatedAt: '2026-10-31T00:00:00.000Z', updatedBy: 'Chair', sections: [] }
+      );
+    });
+    act(() => {
+      result.current.submitEvaluatorReview(cspc103.id, 'eval-a', 'approved');
+    });
+
+    // Simulate remote sync bringing fresh A (revisions_requested, NEWER reviewedAt) + new B
+    act(() => {
+      result.current.syncRemoteAgreements(cspc103.id, {}, undefined, [freshA, newB]);
+    });
+
+    const record = result.current.getRecord(cspc103.id);
+    expect(record?.evaluators).toHaveLength(2);
+    const evalA = record?.evaluators.find(e => e.evaluatorId === 'eval-a');
+    const evalB = record?.evaluators.find(e => e.evaluatorId === 'eval-b');
+    // Fresh A (revisions_requested) should win over local A (approved) because remote reviewedAt is newer
+    expect(evalA?.status).toBe('revisions_requested');
+    expect(evalA?.remarks).toBe('Fix it');
+    expect(evalB?.status).toBe('approved');
+  });
+
+  it('syncRemoteAgreements stores matrixSnapshot when provided', () => {
+    const { result } = renderHook(() => useSyllabusLifecycle(mockCourses as any, 'col-1'));
+    const cspc103 = result.current.groups.find(g => g.courseCode === 'CSPC 103')!;
+
+    act(() => {
+      result.current.releaseCourses([cspc103.id], 'chair-1');
+      result.current.confirmAgreement(cspc103.id, 'u1');
+      result.current.confirmAgreement(cspc103.id, 'u2');
+    });
+
+    const mockMatrix = {
+      version: 2,
+      updatedAt: '2026-10-31T00:00:00.000Z',
+      updatedBy: 'Chair',
+      sections: [
+        { id: 'format', title: 'FORMAT', criteria: [{ id: 'fmt-1', text: 'Test criterion' }] }
+      ]
+    };
+
+    // Record has no matrixSnapshot yet
+    expect(result.current.getRecord(cspc103.id)?.matrixSnapshot).toBeUndefined();
+
+    act(() => {
+      result.current.syncRemoteAgreements(cspc103.id, {}, undefined, [], mockMatrix);
+    });
+
+    expect(result.current.getRecord(cspc103.id)?.matrixSnapshot).toEqual(mockMatrix);
+  });
+
+  it('ensureMatrixSnapshot is a no-op when a snapshot already exists', () => {
+    const { result } = renderHook(() => useSyllabusLifecycle(mockCourses as any, 'col-1'));
+    const cspc103 = result.current.groups.find(g => g.courseCode === 'CSPC 103')!;
+
+    act(() => {
+      result.current.releaseCourses([cspc103.id], 'chair-1');
+      result.current.confirmAgreement(cspc103.id, 'u1');
+      result.current.confirmAgreement(cspc103.id, 'u2');
+    });
+
+    const originalMatrix = {
+      version: 1,
+      updatedAt: '2026-10-31T00:00:00.000Z',
+      updatedBy: 'Chair',
+      sections: [{ id: 'format', title: 'FORMAT', criteria: [{ id: 'fmt-1', text: 'Original' }] }]
+    };
+
+    act(() => {
+      result.current.assignEvaluators(
+        cspc103.id,
+        [{ id: 'eval-1', name: 'Dr. Eval' }],
+        undefined,
+        originalMatrix
+      );
+    });
+
+    const newMatrix = {
+      version: 99,
+      updatedAt: '2026-10-31T00:00:00.000Z',
+      updatedBy: 'Someone Else',
+      sections: [{ id: 'format', title: 'FORMAT', criteria: [{ id: 'fmt-1', text: 'Should Not Overwrite' }] }]
+    };
+
+    // Try to set a different snapshot - should NOT overwrite
+    act(() => {
+      // @ts-expect-error - ensureMatrixSnapshot doesn't exist yet
+      result.current.ensureMatrixSnapshot(cspc103.id, newMatrix);
+    });
+
+    const record = result.current.getRecord(cspc103.id);
+    expect(record?.matrixSnapshot).toEqual(originalMatrix);
+  });
 });

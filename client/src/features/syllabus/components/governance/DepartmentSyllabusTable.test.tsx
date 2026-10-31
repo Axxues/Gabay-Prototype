@@ -222,4 +222,44 @@ describe('DepartmentSyllabusTable', () => {
 
     expect(screen.queryByRole('button', { name: /lock syllabus development/i })).not.toBeInTheDocument();
   });
+
+  describe('Matrix action', () => {
+    const groupWithEvaluators: SyllabusGroup = {
+      ...mockGroups[1],
+      evaluators: [
+        { evaluatorId: 'e1', evaluatorName: 'Dr. Cruz', status: 'pending' } as SyllabusGroup['evaluators'][number]
+      ]
+    };
+
+    const renderTable = (groups: SyllabusGroup[], onOpenMatrix?: (g: SyllabusGroup) => void) =>
+      render(
+        <DepartmentSyllabusTable
+          groups={groups}
+          userRole="chairperson"
+          onReleaseCourses={vi.fn()}
+          onAssignEvaluators={vi.fn()}
+          onChairApprove={vi.fn()}
+          onDeanApprove={vi.fn()}
+          onOpenPreview={vi.fn()}
+          onOpenMatrix={onOpenMatrix}
+        />
+      );
+
+    it('shows Matrix for a group with evaluators and calls onOpenMatrix(group)', () => {
+      const onOpenMatrix = vi.fn();
+      renderTable([groupWithEvaluators], onOpenMatrix);
+      fireEvent.click(screen.getByRole('button', { name: /^Matrix$/i }));
+      expect(onOpenMatrix).toHaveBeenCalledWith(groupWithEvaluators);
+    });
+
+    it('hides Matrix when the group has no evaluators', () => {
+      renderTable([mockGroups[1]], vi.fn());
+      expect(screen.queryByRole('button', { name: /^Matrix$/i })).not.toBeInTheDocument();
+    });
+
+    it('hides Matrix when onOpenMatrix is not provided', () => {
+      renderTable([groupWithEvaluators]);
+      expect(screen.queryByRole('button', { name: /^Matrix$/i })).not.toBeInTheDocument();
+    });
+  });
 });

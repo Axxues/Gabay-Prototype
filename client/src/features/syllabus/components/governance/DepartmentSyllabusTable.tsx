@@ -26,6 +26,7 @@ interface DepartmentSyllabusTableProps {
   onChairApprove: (group: SyllabusGroup) => void;
   onDeanApprove: (group: SyllabusGroup) => void;
   onOpenPreview: (group: SyllabusGroup) => void;
+  onOpenMatrix?: (group: SyllabusGroup) => void;
 }
 
 export const STATUS_CONFIG: Record<
@@ -107,7 +108,8 @@ export const DepartmentSyllabusTable: React.FC<DepartmentSyllabusTableProps> = (
   onAssignEvaluators,
   onChairApprove,
   onDeanApprove,
-  onOpenPreview
+  onOpenPreview,
+  onOpenMatrix
 }) => {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -468,6 +470,17 @@ export const DepartmentSyllabusTable: React.FC<DepartmentSyllabusTableProps> = (
                                     >
                                       <CheckCircle2 className="w-3 h-3" />
                                       <span>Dean Approve</span>
+                                    </button>
+                                  )}
+
+                                  {group.evaluators.length > 0 && onOpenMatrix && (
+                                    <button
+                                      onClick={() => onOpenMatrix(group)}
+                                      className="px-2.5 py-1 rounded-lg border border-border text-foreground hover:bg-muted text-xs font-semibold flex items-center gap-1"
+                                      title="View evaluation matrix"
+                                    >
+                                      <FileCheck2 className="w-3 h-3" />
+                                      <span>Matrix</span>
                                     </button>
                                   )}
 

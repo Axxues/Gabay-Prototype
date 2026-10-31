@@ -7,7 +7,9 @@ import type {
   SyllabusGroup,
   SyllabusDevelopmentRecord,
   EvaluatorReview,
-  SyllabusLifecycleStatus
+  SyllabusLifecycleStatus,
+  EvaluationMatrix,
+  EvaluatorMatrixResponse
 } from '../types/lifecycle';
 
 const STORAGE_KEY = 'gabay_syllabus_lifecycle_records';
@@ -299,6 +301,7 @@ export function useSyllabusLifecycle(
         submissionAgreements: existingRecord?.submissionAgreements || initialAgreements,
         evaluators: existingRecord?.evaluators || [],
         syllabusData: existingRecord?.syllabusData || null,
+        matrixSnapshot: existingRecord?.matrixSnapshot,
         updatedAt: existingRecord?.updatedAt || new Date().toISOString()
       };
     });
@@ -676,7 +679,8 @@ export function useSyllabusLifecycle(
   const assignEvaluators = useCallback((
     groupId: string,
     evaluators: Array<{ id: string; name: string }>,
-    onPersist?: (courseIds: string[], status: string) => void
+    onPersist?: (courseIds: string[], status: string) => void,
+    matrixSnapshot?: EvaluationMatrix
   ) => {
     let affectedCourseIds: string[] = [];
     const evaluatorReviews: EvaluatorReview[] = evaluators.map(e => ({
@@ -697,6 +701,7 @@ export function useSyllabusLifecycle(
           ...existing,
           status: 'under_evaluation',
           evaluators: evaluatorReviews,
+          matrixSnapshot,
           updatedAt: now
         }
       };
@@ -713,6 +718,7 @@ export function useSyllabusLifecycle(
     evaluatorId: string,
     status: 'approved' | 'revisions_requested',
     remarks?: string,
+    matrix?: { matrixResponses: EvaluatorMatrixResponse[]; overallComments?: string; matrixVersion?: number },
     onPersist?: (courseIds: string[], status: string) => void
   ) => {
     let affectedCourseIds: string[] = [];
@@ -730,7 +736,12 @@ export function useSyllabusLifecycle(
             ...r,
             status,
             remarks: remarks || r.remarks,
-            reviewedAt: now
+            reviewedAt: now,
+            ...(matrix ? {
+              matrixResponses: matrix.matrixResponses,
+              overallComments: matrix.overallComments,
+              matrixVersion: matrix.matrixVersion
+            } : {})
           };
         }
         return r;
@@ -748,7 +759,7 @@ export function useSyllabusLifecycle(
         const allApproved = nextReviews.length > 0 && nextReviews.every(r => r.status === 'approved');
         if (allApproved) {
           nextStatus = 'evaluator_approved';
-        } else {
+        } else if (existing.status !== 'revisions_required') {
           nextStatus = 'under_evaluation';
         }
       }
@@ -772,12 +783,31 @@ export function useSyllabusLifecycle(
     }
   }, [updateRecords]);
 
+  // Ensure matrix snapshot exists on a record (used for legacy records without snapshots)
+  const ensureMatrixSnapshot = useCallback((
+    groupId: string,
+    snapshot: EvaluationMatrix
+  ) => {
+    updateRecords(prev => {
+      const existing = prev[groupId];
+      if (!existing || existing.matrixSnapshot) return prev;
+      return {
+        ...prev,
+        [groupId]: {
+          ...existing,
+          matrixSnapshot: snapshot
+        }
+      };
+    });
+  }, [updateRecords]);
+
   // Synchronize remote agreements, status and evaluators from Likha ERP draft / WebSocket / peers
   const syncRemoteAgreements = useCallback((
     groupId: string,
     agreements: Record<string, boolean>,
     status?: SyllabusLifecycleStatus,
-    evaluators?: EvaluatorReview[]
+    evaluators?: EvaluatorReview[],
+    matrixSnapshot?: EvaluationMatrix
   ) => {
     updateRecords(prev => {
       const existing = prev[groupId];
@@ -796,19 +826,46 @@ export function useSyllabusLifecycle(
         : (existing?.status || 'in_development');
 
       const nextStatus = status || calculatedStatus;
-      const nextEvaluators = evaluators || existing?.evaluators || [];
+
+      // Merge evaluators by evaluatorId, keeping the one with newest reviewedAt
+      const localEvaluators = existing?.evaluators || [];
+      const remoteEvaluators = evaluators || [];
+      const evaluatorMap = new Map<string, EvaluatorReview>();
+
+      // Add local evaluators first
+      for (const e of localEvaluators) {
+        evaluatorMap.set(e.evaluatorId, e);
+      }
+      // Merge remote evaluators: if same evaluatorId exists, keep the one with newer reviewedAt (remote wins on tie)
+      for (const e of remoteEvaluators) {
+        const existingEval = evaluatorMap.get(e.evaluatorId);
+        if (!existingEval) {
+          evaluatorMap.set(e.evaluatorId, e);
+        } else {
+          const existingTime = existingEval.reviewedAt ? new Date(existingEval.reviewedAt).getTime() : 0;
+          const remoteTime = e.reviewedAt ? new Date(e.reviewedAt).getTime() : 0;
+          if (remoteTime >= existingTime) {
+            evaluatorMap.set(e.evaluatorId, e);
+          }
+        }
+      }
+      const nextEvaluators = Array.from(evaluatorMap.values());
 
       // NO-OP guard: avoid loop / redundant state write if state hasn't changed
       if (existing) {
         const statusSame = existing.status === nextStatus;
         const agreementsSame = JSON.stringify(existing.submissionAgreements || {}) === JSON.stringify(mergedAgreements);
         const evaluatorsSame = JSON.stringify(existing.evaluators || []) === JSON.stringify(nextEvaluators);
-        if (statusSame && agreementsSame && evaluatorsSame) {
+        const matrixSame = JSON.stringify(existing.matrixSnapshot || null) === JSON.stringify((matrixSnapshot ?? existing.matrixSnapshot) || null);
+        if (statusSame && agreementsSame && evaluatorsSame && matrixSame) {
           return prev;
         }
       }
 
       const now = new Date().toISOString();
+
+      // Determine matrixSnapshot to store: prefer provided, fall back to existing
+      const finalMatrixSnapshot = matrixSnapshot ?? existing?.matrixSnapshot;
 
       return {
         ...prev,
@@ -829,6 +886,7 @@ export function useSyllabusLifecycle(
           submissionAgreements: mergedAgreements,
           status: nextStatus,
           evaluators: nextEvaluators,
+          matrixSnapshot: finalMatrixSnapshot,
           updatedAt: now
         }
       };
@@ -932,6 +990,7 @@ export function useSyllabusLifecycle(
     syncRemoteAgreements,
     assignEvaluators,
     submitEvaluatorReview,
+    ensureMatrixSnapshot,
     chairApprove,
     deanApprove,
     updateSyllabusData
